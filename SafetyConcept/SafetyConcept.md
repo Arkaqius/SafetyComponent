@@ -75,19 +75,19 @@ Risk_score = (2 x *Severity*) x *Exposure* x *Controllability* to calculate risk
 
 | Hazard | Severity | Exposure | Controllability | Risk Score | Level |
 | --- | --- | --- | --- | --- | --- |
-| Unauthorized Access | High | Medium | Low | 18 | Level 2 |
-| System cybersecurity | High | High | High | 18 | Level 2 |
-| Fire | High | Low | Low | 18 | Level 2 |
-| Gas Leak | High | Low | Low | 18 | Level 2 |
-| Carbon Monoxide Poisoning | High | Low | Low | 18 | Level 2 |
-| Water Leak/Flood | Medium | Medium | Medium | 16 | Level 2 |
-| Electrical Shock | High | Medium | Low | 36 | Level 1 |
-| Poor Air Quality | Low | High | Medium | 16 | Level 2 |
-| Unsafe Cold Exposure | Medium | High | Medium | 24 | Level 1 |
-| Unsafe Heat Exposure | Medium | High | Medium | 24 | Level 1 |
-| System Failure | High | Low | Low | 18 | Level 2 |
-| Rain Entering Through Open Window | Medium | High | Medium | 24 | Level 1 |
-| Loss of Heating/Cooling | Medium | Low | Low | 12 | Level 3 |
+| Unauthorized Access | High | Medium | Low | (2x3)x2x3 = 36 | Level 1 |
+| System cybersecurity | High | High | High | (2x3)x3x1 = 18 | Level 2 |
+| Fire | High | Low | Low | (2x3)x1x3 = 18 | Level 2 |
+| Gas Leak | High | Low | Low | (2x3)x1x3 = 18 | Level 2 |
+| Carbon Monoxide Poisoning | High | Low | Low | (2x3)x1x3 = 18 | Level 2 |
+| Water Leak/Flood | Medium | Medium | Medium | (2x2)x2x2 = 16 | Level 2 |
+| Electrical Shock | High | Medium | Low | (2x3)x2x3 = 36 | Level 1 |
+| Poor Air Quality | Low | High | Medium | (2x1)x3x2 = 12 | Level 3 |
+| Unsafe Cold Exposure | Medium | High | Medium | (2x2)x3x2 = 24 | Level 1 |
+| Unsafe Heat Exposure | Medium | High | Medium | (2x2)x3x2 = 24 | Level 1 |
+| System Failure | High | Low | Low | (2x3)x1x3 = 18 | Level 2 |
+| Rain Entering Through Open Window | Medium | High | Medium | (2x2)x3x2 = 24 | Level 1 |
+| Loss of Heating/Cooling | Medium | Low | Low | (2x2)x1x3 = 12 | Level 3 |
 
 > Certainly, it's important to note that the initial risk assessment you have conducted takes into consideration the basic safety measures that are commonly found in homes, even without the presence of a home automation system. These traditional safety measures form the baseline upon which the home automation system's additional safety features are built. (ie. RCD, door locks or manual window locks)
 
@@ -179,20 +179,19 @@ For risks that need further mitigation, you'll need to develop a risk mitigation
 
 | Hazard | Severity | Exposure | Controllability | Risk Score | Level |
 | --- | --- | --- | --- | --- | --- |
-| Unauthorized Access | High (3) | Low (1) | Low (3) | 18 | Level 2 |
-| System cybersecurity | High (3) | Medium (2) | High (1) | 12 | Level 3 |
-| Fire | High (3) | Low (1) | Low (3) | 18 | Level 2 |
-| Gas Leak | High (3) | Low (1) | Medium (2) | 12 | Level 3 |
-| Carbon Monoxide Poisoning | High (3) | Low (1) | Low (3) | 18 | Level 2 |
-| Water Leak/Flood | Medium (2) | Low (1) | Medium (2) | 8 | Level 4 |
-| Electrical Shock | High (3) | Low (1) | Low (3) | 18 | Level 2 |
-| Poor Air Quality | Low (1) | Medium (2) | High (1) | 4 | Level 5 |
-| Unsafe Cold Exposure | Medium (2) | Medium (2) | High (1) | 8 | Level 4 |
-| Unsafe Heat Exposure | Medium (2) | Medium (2) | High (1) | 8 | Level 4 |
-| System Failure | High (3) | Low (1) | Low (3) | 18 | Level 2 |
-| Rain Entering Through Open Window | Medium (2) | Medium (2) | Medium (2) | 16 | Level 3 |
-| Loss of Heating/Cooling | Medium (2) | Low (1) | Low (3) | 12 | Level 3 |
-
+| Unauthorized Access | High (3) | Low (1) | Low (3) | (2x3)x1x3 = 18 | Level 2 |
+| System cybersecurity | High (3) | Medium (2) | High (1) | (2x3)x2x1 = 12 | Level 3 |
+| Fire | High (3) | Low (1) | Low (3) | (2x3)x1x3 = 18 | Level 2 |
+| Gas Leak | High (3) | Low (1) | Medium (2) | (2x3)x1x2 = 12 | Level 3 |
+| Carbon Monoxide Poisoning | High (3) | Low (1) | Low (3) | (2x3)x1x3 = 18 | Level 2 |
+| Water Leak/Flood | Medium (2) | Low (1) | Medium (2) | (2x2)x1x2 = 8 | Level 4 |
+| Electrical Shock | High (3) | Low (1) | Low (3) | (2x3)x1x3 = 18 | Level 2 |
+| Poor Air Quality | Low (1) | Medium (2) | High (1) | (2x1)x2x1 = 4 | Level 4 |
+| Unsafe Cold Exposure | Medium (2) | Medium (2) | High (1) | (2x2)x2x1 = 8 | Level 4 |
+| Unsafe Heat Exposure | Medium (2) | Medium (2) | High (1) | (2x2)x2x1 = 8 | Level 4 |
+| System Failure | High (3) | Low (1) | Low (3) | (2x3)x1x3 = 18 | Level 2 |
+| Rain Entering Through Open Window | Medium (2) | Medium (2) | Medium (2) | (2x2)x2x2 = 16 | Level 3 |
+| Loss of Heating/Cooling | Medium (2) | Low (1) | Low (3) | (2x2)x1x3 = 12 | Level 3 |
     
 ### 1.6 Risk Monitoring:
 After mitigation measures are implemented, the risks are monitored to ensure that the mitigation measures are effective and to identify any new hazards that may arise.   
