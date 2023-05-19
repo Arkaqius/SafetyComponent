@@ -22,7 +22,8 @@ Identified hazards inform risk assessment and guide the development of safety me
 **System Failure:** A failure in the home automation system itself could lead to various problems, such as lights not working, doors not unlocking, etc.  
 **Unsafe Cold Exposure:** This can occur if a room's temperature falls below the safe threshold for the situation or occupants. For example, the bathroom temperature might need to be at least 22°C during a child's bath.  
 **Unsafe Heat Exposure:** Similarly, a room's temperature could rise above the safe threshold for the situation or occupants. For example, the living room might become uncomfortably or unsafely hot during a summer heatwave if the cooling system isn't functioning properly.  
-** Rain Entering Through Open Window:**  This hazard arises when rain enters through an open window, potentially causing water damage to the home's interior and electrical systems. A smart home system can help prevent this by monitoring the weather and alerting residents or automatically closing windows when rain is detected.  
+** Rain Entering Through Open Window:**  This hazard arises when rain enters through an open window, potentially causing water damage to the home's interior and electrical systems. A smart home system can help prevent this by monitoring the weather and alerting residents or automatically closing windows when rain is detected.
+**--place holder for high velocity Winds--**
 
 ### 1.2 Hazards assessment and risk classification:
 This process evaluates identified hazards based on severity, exposure, and controllability.
