@@ -1,4 +1,4 @@
-# Home assistant - Safety, security and recovery strategy
+# Home Automation - Safety, security and recovery strategy
 
 ## 1. Hazard analysis and risk assessment
 
