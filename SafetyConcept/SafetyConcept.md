@@ -164,6 +164,7 @@ Risk_score = (2 x *Severity*) x *Exposure* x *Controllability* to calculate risk
     - The system shall interact with house heating system to mitigate hazard. 
     - The system shall monitor doors and windows status
     - The system shall notify occupants if temperature is falling and windows are open
+    - The system shall increase heating if temperature is falling and windows are open
 
 #### Unsafe Heat Exposure:  
     - The system should monitor the temperature in each room.  
@@ -388,22 +389,56 @@ Processing:
 **Outputs:**   
 
 - Alerts to occupants (via various channels)
+- Heating system actactors
 
 **Safety Goals Addressed:**
 
-- Front windows shall be closed if nobody/kids are in the house
-- The system shall notify occupants if the temperature is falling and windows are open
-- The system shall notify occupants if the temperature is falling and windows are closed if the outside temperature is lower than in the room
-- The system shall notify occupants of incoming rain if one of the doors or windows is open
-- The system shall notify occupants if a storm is coming and windows are open
+    - Front windows shall be closed if nobody/kids are in the house
+    - The system shall notify occupants if the temperature is falling and windows are open
+    - The system shall notify occupants if the temperature is falling and windows are closed if the outside temperature is lower than in the room
+    - The system shall notify occupants of incoming rain if one of the doors or windows is open
+    - The system shall notify occupants if a storm is coming and windows are open
+    - The system shall increase heating if temperature is falling and windows are open
 
 **States and Transitions:**
 ```mermaid
-  graph TD;
-      A-->B;
-      A-->C;
-      B-->D;
-      C-->D;
+flowchart TD
+    A[START] -->| | B{All front windows closed?}
+    B -->|Yes| A
+    B -->|No| C{Is occopied}
+    C -->|Yes| D[No hazard]
+    C -->|No| E[Notification on level B?]
+
+```
+
+```mermaid
+flowchart TD
+    A[START] -->| | B{All front windows closed?}
+    B -->|Yes| A
+    B -->|No| C{Is occopied}
+    C -->|Yes| D[No hazard]
+    C -->|No| E[Notification on level B?]
+
+```
+
+```mermaid
+flowchart TD
+    A[START] -->| | B{All front windows closed?}
+    B -->|Yes| A
+    B -->|No| C{Is occopied}
+    C -->|Yes| D[No hazard]
+    C -->|No| E[Notification on level B?]
+
+```
+
+```mermaid
+flowchart TD
+    A[START] -->| | B{All front windows closed?}
+    B -->|Yes| A
+    B -->|No| C{Is occopied}
+    C -->|Yes| D[No hazard]
+    C -->|No| E[Notification on level B?]
+
 ```
 
 - Normal State: All windows are closed, no alert conditions exist  
