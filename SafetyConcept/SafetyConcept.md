@@ -255,7 +255,8 @@ Hardware sensors - Input interface:
 - gas detector
 - carbon monooxide detector
 - climate sensor for each room (temperature and humidity)  
-- Inside air pollution
+- inside air pollution
+- boiler process values
 
 Cloud sensors - Input interface:  
 - Weather sensor
@@ -308,23 +309,67 @@ Processing:
 ---
 #### 2.1.4 Interfaces requirements:
 ---
+#### Smoke/Gas/CO sensor
+    - TODO
 
+#### Smoke/Gas/CO sensor
+    - TODO
+
+#### Window/Door contact
+    - Shall support contact notification
+    - Shall support remained batery value
 #### House occupy
-- Sleep time - Event that notify that everyone goes to sleep
-- Leave - Home is empty less than 1 day
-- Vacation - Home is empty more than 1 day
-- Home Alone: Only one person is at home. This could adjust safety and security measures, and change other settings like temperature or lighting.
-- Guests: You have guests over. This may require different settings for privacy, security, or comfort.
+    - Sleep time - Event that notify that everyone goes to sleep
+    - Leave - Home is empty less than 1 day
+    - Vacation - Home is empty more than 1 day
+    - Home Alone: Only one person is at home. This could adjust safety and security measures, and change other settings like temperature or lighting.
+    - Guests: You have guests over. This may require different settings for privacy, security, or comfort.
 
-#### Weather and external environment:
-- Freezing - Temperature below 4 C
-- Storm - Incoming storm
-- Rain
-- Air pollution - Air pollution 2.5pmm above 20
-- Heatwave: High temperatures might require specific responses such as closing blinds, turning on air conditioning, etc.
-- High Wind: Could lead to similar responses as a storm.
-- Snow: Cold temperatures combined with snowfall might affect heating systems and require specific actions.
-- High Humidity: This might trigger dehumidifiers or other responses to control internal humidity.
+#### Weather sensor
+    - TODO
+
+#### Weather environmental hazards:
+    - Freezing - Temperature below 4 C
+    - Storm - Incoming storm
+    - Rain
+    - Air pollution - Air pollution 2.5pmm above 20
+    - Heatwave: High temperatures might require specific responses such as closing blinds, turning on air conditioning, etc.
+    - High Wind: Could lead to similar responses as a storm.
+    - Snow: Cold temperatures combined with snowfall might affect heating systems and require specific actions.
+    - High Humidity: This might trigger dehumidifiers or other responses to control internal humidity.
+
+#### Outside air pollution sensor
+    - TODO
+
+#### Heating output values
+    - TODO
+
+#### Heating input values
+    - TODO
+
+#### Smart lock actuator
+    - TODO
+
+#### Alarm siren
+    - TODO
+
+#### Informational light
+    - TODO
+
+#### Smart lock actuator
+    - TODO
+
+#### Alert light
+    - TODO
+
+#### Phone application popup
+    - TODO
+
+#### Lovelance card
+    - TODO
+
+#### User action scheduler
+    - TODO
 
 ---
 #### 2.1.5 System components:
@@ -333,13 +378,12 @@ Processing:
 **Window Monitoring Component:**  
 
 **Inputs:**  
-
 - Window contact sensor data
-Occupancy sensor data
-Room temperature sensor data
-Outside temperature data (from weather forecast)
-Rain forecast data (from weather forecast)
-Storm forecast data (from weather forecast)
+- Occupancy sensor data
+- Room temperature sensor data
+- Outside temperature data (from weather forecast)
+- Rain forecast data (from weather forecast)
+- Storm forecast data (from weather forecast)
 
 **Outputs:**   
 
@@ -354,6 +398,13 @@ Storm forecast data (from weather forecast)
 - The system shall notify occupants if a storm is coming and windows are open
 
 **States and Transitions:**
+```mermaid
+  graph TD;
+      A-->B;
+      A-->C;
+      B-->D;
+      C-->D;
+```
 
 - Normal State: All windows are closed, no alert conditions exist  
 - Window Open State: One or more windows are open, which triggers the following sub-states:
@@ -372,6 +423,26 @@ Storm forecast data (from weather forecast)
     - Storm Forecast State: Storm is forecast  
     Trigger: Weather forecast predicts a storm and at least one window is open  
     Action: Alert occupants of incoming storm and open windows  
+
+**Hazardous Atmosphere Detection Component:**
+
+**Inputs:**
+- Smoke detector sensor data
+- Gas detector sensor data
+- Carbon monoxide detector sensor data
+
+**Outputs:**
+
+- Alerts to occupants
+- External doors unlocked for evacuation
+- Gas supply shut off command in case of gas detection
+
+**Safety Goals Addressed:**
+- Fire detection and alert
+- Gas leak detection and alert
+- Carbon Monoxide Poisoning detection and alert
+- Maintenance notification for smoke, gas, and carbon monoxide sensors
+
 
 --- 
 
