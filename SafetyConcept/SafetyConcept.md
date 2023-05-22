@@ -241,9 +241,74 @@ TODO
 
 ---
 ---
-## 2. General requirements:
+## 2. System requirements 
 ---
 ---
+### 2.1 System boundaries  
+---
+#### 2.1.1 Inside the System Boundary:
+---
+Hardware sensors - Input interface:  
+- windows contact sensor
+- door contact sensor
+- smoke detector
+- gas detector
+- carbon monooxide detector
+- climate sensor for each room (temperature and humidity)  
+- Inside air pollution
+
+Cloud sensors - Input interface:  
+- Weather sensor
+    - Current temperature, pressure, wind speed, clouds
+    - Forecast for temperature, pressure, wind speed, clouds
+    - Hazardous fenoma:
+        - Storm alert
+        - Blizzard alert
+        - Wind alert
+        - Rain alert
+        - Heatwave alert
+        - Tornado alert
+- Occupancy sensor
+- Outside air pollution
+
+HW Actuators - Output interface: 
+- Smart locks
+- Siren
+- Information light
+- Alert light
+
+Cloud Actuators:
+- Phone application popup
+- Main card in Lovelance
+- User action scheduler
+
+Processing:
+- Home assistant instance
+
+---
+#### 2.1.2 Outside the System Boundary:
+---
+- The physical environment where the home is located and which the sensors are monitoring
+- Users who interact with the system, either physically or through an interface/app
+- Internet services providing data such as weather forecasts
+
+
+---
+#### 2.1.3 System modes:
+---
+**Armed Mode:** 
+- The system is actively monitoring for hazards and is ready to react.   
+
+**Disarmed Mode:** 
+- The system is not actively monitoring for hazards.   
+
+**Maintenance Mode:** 
+- The system checks the status of its sensors and actuators, updates its software, and performs other maintenance tasks.
+
+---
+#### 2.1.4 Interfaces requirements:
+---
+
 #### House occupy
 - Sleep time - Event that notify that everyone goes to sleep
 - Leave - Home is empty less than 1 day
@@ -262,71 +327,7 @@ TODO
 - High Humidity: This might trigger dehumidifiers or other responses to control internal humidity.
 
 ---
----
-## 3. System Architecture 
----
----
-### 3.1 System boundaries  
----
-#### 3.1.1 Inside the System Boundary:
----
-Hardware sensors - Input interface:  
-- windown contact sensor
-- door contact sensor
-- smoke detector
-- gas detector
-- carbon monooxide detector
-- climate sensor for each room (temperature and humidity)  
-
-Cloud sensors - Input interface:  
-- Weather sensor
-    - Current temperature, pressure, wind speed, clouds
-    - Forecast for temperature, pressure, wind speed, clouds
-    - Hazardous fenoma:
-        - Storm alert
-        - Blizzard alert
-        - Wind alert
-        - Rain alert
-        - Heat alert
-        - Tornado alert
-- Occupancy sensor
-
-HW Actuators - Output interface: 
-- Smart locks
-- Siren
-- Information light
-- Alert light
-
-Cloud Actuators:
-- Phone application popup
-- Main card in Lovelance
-- User action scheduler
-
-Processing:
-- Home assistant instance
-
----
-#### 3.1.2 Outside the System Boundary:
----
-- The physical environment where the home is located and which the sensors are monitoring
-- Users who interact with the system, either physically or through an interface/app
-- Internet services providing data such as weather forecasts
-
-
----
-#### 3.1.3 System modes:
----
-**Armed Mode:** 
-- The system is actively monitoring for hazards and is ready to react.   
-
-**Disarmed Mode:** 
-- The system is not actively monitoring for hazards.   
-
-**Maintenance Mode:** 
-- The system checks the status of its sensors and actuators, updates its software, and performs other maintenance tasks.
-
----
-#### 3.1.4 System components:
+#### 2.1.5 System components:
 ---
 
 **Window Monitoring Component:**  
@@ -373,6 +374,11 @@ Storm forecast data (from weather forecast)
     Action: Alert occupants of incoming storm and open windows  
 
 --- 
+
+---
+#### 2.1.6 System Calibration values:
+---
+
 
 
 ## 4. System components requirements:
