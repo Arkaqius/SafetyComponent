@@ -86,6 +86,7 @@ TODO - Add state machine
     - Home Alone: Only one person is at home. This could adjust safety and security measures, and change other settings like temperature or lighting.
     - Guests: You have guests over. This may require different settings for privacy, security, or comfort.
     - Kids: Only not adult residents are in house.
+    - Occupied: Adult residents are in house
 
 #### Weather sensor
     - TODO
@@ -137,11 +138,20 @@ TODO - Add state machine
 #### 2.1.6 Common definitions:
 ---
 - Safety windows/door are elements that should be closed if nobody are in house, like front windows.
+- Notifiaction levels:  
+
+|  | Description Notification |
+| -------- | -------- |
+| Level 1 | Home assistant notification on phone with higher priority, sound alarm, light notification as yellow, and dashboard information as hazard |
+| Level 2 | Home assistant notification on phone with higher priority, light notification as yellow, and dashboard information as hazard |
+| Level 3 | Home assistant notification on phone and dashboard information as warning |
+| Level 4 | Dashboard information |
+
 ---
 #### 2.1.5 System components:
 ---
 
-**Window Monitoring Component:**  
+#### **Window Monitoring Component:**  
 
 **Inputs:**  
 - Window contact sensor data
@@ -164,26 +174,27 @@ TODO - Add state machine
     - The system shall notify occupants of incoming rain if one of the doors or windows is open
     - The system shall notify occupants if a storm is coming and windows are open
     - The system shall increase heating if temperature is falling and windows are open
+    - The system should alert occupants if air quality falls below a certain standard and any window is open. 
 
 **States and Transitions:**
-#### SM_WMC_1
+##### SM_WMC_1
 ```mermaid
 flowchart TD
-    A[START] -->| | B{All safety windows closed?}
+    A[START] -->| | B{Are all safety windows closed?}
     B -->|Yes| A
-    B -->|No| C{Is occupied?}
+    B -->|No| C{Is the house in "occupied" occupancy status?}
     C -->|Yes| A
     C -->|No| E[SM performed]
     E -->|Healing: House is occupied| A
 ```
     - SM shall be realized by notification of level 2
-#### SM_WMC_2
+##### SM_WMC_2
 ```mermaid
 flowchart TD
     A[START] -->| | B{Are windows closed within room?}
     B -->|Yes| A
-    B -->|No| C{Is room temperature below *THR_RoomXLeve1Cold*?}
-    C -->|No| D{Is dT/dt below *THR_RoomXColdRate*?}
+    B -->|No| C{Is room temperature below CAL_THR_RoomXLeve1Cold?}
+    C -->|No| D{Is dT/dt below CAL_THR_RoomXColdRate*?}
     C -->|Yes| E[Notification on level B?]
     D -->|No| A
     D-->|Yes| E[SM performed]
@@ -191,26 +202,26 @@ flowchart TD
 ```
     - SM shall be realized by notification of level 2
 
-#### SM_WMC_3
+##### SM_WMC_3
 ```mermaid
 flowchart TD
     A[START] -->| | B{Are windows closed within room?}
     B -->|No| A
-    B -->|Yes| C{Is room temperature over *THR_RoomXLevel1Warm*?}
+    B -->|Yes| C{Is room temperature over CAL_THR_RoomXLevel1Warm?}
     C -->|No| A
-    C -->|Yes| D{Is dT/dt over THR_RoomXWarmRate?}
+    C -->|Yes| D{Is dT/dt over CAL_THR_RoomXWarmRate?}
     D -->|Yes| E{Is outside temperature lower than in room?}
     D  -->|No| A
     E -->|No| A
     E -->|Yes| F[SM perform ]
     F -->|Healing: windows open or temperature failing| A
 ```
-    - SM shall be realized by notification of level 2
-#### SM_WMC_4
+    - SM shall be realized by notification of level 3
+##### SM_WMC_4
 
 ```mermaid
 flowchart TD
-    A[START] -->| | B{All windows closed?}
+    A[START] -->| | B{Are all rain rain-sensitive windows closed?}
     B -->|Yes| A
     B -->|No| C{Is rain forecast?}
     C -->|No| A
@@ -218,50 +229,190 @@ flowchart TD
     E -->|Healing: Rain not longer forecasted or\n all windows closed| A
 ```
     - SM shall be realized by notification of level 2
-#### SM_WMC_5
+##### SM_WMC_5
 ```mermaid
 flowchart TD
-    A[START] -->| | B{All windows closed?}
+    A[START] -->| | B{Are all windows closed?}
     B -->|Yes| A
     B -->|No| C{Is storm forecast?}
     C -->|No| A
     C -->|Yes| E[SM perfomed]
     E -->|Healing: Storm not longer forecasted or\n all windows closed| A
 ```
-    - SM shall be realized by notification of level 1
+    - SM shall be realized by notification of level 2
 
-#### SM_WMC_6
+##### SM_WMC_6
 ```mermaid
 flowchart TD
-    A[START] -->| | B{Are windows closed within room?}
+    A[START] -->| | B{Are windows are closed within room?}
     B -->|Yes| A
-    B -->|No| C{Is room temperature below *THR_RoomXLevel2ColdHazard*?}
+    B -->|No| C{Is room temperature below CAL_THR_RoomXLevel2ColdHazard?}
     C -->|No| A
     C-->|Yes| E[SafeMeas performed]
     E -->|Healing: window closed or temperature raised| A
 ```
-    - SM shall be realized increasing setpoint value for specif room by THR_HeatingIncrease
+    - SM shall be realized increasing setpoint value for specif room by CAL_THR_HeatingIncrease
 
-    **Hazardous Atmosphere Detection Component:**
+##### SM_WMC_7
+```mermaid
+flowchart TD
+    A[START] -->| | B{Are all windows closed?}
+    B -->|Yes| A
+    B -->|No| C{Is outside air quality under CAL_THR_AirQ?}
+    C -->|Yes| A
+    C -->|No| E[SM performed]
+    E -->|Healing: House is occupied| A
+```
+    - SM shall be realized by notification of level 2
 
-    **Inputs:**
-    - Smoke detector sensor data
-    - Gas detector sensor data
-    - Carbon monoxide detector sensor data
-
-    **Outputs:**
-
-    - Alerts to occupants
-    - External doors unlocked for evacuation
-    - Gas supply shut off command in case of gas detection
-
-    **Safety Goals Addressed:**
-    - Fire detection and alert
-    - Gas leak detection and alert
-    - Carbon Monoxide Poisoning detection and alert
-    - Maintenance notification for smoke, gas, and carbon monoxide sensors
-
+##### SM_WMC_8
+```mermaid
+flowchart TD
+    A[START] -->| | B{Check if CAL_WindowsSensorMaintenancePeriod elapsed?}
+    B -->|No| A
+    B -->|Yes| C[SM performed]
+    C -->|Healing: User confirmation| A
+```
+    -SM shall be realized by scheduling maintenance action for user
 --- 
+#### **Hazardous Atmosphere Detection Component:**  
+
+**Inputs:**:
+- Smoke detector sensor data
+- Gas detector sensor data
+- Carbon monoxide detector sensor data
+
+**Outputs:**
+
+- Alerts to occupants
+- External doors unlocked for evacuation
+- Scheduler
+
+**Safety Goals Addressed:**
+- Fire detection and alert
+- Gas leak detection and alert
+- Carbon Monoxide Poisoning detection and alert
+- Maintenance notification for smoke, gas, and carbon monoxide sensors
+
+##### SM_HADC_1
+```mermaid
+flowchart TD
+    A[START] -->| | B{Smoke detected?}
+    B -->|No| A
+    B -->|Yes| C[SM performed]
+    C -->|Healing: User confirmation| A
+```
+    -SM shall be realized by notification of level 1 and evacuation process
+
+##### SM_HADC_2
+```mermaid
+flowchart TD
+    A[START] -->| | B{Gas detected?}
+    B -->|No| A
+    B -->|Yes| C[SM performed]
+    C -->|Healing: User confirmation| A
+```
+    -SM shall be realized by notification of level 1 and evacuation process
+
+##### SM_HADC_3
+```mermaid
+flowchart TD
+    A[START] -->| | B{Carbon monoxide detected?}
+    B -->|No| A
+    B -->|Yes| C[SM performed]
+    C -->|Healing: User confirmation| A
+```
+    -SM shall be realized by notification of level 1 and evacuation process
+
+##### SM_HADC_4
+```mermaid
+flowchart TD
+    A[START] -->| | B{Check if CAL_GasLeakSensorMaintenancePeriod elapsed?}
+    B -->|No| A
+    B -->|Yes| C[SM performed]
+    C -->|Healing: User confirmation| A
+```
+    -SM shall be realized by schedule maintenance action for user
+
+##### SM_HADC_5 (Smoke Sensor Maintenance)
+```mermaid
+flowchart TD
+    A[START] -->| | B{Check if CAL_SmokeSensorMaintenancePeriod elapsed?}
+    B -->|No| A
+    B -->|Yes| C[SM performed]
+    C -->|Healing: User confirmation| A
+```
+    -SM shall be realized by schedule maintenance action for user
+##### SM_HADC_6 (CO Sensor Maintenance)
+```mermaid
+flowchart TD
+    A[START] -->| | B{Check if CAL_COSensorMaintenancePeriod elapsed?}
+    B -->|No| A
+    B -->|Yes| C[SM performed]
+    C -->|Healing: User confirmation| A
+```
+    -SM shall be realized by schedule maintenance action for user
+
+
+#### **Door Monitoring Component:**
+**Inputs:**
+- Door contact sensor data
+- Occupancy sensor data
+
+**Outputs:**
+-Alerts to occupants
+-SmartLocks
+
+**Safety Goals Addressed:**
+- Detect if external doors are opened when no one is at home and alert
+- Detect if external doors are left open for an extended period of time and alert
+- Detect if external doors are not locked when everyone goes to sleep or leaves the house
+- Maintenance notification for door contact sensors
+
+##### SM_DMC_1 
+```mermaid
+flowchart TD
+    A[START] -->| | B{Is the house in "leave"/"vacations"/"sleep"/"home alone" occupancy status?}
+    B -->|No| A
+    B -->|Yes| C{Are any external doors open?}
+    C -->|No| A
+    C -->|Yes| D[SM performed]
+    D -->|Healing: Door closed or house is occupied| A
+```
+    -SM shall be realized by sending a notification of level 2
+
+##### SM_DMC_2
+```mermaid
+flowchart TD
+    A[START] -->| | B{Is any external door open for longer than CAL_DoorXOpenDurationTimeout ?}
+    B -->|No| A
+    B -->|Yes| C[SM performed]
+    C -->|Healing: Door closed| A
+```
+    -SM shall be realized by sending a notification of level 2
+
+##### SM_DMC_3
+```mermaid
+flowchart TD
+    A[START] -->| | B{Is everyone asleep or has everyone left the house?}
+    B -->|No| A
+    B -->|Yes| C{Are any external doors unlocked?}
+    C -->|No| A
+    C -->|Yes| D[SM performed]
+    D -->|Healing: Door locked or someone is awake/has returned home| A
+```
+    - SM shall be realized by sending a notification of level 3 and scheduling a door lock action if feasible.
+
+##### SM_DMC_4
+```mermaid
+flowchart TD
+    A[START] -->| | B{Check if CAL_DoorSensorMaintenancePeriod elapsed?}
+    B -->|No| A
+    B -->|Yes| C[SM performed]
+    C -->|Healing: User confirmation| A
+```
+    -SM shall be realized by scheduling maintenance action for user
+
 
 ---
 #### 2.1.6 System Calibration values:
