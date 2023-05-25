@@ -155,8 +155,8 @@ Risk_score = (2 x *Severity*) x *Exposure* x *Controllability* to calculate risk
 
 #### Poor Air Quality:  
     - Monitor the home's air quality, including indicators such as humidity and particulate matter levels.  
-    - The system should alert occupants if air quality falls below a certain standard.  
-    - The system should interact with air purifiers in house.  
+    - The system should alert occupants if air quality falls below a certain standard and any window is open. 
+    - The system should interact with air purifiers in house.
 
 #### Unsafe Cold Exposure:  
     - The system should monitor the temperature in each room.  
