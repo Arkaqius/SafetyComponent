@@ -32,6 +32,12 @@ Cloud sensors - Input interface:
         - Tornado alert
 - Occupancy sensor
 - Outside air pollution
+- System health data and system update information
+- Ethernet port status
+- Link status to router
+- Link status to WAN
+- System latency data
+- Packet loss data
 
 HW Actuators - Output interface: 
 - Smart locks
@@ -103,6 +109,18 @@ TODO - Add state machine
 
 #### Outside air pollution sensor
     - TODO
+
+#### System health data and system update information
+    - TODO
+
+#### Ethernet network health:
+TODO
+- Ethernet port status
+- Link status to router
+- Link status to WAN
+- System latency data
+- Packet loss data
+
 
 #### Heating output values
     - TODO
@@ -414,11 +432,181 @@ flowchart TD
     -SM shall be realized by scheduling maintenance action for user
 
 
+#### **System Monitoring Component:**
+
+**Inputs:**
+- Sensor and actuator status data
+- System health data
+- Power supply status
+- System update information
+- Ethernet port status
+- Link status to router
+- Link status to WAN
+- System latency data
+- Packet loss data
+
+**Outputs:**
+
+- Alerts to occupants
+- System maintenance reminders/actions
+
+**Safety Goals Addressed:**
+
+- The system shall monitor all sensor and actuator activity to detect timeouts and failures.
+- The system shall remind about updates
+- The system should have a backup power supply to ensure continuous operation in the event of a power outage. This should include provisions to ensure safe operation or shutdown in case of power failure.
+- The system should regularly perform self-checks or diagnostics to identify and alert users to potential failures or malfunctions. These checks should include things like checking for system updates, monitoring system health, and checking the status of safety devices.
+- The system should monitor network connectivity and performance, including Ethernet port status, system latency, and packet loss.
+- TODO:The system shall monitor zigbee network heatlh
+- TODO:The system shall integrate with existed HA fault manager
+
+##### SM_SMC_1a (Output Sanity Monitoring)
+```mermaid
+flowchart TD
+    A[START] -->| | B{Is Sensor/Actuator output ?}
+    B -->|Yes| A
+    B -->|No| C[SM performed]
+    C -->|Healing: Sensor/Actuator output returns to normal or User confirms resolution| A
+```
+    - SM shall be realized by sending a notification based on sensor/actuator type.
+
+##### SM_SMC_1b (Timeout Monitoring)
+```mermaid
+flowchart TD
+    A[START] -->| | B{Has Sensor/Actuator data been received within CAL_SensorActuatorTimeoutThreshold?}
+    B -->|Yes| A
+    B -->|No| C[SM performed]
+    C -->|Healing: Sensor/Actuator sends data or User confirms resolution| A
+
+```
+    - SM shall be realized by sending a notification based on sensor/actuator type.
+
+##### SM_SMC_1c (Battery Level Monitoring)
+```mermaid
+flowchart TD
+    A[START] -->| | B{Is Sensor/Actuator battery level within CAL_SensorActuatorBatteryLevelThreshold?}
+    B -->|Yes| A
+    B -->|No| C[SM performed]
+    C -->|Healing: Sensor/Actuator battery replaced or recharged or User confirms resolution| A
+```
+    - SM shall be realized by sending a notification to replace or recharge the battery, and scheduling the next battery replacement or recharge as required.
+    
+##### SM_SMC_2 (System Update Reminder)
+```mermaid
+flowchart TD
+    A[START] -->| | B{Is there a System Update available?}
+    B -->|No| A
+    B -->|Yes| C[SM performed]
+    C -->|Healing: System Update performed or User confirms delay| A
+```
+    - SM shall be realized by sending a notification of level 3
+
+##### SM_SMC_3 (Power Failure Management)
+```mermaid
+flowchart TD
+    A[START] -->| | B{Is there a power outage?}
+    B -->|No| A
+    B -->|Yes| C{Is a UPS installed and functioning?}
+    C -->|No| A
+    C -->|Yes| D[SM performed]
+    D -->|Healing: Power restored or User confirms resolution| A
+```
+    - SM shall be realized by sending a notification of level 3
+
+##### SM_SMC_4a (CPU Usage Monitoring)
+```mermaid
+flowchart TD
+    A[START] -->| | B{Is CPU usage within CAL_CPUUsageThreshold?}
+    B -->|Yes| A
+    B -->|No| C[SM performed]
+    C -->|Healing: CPU usage returns to normal or User confirms resolution| A
+```
+    - SM shall be realized by sending a notification of level 3
+
+##### SM_SMC_4b (RAM Usage Monitoring)
+```mermaid
+flowchart TD
+    A[START] -->| | B{Is RAM usage within CAL_RAMUsageThreshold?}
+    B -->|Yes| A
+    B -->|No| C[SM performed]
+    C -->|Healing: RAM usage returns to normal or User confirms resolution| A
+```
+    - SM shall be realized by sending a notification of level 3
+
+##### SM_SMC_4c (Disk Space Monitoring)
+```mermaid
+flowchart TD
+    A[START] -->| | B{Is Disk Space within CAL_DiskSpaceThreshold?}
+    B -->|Yes| A
+    B -->|No| C[SM performed]
+    C -->|Healing: Disk Space freed up or User confirms resolution| A
+```
+    - SM shall be realized by sending a notification of level 3
+
+##### SM_SMC_4d (Hardware Temperature Monitoring)
+```mermaid
+flowchart TD
+    A[START] -->| | B{Is Hardware temperature within CAL_HardwareTemperatureThresholds?}
+    B -->|Yes| A
+    B -->|No| C[SM performed]
+    C -->|Healing: Hardware temperature returns to normal or User confirms resolution| A
+```
+    - SM shall be realized by sending a notification of level 3
+
+##### SM_SMC_4e  (Ethernet Link Status)
+```mermaid
+flowchart TD
+    A[START] -->| | B{Is Ethernet link active?}
+    B -->|Yes| A
+    B -->|No| C[SM performed]
+    C -->|Healing: Ethernet link active| A
+```
+    - SM shall be realized by sending a notification of level 3
+
+##### SM_SMC_4f(Local Network Connectivity)
+```mermaid
+flowchart TD
+    A[START] -->| | B{Is router reachable?}
+    B -->|Yes| A
+    B -->|No| C[SM performed]
+    C -->|Healing: Router reachable| A
+```
+    - SM shall be realized by sending a notification of level 3
+
+##### SM_SMC_4g (Internet Access Management)
+```mermaid
+flowchart TD
+    A[START] -->| | B{Is Internet reachable?}
+    B -->|Yes| A
+    B -->|No| C[SM performed]
+    C -->|Healing: Internet reachable| A
+```
+    - SM shall be realized by sending a notification of level 3
+
+##### SM_SMC_4h (Internet Latency Monitoring)
+```mermaid
+flowchart TD
+    A[START] -->| | B{Is Internet latency below CAL_InternetLatencyThreshold?}
+    B -->|Yes| A
+    B -->|No| C[SM performed]
+    C -->|Healing: Internet latency below threshold| A
+
+```
+    - SM shall be realized by sending a notification of level 3  
+
+##### SM_SMC_4i (Packet Loss Monitoring)
+```mermaid
+flowchart TD
+    A[START] -->| | B{Is packet loss below CAL_PacketLossThreshold?}
+    B -->|Yes| A
+    B -->|No| C[SM performed]
+    C -->|Healing: Packet loss below threshold| A
+```
+    - SM shall be realized by sending a notification of level 3  
+
 ---
 #### 2.1.6 System Calibration values:
 ---
-
-
 
 ## 4. System components requirements:
 ### 3.1 Windows and doors close status

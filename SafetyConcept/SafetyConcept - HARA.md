@@ -104,13 +104,12 @@ Risk_score = (2 x *Severity*) x *Exposure* x *Controllability* to calculate risk
 | Fire | High | Low | Low | (2x3)x1x3 = 18 | Level 2 |
 | Gas Leak | High | Low | Low | (2x3)x1x3 = 18 | Level 2 |
 | Carbon Monoxide Poisoning | High | Low | Low | (2x3)x1x3 = 18 | Level 2 |
-| Water Leak/Flood | Medium | Medium | Medium | (2x2)x2x2 = 16 | Level 2 |
 | Electrical Shock | High | Medium | Low | (2x3)x2x3 = 36 | Level 1 |
 | Poor Air Quality | Low | High | Medium | (2x1)x3x2 = 12 | Level 3 |
 | Unsafe Cold Exposure | Medium | High | Medium | (2x2)x3x2 = 24 | Level 1 |
 | Unsafe Heat Exposure | Medium | High | Medium | (2x2)x3x2 = 24 | Level 1 |
 | System Failure | High | Low | Low | (2x3)x1x3 = 18 | Level 2 |
-| Rain Entering Through Open Window | Medium | High | Medium | (2x2)x3x2 = 24 | Level 1 |
+| Water Leak/Flood | Medium | High | Medium | (2x2)x3x2 = 24 | Level 1 |
 | Loss of Heating/Cooling | Medium | Low | Low | (2x2)x1x3 = 12 | Level 3 |
 
 > Certainly, it's important to note that the initial risk assessment you have conducted takes into consideration the basic safety measures that are commonly found in homes, even without the presence of a home automation system. These traditional safety measures form the baseline upon which the home automation system's additional safety features are built. (ie. RCD, door locks or manual window locks)
@@ -119,36 +118,37 @@ Risk_score = (2 x *Severity*) x *Exposure* x *Controllability* to calculate risk
 
 #### Unauthorized Access:  
     - The system should monitor for signs of forced entry or movement when the home is unoccupied, 
-    - The system should alert the occupants
-    - The system should alert a security company.  
+    - The system should alert the occupants about forced entry or  movement
+    - The system should alert a security company about forced entry or  movement 
     - The system shall monitor external doors state regard current occupy of house.  
     - External doors shall be closed in defined timeout.
     - Front windows shall be closed if nobody/kids are in house 
 
 #### System cybersecurity:  
-    - Add two factor authentication to HA system.  
+    - Add two factor authentication to HA system to enforce security.  
     - The system should encrypt communication and storage of sensitive data to prevent unauthorized access.  
 
 #### Fire:  
-    - The home automation system should detect
+    - The home automation system should detect smoke.
     - The system should alert occupants of a fire in any part of the home.  
     - The system should schedule and notify of maintenance of fire sensors.  
     - The system shall unlock external doors to speedup evacuation  
 
-#### Gas Leak:  
-    - Gas sensors should be installed near potential sources of gas leaks, such as the kitchen stove, gas heater, or any other gas appliances.   
-    - The system should alert occupants   
+#### Gas Leak:   
+    - The system should alert occupants about gas leaks
     - The system should shut off the main gas supply in case of a detected gas leak.  
     - The system should schedule and notify of maintenance of gas sensors.  
 
 #### Carbon Monoxide Poisoning:  
-    - Carbon monoxide detectors should be placed in key areas such as near bedrooms and fuel-burning appliances. The system should alert occupants if dangerous levels of carbon monoxide are detected.  
+    - The system should alert occupants if dangerous levels of carbon monoxide are detected. 
     - The system should schedule and notify of maintenance of CO sensors.  
     
 #### Water Leak/Flood:  
     - Sensors should be installed in areas prone to water leaks.   
-    - The system should alert occupants of detected leaks  
-    - The system should shutting off the water supply.  
+    - The system should alert occupants of detected leaks.  
+    - The system should shutting off the water supply. 
+    - The system shall notify occupants of incoming rain if one of doors or windows is open.  
+    - The system shall notify occupants if storm is comming and windows are open. 
 
 #### Electrical Shock:  
     - The system should schedule and notify of maintenance of RCD.  
@@ -173,19 +173,14 @@ Risk_score = (2 x *Severity*) x *Exposure* x *Controllability* to calculate risk
     - The system shall interact with house AC system to mitigate hazard.  
     - The system shall notify occupants if temperature is increasing, windows are closed if outside temperature is lower than in room.
 
-#### Rain Entering Through Open Window:  
-    - The system shall monitor doors and windows status
-    - The system shall monitor current weather 
-    - The system shall notify occupants of incoming rain if one of doors or windows is open.  
-    - The system shall notify occupants if storm is comming and windows are open
-
 #### System Failure:  
-    - The system shall monitor all safety devices activity to detect timeouts.   
-    - The system shall remind about updates.   
-    - The system should have a backup power supply to ensure continuous operation in the event of a power outage.  
-    - Critical components of the system (such as fire and gas leak detectors) should be designed with redundancy, so that the failure of a single component does not compromise the entire system. 
-    - The system should regularly perform self-checks or diagnostics to identify and alert users to potential failures or malfunctions.    
-    - The system should have a manual override capability, allowing users to control critical functions in the event of a system failure.   
+    - The system shall monitor all sensor and actuator activity to detect timeouts and failures.
+    - The system shall remind about updates
+    - The system should have a backup power supply to ensure continuous operation in the event of a power outage. This should include provisions to ensure safe operation or shutdown in case of power failure.
+    - The system should regularly perform self-checks or diagnostics to identify and alert users to potential failures or malfunctions. These checks should include things like checking for system updates, monitoring system health, and checking the status of safety devices.
+    - The system should monitor network connectivity and performance, including Ethernet port status, system latency, and packet loss.
+    - The system shall monitor zigbee network heatlh
+    - The system shall integrate with existed HA fault manager
 
 #### Loss of Heating/Cooling:  
     - The system shall monitor current flow temperature against heater error.  
@@ -225,13 +220,12 @@ For risks that need further mitigation, you'll need to develop a risk mitigation
 | Fire | High (3) | Low (1) | Low (3) | (2x3)x1x3 = 18 | Level 2 |
 | Gas Leak | High (3) | Low (1) | Medium (2) | (2x3)x1x2 = 12 | Level 3 |
 | Carbon Monoxide Poisoning | High (3) | Low (1) | Low (3) | (2x3)x1x3 = 18 | Level 2 |
-| Water Leak/Flood | Medium (2) | Low (1) | Medium (2) | (2x2)x1x2 = 8 | Level 4 |
 | Electrical Shock | High (3) | Low (1) | Low (3) | (2x3)x1x3 = 18 | Level 2 |
 | Poor Air Quality | Low (1) | Medium (2) | High (1) | (2x1)x2x1 = 4 | Level 4 |
 | Unsafe Cold Exposure | Medium (2) | Medium (2) | High (1) | (2x2)x2x1 = 8 | Level 4 |
 | Unsafe Heat Exposure | Medium (2) | Medium (2) | High (1) | (2x2)x2x1 = 8 | Level 4 |
 | System Failure | High (3) | Low (1) | Low (3) | (2x3)x1x3 = 18 | Level 2 |
-| Rain Entering Through Open Window | Medium (2) | Medium (2) | Medium (2) | (2x2)x2x2 = 16 | Level 3 |
+| Water Leak/Flood | Medium (2) | Medium (2) | Medium (2) | (2x2)x2x2 = 16 | Level 3 |
 | Loss of Heating/Cooling | Medium (2) | Low (1) | Low (3) | (2x2)x1x3 = 12 | Level 3 |
     
 ### 1.6 Risk Monitoring:  
