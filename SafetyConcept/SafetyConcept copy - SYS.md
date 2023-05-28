@@ -490,7 +490,7 @@ flowchart TD
     C -->|Healing: Sensor/Actuator battery replaced or recharged or User confirms resolution| A
 ```
     - SM shall be realized by sending a notification to replace or recharge the battery, and scheduling the next battery replacement or recharge as required.
-    
+
 ##### SM_SMC_2 (System Update Reminder)
 ```mermaid
 flowchart TD
@@ -603,6 +603,31 @@ flowchart TD
     C -->|Healing: Packet loss below threshold| A
 ```
     - SM shall be realized by sending a notification of level 3  
+
+
+#### **HVAC Monitoring Component:**
+
+**Inputs:**
+- Current flow temperature
+- Heater/cooler status
+
+**Outputs:**
+- Alert to occupants
+- HVAC maintenance reminders/actions
+
+**Outputs:**
+- The system shall monitor current flow temperature against heater error.
+
+**SM_HMC_1 (Heating/Cooling Flow Monitoring)**
+
+```mermaid
+flowchart TD
+    A[START] -->| | B{Is the current flow temperature within CAL_THRFlowTemperature?}
+    B -->|Yes| A
+    B -->|No| C[SM performed]
+    C -->|Healing: Flow temperature returns to normal or User confirms resolution| A
+```
+    - SM shall be realized by sending a notification of level 2  
 
 ---
 #### 2.1.6 System Calibration values:
