@@ -180,7 +180,7 @@ Risk_score = (2 x *Severity*) x *Exposure* x *Controllability* to calculate risk
     - The system should regularly perform self-checks or diagnostics to identify and alert users to potential failures or malfunctions. These checks should include things like checking for system updates, monitoring system health, and checking the status of safety devices.
     - The system should monitor network connectivity and performance, including Ethernet port status, system latency, and packet loss.
     - The system shall monitor zigbee network heatlh
-    - The system shall integrate with existed HA fault manager
+    - The system shall integrate with existed HA fault manager.
 
 #### Loss of Heating/Cooling:  
     - The system shall monitor current flow temperature against heater error.  
