@@ -1,35 +1,36 @@
 # Home Automation - Safety, security and recovery strategy
 
----
----
-## 2. System requirements 
----
----
-### 2.1 System boundaries  
----
+## 2. System requirements
+
+### 2.1 System boundaries
+
 #### 2.1.1 Inside the System Boundary:
+
 ---
-Hardware sensors - Input interface:  
+
+**Hardware sensors - Input interface:**
+
 - windows contact sensor
 - door contact sensor
 - smoke detector
 - gas detector
 - carbon monooxide detector
-- climate sensor for each room (temperature and humidity)  
+- climate sensor for each room (temperature and humidity)
 - inside air pollution
-- boiler process values
+- boiler signals and measurements
 
-Cloud sensors - Input interface:  
+**Cloud sensors - Input interface:**
+
 - Weather sensor
-    - Current temperature, pressure, wind speed, clouds
-    - Forecast for temperature, pressure, wind speed, clouds
-    - Hazardous fenoma:
-        - Storm alert
-        - Blizzard alert
-        - Wind alert
-        - Rain alert
-        - Heatwave alert
-        - Tornado alert
+  - Current temperature, pressure, wind speed, clouds
+  - Forecast for temperature, pressure, wind speed, clouds
+  - Hazardous fenoma:
+    - Storm alert
+    - Blizzard alert
+    - Wind alert
+    - Rain alert
+    - Heatwave alert
+    - Tornado alert
 - Occupancy sensor
 - Outside air pollution
 - System health data and system update information
@@ -39,53 +40,68 @@ Cloud sensors - Input interface:
 - System latency data
 - Packet loss data
 
-HW Actuators - Output interface: 
+**HW Actuators - Output interface:**
+
 - Smart locks
 - Siren
 - Information light
 - Alert light
 
-Cloud Actuators:
+**Cloud Actuators:**
+
 - Phone application popup
 - Main card in Lovelance
 - User action scheduler
 
-Processing:
+**Processing:**
+
 - Home assistant instance
 
 ---
+
 #### 2.1.2 Outside the System Boundary:
----
+
 - The physical environment where the home is located and which the sensors are monitoring
 - Users who interact with the system, either physically or through an interface/app
 - Internet services providing data such as weather forecasts
 
----
 #### 2.1.3 System modes:
+
 ---
-**Armed Mode:** 
-- The system is actively monitoring for hazards and is ready to react.   
 
-**Disarmed Mode:** 
-- The system is not actively monitoring for hazards.   
+**Armed Mode:**
 
-**Maintenance Mode:** 
+- The system is actively monitoring for hazards and is ready to react.
+
+**Disarmed Mode:**
+
+- The system is not actively monitoring for hazards.
+
+**Maintenance Mode:**
+
 - The system checks the status of its sensors and actuators, updates its software, and performs other maintenance tasks.
 
 TODO - Add state machine
----
+
 #### 2.1.4 Interfaces requirements:
+
 ---
-#### Smoke/Gas/CO sensor
+
+##### Smoke/Gas/CO sensor
+
     - TODO
 
-#### Smoke/Gas/CO sensor
+##### Smoke/Gas/CO sensor
+
     - TODO
 
-#### Window/Door contact
+##### Window/Door contact
+
     - Shall support contact notification
     - Shall support remained batery value
-#### House occupy
+
+##### House occupy
+
     - Sleep time - Event that notify that everyone goes to sleep
     - Leave - Home is empty less than 1 day
     - Vacation - Home is empty more than 1 day
@@ -94,10 +110,12 @@ TODO - Add state machine
     - Kids: Only not adult residents are in house.
     - Occupied: Adult residents are in house
 
-#### Weather sensor
+##### Weather sensor
+
     - TODO
 
-#### Weather environmental hazards:
+##### Weather environmental hazards:
+
     - Freezing - Temperature below 4 C
     - Storm - Incoming storm
     - Rain
@@ -107,71 +125,86 @@ TODO - Add state machine
     - Snow: Cold temperatures combined with snowfall might affect heating systems and require specific actions.
     - High Humidity: This might trigger dehumidifiers or other responses to control internal humidity.
 
-#### Outside air pollution sensor
+##### Outside air pollution sensor
+
     - TODO
 
-#### System health data and system update information
+##### System health data and system update information
+
     - TODO
 
-#### Ethernet network health:
+##### Ethernet network health:
+
 TODO
+
 - Ethernet port status
 - Link status to router
 - Link status to WAN
 - System latency data
 - Packet loss data
 
+##### Heating output values
 
-#### Heating output values
     - TODO
 
-#### Heating input values
+##### Heating input values
+
     - TODO
 
-#### Smart lock actuator
+##### Smart lock actuator
+
     - TODO
 
-#### Alarm siren
+##### Alarm siren
+
     - TODO
 
-#### Informational light
+##### Informational light
+
     - TODO
 
-#### Smart lock actuator
+##### Smart lock actuator
+
     - TODO
 
-#### Alert light
+##### Alert light
+
     - TODO
 
-#### Phone application popup
+##### Phone application popup
+
     - TODO
 
-#### Lovelance card
+##### Lovelance card
+
     - TODO
 
-#### User action scheduler
+##### User action scheduler
+
     - TODO
 
 ---
-#### 2.1.6 Common definitions:
----
-- Safety windows/door are elements that should be closed if nobody are in house, like front windows.
-- Notifiaction levels:  
 
-|  | Description Notification |
-| -------- | -------- |
+#### 2.1.4 Common definitions:
+
+- Critical windows/door are elements that should be closed if nobody are in house, like front windows.
+- Notifiaction levels:
+
+|         | Description Notification                                                                                                                  |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | Level 1 | Home assistant notification on phone with higher priority, sound alarm, light notification as yellow, and dashboard information as hazard |
-| Level 2 | Home assistant notification on phone with higher priority, light notification as yellow, and dashboard information as hazard |
-| Level 3 | Home assistant notification on phone and dashboard information as warning |
-| Level 4 | Dashboard information |
+| Level 2 | Home assistant notification on phone with higher priority, light notification as yellow, and dashboard information as hazard              |
+| Level 3 | Home assistant notification on phone and dashboard information as warning                                                                 |
+| Level 4 | Dashboard information                                                                                                                     |
 
----
 #### 2.1.5 System components:
+
 ---
 
-#### **Window Monitoring Component:**  
+#### **Window Monitoring Component:**
 
-**Inputs:**  
+**Inputs:**
+
 - Window contact sensor data
 - Occupancy sensor data
 - Room temperature sensor data
@@ -179,34 +212,40 @@ TODO
 - Rain forecast data (from weather forecast)
 - Storm forecast data (from weather forecast)
 
-**Outputs:**   
+**Outputs:**
 
 - Alerts to occupants (via various channels)
 - Heating system actactors
 
 **Safety Goals Addressed:**
 
-    - Front windows shall be closed if nobody/kids are in the house
-    - The system shall notify occupants if the temperature is falling and windows are open
-    - The system shall notify occupants if temperature is increasing, windows are closed if outside temperature is lower than in room.
-    - The system shall notify occupants of incoming rain if one of the doors or windows is open
-    - The system shall notify occupants if a storm is coming and windows are open
-    - The system shall increase heating if temperature is falling and windows are open
-    - The system should alert occupants if air quality falls below a certain standard and any window is open. 
+- The system shall ascertain the closure of front windows in the absence of occupants or presence of minors.
+- The system shall alert the occupants if the temperature drops below a certain threshold.
+- The system shall alert the occupants if the temperature rises, windows are closed, and the external temperature is lower than the room temperature.
+- The system shall alert occupants if any doors or windows are open in case of a rain forecast.
+- The system shall alert occupants if any doors or windows are open in case of a storm forecast.
+- The system shall interface with the home heating system to mitigate cold exposure hazards.
+- The system shall alert the occupants if air quality deteriorates below a predefined standard and windows are open.
+
 
 **States and Transitions:**
-##### SM_WMC_1
+
+##### SM_WMC_1 (Windows status if house empty)
+
 ```mermaid
 flowchart TD
-    A[START] -->| | B{Are all safety windows closed?}
+    A[START] -->| | B{Are all Ccritical windows closed?}
     B -->|Yes| A
     B -->|No| C{Is the house in "occupied" occupancy status?}
     C -->|Yes| A
     C -->|No| E[SM performed]
     E -->|Healing: House is occupied| A
 ```
+
     - SM shall be realized by notification of level 2
-##### SM_WMC_2
+
+##### SM_WMC_2 (TODO)
+
 ```mermaid
 flowchart TD
     A[START] -->| | B{Are windows closed within room?}
@@ -218,9 +257,11 @@ flowchart TD
     D-->|Yes| E[SM performed]
     E -->|Healing: windows closed or temperature raised| A
 ```
+
     - SM shall be realized by notification of level 2
 
-##### SM_WMC_3
+##### SM_WMC_3 (TODO)
+
 ```mermaid
 flowchart TD
     A[START] -->| | B{Are windows closed within room?}
@@ -234,8 +275,10 @@ flowchart TD
     E -->|Yes| F[SM perform ]
     F -->|Healing: windows open or temperature failing| A
 ```
+
     - SM shall be realized by notification of level 3
-##### SM_WMC_4
+
+##### SM_WMC_4 (TODO)
 
 ```mermaid
 flowchart TD
@@ -246,8 +289,11 @@ flowchart TD
     C -->|Yes| E[SM perfomed]
     E -->|Healing: Rain not longer forecasted or\n all windows closed| A
 ```
+
     - SM shall be realized by notification of level 2
-##### SM_WMC_5
+
+##### SM_WMC_5 (TODO)
+
 ```mermaid
 flowchart TD
     A[START] -->| | B{Are all windows closed?}
@@ -257,9 +303,11 @@ flowchart TD
     C -->|Yes| E[SM perfomed]
     E -->|Healing: Storm not longer forecasted or\n all windows closed| A
 ```
+
     - SM shall be realized by notification of level 2
 
-##### SM_WMC_6
+##### SM_WMC_6 (TODO)
+
 ```mermaid
 flowchart TD
     A[START] -->| | B{Are windows are closed within room?}
@@ -269,9 +317,11 @@ flowchart TD
     C-->|Yes| E[SafeMeas performed]
     E -->|Healing: window closed or temperature raised| A
 ```
+
     - SM shall be realized increasing setpoint value for specif room by CAL_THR_HeatingIncrease
 
-##### SM_WMC_7
+##### SM_WMC_7 (TODO)
+
 ```mermaid
 flowchart TD
     A[START] -->| | B{Are all windows closed?}
@@ -281,9 +331,11 @@ flowchart TD
     C -->|No| E[SM performed]
     E -->|Healing: House is occupied| A
 ```
+
     - SM shall be realized by notification of level 2
 
-##### SM_WMC_8
+##### SM_WMC_8 (TODO)
+
 ```mermaid
 flowchart TD
     A[START] -->| | B{Check if CAL_WindowsSensorMaintenancePeriod elapsed?}
@@ -291,11 +343,15 @@ flowchart TD
     B -->|Yes| C[SM performed]
     C -->|Healing: User confirmation| A
 ```
+
     -SM shall be realized by scheduling maintenance action for user
---- 
-#### **Hazardous Atmosphere Detection Component:**  
+
+---
+
+#### **Hazardous Atmosphere Detection Component:**
 
 **Inputs:**:
+
 - Smoke detector sensor data
 - Gas detector sensor data
 - Carbon monoxide detector sensor data
@@ -307,12 +363,19 @@ flowchart TD
 - Scheduler
 
 **Safety Goals Addressed:**
-- Fire detection and alert
-- Gas leak detection and alert
-- Carbon Monoxide Poisoning detection and alert
-- Maintenance notification for smoke, gas, and carbon monoxide sensors
 
-##### SM_HADC_1
+- The system shall actively detect the presence of smoke.
+- The system shall promptly alert the occupants in the event of a fire.
+- The system shall schedule and issue reminders for maintenance of fire sensors.
+- The system shall unlock external doors to expedite evacuation in case of fire.
+- The system shall alert the occupants promptly upon detection of a gas leak.
+- The system shall automatically disengage the main gas supply when a gas leak is detected.
+- The system shall schedule and issue reminders for maintenance of gas sensors.
+- The system shall alert occupants when hazardous levels of carbon monoxide are detected.
+- The system shall schedule and issue reminders for maintenance of CO sensors.
+
+##### SM_HADC_1 (TODO)
+
 ```mermaid
 flowchart TD
     A[START] -->| | B{Smoke detected?}
@@ -320,9 +383,11 @@ flowchart TD
     B -->|Yes| C[SM performed]
     C -->|Healing: User confirmation| A
 ```
+
     -SM shall be realized by notification of level 1 and evacuation process
 
-##### SM_HADC_2
+##### SM_HADC_2 (TODO)
+
 ```mermaid
 flowchart TD
     A[START] -->| | B{Gas detected?}
@@ -330,9 +395,11 @@ flowchart TD
     B -->|Yes| C[SM performed]
     C -->|Healing: User confirmation| A
 ```
+
     -SM shall be realized by notification of level 1 and evacuation process
 
-##### SM_HADC_3
+##### SM_HADC_3 (TODO)
+
 ```mermaid
 flowchart TD
     A[START] -->| | B{Carbon monoxide detected?}
@@ -340,9 +407,11 @@ flowchart TD
     B -->|Yes| C[SM performed]
     C -->|Healing: User confirmation| A
 ```
+
     -SM shall be realized by notification of level 1 and evacuation process
 
-##### SM_HADC_4
+##### SM_HADC_4 (TODO)
+
 ```mermaid
 flowchart TD
     A[START] -->| | B{Check if CAL_GasLeakSensorMaintenancePeriod elapsed?}
@@ -350,9 +419,11 @@ flowchart TD
     B -->|Yes| C[SM performed]
     C -->|Healing: User confirmation| A
 ```
+
     -SM shall be realized by schedule maintenance action for user
 
 ##### SM_HADC_5 (Smoke Sensor Maintenance)
+
 ```mermaid
 flowchart TD
     A[START] -->| | B{Check if CAL_SmokeSensorMaintenancePeriod elapsed?}
@@ -360,8 +431,11 @@ flowchart TD
     B -->|Yes| C[SM performed]
     C -->|Healing: User confirmation| A
 ```
+
     -SM shall be realized by schedule maintenance action for user
+
 ##### SM_HADC_6 (CO Sensor Maintenance)
+
 ```mermaid
 flowchart TD
     A[START] -->| | B{Check if CAL_COSensorMaintenancePeriod elapsed?}
@@ -369,11 +443,13 @@ flowchart TD
     B -->|Yes| C[SM performed]
     C -->|Healing: User confirmation| A
 ```
+
     -SM shall be realized by schedule maintenance action for user
 
-
 #### **Door Monitoring Component:**
+
 **Inputs:**
+
 - Door contact sensor data
 - Occupancy sensor data
 
@@ -382,12 +458,15 @@ flowchart TD
 -SmartLocks
 
 **Safety Goals Addressed:**
-- Detect if external doors are opened when no one is at home and alert
-- Detect if external doors are left open for an extended period of time and alert
-- Detect if external doors are not locked when everyone goes to sleep or leaves the house
-- Maintenance notification for door contact sensors
 
-##### SM_DMC_1 
+- The system shall persistently monitor the status of external doors in relation to the home occupancy status.
+- The system shall ensure closure of external doors within a predefined timeout interval.
+- The system shall alert occupants if any doors or windows are open in case of a rain forecast.
+- The system shall alert occupants if any doors or windows are open in case of a storm forecast.
+- The system shall ensure external doors are locked when the house is unoccupied or all occupants are asleep.
+
+##### SM_DMC_1 (TODO)
+
 ```mermaid
 flowchart TD
     A[START] -->| | B{Is the house in "leave"/"vacations"/"sleep"/"home alone" occupancy status?}
@@ -397,9 +476,11 @@ flowchart TD
     C -->|Yes| D[SM performed]
     D -->|Healing: Door closed or house is occupied| A
 ```
+
     -SM shall be realized by sending a notification of level 2
 
-##### SM_DMC_2
+##### SM_DMC_2 (TODO)
+
 ```mermaid
 flowchart TD
     A[START] -->| | B{Is any external door open for longer than CAL_DoorXOpenDurationTimeout ?}
@@ -407,9 +488,11 @@ flowchart TD
     B -->|Yes| C[SM performed]
     C -->|Healing: Door closed| A
 ```
+
     -SM shall be realized by sending a notification of level 2
 
-##### SM_DMC_3
+##### SM_DMC_3 (TODO)
+
 ```mermaid
 flowchart TD
     A[START] -->| | B{Is everyone asleep or has everyone left the house?}
@@ -419,9 +502,11 @@ flowchart TD
     C -->|Yes| D[SM performed]
     D -->|Healing: Door locked or someone is awake/has returned home| A
 ```
+
     - SM shall be realized by sending a notification of level 3 and scheduling a door lock action if feasible.
 
-##### SM_DMC_4
+##### SM_DMC_4 (TODO)
+
 ```mermaid
 flowchart TD
     A[START] -->| | B{Check if CAL_DoorSensorMaintenancePeriod elapsed?}
@@ -429,12 +514,13 @@ flowchart TD
     B -->|Yes| C[SM performed]
     C -->|Healing: User confirmation| A
 ```
-    -SM shall be realized by scheduling maintenance action for user
 
+    -SM shall be realized by scheduling maintenance action for user
 
 #### **System Monitoring Component:**
 
 **Inputs:**
+
 - Sensor and actuator status data
 - System health data
 - Power supply status
@@ -452,15 +538,16 @@ flowchart TD
 
 **Safety Goals Addressed:**
 
-- The system shall monitor all sensor and actuator activity to detect timeouts and failures.
-- The system shall remind about updates
-- The system should have a backup power supply to ensure continuous operation in the event of a power outage. This should include provisions to ensure safe operation or shutdown in case of power failure.
-- The system should regularly perform self-checks or diagnostics to identify and alert users to potential failures or malfunctions. These checks should include things like checking for system updates, monitoring system health, and checking the status of safety devices.
-- The system should monitor network connectivity and performance, including Ethernet port status, system latency, and packet loss.
-- TODO:The system shall monitor zigbee network heatlh
-- TODO:The system shall integrate with existed HA fault manager
+- The system shall consistently monitor the activity of all sensors and actuators to detect timeouts and failures.
+- The system shall remind the users about updates periodically.
+- The system shall provide a backup power supply to ensure continuous operation in the event of a power outage.
+- The system shall perform regular self-checks or diagnostics to identify and alert users to potential failures or malfunctions.
+- The system shall monitor network connectivity and performance, including Ethernet port status, system latency, and packet loss.
+- The system shall monitor the health of the Zigbee network.
+- The system shall integrate with the existing Home Automation (HA) fault manager.
 
 ##### SM_SMC_1a (Output Sanity Monitoring)
+
 ```mermaid
 flowchart TD
     A[START] -->| | B{Is Sensor/Actuator output ?}
@@ -468,9 +555,11 @@ flowchart TD
     B -->|No| C[SM performed]
     C -->|Healing: Sensor/Actuator output returns to normal or User confirms resolution| A
 ```
+
     - SM shall be realized by sending a notification based on sensor/actuator type.
 
 ##### SM_SMC_1b (Timeout Monitoring)
+
 ```mermaid
 flowchart TD
     A[START] -->| | B{Has Sensor/Actuator data been received within CAL_SensorActuatorTimeoutThreshold?}
@@ -479,9 +568,11 @@ flowchart TD
     C -->|Healing: Sensor/Actuator sends data or User confirms resolution| A
 
 ```
+
     - SM shall be realized by sending a notification based on sensor/actuator type.
 
 ##### SM_SMC_1c (Battery Level Monitoring)
+
 ```mermaid
 flowchart TD
     A[START] -->| | B{Is Sensor/Actuator battery level within CAL_SensorActuatorBatteryLevelThreshold?}
@@ -489,9 +580,11 @@ flowchart TD
     B -->|No| C[SM performed]
     C -->|Healing: Sensor/Actuator battery replaced or recharged or User confirms resolution| A
 ```
+
     - SM shall be realized by sending a notification to replace or recharge the battery, and scheduling the next battery replacement or recharge as required.
 
 ##### SM_SMC_2 (System Update Reminder)
+
 ```mermaid
 flowchart TD
     A[START] -->| | B{Is there a System Update available?}
@@ -499,9 +592,11 @@ flowchart TD
     B -->|Yes| C[SM performed]
     C -->|Healing: System Update performed or User confirms delay| A
 ```
+
     - SM shall be realized by sending a notification of level 3
 
 ##### SM_SMC_3 (Power Failure Management)
+
 ```mermaid
 flowchart TD
     A[START] -->| | B{Is there a power outage?}
@@ -511,9 +606,11 @@ flowchart TD
     C -->|Yes| D[SM performed]
     D -->|Healing: Power restored or User confirms resolution| A
 ```
+
     - SM shall be realized by sending a notification of level 3
 
 ##### SM_SMC_4a (CPU Usage Monitoring)
+
 ```mermaid
 flowchart TD
     A[START] -->| | B{Is CPU usage within CAL_CPUUsageThreshold?}
@@ -521,9 +618,11 @@ flowchart TD
     B -->|No| C[SM performed]
     C -->|Healing: CPU usage returns to normal or User confirms resolution| A
 ```
+
     - SM shall be realized by sending a notification of level 3
 
 ##### SM_SMC_4b (RAM Usage Monitoring)
+
 ```mermaid
 flowchart TD
     A[START] -->| | B{Is RAM usage within CAL_RAMUsageThreshold?}
@@ -531,9 +630,11 @@ flowchart TD
     B -->|No| C[SM performed]
     C -->|Healing: RAM usage returns to normal or User confirms resolution| A
 ```
+
     - SM shall be realized by sending a notification of level 3
 
 ##### SM_SMC_4c (Disk Space Monitoring)
+
 ```mermaid
 flowchart TD
     A[START] -->| | B{Is Disk Space within CAL_DiskSpaceThreshold?}
@@ -541,9 +642,11 @@ flowchart TD
     B -->|No| C[SM performed]
     C -->|Healing: Disk Space freed up or User confirms resolution| A
 ```
+
     - SM shall be realized by sending a notification of level 3
 
 ##### SM_SMC_4d (Hardware Temperature Monitoring)
+
 ```mermaid
 flowchart TD
     A[START] -->| | B{Is Hardware temperature within CAL_HardwareTemperatureThresholds?}
@@ -551,9 +654,11 @@ flowchart TD
     B -->|No| C[SM performed]
     C -->|Healing: Hardware temperature returns to normal or User confirms resolution| A
 ```
+
     - SM shall be realized by sending a notification of level 3
 
-##### SM_SMC_4e  (Ethernet Link Status)
+##### SM_SMC_4e (Ethernet Link Status)
+
 ```mermaid
 flowchart TD
     A[START] -->| | B{Is Ethernet link active?}
@@ -561,9 +666,11 @@ flowchart TD
     B -->|No| C[SM performed]
     C -->|Healing: Ethernet link active| A
 ```
+
     - SM shall be realized by sending a notification of level 3
 
 ##### SM_SMC_4f(Local Network Connectivity)
+
 ```mermaid
 flowchart TD
     A[START] -->| | B{Is router reachable?}
@@ -571,9 +678,11 @@ flowchart TD
     B -->|No| C[SM performed]
     C -->|Healing: Router reachable| A
 ```
+
     - SM shall be realized by sending a notification of level 3
 
 ##### SM_SMC_4g (Internet Access Management)
+
 ```mermaid
 flowchart TD
     A[START] -->| | B{Is Internet reachable?}
@@ -581,9 +690,11 @@ flowchart TD
     B -->|No| C[SM performed]
     C -->|Healing: Internet reachable| A
 ```
+
     - SM shall be realized by sending a notification of level 3
 
 ##### SM_SMC_4h (Internet Latency Monitoring)
+
 ```mermaid
 flowchart TD
     A[START] -->| | B{Is Internet latency below CAL_InternetLatencyThreshold?}
@@ -592,9 +703,11 @@ flowchart TD
     C -->|Healing: Internet latency below threshold| A
 
 ```
-    - SM shall be realized by sending a notification of level 3  
+
+    - SM shall be realized by sending a notification of level 3
 
 ##### SM_SMC_4i (Packet Loss Monitoring)
+
 ```mermaid
 flowchart TD
     A[START] -->| | B{Is packet loss below CAL_PacketLossThreshold?}
@@ -602,21 +715,25 @@ flowchart TD
     B -->|No| C[SM performed]
     C -->|Healing: Packet loss below threshold| A
 ```
-    - SM shall be realized by sending a notification of level 3  
 
+    - SM shall be realized by sending a notification of level 3
 
 #### **HVAC Monitoring Component:**
 
 **Inputs:**
+
 - Current flow temperature
 - Heater/cooler status
 
 **Outputs:**
+
 - Alert to occupants
 - HVAC maintenance reminders/actions
 
 **Outputs:**
-- The system shall monitor current flow temperature against heater error.
+
+- The system shall continuously monitor the current flow temperature and compare it against the expected temperature range to detect any potential heater errors or anomalies.
+
 
 **SM_HMC_1 (Heating/Cooling Flow Monitoring)**
 
@@ -627,14 +744,29 @@ flowchart TD
     B -->|No| C[SM performed]
     C -->|Healing: Flow temperature returns to normal or User confirms resolution| A
 ```
-    - SM shall be realized by sending a notification of level 2  
+
+    - SM shall be realized by sending a notification of level 2
+
+---
+
+**SM_HMC_2 (Temperature Rate of Change Monitoring)**
+
+```mermaid
+flowchart TD
+    A[START] -->| | B{Is the current flow temperature within CAL_THRFlowTemperature?}
+    B -->|Yes| A
+    B -->|No| C[SM performed]
+    C -->|Healing: Flow temperature returns to normal or User confirms resolution| A
+```
+    - SM shall be realized by sending a notification of level 2
 
 ---
 #### 2.1.6 System Calibration values:
----
 
 ## 4. System components requirements:
+
 ### 3.1 Windows and doors close status
+
     - Each doors and windows shall have defined safety status for scenarios:
         - Sleep time
         - Vacation (more than 1 day)
@@ -681,4 +813,5 @@ flowchart TD
         - Living Room door: 3h
     #### Priorites
     - External doors dangers are always priority 1
+
 
