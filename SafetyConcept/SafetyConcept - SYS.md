@@ -50,12 +50,12 @@
 **Cloud Actuators:**
 
 - Phone application popup
-- Main card in Lovelance
+- Main card in UI
 - User action scheduler
 
 **Processing:**
 
-- Home assistant instance
+- Home automation instance
 
 ---
 
@@ -219,7 +219,7 @@ TODO
 
 **Safety Goals Addressed:**
 
-- The system shall ascertain the closure of front windows in the absence of occupants or presence of minors.
+- The system shall ascertain the closure of critical windows in the absence of occupants, presence of minors or all occupants are asleep.
 - The system shall alert the occupants if the temperature drops below a certain threshold.
 - The system shall alert the occupants if the temperature rises, windows are closed, and the external temperature is lower than the room temperature.
 - The system shall alert occupants if any doors or windows are open in case of a rain forecast.
@@ -227,18 +227,17 @@ TODO
 - The system shall interface with the home heating system to mitigate cold exposure hazards.
 - The system shall alert the occupants if air quality deteriorates below a predefined standard and windows are open.
 
-
 **States and Transitions:**
 
 ##### SM_WMC_1 (Windows status if house empty)
 
 ```mermaid
 flowchart TD
-    A[START] -->| | B{Are all Ccritical windows closed?}
+    A[START] -->| | B{Are all critical windows closed?}
     B -->|Yes| A
-    B -->|No| C{Is the house in "occupied" occupancy status?}
-    C -->|Yes| A
-    C -->|No| E[SM performed]
+    B -->|No| C{Is the house unoccupied, presensce only minors or all occupants are asleep?}
+    C -->|No| A
+    C -->|Yes| E[SM performed]
     E -->|Healing: House is occupied| A
 ```
 
@@ -260,7 +259,7 @@ flowchart TD
 
     - SM shall be realized by notification of level 2
 
-##### SM_WMC_3 (TODO)
+##### SM_WMC_3 (Window Monitoring and Temperature Control in Unoccupied Rooms)
 
 ```mermaid
 flowchart TD
@@ -320,7 +319,7 @@ flowchart TD
 
     - SM shall be realized increasing setpoint value for specif room by CAL_THR_HeatingIncrease
 
-##### SM_WMC_7 (TODO)
+##### SM_WMC_7 (Rain-sensitive Window Monitoring and Forecast Awareness)
 
 ```mermaid
 flowchart TD
@@ -334,7 +333,7 @@ flowchart TD
 
     - SM shall be realized by notification of level 2
 
-##### SM_WMC_8 (TODO)
+##### SM_WMC_8 (Windows Sensor Maintenance Reminder)
 
 ```mermaid
 flowchart TD
@@ -374,7 +373,7 @@ flowchart TD
 - The system shall alert occupants when hazardous levels of carbon monoxide are detected.
 - The system shall schedule and issue reminders for maintenance of CO sensors.
 
-##### SM_HADC_1 (TODO)
+##### SM_HADC_1 (Smoke Detection and Alert)
 
 ```mermaid
 flowchart TD
@@ -386,7 +385,7 @@ flowchart TD
 
     -SM shall be realized by notification of level 1 and evacuation process
 
-##### SM_HADC_2 (TODO)
+##### SM_HADC_2 (Gas Detection and Alert)
 
 ```mermaid
 flowchart TD
@@ -398,7 +397,7 @@ flowchart TD
 
     -SM shall be realized by notification of level 1 and evacuation process
 
-##### SM_HADC_3 (TODO)
+##### SM_HADC_3 (Carbon monoxide detection and Alert)
 
 ```mermaid
 flowchart TD
@@ -410,7 +409,7 @@ flowchart TD
 
     -SM shall be realized by notification of level 1 and evacuation process
 
-##### SM_HADC_4 (TODO)
+##### SM_HADC_4 (Gas Leak Sensor Maintenance)
 
 ```mermaid
 flowchart TD
@@ -465,7 +464,7 @@ flowchart TD
 - The system shall alert occupants if any doors or windows are open in case of a storm forecast.
 - The system shall ensure external doors are locked when the house is unoccupied or all occupants are asleep.
 
-##### SM_DMC_1 (TODO)
+##### SM_DMC_1 (External Door Monitoring in Absence)
 
 ```mermaid
 flowchart TD
@@ -479,7 +478,7 @@ flowchart TD
 
     -SM shall be realized by sending a notification of level 2
 
-##### SM_DMC_2 (TODO)
+##### SM_DMC_2 (External Door Open Duration Monitoring)
 
 ```mermaid
 flowchart TD
@@ -491,7 +490,7 @@ flowchart TD
 
     -SM shall be realized by sending a notification of level 2
 
-##### SM_DMC_3 (TODO)
+##### SM_DMC_3 (Occupancy-based External Door Locking)
 
 ```mermaid
 flowchart TD
@@ -505,7 +504,7 @@ flowchart TD
 
     - SM shall be realized by sending a notification of level 3 and scheduling a door lock action if feasible.
 
-##### SM_DMC_4 (TODO)
+##### SM_DMC_4 (Maintenance of Door Sensors)
 
 ```mermaid
 flowchart TD
@@ -761,57 +760,3 @@ flowchart TD
     - SM shall be realized by sending a notification of level 2
 
 ---
-#### 2.1.6 System Calibration values:
-
-## 4. System components requirements:
-
-### 3.1 Windows and doors close status
-
-    - Each doors and windows shall have defined safety status for scenarios:
-        - Sleep time
-        - Vacation (more than 1 day)
-        - Out (less than 1 day)
-    - External doors shall have defined timeout
-    - System shall monitor outside temperature, corresponding room temperature and window status
-    - System shall monitor external air pollution and windows status
-
-    - Possible safestates:
-        - OPEN - Shall be open
-        - CLOSED - Shall be closed
-        - NOTIFICATION - Notify current status
-
-    | | Sleep time | Leaving | Vacation |
-    | -------- | -------- | -------- | -------- |
-    | Bedroom door | CLOSED | CLOSED | CLOSED |
-    | Upper bathroom door | CLOSED | CLOSED | CLOSED |
-    | Office door | CLOSED | CLOSED | CLOSED |
-    | Wardrobe door | CLOSED | CLOSED | CLOSED |
-    | Kids Room door | CLOSED | CLOSED | CLOSED |
-    | Bathroom door | CLOSED | CLOSED | CLOSED |
-    | Garage door | CLOSED | CLOSED | OPEN |
-    | Upper bathroom window | NOTIFICATION | NOTIFICATION | CLOSED |
-    | Bedroom window | NOTIFICATION | CLOSED | CLOSED |
-    | Kids Room window | NOTIFICATION | NOTIFICATION | CLOSED |
-    | Office window | NOTIFICATION | NOTIFICATION | CLOSED |
-    | Bathroom window | CLOSED | CLOSED | CLOSED |
-    | Kitchen window | CLOSED | CLOSED | CLOSED |
-    | Living room window | CLOSED | CLOSED | CLOSED |
-    | Garage gate | CLOSED | CLOSED | CLOSED |
-    | Entrance door | CLOSED | CLOSED | CLOSED |
-    | Living Room door | CLOSED | CLOSED | CLOSED |
-
-    #### Priorities
-    - External doors dangers are always priority 1
-    - All daggers during leaving and vacation conditions are priority 1 except notification cases.
-    - Dangers with notification RA are always priority 2
-    - Sleep time daggers for windows and door are priority 1 except notification
-
-    ### 3.2 External doors timeouts
-    - Dangers shall be active if external doors are open longer than specified in the table.
-        - Garage gate: 120s
-        - Entrance door: 60s
-        - Living Room door: 3h
-    #### Priorites
-    - External doors dangers are always priority 1
-
-
