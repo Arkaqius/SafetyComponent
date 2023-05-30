@@ -173,8 +173,9 @@ _High:_ These hazards can be easily mitigated if residents are notified in time,
     - The system shall communicate an alert signal to a pre-defined security company upon detection of unauthorized access or unexpected movement.
     - The system shall persistently monitor the status of external doors in relation to the home occupancy status.
     - The system shall ensure closure of external doors within a predefined timeout interval.
-    - The system shall ascertain the closure of front windows in the absence of occupants or presence of minors.
+    - The system shall ascertain the closure of critical windows in the absence of occupants or presence of minors.
     - The system shall ensure external doors are locked when the house is unoccupied or all occupants are asleep.
+    - The system shall ensure critical windows are closed when the house is unoccupied or all occupants are asleep.
 
 #### 1.3.2 System cybersecurity:
 
