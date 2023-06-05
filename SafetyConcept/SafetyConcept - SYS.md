@@ -235,7 +235,7 @@ TODO
 flowchart TD
     A[START] -->| | B{Are all critical windows closed?}
     B -->|Yes| A
-    B -->|No| C{Is the house unoccupied, presensce only minors or all occupants are asleep?}
+    B -->|No| C{Is the house unoccupied, \npresensce only minors or \nall occupants are asleep?}
     C -->|No| A
     C -->|Yes| E[SM performed]
     E -->|Healing: House is occupied| A
