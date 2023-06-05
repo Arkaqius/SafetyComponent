@@ -413,7 +413,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[START] -->| | B{Check if CAL_GasLeakSensorMaintenancePeriod elapsed?}
+    A[START] -->| | B{Check if \nCAL_GasLeakSensorMaintePer elapsed?}
     B -->|No| A
     B -->|Yes| C[SM performed]
     C -->|Healing: User confirmation| A
@@ -425,7 +425,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[START] -->| | B{Check if CAL_SmokeSensorMaintenancePeriod elapsed?}
+    A[START] -->| | B{Check if \nCAL_SmokeSensorMaintePer elapsed?}
     B -->|No| A
     B -->|Yes| C[SM performed]
     C -->|Healing: User confirmation| A
@@ -437,7 +437,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[START] -->| | B{Check if CAL_COSensorMaintenancePeriod elapsed?}
+    A[START] -->| | B{Check if \nCAL_COSensorMaintePer elapsed?}
     B -->|No| A
     B -->|Yes| C[SM performed]
     C -->|Healing: User confirmation| A
