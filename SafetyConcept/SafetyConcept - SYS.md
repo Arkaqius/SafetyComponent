@@ -233,7 +233,7 @@ TODO
 
 ```mermaid
 flowchart TD
-    A[START] -->| | B{Are all critical windows closed?}
+    A[START] -->| | B{Are all critical \nwindows closed?}
     B -->|Yes| A
     B -->|No| C{Is the house unoccupied, \npresensce only minors or \nall occupants are asleep?}
     C -->|No| A
@@ -247,14 +247,14 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[START] -->| | B{Are windows closed within room?}
+    A[START] -->| | B{Are windows closed\n within room?}
     B -->|Yes| A
-    B -->|No| C{Is room temperature below CAL_THR_RoomXLeve1Cold?}
-    C -->|No| D{Is dT/dt below CAL_THR_RoomXColdRate*?}
+    B -->|No| C{Is room temperature below\n CAL_THR_RoomXLeve1Cold?}
+    C -->|No| D{Is dT/dt below \nCAL_THR_RoomXColdRate*?}
     C -->|Yes| E[Notification on level B?]
     D -->|No| A
     D-->|Yes| E[SM performed]
-    E -->|Healing: windows closed or temperature raised| A
+    E -->|Healing: windows closed or\n temperature raised| A
 ```
 
     - SM shall be realized by notification of level 2
@@ -263,25 +263,25 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[START] -->| | B{Are windows closed within room?}
+    A[START] -->| | B{Are windows closed\n within room?}
     B -->|No| A
-    B -->|Yes| C{Is room temperature over CAL_THR_RoomXLevel1Warm?}
+    B -->|Yes| C{Is room temperature over \nCAL_THR_RoomXLevel1Warm?}
     C -->|No| A
-    C -->|Yes| D{Is dT/dt over CAL_THR_RoomXWarmRate?}
-    D -->|Yes| E{Is outside temperature lower than in room?}
+    C -->|Yes| D{Is dT/dt over \nCAL_THR_RoomXWarmRate?}
+    D -->|Yes| E{Is outside temperature\n lower than in room?}
     D  -->|No| A
     E -->|No| A
     E -->|Yes| F[SM perform ]
-    F -->|Healing: windows open or temperature failing| A
+    F -->|Healing: windows open or\n temperature failing| A
 ```
 
     - SM shall be realized by notification of level 3
 
-##### SM_WMC_4 (TODO)
+##### SM_WMC_4 (Rain monitoring)
 
 ```mermaid
 flowchart TD
-    A[START] -->| | B{Are all rain rain-sensitive windows closed?}
+    A[START] -->| | B{Are all rain-sensitive\n windows closed?}
     B -->|Yes| A
     B -->|No| C{Is rain forecast?}
     C -->|No| A
@@ -291,13 +291,13 @@ flowchart TD
 
     - SM shall be realized by notification of level 2
 
-##### SM_WMC_5 (TODO)
+##### SM_WMC_5 (Storm monitoring)
 
 ```mermaid
 flowchart TD
-    A[START] -->| | B{Are all windows closed?}
+    A[START] -->| | B{Are all windows\n closed?}
     B -->|Yes| A
-    B -->|No| C{Is storm forecast?}
+    B -->|No| C{Is storm \nforecasted?}
     C -->|No| A
     C -->|Yes| E[SM perfomed]
     E -->|Healing: Storm not longer forecasted or\n all windows closed| A
@@ -305,16 +305,16 @@ flowchart TD
 
     - SM shall be realized by notification of level 2
 
-##### SM_WMC_6 (TODO)
+##### SM_WMC_6 (Level2 cold exposure)
 
 ```mermaid
 flowchart TD
-    A[START] -->| | B{Are windows are closed within room?}
+    A[START] -->| | B{Are windows are\n closed within room?}
     B -->|Yes| A
-    B -->|No| C{Is room temperature below CAL_THR_RoomXLevel2ColdHazard?}
+    B -->|No| C{Is room temperature below\n CAL_THR_RoomXLevel2ColdHazard?}
     C -->|No| A
     C-->|Yes| E[SafeMeas performed]
-    E -->|Healing: window closed or temperature raised| A
+    E -->|Healing: window closed or \ntemperature raised| A
 ```
 
     - SM shall be realized increasing setpoint value for specif room by CAL_THR_HeatingIncrease
@@ -325,7 +325,7 @@ flowchart TD
 flowchart TD
     A[START] -->| | B{Are all windows closed?}
     B -->|Yes| A
-    B -->|No| C{Is outside air quality under CAL_THR_AirQ?}
+    B -->|No| C{Is outside air quality under\n CAL_THR_AirQ?}
     C -->|Yes| A
     C -->|No| E[SM performed]
     E -->|Healing: House is occupied| A
@@ -337,7 +337,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[START] -->| | B{Check if CAL_WindowsSensorMaintenancePeriod elapsed?}
+    A[START] -->| | B{Check if \nCAL_WSensorMaintPer\n elapsed?}
     B -->|No| A
     B -->|Yes| C[SM performed]
     C -->|Healing: User confirmation| A
@@ -468,12 +468,12 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[START] -->| | B{Is the house in "leave"/"vacations"/"sleep"/"home alone" occupancy status?}
+    A[START] -->| | B{Is the house in \nleave / vacations /\n sleep /\n home alone /\n occupancy status?}
     B -->|No| A
-    B -->|Yes| C{Are any external doors open?}
+    B -->|Yes| C{Are any external\n doors open?}
     C -->|No| A
     C -->|Yes| D[SM performed]
-    D -->|Healing: Door closed or house is occupied| A
+    D -->|Healing: Door closed or \nhouse is occupied| A
 ```
 
     -SM shall be realized by sending a notification of level 2
@@ -482,7 +482,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[START] -->| | B{Is any external door open for longer than CAL_DoorXOpenDurationTimeout ?}
+    A[START] -->| | B{Is any external door\n open for longer than \nCAL_DoorXOpenDurTmnt ?}
     B -->|No| A
     B -->|Yes| C[SM performed]
     C -->|Healing: Door closed| A
@@ -494,12 +494,12 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[START] -->| | B{Is everyone asleep or has everyone left the house?}
+    A[START] -->| | B{Is everyone asleep \nor has everyone left the house?}
     B -->|No| A
-    B -->|Yes| C{Are any external doors unlocked?}
+    B -->|Yes| C{Are any external \ndoors unlocked?}
     C -->|No| A
     C -->|Yes| D[SM performed]
-    D -->|Healing: Door locked or someone is awake/has returned home| A
+    D -->|Healing: Door locked or \nsomeone is awake/has returned home| A
 ```
 
     - SM shall be realized by sending a notification of level 3 and scheduling a door lock action if feasible.
@@ -508,7 +508,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[START] -->| | B{Check if CAL_DoorSensorMaintenancePeriod elapsed?}
+    A[START] -->| | B{Check if \nCAL_DoorSensorMaintPer\n elapsed?}
     B -->|No| A
     B -->|Yes| C[SM performed]
     C -->|Healing: User confirmation| A
@@ -549,10 +549,10 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[START] -->| | B{Is Sensor/Actuator output ?}
+    A[START] -->| | B{Is Sensor/Actuator \nreturn sanity output ?}
     B -->|Yes| A
     B -->|No| C[SM performed]
-    C -->|Healing: Sensor/Actuator output returns to normal or User confirms resolution| A
+    C -->|Healing: Sensor/Actuator output \nreturns to normal or\n User confirms resolution| A
 ```
 
     - SM shall be realized by sending a notification based on sensor/actuator type.
@@ -561,11 +561,10 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[START] -->| | B{Has Sensor/Actuator data been received within CAL_SensorActuatorTimeoutThreshold?}
+    A[START] -->| | B{Has Sensor/Actuator data\n been received within\n CAL_SensActuatorTimThrs?}
     B -->|Yes| A
     B -->|No| C[SM performed]
-    C -->|Healing: Sensor/Actuator sends data or User confirms resolution| A
-
+    C -->|Healing: Sensor/Actuator sends data or\n User confirms resolution| A
 ```
 
     - SM shall be realized by sending a notification based on sensor/actuator type.
@@ -574,10 +573,10 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[START] -->| | B{Is Sensor/Actuator battery level within CAL_SensorActuatorBatteryLevelThreshold?}
+    A[START] -->| | B{Is Sensor/Actuator \nbattery level within \nCAL_SensorActuatorBattLvlThrs?}
     B -->|Yes| A
     B -->|No| C[SM performed]
-    C -->|Healing: Sensor/Actuator battery replaced or recharged or User confirms resolution| A
+    C -->|Healing: Sensor/Actuator \nbattery replaced or \nrecharged or \nUser confirms resolution| A
 ```
 
     - SM shall be realized by sending a notification to replace or recharge the battery, and scheduling the next battery replacement or recharge as required.
@@ -586,10 +585,10 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[START] -->| | B{Is there a System Update available?}
+    A[START] -->| | B{Is there \na System Update available?}
     B -->|No| A
     B -->|Yes| C[SM performed]
-    C -->|Healing: System Update performed or User confirms delay| A
+    C -->|Healing: System Update performed or\n User confirms delay| A
 ```
 
     - SM shall be realized by sending a notification of level 3
@@ -603,7 +602,7 @@ flowchart TD
     B -->|Yes| C{Is a UPS installed and functioning?}
     C -->|No| A
     C -->|Yes| D[SM performed]
-    D -->|Healing: Power restored or User confirms resolution| A
+    D -->|Healing: Power restored or \nUser confirms resolution| A
 ```
 
     - SM shall be realized by sending a notification of level 3
@@ -612,10 +611,10 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[START] -->| | B{Is CPU usage within CAL_CPUUsageThreshold?}
+    A[START] -->| | B{Is CPU usage within \nCAL_CPUUsageThreshold?}
     B -->|Yes| A
     B -->|No| C[SM performed]
-    C -->|Healing: CPU usage returns to normal or User confirms resolution| A
+    C -->|Healing: CPU usage returns to normal or \nUser confirms resolution| A
 ```
 
     - SM shall be realized by sending a notification of level 3
@@ -624,10 +623,10 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[START] -->| | B{Is RAM usage within CAL_RAMUsageThreshold?}
+    A[START] -->| | B{Is RAM usage within \nCAL_RAMUsageThreshold?}
     B -->|Yes| A
     B -->|No| C[SM performed]
-    C -->|Healing: RAM usage returns to normal or User confirms resolution| A
+    C -->|Healing: RAM usage returns to normal or \nUser confirms resolution| A
 ```
 
     - SM shall be realized by sending a notification of level 3
@@ -636,10 +635,10 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[START] -->| | B{Is Disk Space within CAL_DiskSpaceThreshold?}
+    A[START] -->| | B{Is Disk Space within \nCAL_DiskSpaceThreshold?}
     B -->|Yes| A
     B -->|No| C[SM performed]
-    C -->|Healing: Disk Space freed up or User confirms resolution| A
+    C -->|Healing: Disk Space freed up or\n User confirms resolution| A
 ```
 
     - SM shall be realized by sending a notification of level 3
@@ -648,10 +647,10 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[START] -->| | B{Is Hardware temperature within CAL_HardwareTemperatureThresholds?}
+    A[START] -->| | B{Is Hardware temperature within \nCAL_HardwareTemperatureThrsh?}
     B -->|Yes| A
     B -->|No| C[SM performed]
-    C -->|Healing: Hardware temperature returns to normal or User confirms resolution| A
+    C -->|Healing: Hardware temperature \nreturns to normal or \nUser confirms resolution| A
 ```
 
     - SM shall be realized by sending a notification of level 3
@@ -696,10 +695,10 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[START] -->| | B{Is Internet latency below CAL_InternetLatencyThreshold?}
+    A[START] -->| | B{Is Internet latency \nbelow CAL_InternetLatencyThreshold?}
     B -->|Yes| A
     B -->|No| C[SM performed]
-    C -->|Healing: Internet latency below threshold| A
+    C -->|Healing: Internet latency \nabove threshold| A
 
 ```
 
@@ -709,10 +708,10 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[START] -->| | B{Is packet loss below CAL_PacketLossThreshold?}
+    A[START] -->| | B{Is packet loss below\n CAL_PacketLossThreshold?}
     B -->|Yes| A
     B -->|No| C[SM performed]
-    C -->|Healing: Packet loss below threshold| A
+    C -->|Healing: Packet loss \nabove threshold| A
 ```
 
     - SM shall be realized by sending a notification of level 3
@@ -738,10 +737,10 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[START] -->| | B{Is the current flow temperature within CAL_THRFlowTemperature?}
+    A[START] -->| | B{Is the current \nflow temperature within\n CAL_THRFlowTemperature?}
     B -->|Yes| A
     B -->|No| C[SM performed]
-    C -->|Healing: Flow temperature returns to normal or User confirms resolution| A
+    C -->|Healing: Flow temperature returns to normal| A
 ```
 
     - SM shall be realized by sending a notification of level 2
@@ -752,10 +751,10 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A[START] -->| | B{Is the current flow temperature within CAL_THRFlowTemperature?}
+    A[START] -->| | B{Is the current flow\n temperature within \nCAL_THRFlowTemperature?}
     B -->|Yes| A
     B -->|No| C[SM performed]
-    C -->|Healing: Flow temperature returns to normal or User confirms resolution| A
+    C -->|Healing: Flow temperature returns to normal| A
 ```
     - SM shall be realized by sending a notification of level 2
 
