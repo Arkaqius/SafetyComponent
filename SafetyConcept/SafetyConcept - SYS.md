@@ -1,4 +1,4 @@
-# Home Automation - Safety, security and recovery strategy
+# ISO 26262 Inspired Safety Strategy for Home Automation Systems
 
 ## 2. System requirements
 
