@@ -65,7 +65,7 @@
 - Users who interact with the system, either physically or through an interface/app
 - Internet services providing data such as weather forecasts
 
-#### 2.1.3 System modes:
+#### 2.2 System modes:
 
 ---
 
@@ -83,7 +83,7 @@
 
 TODO - Add state machine
 
-#### 2.1.4 Interfaces requirements:
+#### 2.3 Interfaces requirements:
 
 ---
 
@@ -185,7 +185,7 @@ TODO
 
 ---
 
-#### 2.1.4 Common definitions:
+#### 2.4 Common definitions:
 
 - Critical windows/door are elements that should be closed if nobody are in house, like front windows.
 - Notifiaction levels:
@@ -197,11 +197,11 @@ TODO
 | Level 3 | Home assistant notification on phone and dashboard information as warning                                                                 |
 | Level 4 | Dashboard information                                                                                                                     |
 
-#### 2.1.5 System components:
+#### 2.5 System safety components:
 
 ---
 
-#### **Window Monitoring Component:**
+#### 2.5.1 **Window and door Monitoring Component:**
 
 **Inputs:**
 
@@ -347,7 +347,7 @@ flowchart TD
 
 ---
 
-#### **Hazardous Atmosphere Detection Component:**
+#### 2.5.2 **Hazardous Atmosphere Detection Component:**
 
 **Inputs:**:
 
@@ -445,7 +445,7 @@ flowchart TD
 
     -SM shall be realized by schedule maintenance action for user
 
-#### **Door Monitoring Component:**
+#### 2.5.3 ** TO DELETE : Door Monitoring Component:**
 
 **Inputs:**
 
@@ -516,7 +516,7 @@ flowchart TD
 
     -SM shall be realized by scheduling maintenance action for user
 
-#### **System Monitoring Component:**
+#### 2.5.3 **System Monitoring Component:**
 
 **Inputs:**
 
@@ -716,7 +716,7 @@ flowchart TD
 
     - SM shall be realized by sending a notification of level 3
 
-#### **HVAC Monitoring Component:**
+#### 2.5.4 **HVAC Monitoring Component:**
 
 **Inputs:**
 
@@ -759,3 +759,85 @@ flowchart TD
     - SM shall be realized by sending a notification of level 2
 
 ---
+
+#### 2.5.5 **System Health Monitor component:**
+
+#### 2.5.6 **Temperature Monitor component:**
+
+##### 2.5.6.1 Overview
+    - **Purpose**: 
+    - **Scope**: 
+
+##### 2.5.6.2 Inputs
+
+ **Sensor Data**: 
+  - 
+- **User Inputs**: 
+  - 
+- **System States**: 
+  - 
+
+##### 2.5.6.3 Outputs
+- **Control Signals**: 
+  - 
+- **Notifications**: 
+  - 
+- **Data Outputs**: 
+  - 
+
+##### 2.5.6.4 Safety Goals Addressed with SM Links
+- **Goal Alignment**: 
+  - 
+- **Traceability**: 
+  - 
+
+##### 2.5.6.5 Hardware Requirements
+- **Specifications**: 
+  - 
+- **Compatibility**: 
+  - 
+
+##### 2.5.6.6 Software Requirements
+- **Functional Requirements**: 
+  - 
+- **Performance Requirements**: 
+  - 
+
+##### 2.5.6.7 Safety Mechanisms
+- **Description**: 
+  - 
+- **Activity Diagram**: 
+  - Include diagram here
+- **Forecasting Rules**: 
+  - (If applicable) Describe predictive logic and data analysis for forecasting safety issues.
+- **Prefaults and Faults**: 
+  - **Linked Prefault**: Define prefault conditions.
+  - **Mapped Prefaults to Fault**: Map prefault conditions to actual faults.
+  - **Recovery Actions**: List recovery actions.
+- **Notification Actions**: 
+  - Detail notification and alert procedures.
+
+##### 2.5.6.8 Verification and Validation
+- **Testing**: 
+  - 
+- **Validation Criteria**: 
+  - 
+
+##### 2.5.6.9 Maintenance and Updates
+- **Routine Checks**: 
+  - 
+- **Software Updates**: 
+  - 
+
+##### 2.5.6.10 User Documentation
+- **Manuals**: 
+  - 
+- **Troubleshooting Guide**: 
+  - 
+
+#### 2.5.6 **Water Leak Monitor component:**
+
+### 2.6 Safety dashboard:
+
+### 2.6 Utility components:
+
