@@ -768,49 +768,31 @@ flowchart TD
 #### 6.6.1 Overview
 **Purpose**
 
-    -TODO
-**Scope**: 
+The Temperature Monitor component is a dedicated safety monitoring system within the home automation environment, tasked with ensuring the wellbeing of occupants by detecting potential temperature-related hazards. Its operations are independent for each room, allowing for precise monitoring and targeted alerts. The scope includes:
 
-    -TODO
+- Independently monitoring the temperature in each room against predefined safe temperature thresholds.
+- Interfacing with the home's HVAC system to provide adjustments due to detected temperature hazards.
+- Alerting occupants when a room's temperature approaches hazardous levels, enabling them to take preventive or corrective actions.
+- Utilizing predictive analytics to forecast potential temperature-related hazards specific to each room based on historical and real-time temperature data.
+- Generating and sending proactive notifications and recommended actions to occupants to mitigate forecasted temperature hazards.
 #### 6.6.2 Inputs
-**Sensor Data**: 
 
-    -TODO
-**User Inputs**: 
-
-    -TODO
-**System States**: 
-
-    -TODO
+    - Average Temperature sensor for each room
+    - All windows contact sensors
+    - Temperature outside
+    - Forecasted temperature
+    - Current room setpoint
+    - Next setpoint with elapsed time
 
 #### 6.6.3 Outputs
-**Control Signals**: 
+    - Change setpoint
+    - HVAC Emergency heating 
+    - AC emergency cooling
 
-    -TODO
-**Notifications**: 
-
-    -TODO
-**Data Outputs**: 
-
+### 6.6.3 Hardware Requirements
     -TODO
 
-#### 6.6.4 Safety Goals Addressed with SM Links
-**Goal Alignment**: 
-
-    -TODO 
-**Traceability**: 
-
-    -TODO 
-
-### 6.6.5 Hardware Requirements
-**Specifications**: 
-
-    -TODO
-**Compatibility**: 
-
-    -TODO
-
-#### 6.6.6 Software Requirements
+#### 6.6.4 Software Requirements
 **Functional Requirements**: 
 
     -TODO
@@ -818,17 +800,21 @@ flowchart TD
 
     -TODO 
 
-#### 6.6.7 Safety Mechanisms
+#### 6.6.5 Safety Mechanisms
+**Name**: 
+
+    TODO
 **Description**: 
 
     -TODO
+
+**Safety Goals Addressed**
+
+        -TODO
 **Activity Diagram**: 
 
     - Include diagram here
-**Forecasting Rules**: 
-
-    - (If applicable) Describe predictive logic and data analysis for forecasting safety issues.
-**Prefaults and Faults**: 
+    
 **Linked Prefault**: 
 
         Define prefault conditions.
@@ -842,31 +828,7 @@ flowchart TD
 
         Detail notification and alert procedures.
 
-#### 6.6.8 Verification and Validation
-**Testing**: 
-
-    -TODO
-**Validation Criteria**: 
- 
-    -TODO
-
-#### 6.6.9 Maintenance and Updates
-**Routine Checks**: 
-
-    -TODO
-**Software Updates**: 
-
-    -TODO
-
-#### 6.6.10 User Documentation
-**Manuals**: 
-
-    -TODO
-**Troubleshooting Guide**: 
-
-    -TODO
-
-#### 6.6.11 **Water Leak Monitor component:**
+#### 6.7 **Water Leak Monitor component:**
 
 ## 7 Safety dashboard:
 
