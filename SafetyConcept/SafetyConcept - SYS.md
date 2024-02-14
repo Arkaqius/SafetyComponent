@@ -790,43 +790,81 @@ The Temperature Monitor component is a dedicated safety monitoring system within
     - AC emergency cooling
 
 ### 6.6.3 Hardware Requirements
-    -TODO
+    - High-precision temperature sensors capable of reporting room-specific conditions with a tolerance of +/- 0.5°C (or +/- 1°F).
+    - Reliable window contact sensors that integrate with the home automation system to provide status updates.
+    - A compatible interface module that allows for communication and control between the Temperature Monitor component and the HVAC system.
 
-#### 6.6.4 Software Requirements
+### 6.6.4 Software Requirements
 **Functional Requirements**: 
 
-    -TODO
+    - The software shall collect data from each room's temperature sensor and compare it against the %ROOMX_LOW_TEMP_THRESHOLD% if any of inputs change value.
+    - The software shall integrate with an external API to obtain outside temperature and forecasted temperature data.
+    - The software shall monitor the current and next setpoint of the room's HVAC system along with the time remaining until the next setpoint change.
+
 **Performance Requirements**: 
 
-    -TODO 
+    - The system shall process temperature readings and execute the necessary logic to detect prefault conditions within a maximum time frame of 1s.
+    - Notifications must be sent to the occupants within 1s of detecting a temperature threshold breach.
 
-#### 6.6.5 Safety Mechanisms
-**Name**: 
+### 6.6.5 Safety Mechanisms
 
-    TODO
+### **LowTemperatureMonitoring (TC_SM1)**: 
 **Description**: 
 
-    -TODO
+    Safety mechanism check temperature in current room and raise room prefault if falls behind given threshold. 
 
 **Safety Goals Addressed**
 
-        -TODO
-**Activity Diagram**: 
+    - The system shall alert the occupants if the temperature drops below a certain threshold.
+    - The system shall interface with the home heating system to mitigate cold exposure hazards.
+**Activity Diagram/Requirements**: 
 
-    - Include diagram here
+    - Prefault shall be set if temperature falls behind %ROOMX_LOW_TEMP_THRESHOLD%
+    - Prefault shall be healed if temperature is higher that %ROOMX_LOW_TEMP_THRESHOLD%
     
 **Linked Prefault**: 
 
-        Define prefault conditions.
+        PR_TCSM1_ROOMX_UNDERTEMPEATURE
 **Mapped Prefaults to Fault**: 
 
-        Map prefault conditions to actual faults.
+        F_UNDERTEMEPRATURE
 **Recovery Actions**: 
 
-        List recovery actions.
+        - Increase heating setpoint in that specyfic room as reaction.
 **Notification Actions**: 
 
-        Detail notification and alert procedures.
+        Notification level 2 shall be raised.
+
+### **LowTemperatureMonitoring (TC_SM2)**: 
+**Description**: 
+
+    LowTemperatureMonitoring (TC_SM2) is a predictive safety mechanism within the home automation system that interfaces with the heating system to preemptively address and mitigate the risk of cold exposure. It utilizes advanced analytics to anticipate potential drops in temperature that could lead to discomfort or safety issues, initiating user notifications and automated adjustments to maintain a comfortable indoor environment.
+
+**Safety Goals Addressed**
+
+    - The system shall interface with the home heating system to mitigate cold exposure hazards.
+    - The system shall perform proactive actions and issue user notifications based on available data to prevent cold exposure and maintain comfortable indoor conditions.
+**Activity Diagram/Requirements**: 
+
+    - The system must have access to reliable temperature forecasts for the specific room.
+    - The system must be able to send control signals to the HVAC system for setpoint adjustments.
+    - The system must be able to send notifications to the user's preferred device(s).
+    - The system must have logic to consider window states and potential manual actions in its risk assessment.
+    
+**Linked Prefault**: 
+
+        PR_TCSM2_ROOMX_UNDERTEMPEATURE_RISK
+**Mapped Prefaults to Fault**: 
+
+        F_UNDERTEMEPRATURE_RISK
+**Recovery Actions**: 
+
+        - Increase heating setpoint in that specyfic room as reaction.
+        - Ask user to close windows if open.
+        - Ask user to open door to mix air with rest of house.
+**Notification Actions**: 
+
+        Notification level 3 shall be raised.       
 
 #### 6.7 **Water Leak Monitor component:**
 
