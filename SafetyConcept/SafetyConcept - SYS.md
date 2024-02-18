@@ -806,7 +806,13 @@ The Temperature Monitor component is a dedicated safety monitoring system within
     - The system shall process temperature readings and execute the necessary logic to detect prefault conditions within a maximum time frame of 1s.
     - Notifications must be sent to the occupants within 1s of detecting a temperature threshold breach.
 
-### 6.6.5 Safety Mechanisms
+### 6.6.5 Calibrations
+
+    - %CAL_ROOMX_LOW_TEMP_THRESHOLD% - Risky temperature value for room X.
+    - %CAL_ROOMX_FORECAST_TIMESPAN% -  
+
+
+### 6.6.6 Safety Mechanisms
 
 ### **LowTemperatureMonitoring (TC_SM1)**: 
 **Description**: 
@@ -834,11 +840,12 @@ The Temperature Monitor component is a dedicated safety monitoring system within
 **Notification Actions**: 
 
         Notification level 2 shall be raised.
+        Notification shall contains current temperature and room name.
 
-### **LowTemperatureMonitoring (TC_SM2)**: 
+### **LowTemperatureForecasting (TC_SM2)**: 
 **Description**: 
 
-    LowTemperatureMonitoring (TC_SM2) is a predictive safety mechanism within the home automation system that interfaces with the heating system to preemptively address and mitigate the risk of cold exposure. It utilizes advanced analytics to anticipate potential drops in temperature that could lead to discomfort or safety issues, initiating user notifications and automated adjustments to maintain a comfortable indoor environment.
+    LowTemperatureForecasting (TC_SM2) is a predictive safety mechanism within the home automation system that interfaces with the heating system to preemptively address and mitigate the risk of cold exposure. It utilizes advanced analytics to anticipate potential drops in temperature that could lead to discomfort or safety issues, initiating user notifications and automated adjustments to maintain a comfortable indoor environment.
 
 **Safety Goals Addressed**
 
@@ -846,10 +853,9 @@ The Temperature Monitor component is a dedicated safety monitoring system within
     - The system shall perform proactive actions and issue user notifications based on available data to prevent cold exposure and maintain comfortable indoor conditions.
 **Activity Diagram/Requirements**: 
 
-    - The system must have access to reliable temperature forecasts for the specific room.
-    - The system must be able to send control signals to the HVAC system for setpoint adjustments.
-    - The system must be able to send notifications to the user's preferred device(s).
-    - The system must have logic to consider window states and potential manual actions in its risk assessment.
+    - The system shall forecast temperature of room in next 3 hours based on current system state.
+    - If %ROOMX_LOW_TEMP_THRESHOLD% will be reached in next 1 hour, prefault shall be set
+    - If %ROOMX_LOW_TEMP_THRESHOLD% wont be reached in next 1 hour, prefault shall be healed
     
 **Linked Prefault**: 
 
@@ -864,7 +870,8 @@ The Temperature Monitor component is a dedicated safety monitoring system within
         - Ask user to open door to mix air with rest of house.
 **Notification Actions**: 
 
-        Notification level 3 shall be raised.       
+        Notification level 3 shall be raised. 
+        Notification shall contains current temperature and room name.      
 
 #### 6.7 **Water Leak Monitor component:**
 
