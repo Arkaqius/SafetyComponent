@@ -1,10 +1,10 @@
-# Home Automation - Safety, security and recovery strategy
+# ISO 26262 Inspired Safety Strategy for Home Automation Systems
 
-## 2. System requirements
+## 1 Purpose
+    TODO
+## 2 System boundaries
 
-### 2.1 System boundaries
-
-#### 2.1.1 Inside the System Boundary:
+### 2.1 Inside the System Boundary:
 
 ---
 
@@ -59,13 +59,13 @@
 
 ---
 
-#### 2.1.2 Outside the System Boundary:
+### 2.2 Outside the System Boundary:
 
 - The physical environment where the home is located and which the sensors are monitoring
 - Users who interact with the system, either physically or through an interface/app
 - Internet services providing data such as weather forecasts
 
-#### 2.1.3 System modes:
+## 3 System modes:
 
 ---
 
@@ -83,24 +83,24 @@
 
 TODO - Add state machine
 
-#### 2.1.4 Interfaces requirements:
+## 4 Interfaces requirements:
 
 ---
 
-##### Smoke/Gas/CO sensor
+### Smoke/Gas/CO sensor
 
     - TODO
 
-##### Smoke/Gas/CO sensor
+### Smoke/Gas/CO sensor
 
     - TODO
 
-##### Window/Door contact
+### Window/Door contact
 
     - Shall support contact notification
     - Shall support remained batery value
 
-##### House occupy
+### House occupy
 
     - Sleep time - Event that notify that everyone goes to sleep
     - Leave - Home is empty less than 1 day
@@ -110,11 +110,11 @@ TODO - Add state machine
     - Kids: Only not adult residents are in house.
     - Occupied: Adult residents are in house
 
-##### Weather sensor
+### Weather sensor
 
     - TODO
 
-##### Weather environmental hazards:
+### Weather environmental hazards:
 
     - Freezing - Temperature below 4 C
     - Storm - Incoming storm
@@ -125,83 +125,84 @@ TODO - Add state machine
     - Snow: Cold temperatures combined with snowfall might affect heating systems and require specific actions.
     - High Humidity: This might trigger dehumidifiers or other responses to control internal humidity.
 
-##### Outside air pollution sensor
+### Outside air pollution sensor
 
     - TODO
 
-##### System health data and system update information
+### System health data and system update information
 
     - TODO
 
-##### Ethernet network health:
+### Ethernet network health:
 
-TODO
+    - Ethernet port status
+    - Link status to router
+    - Link status to WAN
+    - System latency data
+    - Packet loss data
 
-- Ethernet port status
-- Link status to router
-- Link status to WAN
-- System latency data
-- Packet loss data
-
-##### Heating output values
+### Heating output values
 
     - TODO
 
-##### Heating input values
+### Heating input values
 
     - TODO
 
-##### Smart lock actuator
+### Smart lock actuator
 
     - TODO
 
-##### Alarm siren
+### Alarm siren
 
     - TODO
 
-##### Informational light
+### Informational light
 
     - TODO
 
-##### Smart lock actuator
+### Smart lock actuator
 
     - TODO
 
-##### Alert light
+### Alert light
 
     - TODO
 
-##### Phone application popup
+### Phone application popup
 
     - TODO
 
-##### Lovelance card
+### Lovelance card
 
     - TODO
 
-##### User action scheduler
+### User action scheduler
 
     - TODO
 
 ---
 
-#### 2.1.4 Common definitions:
+## 5 Common requirements:
 
 - Critical windows/door are elements that should be closed if nobody are in house, like front windows.
+
+---
 - Notifiaction levels:
 
-|         | Description Notification                                                                                                                  |
-| ------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| Level 1 | Home assistant notification on phone with higher priority, sound alarm, light notification as yellow, and dashboard information as hazard |
-| Level 2 | Home assistant notification on phone with higher priority, light notification as yellow, and dashboard information as hazard              |
-| Level 3 | Home assistant notification on phone and dashboard information as warning                                                                 |
-| Level 4 | Dashboard information                                                                                                                     |
+    |Description         |  Notification            |
+    | ------- |-------------------------- |
+    | Level 1 | Home assistant notification on phone with higher priority, sound alarm, light notification as yellow, and dashboard information as hazard |
+    | Level 2 | Home assistant notification on phone with higher priority, light notification as yellow, and dashboard information as hazard              |
+    | Level 3 | Home assistant notification on phone and dashboard information as warning                                                                 |
+    | Level 4 | Dashboard information                                                                                                                     |
+---
 
-#### 2.1.5 System components:
+## 6 System safety components:
 
 ---
 
-#### **Window Monitoring Component:**
+### 6.1 **Window and door Monitoring Component:**
 
 **Inputs:**
 
@@ -229,7 +230,7 @@ TODO
 
 **States and Transitions:**
 
-##### SM_WMC_1 (Windows status if house empty)
+#### SM_WMC_1 (Windows status if house empty)
 
 ```mermaid
 flowchart TD
@@ -243,7 +244,7 @@ flowchart TD
 
     - SM shall be realized by notification of level 2
 
-##### SM_WMC_2 (TODO)
+#### SM_WMC_2 (TODO)
 
 ```mermaid
 flowchart TD
@@ -259,7 +260,7 @@ flowchart TD
 
     - SM shall be realized by notification of level 2
 
-##### SM_WMC_3 (Window Monitoring and Temperature Control in Unoccupied Rooms)
+#### SM_WMC_3 (Window Monitoring and Temperature Control in Unoccupied Rooms)
 
 ```mermaid
 flowchart TD
@@ -277,7 +278,7 @@ flowchart TD
 
     - SM shall be realized by notification of level 3
 
-##### SM_WMC_4 (Rain monitoring)
+#### SM_WMC_4 (Rain monitoring)
 
 ```mermaid
 flowchart TD
@@ -291,7 +292,7 @@ flowchart TD
 
     - SM shall be realized by notification of level 2
 
-##### SM_WMC_5 (Storm monitoring)
+#### SM_WMC_5 (Storm monitoring)
 
 ```mermaid
 flowchart TD
@@ -305,7 +306,7 @@ flowchart TD
 
     - SM shall be realized by notification of level 2
 
-##### SM_WMC_6 (Level2 cold exposure)
+#### SM_WMC_6 (Level2 cold exposure)
 
 ```mermaid
 flowchart TD
@@ -319,7 +320,7 @@ flowchart TD
 
     - SM shall be realized increasing setpoint value for specif room by CAL_THR_HeatingIncrease
 
-##### SM_WMC_7 (Rain-sensitive Window Monitoring and Forecast Awareness)
+#### SM_WMC_7 (Rain-sensitive Window Monitoring and Forecast Awareness)
 
 ```mermaid
 flowchart TD
@@ -333,7 +334,7 @@ flowchart TD
 
     - SM shall be realized by notification of level 2
 
-##### SM_WMC_8 (Windows Sensor Maintenance Reminder)
+#### SM_WMC_8 (Windows Sensor Maintenance Reminder)
 
 ```mermaid
 flowchart TD
@@ -347,7 +348,7 @@ flowchart TD
 
 ---
 
-#### **Hazardous Atmosphere Detection Component:**
+### 6.2 **Hazardous Atmosphere Detection Component:**
 
 **Inputs:**:
 
@@ -373,7 +374,7 @@ flowchart TD
 - The system shall alert occupants when hazardous levels of carbon monoxide are detected.
 - The system shall schedule and issue reminders for maintenance of CO sensors.
 
-##### SM_HADC_1 (Smoke Detection and Alert)
+#### SM_HADC_1 (Smoke Detection and Alert)
 
 ```mermaid
 flowchart TD
@@ -385,7 +386,7 @@ flowchart TD
 
     -SM shall be realized by notification of level 1 and evacuation process
 
-##### SM_HADC_2 (Gas Detection and Alert)
+#### SM_HADC_2 (Gas Detection and Alert)
 
 ```mermaid
 flowchart TD
@@ -397,7 +398,7 @@ flowchart TD
 
     -SM shall be realized by notification of level 1 and evacuation process
 
-##### SM_HADC_3 (Carbon monoxide detection and Alert)
+#### SM_HADC_3 (Carbon monoxide detection and Alert)
 
 ```mermaid
 flowchart TD
@@ -409,7 +410,7 @@ flowchart TD
 
     -SM shall be realized by notification of level 1 and evacuation process
 
-##### SM_HADC_4 (Gas Leak Sensor Maintenance)
+#### SM_HADC_4 (Gas Leak Sensor Maintenance)
 
 ```mermaid
 flowchart TD
@@ -421,7 +422,7 @@ flowchart TD
 
     -SM shall be realized by schedule maintenance action for user
 
-##### SM_HADC_5 (Smoke Sensor Maintenance)
+#### SM_HADC_5 (Smoke Sensor Maintenance)
 
 ```mermaid
 flowchart TD
@@ -433,7 +434,7 @@ flowchart TD
 
     -SM shall be realized by schedule maintenance action for user
 
-##### SM_HADC_6 (CO Sensor Maintenance)
+#### SM_HADC_6 (CO Sensor Maintenance)
 
 ```mermaid
 flowchart TD
@@ -445,7 +446,7 @@ flowchart TD
 
     -SM shall be realized by schedule maintenance action for user
 
-#### **Door Monitoring Component:**
+### 6.3 ** TO DELETE : Door Monitoring Component:**
 
 **Inputs:**
 
@@ -464,7 +465,7 @@ flowchart TD
 - The system shall alert occupants if any doors or windows are open in case of a storm forecast.
 - The system shall ensure external doors are locked when the house is unoccupied or all occupants are asleep.
 
-##### SM_DMC_1 (External Door Monitoring in Absence)
+#### SM_DMC_1 (External Door Monitoring in Absence)
 
 ```mermaid
 flowchart TD
@@ -478,7 +479,7 @@ flowchart TD
 
     -SM shall be realized by sending a notification of level 2
 
-##### SM_DMC_2 (External Door Open Duration Monitoring)
+#### SM_DMC_2 (External Door Open Duration Monitoring)
 
 ```mermaid
 flowchart TD
@@ -490,7 +491,7 @@ flowchart TD
 
     -SM shall be realized by sending a notification of level 2
 
-##### SM_DMC_3 (Occupancy-based External Door Locking)
+#### SM_DMC_3 (Occupancy-based External Door Locking)
 
 ```mermaid
 flowchart TD
@@ -504,7 +505,7 @@ flowchart TD
 
     - SM shall be realized by sending a notification of level 3 and scheduling a door lock action if feasible.
 
-##### SM_DMC_4 (Maintenance of Door Sensors)
+#### SM_DMC_4 (Maintenance of Door Sensors)
 
 ```mermaid
 flowchart TD
@@ -516,7 +517,7 @@ flowchart TD
 
     -SM shall be realized by scheduling maintenance action for user
 
-#### **System Monitoring Component:**
+### 6.3 **System Monitoring Component:**
 
 **Inputs:**
 
@@ -545,7 +546,7 @@ flowchart TD
 - The system shall monitor the health of the Zigbee network.
 - The system shall integrate with the existing Home Automation (HA) fault manager.
 
-##### SM_SMC_1a (Output Sanity Monitoring)
+#### SM_SMC_1a (Output Sanity Monitoring)
 
 ```mermaid
 flowchart TD
@@ -557,7 +558,7 @@ flowchart TD
 
     - SM shall be realized by sending a notification based on sensor/actuator type.
 
-##### SM_SMC_1b (Timeout Monitoring)
+#### SM_SMC_1b (Timeout Monitoring)
 
 ```mermaid
 flowchart TD
@@ -569,7 +570,7 @@ flowchart TD
 
     - SM shall be realized by sending a notification based on sensor/actuator type.
 
-##### SM_SMC_1c (Battery Level Monitoring)
+#### SM_SMC_1c (Battery Level Monitoring)
 
 ```mermaid
 flowchart TD
@@ -581,7 +582,7 @@ flowchart TD
 
     - SM shall be realized by sending a notification to replace or recharge the battery, and scheduling the next battery replacement or recharge as required.
 
-##### SM_SMC_2 (System Update Reminder)
+#### SM_SMC_2 (System Update Reminder)
 
 ```mermaid
 flowchart TD
@@ -593,7 +594,7 @@ flowchart TD
 
     - SM shall be realized by sending a notification of level 3
 
-##### SM_SMC_3 (Power Failure Management)
+#### SM_SMC_3 (Power Failure Management)
 
 ```mermaid
 flowchart TD
@@ -607,7 +608,7 @@ flowchart TD
 
     - SM shall be realized by sending a notification of level 3
 
-##### SM_SMC_4a (CPU Usage Monitoring)
+#### SM_SMC_4a (CPU Usage Monitoring)
 
 ```mermaid
 flowchart TD
@@ -619,7 +620,7 @@ flowchart TD
 
     - SM shall be realized by sending a notification of level 3
 
-##### SM_SMC_4b (RAM Usage Monitoring)
+#### SM_SMC_4b (RAM Usage Monitoring)
 
 ```mermaid
 flowchart TD
@@ -631,7 +632,7 @@ flowchart TD
 
     - SM shall be realized by sending a notification of level 3
 
-##### SM_SMC_4c (Disk Space Monitoring)
+#### SM_SMC_4c (Disk Space Monitoring)
 
 ```mermaid
 flowchart TD
@@ -643,7 +644,7 @@ flowchart TD
 
     - SM shall be realized by sending a notification of level 3
 
-##### SM_SMC_4d (Hardware Temperature Monitoring)
+#### SM_SMC_4d (Hardware Temperature Monitoring)
 
 ```mermaid
 flowchart TD
@@ -655,7 +656,7 @@ flowchart TD
 
     - SM shall be realized by sending a notification of level 3
 
-##### SM_SMC_4e (Ethernet Link Status)
+#### SM_SMC_4e (Ethernet Link Status)
 
 ```mermaid
 flowchart TD
@@ -667,7 +668,7 @@ flowchart TD
 
     - SM shall be realized by sending a notification of level 3
 
-##### SM_SMC_4f(Local Network Connectivity)
+#### SM_SMC_4f(Local Network Connectivity)
 
 ```mermaid
 flowchart TD
@@ -679,7 +680,7 @@ flowchart TD
 
     - SM shall be realized by sending a notification of level 3
 
-##### SM_SMC_4g (Internet Access Management)
+#### SM_SMC_4g (Internet Access Management)
 
 ```mermaid
 flowchart TD
@@ -691,7 +692,7 @@ flowchart TD
 
     - SM shall be realized by sending a notification of level 3
 
-##### SM_SMC_4h (Internet Latency Monitoring)
+#### SM_SMC_4h (Internet Latency Monitoring)
 
 ```mermaid
 flowchart TD
@@ -704,7 +705,7 @@ flowchart TD
 
     - SM shall be realized by sending a notification of level 3
 
-##### SM_SMC_4i (Packet Loss Monitoring)
+#### SM_SMC_4i (Packet Loss Monitoring)
 
 ```mermaid
 flowchart TD
@@ -716,7 +717,7 @@ flowchart TD
 
     - SM shall be realized by sending a notification of level 3
 
-#### **HVAC Monitoring Component:**
+### 6.4 **HVAC Monitoring Component:**
 
 **Inputs:**
 
@@ -759,3 +760,122 @@ flowchart TD
     - SM shall be realized by sending a notification of level 2
 
 ---
+
+### 6.5 **System Health Monitor component:**
+
+### 6.6 **Temperature Monitor component:**
+
+#### 6.6.1 Overview
+**Purpose**
+
+The Temperature Monitor component is a dedicated safety monitoring system within the home automation environment, tasked with ensuring the wellbeing of occupants by detecting potential temperature-related hazards. Its operations are independent for each room, allowing for precise monitoring and targeted alerts. The scope includes:
+
+- Independently monitoring the temperature in each room against predefined safe temperature thresholds.
+- Interfacing with the home's HVAC system to provide adjustments due to detected temperature hazards.
+- Alerting occupants when a room's temperature approaches hazardous levels, enabling them to take preventive or corrective actions.
+- Utilizing predictive analytics to forecast potential temperature-related hazards specific to each room based on historical and real-time temperature data.
+- Generating and sending proactive notifications and recommended actions to occupants to mitigate forecasted temperature hazards.
+#### 6.6.2 Inputs
+
+    - Average Temperature sensor for each room
+    - All windows contact sensors
+    - Temperature outside
+    - Forecasted temperature
+    - Current room setpoint
+    - Next setpoint with elapsed time
+
+#### 6.6.3 Outputs
+    - Change setpoint
+    - HVAC Emergency heating 
+    - AC emergency cooling
+
+### 6.6.3 Hardware Requirements
+    - High-precision temperature sensors capable of reporting room-specific conditions with a tolerance of +/- 0.5°C (or +/- 1°F).
+    - Reliable window contact sensors that integrate with the home automation system to provide status updates.
+    - A compatible interface module that allows for communication and control between the Temperature Monitor component and the HVAC system.
+
+### 6.6.4 Software Requirements
+**Functional Requirements**: 
+
+    - The software shall collect data from each room's temperature sensor and compare it against the %ROOMX_LOW_TEMP_THRESHOLD% if any of inputs change value.
+    - The software shall integrate with an external API to obtain outside temperature and forecasted temperature data.
+    - The software shall monitor the current and next setpoint of the room's HVAC system along with the time remaining until the next setpoint change.
+
+**Performance Requirements**: 
+
+    - The system shall process temperature readings and execute the necessary logic to detect prefault conditions within a maximum time frame of 1s.
+    - Notifications must be sent to the occupants within 1s of detecting a temperature threshold breach.
+
+### 6.6.5 Calibrations
+
+    - %CAL_ROOMX_LOW_TEMP_THRESHOLD% - Risky temperature value for room X.
+    - %CAL_ROOMX_FORECAST_TIMESPAN% -  
+
+
+### 6.6.6 Safety Mechanisms
+
+### **LowTemperatureMonitoring (TC_SM1)**: 
+**Description**: 
+
+    Safety mechanism check temperature in current room and raise room prefault if falls behind given threshold. 
+
+**Safety Goals Addressed**
+
+    - The system shall alert the occupants if the temperature drops below a certain threshold.
+    - The system shall interface with the home heating system to mitigate cold exposure hazards.
+**Activity Diagram/Requirements**: 
+
+    - Prefault shall be set if temperature falls behind %ROOMX_LOW_TEMP_THRESHOLD%
+    - Prefault shall be healed if temperature is higher that %ROOMX_LOW_TEMP_THRESHOLD%
+    
+**Linked Prefault**: 
+
+        PR_TCSM1_ROOMX_UNDERTEMPEATURE
+**Mapped Prefaults to Fault**: 
+
+        F_UNDERTEMEPRATURE
+**Recovery Actions**: 
+
+        - Increase heating setpoint in that specyfic room as reaction.
+**Notification Actions**: 
+
+        Notification level 2 shall be raised.
+        Notification shall contains current temperature and room name.
+
+### **LowTemperatureForecasting (TC_SM2)**: 
+**Description**: 
+
+    LowTemperatureForecasting (TC_SM2) is a predictive safety mechanism within the home automation system that interfaces with the heating system to preemptively address and mitigate the risk of cold exposure. It utilizes advanced analytics to anticipate potential drops in temperature that could lead to discomfort or safety issues, initiating user notifications and automated adjustments to maintain a comfortable indoor environment.
+
+**Safety Goals Addressed**
+
+    - The system shall interface with the home heating system to mitigate cold exposure hazards.
+    - The system shall perform proactive actions and issue user notifications based on available data to prevent cold exposure and maintain comfortable indoor conditions.
+**Activity Diagram/Requirements**: 
+
+    - The system shall forecast temperature of room in next 3 hours based on current system state.
+    - If %ROOMX_LOW_TEMP_THRESHOLD% will be reached in next 1 hour, prefault shall be set
+    - If %ROOMX_LOW_TEMP_THRESHOLD% wont be reached in next 1 hour, prefault shall be healed
+    
+**Linked Prefault**: 
+
+        PR_TCSM2_ROOMX_UNDERTEMPEATURE_RISK
+**Mapped Prefaults to Fault**: 
+
+        F_UNDERTEMEPRATURE_RISK
+**Recovery Actions**: 
+
+        - Increase heating setpoint in that specyfic room as reaction.
+        - Ask user to close windows if open.
+        - Ask user to open door to mix air with rest of house.
+**Notification Actions**: 
+
+        Notification level 3 shall be raised. 
+        Notification shall contains current temperature and room name.      
+
+#### 6.7 **Water Leak Monitor component:**
+
+## 7 Safety dashboard:
+
+## 8 Utility components:
+

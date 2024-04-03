@@ -1,4 +1,4 @@
-# Home Automation - Safety, security and recovery strategy
+# ISO 26262 Inspired Safety Strategy for Home Automation Systems
 
 
 
@@ -166,7 +166,7 @@ _High:_ These hazards can be easily mitigated if residents are notified in time,
 ---
 ### 1.3 Safety goals
 
-#### 1.3.1 Unauthorized Access:
+#### 1.3.1.1 Unauthorized Access:
 
     - The system shall continuously monitor for indications of unauthorized access or unexpected movement when the home is declared unoccupied.
     - The system shall immediately issue alerts to the occupants upon detection of unauthorized access or unexpected movement.
@@ -201,11 +201,9 @@ _High:_ These hazards can be easily mitigated if residents are notified in time,
 
 #### 1.3.6 Water Leak/Flood:
 
-    - The system shall install sensors in areas susceptible to water leaks.
     - The system shall promptly alert the occupants upon detecting a leak.
     - The system shall disengage the water supply upon detection of a leak.
-    - The system shall alert occupants if any doors or windows are open in case of a rain forecast.
-    - The system shall alert occupants if any doors or windows are open in case of a storm forecast.
+    - The system shall alert occupants if any doors or windows are open in case of a rain/storm forecast.
 
 #### 1.3.7 Electrical Shock:
 
@@ -213,22 +211,21 @@ _High:_ These hazards can be easily mitigated if residents are notified in time,
 
 #### 1.3.8 Poor Air Quality:
 
-    - The system shall monitor the home's air quality, including parameters such as humidity and particulate matter levels.
-    - The system shall alert the occupants if air quality deteriorates below a predefined standard and windows are open.
+    - The system shall promptly notify residents when the air quality within the home deteriorates below a predefined standard.
+    - The system shall to anticipate potential deterioration of indoor air quality and take preventive actions.
     - The system shall interface with air purifiers within the home to maintain air quality.
 
 #### 1.3.9 Unsafe Cold Exposure:
 
     - The system shall alert the occupants if the temperature drops below a certain threshold.
     - The system shall interface with the home heating system to mitigate cold exposure hazards.
-    - The system shall alert the occupants if the temperature drops and windows are open.
-    - The system shall enhance the heating setpoint to maintain thermal comfort if the temperature drops and windows are open.
+    - The system shall perform proactive actions and issue user notifications based on available data to prevent cold exposure and maintain comfortable indoor conditions.
 
 #### 1.3.10 Unsafe Heat Exposure:
 
-    - The system shall alert the occupants if the temperature exceeds a certain threshold.
-    - The system shall interface with the home heating and air conditioning systems to mitigate heat exposure hazards.
-    - The system shall alert the occupants if the temperature rises, windows are closed, and the external temperature is lower than the room temperature.
+    - The system shall alert the occupants if the temperature rises above a certain threshold.
+    - The system shall interface with the home heating system and AC to mitigate heat exposure hazards.
+    - The system shall take proactive actions and issue notifications to prevent heat exposure and maintain comfortable conditions.
 
 #### 1.3.11 System Failure:
 
@@ -267,10 +264,10 @@ Rest of safety measurements.
 
 For risks that need further mitigation, you'll need to develop a risk mitigation strategy. This strategy should outline specific actions to reduce the likelihood and/or impact of each risk. The strategy can include a variety of measures such as:
 
-- _Mitigation:_ Reducing the impact or likelihood of the risk. This is often the main focus in the context of home automation systems.
-- _Acceptance:_ Acknowledging the risk and preparing contingency plans.
-- _Avoidance:_ Changing plans or strategies to entirely avoid the risk.
-- _Transfer:_ Shifting the risk to another party, such as purchasing insurance.
+    - _Mitigation:_ Reducing the impact or likelihood of the risk. This is often the main focus in the context of home automation systems.
+    - _Acceptance:_ Acknowledging the risk and preparing contingency plans.
+    - _Avoidance:_ Changing plans or strategies to entirely avoid the risk.
+    - _Transfer:_ Shifting the risk to another party, such as purchasing insurance.
 
 #### 1.5.1 Risk assessment after implementing safety goals:
 
