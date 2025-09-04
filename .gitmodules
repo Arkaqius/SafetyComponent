@@ -1,0 +1,3 @@
+[submodule "BMAD-METHOD"]
+	path = BMAD-METHOD
+	url = https://github.com/Arkaqius/BMAD-METHOD.git

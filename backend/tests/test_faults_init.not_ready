@@ -1,0 +1,40 @@
+from unittest.mock import patch, MagicMock
+import pytest
+from shared.temperature_component import TemperatureComponent
+from shared.types_common import FaultState
+
+# Assuming SafetyFunctions is in the correct import path
+from SafetyFunctions import SafetyFunctions
+
+def test_faults_init_RiskyTemperature(mocked_hass_app):
+    """
+    Test the initialization of the 'RiskyTemperature' fault in the SafetyFunctions application.
+
+    Verifies that the 'RiskyTemperature' fault:
+    - Is correctly named 'RiskyTemperature'.
+    - Is initialized with a state of 'NOT_TESTED', indicating it hasn't been triggered yet.
+    - Is related to the correct symptom 'sm_tc_1', which it depends on for activation.
+    - Has a notification level set to '2', denoting its priority or severity.
+
+    This test ensures that fault configurations are correctly set up during the application's
+    initialization process, which is crucial for the fault management system to operate as intended.
+    """
+    app_instance, _, __= mocked_hass_app
+
+    app_instance.initialize()
+    
+    # Verify the fault's name is as expected
+    assert app_instance.faults["RiskyTemperature"].name == "RiskyTemperature", \
+        "'RiskyTemperature' fault does not have the correct name."
+
+    # Verify the fault's initial state is NOT_TESTED
+    assert app_instance.faults["RiskyTemperature"].state == FaultState.NOT_TESTED, \
+        "'RiskyTemperature' fault should initially be in the 'NOT_TESTED' state."
+
+    # Verify the fault is related to the correct symptom
+    assert app_instance.faults["RiskyTemperature"].related_symptoms == ['sm_tc_1'], \
+        "'RiskyTemperature' fault is not correctly related to 'sm_tc_1' symptom."
+
+    # Verify the fault's notification level is set to 2
+    assert app_instance.faults["RiskyTemperature"].level == 2, \
+        "'RiskyTemperature' fault does not have the correct notification level."

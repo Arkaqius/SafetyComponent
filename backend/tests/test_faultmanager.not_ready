@@ -1,0 +1,129 @@
+from shared.types_common import FaultState
+
+def test_faults_set_symptoms(mocked_hass_app):
+
+    app_instance, _ , __= mocked_hass_app
+
+    app_instance.initialize()
+    # 0. Check before symptom and Fault
+    assert (
+        app_instance.fm.check_symptom("RiskyTemperatureOffice")
+        == FaultState.NOT_TESTED
+    )
+    assert app_instance.fm.check_fault("RiskyTemperature") == FaultState.NOT_TESTED
+
+    # 1. Set symptom and Fault
+    app_instance.fm.set_symptom(
+        "RiskyTemperatureOffice", additional_info={"location": "office"}
+    )
+    assert app_instance.fm.check_symptom("RiskyTemperatureOffice") == FaultState.SET
+    assert app_instance.fm.check_fault("RiskyTemperature") == FaultState.SET
+
+    # 2 Heal symptom and Fault
+    app_instance.fm.clear_symptom(
+        "RiskyTemperatureOffice", additional_info={"location": "office"}
+    )
+    assert (
+        app_instance.fm.check_symptom("RiskyTemperatureOffice") == FaultState.CLEARED
+    )
+    assert app_instance.fm.check_fault("RiskyTemperature") == FaultState.CLEARED
+
+    # 3 Set symptom and Fault
+    app_instance.fm.set_symptom(
+        "RiskyTemperatureOffice", additional_info={"location": "office"}
+    )
+    assert app_instance.fm.check_symptom("RiskyTemperatureOffice") == FaultState.SET
+    assert app_instance.fm.check_fault("RiskyTemperature") == FaultState.SET
+
+    # 4 Set symptom and Fault
+    app_instance.fm.set_symptom(
+        "RiskyTemperatureOffice", additional_info={"location": "office"}
+    )
+    assert app_instance.fm.check_symptom("RiskyTemperatureOffice") == FaultState.SET
+    assert app_instance.fm.check_fault("RiskyTemperature") == FaultState.SET
+    
+def test_faults_set_2_symptom_heal_one(mocked_hass_app):
+    
+    app_instance, _, __= mocked_hass_app
+    app_instance.initialize()
+    
+    # 0. Check before symptom and Fault
+    assert (
+        app_instance.fm.check_symptom("RiskyTemperatureOffice")
+        == FaultState.NOT_TESTED
+    )
+    assert (
+        app_instance.fm.check_symptom("RiskyTemperatureKitchen")
+        == FaultState.NOT_TESTED
+    )
+    assert app_instance.fm.check_fault("RiskyTemperature") == FaultState.NOT_TESTED
+
+    # 1. Set first symptom
+    app_instance.fm.set_symptom(
+        "RiskyTemperatureOffice", additional_info={"location": "office"}
+    )
+    
+    assert app_instance.fm.check_symptom("RiskyTemperatureOffice") == FaultState.SET
+    assert app_instance.fm.check_symptom("RiskyTemperatureKitchen") == FaultState.NOT_TESTED
+    assert app_instance.fm.check_fault("RiskyTemperature") == FaultState.SET
+    
+    # 2. Clear first symptom
+    app_instance.fm.clear_symptom(
+        "RiskyTemperatureOffice", additional_info={"location": "office"}
+    )
+    
+    assert app_instance.fm.check_symptom("RiskyTemperatureOffice") == FaultState.CLEARED
+    assert app_instance.fm.check_symptom("RiskyTemperatureKitchen") == FaultState.NOT_TESTED
+    assert app_instance.fm.check_fault("RiskyTemperature") == FaultState.CLEARED
+    
+    
+    # 3. Set both symptoms
+    app_instance.fm.set_symptom(
+        "RiskyTemperatureOffice", additional_info={"location": "office"}
+    )
+    app_instance.fm.set_symptom(
+        "RiskyTemperatureKitchen", additional_info={"location": "office"}
+    )
+    
+    assert app_instance.fm.check_symptom("RiskyTemperatureOffice") == FaultState.SET
+    assert app_instance.fm.check_symptom("RiskyTemperatureKitchen") == FaultState.SET
+    assert app_instance.fm.check_fault("RiskyTemperature") == FaultState.SET
+
+    # 4. Clear one symptom
+    app_instance.fm.clear_symptom(
+        "RiskyTemperatureOffice", additional_info={"location": "office"}
+    )
+    
+    assert app_instance.fm.check_symptom("RiskyTemperatureOffice") == FaultState.CLEARED
+    assert app_instance.fm.check_symptom("RiskyTemperatureKitchen") == FaultState.SET
+    assert app_instance.fm.check_fault("RiskyTemperature") == FaultState.SET
+    
+    # 5. Clear second symptom
+    app_instance.fm.clear_symptom(
+        "RiskyTemperatureKitchen", additional_info={"location": "office"}
+    )
+    
+    assert app_instance.fm.check_symptom("RiskyTemperatureOffice") == FaultState.CLEARED
+    assert app_instance.fm.check_symptom("RiskyTemperatureKitchen") == FaultState.CLEARED
+    assert app_instance.fm.check_fault("RiskyTemperature") == FaultState.CLEARED
+    
+    
+def test_faults_invalid_cfg_2_smc(mocked_hass_app_2_flts_1_sm):
+
+    app_instance, _, mock_log_method = mocked_hass_app_2_flts_1_sm
+
+    # 1. Set symptom and Fault
+    app_instance.fm.set_symptom(
+        "RiskyTemperatureOffice", additional_info={"location": "office"}
+    )
+    mock_log_method.assert_called_with("Error: Multiple faults found associated with symptom_id 'RiskyTemperatureOffice', indicating a configuration error.", level='ERROR')
+    
+def test_faults_invalid_cfg_no_smc(mocked_hass_app_flt_0_sm):
+
+    app_instance, _, mock_log_method = mocked_hass_app_flt_0_sm
+
+    # 1. Set symptom and Fault
+    app_instance.fm.set_symptom(
+        "RiskyTemperatureOffice", additional_info={"location": "office"}
+    )
+    mock_log_method.assert_called_with("Error: No faults associated with symptom_id 'RiskyTemperatureOffice'. This may indicate a configuration error.", level='ERROR')

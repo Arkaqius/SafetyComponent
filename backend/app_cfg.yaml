@@ -1,0 +1,83 @@
+SafetyFunctions:
+  # App definitions
+  module: SafetyFunctions
+  class: SafetyFunctions
+  log_level: ERROR
+  use_dictionary_unpacking: true
+
+  # General config of app
+  app_config:
+    faults:
+      RiskyTemperature:
+        name: "Unsafe temperature"
+        level: 2
+        related_sms:
+          - "sm_tc_1"
+      RiskyTemperatureForecast:
+        name: "Unsafe temperature forecast"
+        level: 3
+        related_sms:
+          - "sm_tc_2"
+
+  # User specyfic config
+  user_config:
+    notification:
+      light_entity: 'light.warning_light'
+    common_entities:
+      outside_temp : 'sensor.dom_temperature'
+    safety_components:
+      TemperatureComponent:
+        - Office:
+            CAL_LOW_TEMP_THRESHOLD: 18.0
+            CAL_FORECAST_TIMESPAN: 2.0 # hours # app cfg
+            temperature_sensor: "sensor.office_temperature"
+            temperature_sensor_rate: "sensor.office_temperature_rate" # sampling_rate = 1min
+            window_sensor: binary_sensor.office_window_contact_contact
+        - Bedroom:
+            CAL_LOW_TEMP_THRESHOLD: 18.0
+            CAL_FORECAST_TIMESPAN: 2.0 # hours # app cfg
+            temperature_sensor: "sensor.bedroom_temperature"
+            temperature_sensor_rate: "sensor.bedroom_temperature_rate" # sampling_rate = 1min
+            window_sensor: binary_sensor.bedroom_windowleft_sensor_contact
+        - Bathroom:
+            CAL_LOW_TEMP_THRESHOLD: 18.0
+            CAL_FORECAST_TIMESPAN: 2.0 # hours # app cfg
+            temperature_sensor: "sensor.bathroom_temperature"
+            temperature_sensor_rate: "sensor.bathroom_temperature_rate" # sampling_rate = 1min
+            window_sensor: binary_sensor.bathroom_window_contact_contact
+        - Livingroom:
+            CAL_LOW_TEMP_THRESHOLD: 18.0
+            CAL_FORECAST_TIMESPAN: 2.0 # hours # app cfg
+            temperature_sensor: "sensor.livingroom_temperature"
+            temperature_sensor_rate: "sensor.livingroom_temperature_rate" # sampling_rate = 1min
+            window_sensor: binary_sensor.livingroom_door_contact_contact
+        - Kitchen:
+            CAL_LOW_TEMP_THRESHOLD: 18.0
+            CAL_FORECAST_TIMESPAN: 2.0 # hours # app cfg
+            temperature_sensor: "sensor.corridor_temperature"
+            temperature_sensor_rate: "sensor.corridor_temperature_rate" # sampling_rate = 1min
+            window_sensor: binary_sensor.kitchen_window_contact_contact
+        - Entrance:
+            CAL_LOW_TEMP_THRESHOLD: 18.0
+            CAL_FORECAST_TIMESPAN: 2.0 # hours # app cfg
+            temperature_sensor: "sensor.entrance_temperature"
+            temperature_sensor_rate: "sensor.entrance_temperature_rate" # sampling_rate = 1min
+            window_sensor: None
+        - Garage:
+            CAL_LOW_TEMP_THRESHOLD: 10.0
+            CAL_FORECAST_TIMESPAN: 2.0 # hours # app cfg
+            temperature_sensor: "sensor.garage_temperature"
+            temperature_sensor_rate: "sensor.garage_temperature_rate" # sampling_rate = 1min
+            window_sensor: binary_sensor.garage_gatedoorlow_contact_contact
+        - Kidsroom:
+            CAL_LOW_TEMP_THRESHOLD: 18.0
+            CAL_FORECAST_TIMESPAN: 2.0 # hours # app cfg
+            temperature_sensor: "sensor.kidsroom_temperature"
+            temperature_sensor_rate: "sensor.kidsroom_temperature_rate" # sampling_rate = 1min
+            window_sensor: binary_sensor.kidsroom_window_contact_contact
+        - Upperbathroom:
+            CAL_LOW_TEMP_THRESHOLD: 18.0
+            CAL_FORECAST_TIMESPAN: 2.0 # hours # app cfg
+            temperature_sensor: "sensor.upperbathroom_temperature"
+            temperature_sensor_rate: "sensor.upperbathroom_temperature_rate" # sampling_rate = 1min
+            window_sensor: sensor.upperbathroom_window_contact_contact_battery
