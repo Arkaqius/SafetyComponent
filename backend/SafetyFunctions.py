@@ -39,6 +39,7 @@ from typing import Any
 import appdaemon.plugins.hass.hassapi as hass
 from shared.safety_component import SafetyComponent
 from shared.temperature_component import TemperatureComponent
+from shared.air_quality_component import AirQualityComponent
 from shared.fault_manager import FaultManager
 from shared.notification_manager import NotificationManager
 from shared.recovery_manager import RecoveryManager
@@ -53,7 +54,8 @@ if DEBUG:
     from remote_pdb import RemotePdb  # type: ignore
 
 COMPONENT_DICT: dict[str, SafetyComponent] = {
-    "TemperatureComponent": TemperatureComponent  # type: ignore
+    "TemperatureComponent": TemperatureComponent,  # type: ignore
+    "AirQualityComponent": AirQualityComponent,  # type: ignore
 }
 
 
