@@ -1,0 +1,3 @@
+.mypy_cache/**
+bmad_teams/**
+BMAD-METHOD/**
