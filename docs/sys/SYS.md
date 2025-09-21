@@ -1,19 +1,29 @@
-# Lean SYS + TSC — Safety Architecture & Requirements (v0.3a)
+# Lean SYS + TSC — Safety Architecture & Requirements (v1.0.0)
 
 **Item:** Home Automation Safety Monitoring & Recovery (multi-hazard)
 
 **Date:** 2025-09-18
 **Owner:** System/Safety (SYS)
 **Status:** Working Draft → for SYS review
-**Scope:** Blend **ASPICE SYS.x** with **ISO 26262-3/4/6** work products; align with provided **HARA**
+**Scope:** Blend **ASPICE SYS.x** with **ISO 26262-3/4/6** work products; align with provided **HARA** and **SYS v0.2** inputs.
 
 ---
 
 ## 1 Purpose and Audience
 
+**Why this document exists (HARA-linked):**
+
 - Provide a **single, lean specification** that turns the existing **HARA** (hazards, S/E/C, initial risk levels) into actionable **Safety Goals, System Requirements, Technical Safety Requirements, Safe States, and FTTI budgets**.
 - Maintain **end‑to‑end traceability** from _hazard → safety goal → requirement → verification_, while minimizing work products for a **hobby/semiprofessional, open‑source** effort (no formal certification claim).
 - Serve as the **source of truth** for the concept phase and subsequent implementation/validation; any YAML/CSV/config artifacts are generated from this document.
+
+**Intended readers:**
+
+- **Developers** — implement safety logic and interfaces (HA/AppDaemon or other runtimes later).
+- **Testers** — design and execute unit, integration, HIL, and household drills per the V\&V guidance.
+- **Contributors** — propose changes to thresholds/FTTI, add sensors/actuators, improve documentation.
+- **Maintainers** — govern releases, parameter changes, evidence retention, and issue triage.
+- **Safety reviewer (you)** — resolve open points (ASIL/FTTI confirmation, safe‑state policies, decomposition choices).
 
 **Scope of this document:**
 
@@ -25,8 +35,6 @@
 - General home‑automation conveniences (scenes, presence lighting, media, non‑safety automations).
 - Brand‑specific hardware design/certification and regulatory approvals (this is a best‑effort, non‑certified project).
 - Detailed software component design of your current app (to be integrated once concept is finalized).
-
----
 
 ## 2 System Boundaries
 
@@ -101,12 +109,6 @@ Elements **outside** the boundary that we rely on and for which we define assump
 - Weather/air‑quality feeds and alerting services are reasonably accurate within their stated SLAs.
 - Users maintain devices (battery/power) and respond to L1/L2 notifications per household policy.
 
-### 2.3 Context Diagram
-
-_(Insert block diagram – System vs. environment)_
-
----
-
 ## 3 System Modes
 
 > **Principle:** Modes describe how the **whole system operates**, not whether a fault/alert is active. Life‑safety events (fire/gas/CO) **override** mode policies where noted.
@@ -179,9 +181,41 @@ This chapter defines **notification levels and vectors** used by the Safety Syst
 - Dashboard “Main Safety Card” shows **current level badge** (HAZARD/WARNING/INFO) and supports **acknowledge** for L1–L3. Acknowledgement does **not** clear hazards; it silences repeats.
 - Lights used for signaling should restore to previous state when the event clears.
 
----
+### 4.5 Configuration Hooks (safety.yaml)
 
-### 4.5 WAN‑Loss Delivery Options (recommendations)
+```yaml
+notify_deadlines_s:
+  L1: 10
+  L2: 30
+  L3: 30
+  L4: 0 # best-effort
+notifications:
+  l1_profile: high_priority_with_sound
+  l2_profile: high_priority
+  l3_profile: normal
+  dashboard_card: main_safety
+  light_entity_info: light.info
+  light_entity_alert: light.alert
+  repeat_s_l1: 60
+  retries:
+    n_retry: 2
+    cooldown_s: 45
+  dual_path:
+    enabled: true # enable WAN-loss fallback logic
+    local_vectors: # what to use when WAN is down
+      - light.info
+      - light.alert
+      - switch.siren
+    cellular:
+      enabled: false # set true if a local LTE/SMS path is available
+      gateway_service: notify.sms_gateway # HA notify service for SMS
+      max_retries: 3
+      cooldown_s: 60
+```
+
+_Binding to actual Home Assistant services/entities is implementation‑specific and will be defined when integrating with your current app._
+
+### 4.6 WAN‑Loss Delivery Options (recommendations)
 
 When **WAN is down** (see §3, M4 Local‑Only), prefer delivery vectors that do **not** require the internet:
 
@@ -208,8 +242,6 @@ When **WAN is down** (see §3, M4 Local‑Only), prefer delivery vectors that do
 
 - _SYS‑SR‑N1:_ On WAN loss, the system **shall** deliver L1 locally (siren/light) and, if configured, via **cellular/SMS** within **T_notify ≤ 10 s**; queued IP notifications **shall** be sent on recovery.
 - _SYS‑SR‑N2:_ Cellular/SMS fallback **shall** be rate‑limited and logged with correlation IDs; failures **shall** trigger local repeats only.
-
----
 
 ## 5 Item Definition (lean)
 
@@ -485,8 +517,8 @@ _We model the system as **decoupled Safety Components**, each implementing one o
 
 - **SYS‑SR‑TEMP‑001 (Under‑detect):** The component **shall** detect `T_room < T_min` sustained for **T_det** with hysteresis **H** and suppression **S**, and raise `PR_TEMP_UNDER[room]` within **T_decision_max**.
 - **SYS‑SR‑TEMP‑002 (Under‑escalate):** If `PR_TEMP_UNDER[room]` persists for **T_escalate**, the system **shall** assert `F_UNDERTEMP` (if not active) or update its attributes to include `room`.
-- **SYS‑SR‑TEMP‑003 (Over‑detect):** The component **shall** detect `T_room > T_max` sustained for \*\*T_det_hot`with hysteresis **H_hot** and suppression **S_hot**, and raise`PR_TEMP_OVER\[room]\` within **T_decision_max**.
-- **SYS‑SR‑TEMP‑004 (Over‑escalate):** If `PR_TEMP_OVER[room]` persists for \*\*T_escalate`, the system **shall** assert `F_OVERTEMP\` (or update attributes).
+- **SYS‑SR‑TEMP‑003 (Over‑detect):** The component **shall** detect `T_room > T_max` sustained for **T_det_hot** with hysteresis **H_hot** and suppression **S_hot**, and raise `PR_TEMP_OVER[room]` within **T_decision_max**.
+- **SYS‑SR‑TEMP‑004 (Over‑escalate):** If `PR_TEMP_OVER[room]` persists for **T_escalate**, the system **shall** assert `F_OVERTEMP` (or update attributes).
 - **SYS‑SR‑TEMP‑005 (Forecast‑detect):** The component **shall** forecast room temperature **H_pred** ahead; when predicted `< T_min` with `confidence ≥ C_min` and `ΔT ≥ ΔT_min`, it **shall** raise `PR_TEMP_UNDER_FORECAST[room]`. Forecasting runs in **shadow** until precision ≥ **C_target**.
 - **SYS‑SR‑TEMP‑006 (Clear rules):** A prefault **shall clear** only after conditions are inside thresholds for **≥ T_stable**; faults clear when **no prefault** remains active for **≥ T_stable**.
 
@@ -534,6 +566,8 @@ _We model the system as **decoupled Safety Components**, each implementing one o
 - **E2E drills:** scripted under/over‑temperature scenarios across multiple rooms; verify aggregation and notifications.
 
 ---
+
+> **Next components to define (same pattern):** Fire/CO/Gas (C‑ALARM), Water Leak (C‑LEAK), Air Quality (C‑AQ), HVAC Health (C‑HVAC), Unauthorized Access (C‑SEC), Privacy (C‑PRIV), Network/Platform Health (C‑NET), Weather Ingress (C‑WX). Say which one you want next and I’ll add it.
 
 ## 9 Non‑Functional Requirements (NFR)
 
