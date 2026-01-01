@@ -2,6 +2,11 @@
 
 This file provides guidance and memory for Codex CLI.
 
+## Testing
+- Automated backend coverage lives under `backend/tests` and can be executed from the repo root with `pytest backend/tests`.
+- Use a Python 3.10+ virtual environment with pytest installed; the test suite uses the bundled AppDaemon Hass stub under `backend/tests/appdaemon` to avoid external dependencies.
+- The most recent verification ran `pytest backend/tests` successfully.
+
 <!-- BEGIN: BMAD-AGENTS -->
 # BMAD-METHOD Agents and Tasks
 

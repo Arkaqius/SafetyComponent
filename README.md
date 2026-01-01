@@ -11,6 +11,19 @@ TODO
 ## Usage
 TODO
 
+## Testing
+Automated tests are maintained under `backend/tests` and rely on the in-repo AppDaemon Hass stub for isolation. To run the full test suite:
+
+1. Create and activate a Python 3.10+ virtual environment.
+2. Install test dependencies (pytest and any project requirements) in that environment.
+3. From the repository root, execute:
+
+   ```bash
+   pytest backend/tests
+   ```
+
+Recent validation: the suite was exercised locally via `pytest backend/tests`.
+
 ## Contributing
 We appreciate your contributions! Please feel free to submit pull requests, create issues, and contribute to discussions.
 

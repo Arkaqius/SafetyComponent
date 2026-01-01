@@ -94,8 +94,8 @@ class NotificationManager:
                 level="DEBUG",
             )
         elif fault_status == FaultState.CLEARED:
-            # Instead of sending a new "cleared" notification, we just clear the existing one.
-            self._process_cleared_fault(level, fault_tag)
+            cleared_message = f"{message} has been cleared."
+            self._process_cleared_fault(level, cleared_message, fault_tag)
             self.hass_app.log(
                 f"Notification cleared for {fault} at {location}",
                 level="DEBUG",
@@ -114,9 +114,13 @@ class NotificationManager:
                 level="DEBUG",
             )
 
-    def _process_cleared_fault(self, level: int, fault_tag: str) -> None:
-        # Just clear the existing notification without sending a new message.
-        self._clear_company_app(level, fault_tag)
+    def _process_cleared_fault(self, level: int, message: str, fault_tag: str) -> None:
+        notification_data = self._prepare_notification_data(level, message, fault_tag)
+        if notification_data:
+            self._handle_notify_reg(fault_tag, FaultState.CLEARED, notification_data)
+            self._send_notification(notification_data)
+        else:
+            self._clear_company_app(level, fault_tag)
 
     def _set_dashboard_notification(self, message: str, level: int) -> None:
         """
@@ -128,7 +132,8 @@ class NotificationManager:
         """
         # This function assumes that you have an entity in Home Assistant that represents
         # a text field on a dashboard. You would need to create this entity and configure it
-        # to display messages        dashboard_entity = self.notification_config.get(f"dashboard_{level}_entity")
+        # to display messages
+        dashboard_entity = self.notification_config.get(f"dashboard_{level}_entity")
         if dashboard_entity:
             self.hass_app.set_state(dashboard_entity, state=message)
             self.hass_app.log(
@@ -346,5 +351,5 @@ class NotificationManager:
             notification: The notification data dictionary to update.
             notification_msg: The recovery message to append.
         """
-        notification["message"] = f"{notification_msg}"
+        notification["message"] = f" {notification_msg}"
         self._send_notification(notification)
