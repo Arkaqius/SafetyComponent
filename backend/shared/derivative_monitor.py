@@ -86,7 +86,11 @@ class DerivativeMonitor:
             state=None,
             attributes={
                 "friendly_name": f"{entity_id} Rate",
-                "unit_of_measurement": "°C/min"
+                "state_class": "measurement",
+                "unit_of_measurement": "°C/min",
+                "attribution": "Data provided by SafetyFunction",
+                "device_class": "temperature",
+                "icon": "mdi:chart-timeline-variant",
             },
         )
         self.hass_app.set_state(
@@ -94,7 +98,11 @@ class DerivativeMonitor:
             state=None,
             attributes={
                 "friendly_name": f"{entity_id} Rate",
-                "unit_of_measurement": "°C/min"
+                "state_class": "measurement",
+                "unit_of_measurement": "°C/min",
+                "attribution": "Data provided by SafetyFunction",
+                "device_class": "temperature",
+                "icon": "mdi:chart-timeline-variant",
             },
         )
         self.hass_app.log(

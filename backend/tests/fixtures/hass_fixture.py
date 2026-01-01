@@ -1,10 +1,11 @@
-import pytest
+from itertools import cycle
+from typing import Any, Generator, List
 from unittest.mock import MagicMock, patch
-from shared.types_common import FaultState
+
+import pytest
+
 from SafetyFunctions import SafetyFunctions
 from shared.temperature_component import TemperatureComponent
-from typing import Any, Generator, List
-from itertools import cycle
 
 
 @pytest.fixture
@@ -16,6 +17,8 @@ def mocked_hass() -> Generator[Any, Any, None]:
         mock_hass.get_state = MagicMock(return_value="on")
         mock_hass.set_state = MagicMock()
         mock_hass.call_service = MagicMock()
+        mock_hass.run_in = MagicMock()
+        mock_hass.listen_state = MagicMock()
         yield mock_hass
 
 
@@ -41,6 +44,10 @@ def mocked_hass_app_basic(mocked_hass, app_config_valid):
                 entity_id, mock_behaviors
             )
         )
+        app_instance.set_state = mocked_hass.set_state
+        app_instance.call_service = mocked_hass.call_service
+        app_instance.run_in = mocked_hass.run_in
+        app_instance.listen_state = mocked_hass.listen_state
         yield app_instance, mocked_hass, mock_log_method
 
 
@@ -64,15 +71,17 @@ def mocked_hass_app_with_temp_component(mocked_hass, app_config_valid):
         )
 
         mock_behaviors = default_mock_behaviors()
-        app_instance.get_state  = MagicMock(
+        app_instance.get_state = MagicMock(
             side_effect=lambda entity_id, **kwargs: mock_get_state(
                 entity_id, mock_behaviors
             )
         )
-        
+
         app_instance.set_state = mocked_hass.set_state
         app_instance.call_service = mocked_hass.call_service
-        
+        app_instance.run_in = mocked_hass.run_in
+        app_instance.listen_state = mocked_hass.listen_state
+
         yield app_instance, mocked_hass, mock_log_method, MockTemperatureComponent, mock_behaviors
 
 
@@ -111,19 +120,20 @@ def mock_get_state(entity_id, mock_behaviors):
             return value
     return None
 
+
 def update_mocked_get_state(default: List[MockBehavior], test_specyfic: List[MockBehavior]) -> List[MockBehavior]:
     # Create a set of entity_ids already in the default list for quick lookup
     default_entity_ids = {mock.entity_id for mock in default}
-    
+
     # Iterate over the default list to replace existing mocks with those from test_specyfic
     for idx, default_mock in enumerate(default):
         matching_mock = next((test_mock for test_mock in test_specyfic if test_mock.entity_id == default_mock.entity_id), None)
         if matching_mock:
             default[idx] = matching_mock
-    
+
     # Add mocks from test_specyfic that are not present in the default list
     for test_mock in test_specyfic:
         if test_mock.entity_id not in default_entity_ids:
             default.append(test_mock)
-    
+
     return default
