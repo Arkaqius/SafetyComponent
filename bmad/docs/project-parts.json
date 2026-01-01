@@ -1,0 +1,18 @@
+{
+  "repository_type": "multi-part",
+  "parts": [
+    {
+      "part_id": "frontend",
+      "root_path": "frontend",
+      "project_type": "web"
+    },
+    {
+      "part_id": "backend",
+      "root_path": "backend",
+      "project_type": "backend"
+    }
+  ],
+  "integration_points": [
+    "No direct API coupling detected in quick scan; integration likely via Home Assistant runtime"
+  ]
+}
