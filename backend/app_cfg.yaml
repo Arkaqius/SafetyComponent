@@ -1,12 +1,50 @@
 SafetyFunctions:
-  # App definitions
+  # AppDaemon app definition (standard fields)
   module: SafetyFunctions
   class: SafetyFunctions
   log_level: ERROR
   use_dictionary_unpacking: true
 
-  # General config of app
+  # ---------------------------------------------------------------------------
+  # Global (instance-independent) application policy.
+  #
+  # Keep this identical across all production installations.
+  # This section reflects the application's safety concept and platform policy
+  # (e.g., HARA-derived requirements, safety goals, and validation strategy).
+  #
+  # Development note:
+  # During active development you may temporarily relax strictness/validation,
+  # but production should run with strict validation enabled.
+  # ---------------------------------------------------------------------------
   app_config:
+    # Config versioning: bump when you introduce breaking config changes.
+    config_version: 1
+
+    # Strictness:
+    # - true  -> reject unknown keys in app_config/user_config (fail-fast)
+    # - false -> allow unknown keys (log warnings), useful during migration
+    strict_validation: true
+
+    # Entity validation policy and startup dependency checks:
+    validation:
+      # Always validate basic entity_id syntax ("domain.object_id")
+      validate_entity_id_syntax: true
+
+      # If true, verify each referenced entity exists in HA during initialize().
+      # Recommended: true for production to avoid silently running with wrong IDs.
+      validate_entity_existence: true
+
+    # Global fault catalog (shared policy).
+    #
+    # IMPORTANT:
+    # This catalog is part of the internal safety concept (HARA + system requirements).
+    # It defines which faults exist and their classification (e.g., level/severity).
+    #
+    # Rules:
+    # - Treat fault identifiers (keys) as stable API (used by components, logs, dashboards).
+    # - Do not change or delete faults casually. Changes should follow the safety process:
+    #   update HARA/requirements -> update fault catalog -> update tests -> release.
+    # - House-specific tuning belongs in user_config (entities/thresholds), not here.
     faults:
       RiskyTemperature:
         name: "Unsafe temperature"
@@ -19,65 +57,112 @@ SafetyFunctions:
         related_sms:
           - "sm_tc_2"
 
-  # User specyfic config
+  # ---------------------------------------------------------------------------
+  # House/installation specific configuration (entities, thresholds, enablement).
+  # This section is expected to differ per instance/home.
+  #
+  # Intent:
+  # - Define which components are enabled in this house.
+  # - Provide the concrete Home Assistant entity IDs used by the app.
+  # - Provide calibration thresholds and room-specific settings.
+  # ---------------------------------------------------------------------------
   user_config:
+    # Feature selection / enablement (house-specific intent).
+    #
+    # Validation rule:
+    # - If <ComponentName>: true  -> corresponding safety_components.<ComponentName>
+    #   must exist and be valid (otherwise FAIL-FAST).
+    # - If <ComponentName>: false -> component is not instantiated; config may be absent.
+    components_enabled:
+      TemperatureComponent: true
+      # WaterLeakComponent: false
+      # SmokeComponent: false
+
+    # Notification feature configuration.
+    #
+    # This section defines the entities/endpoints used to notify the user, such as:
+    # - indicator lamps/lights
+    # - mobile notification services
+    # - speakers / TTS entities
+    # - other annunciators
+    #
+    # NOTE:
+    # Even if only a subset is used today (e.g., warning light), keep this as the
+    # single place to expand notification channels without leaking entities into
+    # individual safety components.
     notification:
-      light_entity: 'light.warning_light'
+      light_entity: "light.warning_light"
+      # future examples:
+      # phone_notify_service: "notify.mobile_app_my_phone"
+      # tts_media_player: "media_player.livingroom_speaker"
+
+    # Common (shared) entities used across the whole application.
+    #
+    # This is the "shared entity registry" for signals that are not tied to a single
+    # SafetyComponent, but are used by multiple components or by the app core.
+    #
+    # Examples:
+    # - outside temperature (used by many temperature-related mechanisms)
+    # - energy price, humidity baseline, occupancy, etc.
     common_entities:
-      outside_temp : 'sensor.dom_temperature'
+      outside_temp: "sensor.dom_temperature"
+
+    # Safety components configuration (house-specific calibration + entities).
+    #
+    # Each component has its own schema. If a component is enabled above, its
+    # config must exist here and must be valid.
     safety_components:
       TemperatureComponent:
-        - Office:
-            CAL_LOW_TEMP_THRESHOLD: 18.0
-            CAL_FORECAST_TIMESPAN: 2.0 # hours # app cfg
+        # Defaults shared across rooms, can be overridden per room.
+        defaults:
+          CAL_LOW_TEMP_THRESHOLD: 18.0
+          CAL_FORECAST_TIMESPAN: 2.0 # hours
+
+        # Per-room configuration
+        rooms:
+          Office:
             temperature_sensor: "sensor.office_temperature"
-            temperature_sensor_rate: "sensor.office_temperature_rate" # sampling_rate = 1min
-            window_sensor: binary_sensor.office_window_contact_contact
-        - Bedroom:
-            CAL_LOW_TEMP_THRESHOLD: 18.0
-            CAL_FORECAST_TIMESPAN: 2.0 # hours # app cfg
+            temperature_sensor_rate: "sensor.office_temperature_rate"
+            window_sensor: "binary_sensor.office_window_contact_contact"
+
+          Bedroom:
             temperature_sensor: "sensor.bedroom_temperature"
-            temperature_sensor_rate: "sensor.bedroom_temperature_rate" # sampling_rate = 1min
-            window_sensor: binary_sensor.bedroom_windowleft_sensor_contact
-        - Bathroom:
-            CAL_LOW_TEMP_THRESHOLD: 18.0
-            CAL_FORECAST_TIMESPAN: 2.0 # hours # app cfg
+            temperature_sensor_rate: "sensor.bedroom_temperature_rate"
+            window_sensor: "binary_sensor.bedroom_windowleft_sensor_contact"
+
+          Bathroom:
             temperature_sensor: "sensor.bathroom_temperature"
-            temperature_sensor_rate: "sensor.bathroom_temperature_rate" # sampling_rate = 1min
-            window_sensor: binary_sensor.bathroom_window_contact_contact
-        - Livingroom:
-            CAL_LOW_TEMP_THRESHOLD: 18.0
-            CAL_FORECAST_TIMESPAN: 2.0 # hours # app cfg
+            temperature_sensor_rate: "sensor.bathroom_temperature_rate"
+            window_sensor: "binary_sensor.bathroom_window_contact_contact"
+
+          Livingroom:
             temperature_sensor: "sensor.livingroom_temperature"
-            temperature_sensor_rate: "sensor.livingroom_temperature_rate" # sampling_rate = 1min
-            window_sensor: binary_sensor.livingroom_door_contact_contact
-        - Kitchen:
-            CAL_LOW_TEMP_THRESHOLD: 18.0
-            CAL_FORECAST_TIMESPAN: 2.0 # hours # app cfg
+            temperature_sensor_rate: "sensor.livingroom_temperature_rate"
+            window_sensor: "binary_sensor.livingroom_door_contact_contact"
+
+          Kitchen:
             temperature_sensor: "sensor.corridor_temperature"
-            temperature_sensor_rate: "sensor.corridor_temperature_rate" # sampling_rate = 1min
-            window_sensor: binary_sensor.kitchen_window_contact_contact
-        - Entrance:
-            CAL_LOW_TEMP_THRESHOLD: 18.0
-            CAL_FORECAST_TIMESPAN: 2.0 # hours # app cfg
+            temperature_sensor_rate: "sensor.corridor_temperature_rate"
+            window_sensor: "binary_sensor.kitchen_window_contact_contact"
+
+          Entrance:
             temperature_sensor: "sensor.entrance_temperature"
-            temperature_sensor_rate: "sensor.entrance_temperature_rate" # sampling_rate = 1min
-            window_sensor: None
-        - Garage:
+            temperature_sensor_rate: "sensor.entrance_temperature_rate"
+            window_sensor: null
+
+          Garage:
+            # Override defaults for this room
             CAL_LOW_TEMP_THRESHOLD: 10.0
-            CAL_FORECAST_TIMESPAN: 2.0 # hours # app cfg
             temperature_sensor: "sensor.garage_temperature"
-            temperature_sensor_rate: "sensor.garage_temperature_rate" # sampling_rate = 1min
-            window_sensor: binary_sensor.garage_gatedoorlow_contact_contact
-        - Kidsroom:
-            CAL_LOW_TEMP_THRESHOLD: 18.0
-            CAL_FORECAST_TIMESPAN: 2.0 # hours # app cfg
+            temperature_sensor_rate: "sensor.garage_temperature_rate"
+            window_sensor: "binary_sensor.garage_gatedoorlow_contact_contact"
+
+          Kidsroom:
             temperature_sensor: "sensor.kidsroom_temperature"
-            temperature_sensor_rate: "sensor.kidsroom_temperature_rate" # sampling_rate = 1min
-            window_sensor: binary_sensor.kidsroom_window_contact_contact
-        - Upperbathroom:
-            CAL_LOW_TEMP_THRESHOLD: 18.0
-            CAL_FORECAST_TIMESPAN: 2.0 # hours # app cfg
+            temperature_sensor_rate: "sensor.kidsroom_temperature_rate"
+            window_sensor: "binary_sensor.kidsroom_window_contact_contact"
+
+          Upperbathroom:
             temperature_sensor: "sensor.upperbathroom_temperature"
-            temperature_sensor_rate: "sensor.upperbathroom_temperature_rate" # sampling_rate = 1min
-            window_sensor: sensor.upperbathroom_window_contact_contact_battery
+            temperature_sensor_rate: "sensor.upperbathroom_temperature_rate"
+            window_sensor: "sensor.upperbathroom_window_contact_contact"
