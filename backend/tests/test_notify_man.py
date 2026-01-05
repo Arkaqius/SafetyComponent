@@ -3,7 +3,7 @@
 
 from typing import Iterator, List
 import pytest
-from shared.types_common import FaultState, SMState
+from components.core.types_common import FaultState, SMState
 from unittest.mock import Mock
 from .fixtures.hass_fixture import (
     mock_get_state,
@@ -11,7 +11,7 @@ from .fixtures.hass_fixture import (
     update_mocked_get_state,
 )  # Import utilities from conftest.py
 
-from shared.notification_manager import NotificationManager
+from components.notification_manager.notification_manager import NotificationManager
 
 @pytest.mark.parametrize(
     "test_size,temperature, expected_symptom_state, expected_fault_state, prefault_title, prefault_message",

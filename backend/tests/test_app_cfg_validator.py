@@ -2,7 +2,7 @@ import copy
 
 import pytest
 
-from shared.app_cfg_validator import AppCfgValidationError, AppCfgValidator
+from components.app_config_validator.app_cfg_validator import AppCfgValidationError, AppCfgValidator
 
 
 def test_validate_app_cfg_normalizes_temperature_component(app_config_valid):

@@ -22,18 +22,18 @@ This module is part of a larger system designed for enhancing safety through Hom
 
 import math
 from typing import Dict, Any, Callable, Optional
-from pydantic import ConfigDict, ValidationError, model_validator
-from shared.safety_component import (
+
+import appdaemon.plugins.hass.hassapi as hass  # type: ignore
+
+from components.core.common_entities import CommonEntities
+from components.safetycomponents.core.safety_component import (
     SafetyComponent,
     safety_mechanism_decorator,
     DebounceState,
     SafetyMechanismResult,
 )
-from shared.pydantic_utils import StrictBaseModel, log_extra_keys
-from shared.safety_mechanism import SafetyMechanism
-from shared.types_common import Symptom, RecoveryAction, SMState, RecoveryResult
-from shared.common_entities import CommonEntities
-import appdaemon.plugins.hass.hassapi as hass  # type: ignore
+from components.safetycomponents.core.safety_mechanism import SafetyMechanism
+from components.core.types_common import Symptom, RecoveryAction, SMState, RecoveryResult
 
 # CONFIG
 DEBOUNCE_INIT = 0
@@ -53,134 +53,6 @@ class TemperatureComponent(SafetyComponent):
     """
 
     component_name: str = "TemperatureComponent"
-
-    class _TemperatureDefaults(StrictBaseModel):
-        """Common defaults for temperature rooms."""
-
-        model_config = ConfigDict(extra="allow")
-
-        CAL_LOW_TEMP_THRESHOLD: float
-        CAL_FORECAST_TIMESPAN: float
-
-    class _TemperatureRoom(StrictBaseModel):
-        """Per-room configuration for the temperature component."""
-
-        model_config = ConfigDict(extra="allow")
-
-        temperature_sensor: str
-        temperature_sensor_rate: str
-        window_sensor: Optional[str] = None
-        CAL_LOW_TEMP_THRESHOLD: Optional[float] = None
-        CAL_FORECAST_TIMESPAN: Optional[float] = None
-
-        @model_validator(mode="after")
-        def _ensure_thresholds_present(self) -> "TemperatureComponent._TemperatureRoom":
-            if self.CAL_LOW_TEMP_THRESHOLD is None and self.CAL_FORECAST_TIMESPAN is None:
-                return self
-            if self.CAL_LOW_TEMP_THRESHOLD is None:
-                raise ValueError(
-                    "CAL_LOW_TEMP_THRESHOLD missing while CAL_FORECAST_TIMESPAN provided"
-                )
-            if self.CAL_FORECAST_TIMESPAN is None:
-                raise ValueError(
-                    "CAL_FORECAST_TIMESPAN missing while CAL_LOW_TEMP_THRESHOLD provided"
-                )
-            return self
-
-        def _with_defaults(
-            self, defaults: "TemperatureComponent._TemperatureDefaults"
-        ) -> Dict[str, Any]:
-            merged: Dict[str, Any] = {
-                "temperature_sensor": self.temperature_sensor,
-                "temperature_sensor_rate": self.temperature_sensor_rate,
-                "window_sensor": self.window_sensor,
-            }
-
-            low_temp = self.CAL_LOW_TEMP_THRESHOLD
-            forecast = self.CAL_FORECAST_TIMESPAN
-
-            low_temp = (
-                low_temp
-                if low_temp is not None
-                else defaults.CAL_LOW_TEMP_THRESHOLD
-            )
-            forecast = (
-                forecast
-                if forecast is not None
-                else defaults.CAL_FORECAST_TIMESPAN
-            )
-
-            if low_temp is None or forecast is None:
-                raise ValueError(
-                    "TemperatureComponent room configuration requires CAL_LOW_TEMP_THRESHOLD and CAL_FORECAST_TIMESPAN"
-                )
-
-            merged["CAL_LOW_TEMP_THRESHOLD"] = low_temp
-            merged["CAL_FORECAST_TIMESPAN"] = forecast
-
-            extras = getattr(self, "model_extra", None) or {}
-            merged.update(extras)
-            return merged
-
-    class _TemperatureComponentConfig(StrictBaseModel):
-        """Configuration schema for the temperature component."""
-
-        model_config = ConfigDict(extra="allow")
-
-        defaults: "TemperatureComponent._TemperatureDefaults"
-        rooms: Dict[str, "TemperatureComponent._TemperatureRoom"]
-
-        def to_runtime(self) -> list[Dict[str, Dict[str, Any]]]:
-            runtime_rooms: list[Dict[str, Dict[str, Any]]] = []
-            for room_name, room_cfg in self.rooms.items():
-                runtime_rooms.append({room_name: room_cfg._with_defaults(self.defaults)})
-            return runtime_rooms
-
-    @classmethod
-    def validate_config(
-        cls,
-        raw_cfg: dict[str, Any],
-        *,
-        strict_validation: bool = True,
-        log: Callable[..., None] | None = None,
-    ) -> list[dict[str, dict[str, Any]]]:
-        """
-        Validate and normalize a temperature component configuration.
-
-        Args:
-            raw_cfg: Raw configuration dictionary for the component.
-
-        Returns:
-            Normalized runtime representation for the component.
-        """
-
-        try:
-            validated = cls._TemperatureComponentConfig.model_validate(
-                raw_cfg, context={"strict_validation": strict_validation}
-            )
-            if not strict_validation:
-                log_extra_keys(
-                    validated,
-                    log,
-                    f"user_config.safety_components.{cls.component_name}",
-                )
-                if validated.defaults:
-                    log_extra_keys(
-                        validated.defaults,
-                        log,
-                        f"user_config.safety_components.{cls.component_name}.defaults",
-                    )
-                for room_name, room_cfg in validated.rooms.items():
-                    log_extra_keys(
-                        room_cfg,
-                        log,
-                        "user_config.safety_components."
-                        f"{cls.component_name}.rooms.{room_name}",
-                    )
-        except ValidationError as exc:
-            raise ValueError(str(exc)) from exc
-
-        return validated.to_runtime()
 
     # region Init and enables
     def __init__(self, hass_app: hass, common_entities: CommonEntities) -> None:  # type: ignore

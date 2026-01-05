@@ -3,7 +3,7 @@
 
 from typing import Iterator, List
 import pytest
-from shared.types_common import FaultState, SMState
+from components.core.types_common import FaultState, SMState
 from unittest.mock import Mock
 from .fixtures.hass_fixture import (
     mock_get_state,

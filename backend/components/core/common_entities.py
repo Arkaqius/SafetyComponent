@@ -1,7 +1,10 @@
+"""Shared entity accessors for cross-component use."""
+
 import appdaemon.plugins.hass.hassapi as hass  # type: ignore
 
 
 class CommonEntities:
+    """Convenience wrapper for shared Home Assistant entities."""
 
     def __init__(self, hass_app: hass, cfg: dict[str, str]) -> None:
         self.hass_app: hass = hass_app

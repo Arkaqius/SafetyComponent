@@ -4,7 +4,7 @@ It supports getting Fault and symptom objects, which are essential components of
 These utilities facilitate the dynamic setup of safety mechanisms based on external configurations.
 """
 
-from shared.fault_manager import Fault
+from components.core.types_common import Fault
 
 
 def get_faults(faults_dict: dict) -> dict[str, Fault]:

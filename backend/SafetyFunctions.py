@@ -37,16 +37,19 @@ Note:
 
 from typing import Any, Dict
 import appdaemon.plugins.hass.hassapi as hass
-from shared.app_cfg_validator import AppCfgValidationError, AppCfgValidator
-from shared.safety_component import SafetyComponent
-from shared.temperature_component import TemperatureComponent
-from shared.fault_manager import FaultManager
-from shared.notification_manager import NotificationManager
-from shared.recovery_manager import RecoveryManager
-from shared.types_common import Fault, Symptom, RecoveryAction
-from shared.common_entities import CommonEntities
-from shared.derivative_monitor import DerivativeMonitor
-import shared.cfg_parser as cfg_pr
+from components.app_config_validator.app_cfg_validator import (
+    AppCfgValidationError,
+    AppCfgValidator,
+)
+from components.core.common_entities import CommonEntities
+from components.safetycomponents.core.derivative_monitor import DerivativeMonitor
+from components.faults_manager import cfg_parser as cfg_pr
+from components.faults_manager.fault_manager import FaultManager
+from components.notification_manager.notification_manager import NotificationManager
+from components.recovery_manager.recovery_manager import RecoveryManager
+from components.safetycomponents.core.safety_component import SafetyComponent
+from components.safetycomponents.temperature.temperature_component import TemperatureComponent
+from components.core.types_common import Fault, Symptom, RecoveryAction
 
 DEBUG = False
 

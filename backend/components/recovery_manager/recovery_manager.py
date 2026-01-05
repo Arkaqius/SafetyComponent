@@ -21,8 +21,13 @@ This module's approach to fault recovery empowers developers to construct robust
 """
 
 from typing import Any, Optional
+
 import appdaemon.plugins.hass.hassapi as hass  # type: ignore
-from shared.types_common import (
+
+from components.core.common_entities import CommonEntities
+from components.faults_manager.fault_manager import FaultManager
+from components.notification_manager.notification_manager import NotificationManager
+from components.core.types_common import (
     RecoveryAction,
     Symptom,
     SMState,
@@ -31,9 +36,6 @@ from shared.types_common import (
     RecoveryActionState,
     RecoveryResult,
 )
-from shared.common_entities import CommonEntities
-from shared.fault_manager import FaultManager
-from shared.notification_manager import NotificationManager
 
 
 class RecoveryManager:

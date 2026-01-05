@@ -1,4 +1,4 @@
-from shared.types_common import FaultState
+from components.core.types_common import FaultState
 
 def test_faults_set_symptoms(mocked_hass_app):
 

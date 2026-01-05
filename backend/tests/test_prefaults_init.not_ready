@@ -1,4 +1,4 @@
-from shared.fault_manager import SMState
+from components.core.types_common import SMState
 
 
 def test_symptoms_init_RiskyTemperatureOffice(mocked_hass_app):

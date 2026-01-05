@@ -1,7 +1,7 @@
 # tests/test_recovery_man.py
 # mypy: ignore-errors
 
-from shared.types_common import FaultState, RecoveryResult, RecoveryActionState, Fault, Symptom, RecoveryAction
+from components.core.types_common import FaultState, RecoveryResult, RecoveryActionState, Fault, Symptom, RecoveryAction
 from unittest.mock import Mock
 
 
@@ -539,7 +539,7 @@ def test_recovery_conflict_with_higher_priority(mocked_hass_app_with_temp_compon
 
 import pytest
 from unittest.mock import Mock, patch
-from shared.types_common import FaultState, RecoveryActionState, RecoveryResult
+from components.core.types_common import FaultState, RecoveryActionState, RecoveryResult
 
 def test_perform_recovery_with_exception_handling(mocked_hass_app_with_temp_component):
     """

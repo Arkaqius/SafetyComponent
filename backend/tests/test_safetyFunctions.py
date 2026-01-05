@@ -1,7 +1,7 @@
 from typing import Iterator, List
 import pytest
-from shared.types_common import FaultState, SMState
-from shared.temperature_component import TemperatureComponent
+from components.core.types_common import FaultState, SMState
+from components.safetycomponents.temperature.temperature_component import TemperatureComponent
 import SafetyFunctions
 from unittest.mock import Mock, patch
 from .fixtures.hass_fixture import (

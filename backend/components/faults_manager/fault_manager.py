@@ -24,12 +24,11 @@ Note: This module is designed for internal use within the Home Assistant safety 
 """
 
 from typing import Optional, Callable, Any
-from pydantic import ConfigDict, ValidationError, Field
-from shared.types_common import FaultState, SMState, Symptom, Fault
+
 import appdaemon.plugins.hass.hassapi as hass
 import hashlib
 
-from shared.pydantic_utils import StrictBaseModel, log_extra_keys
+from components.core.types_common import FaultState, SMState, Symptom, Fault
 
 
 class FaultManager:
@@ -74,47 +73,6 @@ class FaultManager:
         self.symptoms: dict[str, Symptom] = symptom_dict
         self.sm_modules: dict = sm_modules
         self.hass: hass.Hass = hass
-
-    class _FaultEntry(StrictBaseModel):
-        """Schema for a single fault definition."""
-
-        model_config = ConfigDict(extra="allow")
-
-        name: str
-        level: int = Field(..., ge=1)
-        related_sms: list[str]
-
-    @classmethod
-    def validate_config(
-        cls,
-        faults_cfg: dict[str, Any],
-        *,
-        strict_validation: bool = True,
-        log: Callable[..., None] | None = None,
-    ) -> dict[str, dict[str, Any]]:
-        """
-        Validate fault configuration entries.
-
-        Args:
-            faults_cfg: Raw fault configuration mapping.
-
-        Returns:
-            Validated fault configuration suitable for runtime use.
-        """
-
-        try:
-            validated: dict[str, dict[str, Any]] = {}
-            for name, cfg in faults_cfg.items():
-                model = cls._FaultEntry.model_validate(
-                    cfg, context={"strict_validation": strict_validation}
-                )
-                if not strict_validation:
-                    log_extra_keys(model, log, f"app_config.faults.{name}")
-                validated[name] = model.model_dump()
-        except ValidationError as exc:
-            raise ValueError(str(exc)) from exc
-
-        return validated
 
     def register_callbacks(
         self,

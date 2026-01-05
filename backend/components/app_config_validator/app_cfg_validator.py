@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable, ClassVar, Dict, Optional
+from typing import Any, Callable, Dict
 import re
 
-from pydantic import ConfigDict, Field, ValidationError
-from shared.fault_manager import FaultManager
-from shared.notification_manager import NotificationManager
-from shared.pydantic_utils import StrictBaseModel, log_extra_keys
-from shared.temperature_component import TemperatureComponent
+from pydantic import ValidationError
+
+from components.app_config_validator.schema import AppCfg
+from components.core.pydantic_utils import log_extra_keys
+from components.faults_manager.schema import validate_faults_config
+from components.notification_manager.schema import validate_notification_config
+from components.safetycomponents.temperature.schema import (
+    COMPONENT_NAME as TEMPERATURE_COMPONENT_NAME,
+    validate_temperature_config,
+)
 
 
 class AppCfgValidationError(Exception):
@@ -43,7 +48,7 @@ def _collect_entity_ids(runtime_cfg: Dict[str, Any]) -> list[tuple[str, str]]:
             entity_ids.append((f"user_config.notification.{key}", value))
 
     components_cfg = user_cfg.get("safety_components", {}) or {}
-    temperature_cfg = components_cfg.get(TemperatureComponent.component_name)
+    temperature_cfg = components_cfg.get(TEMPERATURE_COMPONENT_NAME)
     if isinstance(temperature_cfg, list):
         for room in temperature_cfg:
             if not isinstance(room, dict):
@@ -62,7 +67,7 @@ def _collect_entity_ids(runtime_cfg: Dict[str, Any]) -> list[tuple[str, str]]:
                         entity_ids.append(
                             (
                                 "user_config.safety_components."
-                                f"{TemperatureComponent.component_name}."
+                                f"{TEMPERATURE_COMPONENT_NAME}."
                                 f"{room_name}.{key}",
                                 value,
                             )
@@ -94,92 +99,39 @@ def _validate_entity_existence(
     return missing
 
 
-class ValidationSettings(StrictBaseModel):
-    """Validation options for entity and startup checks."""
+def _to_runtime(
+    cfg: AppCfg,
+    *,
+    strict_validation: bool,
+    log: Callable[..., None] | None,
+) -> Dict[str, Any]:
+    runtime = cfg.model_dump(by_alias=True)
+    runtime_user_cfg = runtime.get("user_config", {})
 
-    model_config = ConfigDict(extra="allow")
+    enabled_components = cfg.user_config.enabled_components()
+    runtime_components: Dict[str, Any] = {}
+    for name, component_cfg in enabled_components.items():
+        if name == TEMPERATURE_COMPONENT_NAME:
+            runtime_components[name] = validate_temperature_config(
+                component_cfg, strict_validation=strict_validation, log=log
+            )
+        else:
+            runtime_components[name] = component_cfg
 
-    validate_entity_id_syntax: bool = True
-    validate_entity_existence: bool = True
+    runtime_user_cfg["safety_components"] = runtime_components
+    runtime_user_cfg["notification"] = validate_notification_config(
+        cfg.user_config.notification,
+        strict_validation=strict_validation,
+        log=log,
+    )
 
-
-class AppPolicy(StrictBaseModel):
-    """Application-wide configuration shared across installations."""
-
-    model_config = ConfigDict(extra="allow")
-
-    config_version: int = Field(..., ge=1)
-    strict_validation: bool = True
-    validation: ValidationSettings = Field(default_factory=ValidationSettings)
-    faults: Dict[str, Dict[str, Any]]
-
-
-class UserConfig(StrictBaseModel):
-    """House-specific configuration."""
-
-    model_config = ConfigDict(extra="allow")
-
-    components_enabled: Dict[str, bool] = Field(default_factory=dict)
-    notification: Dict[str, Any]
-    common_entities: Dict[str, str]
-    safety_components: Dict[str, Dict[str, Any]]
-
-    def enabled_components(self) -> Dict[str, Dict[str, Any]]:
-        if not self.components_enabled:
-            return self.safety_components
-
-        return {
-            name: cfg
-            for name, cfg in self.safety_components.items()
-            if self.components_enabled.get(name, True)
-        }
-
-
-class AppCfg(StrictBaseModel):
-    """Top-level SafetyFunctions configuration schema."""
-
-    model_config = ConfigDict(extra="allow", populate_by_name=True)
-    allow_unknown_keys: ClassVar[bool] = True
-
-    module: str
-    class_name: str = Field(..., alias="class")
-    log_level: Optional[str] = None
-    use_dictionary_unpacking: Optional[bool] = None
-    app_config: AppPolicy
-    user_config: UserConfig
-
-    def to_runtime(
-        self,
-        strict_validation: bool = True,
-        log: Callable[..., None] | None = None,
-    ) -> Dict[str, Any]:
-        runtime = self.model_dump(by_alias=True)
-        runtime_user_cfg = runtime.get("user_config", {})
-
-        enabled_components = self.user_config.enabled_components()
-        runtime_components: Dict[str, Any] = {}
-        for name, cfg in enabled_components.items():
-            if name == TemperatureComponent.component_name:
-                runtime_components[name] = TemperatureComponent.validate_config(
-                    cfg, strict_validation=strict_validation, log=log
-                )
-            else:
-                runtime_components[name] = cfg
-
-        runtime_user_cfg["safety_components"] = runtime_components
-        runtime_user_cfg["notification"] = NotificationManager.validate_config(
-            self.user_config.notification,
-            strict_validation=strict_validation,
-            log=log,
-        )
-
-        runtime["user_config"] = runtime_user_cfg
-        runtime["app_config"]["faults"] = FaultManager.validate_config(
-            self.app_config.faults,
-            strict_validation=strict_validation,
-            log=log,
-        )
-        return runtime
+    runtime["user_config"] = runtime_user_cfg
+    runtime["app_config"]["faults"] = validate_faults_config(
+        cfg.app_config.faults,
+        strict_validation=strict_validation,
+        log=log,
+    )
+    return runtime
 
 
 class AppCfgValidator:
@@ -205,7 +157,8 @@ class AppCfgValidator:
                     f"{cfg.app_config.config_version}; "
                     f"supported={SUPPORTED_CONFIG_VERSION}"
                 )
-            runtime_cfg = cfg.to_runtime(
+            runtime_cfg = _to_runtime(
+                cfg,
                 strict_validation=strict_validation,
                 log=log,
             )

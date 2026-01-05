@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
-
-from typing import Callable
+from typing import Any, Callable, ClassVar
 
 from pydantic import BaseModel, ConfigDict, model_validator
 

@@ -34,12 +34,12 @@ from typing import (
 )
 from enum import Enum
 
-from shared.fault_manager import FaultManager
-from shared.types_common import FaultState
 import appdaemon.plugins.hass.hassapi as hass  # type: ignore
-from shared.types_common import Symptom, RecoveryAction, SMState
-from shared.common_entities import CommonEntities
-from shared.derivative_monitor import DerivativeMonitor
+
+from components.core.common_entities import CommonEntities
+from components.safetycomponents.core.derivative_monitor import DerivativeMonitor
+from components.faults_manager.fault_manager import FaultManager
+from components.core.types_common import FaultState, Symptom, RecoveryAction, SMState
 
 NO_NEEDED = False
 

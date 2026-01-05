@@ -12,15 +12,15 @@ mechanisms, using Home Assistant's infrastructure to interact with sensors and e
 """
 
 from typing import Dict, Any, Callable, Optional
-from shared.safety_component import (
+from components.safetycomponents.core.safety_component import (
     SafetyComponent,
     safety_mechanism_decorator,
     DebounceState,
     SafetyMechanismResult,
 )
-from shared.safety_mechanism import SafetyMechanism
-from shared.types_common import Symptom, RecoveryAction, SMState
-from shared.common_entities import CommonEntities
+from components.safetycomponents.core.safety_mechanism import SafetyMechanism
+from components.core.types_common import Symptom, RecoveryAction, SMState
+from components.core.common_entities import CommonEntities
 import appdaemon.plugins.hass.hassapi as hass  # type: ignore
 
 

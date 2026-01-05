@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import Mock, call
-from shared.derivative_monitor import DerivativeMonitor
+from components.safetycomponents.core.derivative_monitor import DerivativeMonitor
 
 
 @pytest.fixture

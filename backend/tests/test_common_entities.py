@@ -1,6 +1,6 @@
 from unittest.mock import Mock
 import pytest
-from shared.common_entities import CommonEntities
+from components.core.common_entities import CommonEntities
 
 def test_common_entities_initialization():
     """

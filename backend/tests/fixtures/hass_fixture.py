@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from SafetyFunctions import SafetyFunctions
-from shared.temperature_component import TemperatureComponent
+from components.safetycomponents.temperature.temperature_component import TemperatureComponent
 
 
 @pytest.fixture
@@ -55,7 +55,7 @@ def mocked_hass_app_basic(mocked_hass, app_config_valid):
 def mocked_hass_app_with_temp_component(mocked_hass, app_config_valid):
     """Fixture that initializes SafetyFunctions with mocked Hass and TemperatureComponent."""
     with patch(
-        "shared.temperature_component.TemperatureComponent"
+        "components.safetycomponents.temperature.temperature_component.TemperatureComponent"
     ) as MockTemperatureComponent, patch.object(
         SafetyFunctions, "log", new_callable=MagicMock
     ) as mock_log_method:

@@ -1,7 +1,7 @@
 from unittest.mock import Mock, patch
 import pytest
-from shared.types_common import FaultState, SMState, Symptom, Fault
-from shared.fault_manager import FaultManager
+from components.core.types_common import FaultState, SMState, Symptom, Fault
+from components.faults_manager.fault_manager import FaultManager
 
 @pytest.fixture
 def mocked_hass_app():

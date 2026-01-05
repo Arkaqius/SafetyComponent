@@ -1,8 +1,8 @@
 # tests/test_initialization.py
 
 import pytest
-from shared.temperature_component import TemperatureComponent
-from shared.fault_manager import FaultManager
+from components.safetycomponents.temperature.temperature_component import TemperatureComponent
+from components.faults_manager.fault_manager import FaultManager
 from .fixtures.hass_fixture import mock_get_state, MockBehavior  # Import utilities from conftest.py
 
 
