@@ -95,7 +95,13 @@ def default_mock_behaviors():
         MockBehavior(
             "sensor.office_window_contact_contact", iter(["off", "off", "off"])
         ),
+        MockBehavior("sensor.kitchen_temperature", iter(["5", "6", "7", "8", "9"])),
+        MockBehavior("sensor.kitchen_temperature_rate", iter(["0", "0", "0", "0", "0"])),
+        MockBehavior(
+            "sensor.kitchen_window_contact_contact", iter(["off", "off", "off"])
+        ),
         MockBehavior("sensor.dom_temperature", iter(["1", "1", "1"])),
+        MockBehavior("light.warning_light", iter(["on", "on", "on"])),
     ]
 
 

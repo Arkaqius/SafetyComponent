@@ -19,9 +19,11 @@ Classes:
 
     NotificationManager: Manages the configuration and execution of notifications within the safety system.
 """
-from typing import Optional, Callable
+from typing import Optional, Callable, Any
+from pydantic import ConfigDict, ValidationError
 import appdaemon.plugins.hass.hassapi as hass  # type: ignore
 from shared.types_common import FaultState
+from shared.pydantic_utils import StrictBaseModel, log_extra_keys
 
 
 class NotificationManager:
@@ -58,6 +60,39 @@ class NotificationManager:
             3: None,
             4: None,
         }
+
+    class _NotificationConfig(StrictBaseModel):
+        """Schema for notification configuration."""
+
+        model_config = ConfigDict(extra="allow")
+
+        light_entity: Optional[str] = None
+        alarm_entity: Optional[str] = None
+        dashboard_1_entity: Optional[str] = None
+        dashboard_2_entity: Optional[str] = None
+        dashboard_3_entity: Optional[str] = None
+        dashboard_4_entity: Optional[str] = None
+
+    @classmethod
+    def validate_config(
+        cls,
+        notification_cfg: dict[str, Any],
+        *,
+        strict_validation: bool = True,
+        log: Callable[..., None] | None = None,
+    ) -> dict[str, Any]:
+        """Validate notification configuration via Pydantic schema."""
+
+        try:
+            validated = cls._NotificationConfig.model_validate(
+                notification_cfg, context={"strict_validation": strict_validation}
+            )
+            if not strict_validation:
+                log_extra_keys(validated, log, "user_config.notification")
+        except ValidationError as exc:
+            raise ValueError(str(exc)) from exc
+
+        return validated.model_dump()
 
     def notify(
         self,

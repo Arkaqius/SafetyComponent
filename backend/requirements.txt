@@ -1,0 +1,4 @@
+appdaemon
+pydantic>=2,<3
+pytest
+remote-pdb

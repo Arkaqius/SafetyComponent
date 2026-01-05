@@ -45,22 +45,15 @@ def test_safety_functions_initialization(mocked_hass_app_with_temp_component) ->
     assert "TemperatureComponent" in app_instance.sm_modules
 
     # Verify that TemperatureComponent received the correct configuration
-    temp_comp_cfg = app_instance.safety_components_cfg["TemperatureComponent"][0]
-    assert "Office" in temp_comp_cfg
-    assert temp_comp_cfg["Office"]["temperature_sensor"] == "sensor.office_temperature"
-    assert (
-        temp_comp_cfg["Office"]["window_sensor"]
-        == "sensor.office_window_contact_contact"
-    )
+    temp_comp_cfg = app_instance.safety_components_cfg["TemperatureComponent"]
 
-    assert "Kitchen" in temp_comp_cfg
-    assert (
-        temp_comp_cfg["Kitchen"]["temperature_sensor"] == "sensor.kitchen_temperature"
-    )
-    assert (
-        temp_comp_cfg["Kitchen"]["window_sensor"]
-        == "sensor.kitchen_window_contact_contact"
-    )
+    office_cfg = next(cfg["Office"] for cfg in temp_comp_cfg if "Office" in cfg)
+    assert office_cfg["temperature_sensor"] == "sensor.office_temperature"
+    assert office_cfg["window_sensor"] == "sensor.office_window_contact_contact"
+
+    kitchen_cfg = next(cfg["Kitchen"] for cfg in temp_comp_cfg if "Kitchen" in cfg)
+    assert kitchen_cfg["temperature_sensor"] == "sensor.kitchen_temperature"
+    assert kitchen_cfg["window_sensor"] == "sensor.kitchen_window_contact_contact"
 
     # Verify the NotificationManager is initialized with the correct entity
     assert (

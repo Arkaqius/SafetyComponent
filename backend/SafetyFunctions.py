@@ -35,8 +35,9 @@ Note:
 
 """
 
-from typing import Any
+from typing import Any, Dict
 import appdaemon.plugins.hass.hassapi as hass
+from shared.app_cfg_validator import AppCfgValidationError, AppCfgValidator
 from shared.safety_component import SafetyComponent
 from shared.temperature_component import TemperatureComponent
 from shared.fault_manager import FaultManager
@@ -71,6 +72,16 @@ class SafetyFunctions(hass.Hass):
         # pylint: disable=attribute-defined-outside-init
         # 10. Initialize health entity
         self.set_state("sensor.safety_app_health", state="init")
+
+        try:
+            self.args: Dict[str, Any] = AppCfgValidator.validate(
+                self.args, hass=self, log=self.log
+            )
+        except AppCfgValidationError as exc:
+            self.log(f"Invalid app configuration: {exc}", level="ERROR")
+            self.set_state("sensor.safety_app_health", state="invalid_cfg")
+            self.stop_app(self.name)
+            return
 
         if DEBUG:
             RemotePdb("172.30.33.4", 5050).set_trace()
@@ -196,7 +207,7 @@ class SafetyFunctions(hass.Hass):
                     "friendly_name": f"Fault: {name}",
                     "attribution": "Managed by SafetyFunction",
                     "description": f"Status of the {name} fault.",
-                    "level": f'level_{fault.level}'
+                    "level": f"level_{fault.level}",
                 },
             )
 

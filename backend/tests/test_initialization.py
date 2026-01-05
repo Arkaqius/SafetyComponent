@@ -6,8 +6,6 @@ from shared.fault_manager import FaultManager
 from .fixtures.hass_fixture import mock_get_state, MockBehavior  # Import utilities from conftest.py
 
 
-@pytest.mark.init
-@pytest.mark.positive
 def test_initialize_dicts_symptom(mocked_hass_app_basic):
     app_instance, _, __ = mocked_hass_app_basic
     app_instance.initialize()
