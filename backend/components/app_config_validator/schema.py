@@ -18,6 +18,26 @@ class ValidationSettings(StrictBaseModel):
     validate_entity_existence: bool = True
 
 
+class TemperatureCalibration(StrictBaseModel):
+    """Calibration defaults for the temperature component."""
+
+    model_config = ConfigDict(extra="allow")
+
+    SM_TC_1_DEBOUNCE_LIMIT: int = 2
+    SM_TC_1_REEVAL_DELAY_SECONDS: int = 30
+    SM_TC_2_DEBOUNCE_LIMIT: int = 2
+    SM_TC_2_REEVAL_DELAY_SECONDS: int = 30
+    SM_TC_2_DERIVATIVE_SAMPLE_MINUTES: int = 15
+
+
+class CalibrationSettings(StrictBaseModel):
+    """Calibration defaults for safety components."""
+
+    model_config = ConfigDict(extra="allow")
+
+    temperature: TemperatureCalibration = Field(default_factory=TemperatureCalibration)
+
+
 class AppPolicy(StrictBaseModel):
     """Application-wide configuration shared across installations."""
 
@@ -26,6 +46,7 @@ class AppPolicy(StrictBaseModel):
     config_version: int = Field(..., ge=1)
     strict_validation: bool = True
     validation: ValidationSettings = Field(default_factory=ValidationSettings)
+    calibration: CalibrationSettings = Field(default_factory=CalibrationSettings)
     faults: Dict[str, Dict[str, Any]]
 
 

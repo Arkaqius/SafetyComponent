@@ -85,10 +85,14 @@ class TemperatureComponentConfig(StrictBaseModel):
     defaults: TemperatureDefaults
     rooms: Dict[str, TemperatureRoom]
 
-    def to_runtime(self) -> list[Dict[str, Dict[str, Any]]]:
+    def to_runtime(
+        self, calibration: Dict[str, Any]
+    ) -> list[Dict[str, Dict[str, Any]]]:
         runtime_rooms: list[Dict[str, Dict[str, Any]]] = []
         for room_name, room_cfg in self.rooms.items():
-            runtime_rooms.append({room_name: room_cfg.with_defaults(self.defaults)})
+            merged = room_cfg.with_defaults(self.defaults)
+            merged.update(calibration)
+            runtime_rooms.append({room_name: merged})
         return runtime_rooms
 
 
@@ -97,6 +101,7 @@ def validate_temperature_config(
     *,
     strict_validation: bool = True,
     log: Callable[..., None] | None = None,
+    calibration: Dict[str, Any] | None = None,
 ) -> list[dict[str, dict[str, Any]]]:
     """Validate and normalize a temperature component configuration."""
 
@@ -125,4 +130,14 @@ def validate_temperature_config(
     except ValidationError as exc:
         raise ValueError(str(exc)) from exc
 
-    return validated.to_runtime()
+    calibration_defaults = {
+        "SM_TC_1_DEBOUNCE_LIMIT": 2,
+        "SM_TC_1_REEVAL_DELAY_SECONDS": 30,
+        "SM_TC_2_DEBOUNCE_LIMIT": 2,
+        "SM_TC_2_REEVAL_DELAY_SECONDS": 30,
+        "SM_TC_2_DERIVATIVE_SAMPLE_MINUTES": 15,
+    }
+    if calibration:
+        calibration_defaults.update(calibration)
+
+    return validated.to_runtime(calibration_defaults)
