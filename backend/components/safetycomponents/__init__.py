@@ -8,6 +8,9 @@ from .core.safety_component import (
     DebounceState,
     SafetyComponent,
     SafetyMechanismResult,
+    clear_registered_components,
+    get_registered_components,
+    register_safety_component,
     safety_mechanism_decorator,
 )
 from .core.safety_mechanism import SafetyMechanism
@@ -27,6 +30,9 @@ __all__ = [
     "SafetyComponent",
     "SafetyMechanism",
     "SafetyMechanismResult",
+    "clear_registered_components",
+    "get_registered_components",
+    "register_safety_component",
     "TemperatureComponent",
     "TemperatureComponentConfig",
     "TemperatureDefaults",

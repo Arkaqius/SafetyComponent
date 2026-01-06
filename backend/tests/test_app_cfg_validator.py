@@ -2,7 +2,13 @@ import copy
 
 import pytest
 
-from components.app_config_validator.app_cfg_validator import AppCfgValidationError, AppCfgValidator
+from components.app_config_validator.app_cfg_validator import (
+    AppCfgValidationError,
+    AppCfgValidator,
+    _collect_entity_ids,
+    _validate_entity_existence,
+)
+from components.safetycomponents.temperature.schema import COMPONENT_NAME as TEMP_COMPONENT_NAME
 
 
 def test_validate_app_cfg_normalizes_temperature_component(app_config_valid):
@@ -110,3 +116,53 @@ def test_validate_app_cfg_requires_user_config(app_config_valid):
 
     with pytest.raises(AppCfgValidationError):
         AppCfgValidator.validate(cfg)
+
+
+def test_validate_app_cfg_warns_when_no_hass_and_validate_existence(app_config_valid):
+    cfg = copy.deepcopy(app_config_valid)
+    cfg["app_config"]["validation"]["validate_entity_existence"] = True
+    messages = []
+
+    def log_no_level(message):
+        messages.append(message)
+
+    AppCfgValidator.validate(cfg, log=log_no_level)
+    assert any("validate_entity_existence" in msg for msg in messages)
+
+
+def test_collect_entity_ids_skips_invalid_room_entries():
+    runtime_cfg = {
+        "user_config": {
+            "common_entities": {},
+            "notification": {},
+            "safety_components": {
+                TEMP_COMPONENT_NAME: [
+                    "invalid",
+                    {"RoomA": "not-a-dict"},
+                    {"RoomB": {"temperature_sensor": "sensor.test"}},
+                ]
+            },
+        }
+    }
+    entity_ids = _collect_entity_ids(runtime_cfg)
+    assert ("user_config.safety_components.TemperatureComponent.RoomB.temperature_sensor", "sensor.test") in entity_ids
+
+
+def test_validate_entity_existence_handles_exception():
+    class BoomHass:
+        def get_state(self, _entity_id):
+            raise RuntimeError("boom")
+
+    missing = _validate_entity_existence(BoomHass(), [("path", "sensor.bad")])
+    assert "sensor.bad" in missing[0]
+
+
+def test_validate_app_cfg_keeps_unknown_component_config(app_config_valid):
+    cfg = copy.deepcopy(app_config_valid)
+    cfg["user_config"]["components_enabled"]["CustomComponent"] = True
+    cfg["user_config"]["safety_components"]["CustomComponent"] = {"custom": True}
+
+    validated = AppCfgValidator.validate(cfg)
+    assert validated["user_config"]["safety_components"]["CustomComponent"] == {
+        "custom": True
+    }

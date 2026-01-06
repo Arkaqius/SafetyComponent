@@ -31,6 +31,7 @@ from components.safetycomponents.core.safety_component import (
     safety_mechanism_decorator,
     DebounceState,
     SafetyMechanismResult,
+    register_safety_component,
 )
 from components.safetycomponents.core.safety_mechanism import SafetyMechanism
 from components.core.types_common import Symptom, RecoveryAction, SMState, RecoveryResult
@@ -41,6 +42,7 @@ SM_TC_2_DEBOUNCE_LIMIT = 0
 FORECAST_SAMPLING_TIME = 15  # minutes, but deviratives are ALWAYS in minutes
 
 
+@register_safety_component
 class TemperatureComponent(SafetyComponent):
     """
     Manages and orchestrates temperature-related safety mechanisms within the Home Assistant framework.

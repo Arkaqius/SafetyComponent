@@ -358,3 +358,37 @@ def test_clear_symptom_msg(mocked_hass_app_with_temp_component):
         message=notification_data["message"],
         data=notification_data["data"]
     )
+
+
+def test_cleared_fault_level4_clears_notification():
+    hass_app = Mock()
+    hass_app.call_service = Mock()
+    hass_app.log = Mock()
+    notification_manager = NotificationManager(hass_app, {})
+    notification_manager.active_notification["tag1"] = {
+        "title": "t",
+        "message": "m",
+        "data": {},
+    }
+
+    notification_manager.notify("Fault", 4, FaultState.CLEARED, None, "tag1")
+
+    assert "tag1" not in notification_manager.active_notification
+    hass_app.call_service.assert_not_called()
+
+
+def test_recovery_action_appends_and_sends_notification():
+    hass_app = Mock()
+    hass_app.call_service = Mock()
+    hass_app.log = Mock()
+    notification_manager = NotificationManager(hass_app, {})
+    notification_manager.active_notification["tag2"] = {
+        "title": "t",
+        "message": "m",
+        "data": {},
+    }
+
+    notification_manager._add_recovery_action("do it", "tag2")
+
+    assert "do it" in notification_manager.active_notification["tag2"]["message"]
+    hass_app.call_service.assert_called()
