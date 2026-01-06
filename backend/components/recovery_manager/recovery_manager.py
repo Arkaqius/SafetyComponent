@@ -322,6 +322,12 @@ class RecoveryManager:
             f"Recovery process completed for symptom: {symptom.name}", level="DEBUG"
         )
 
+    def handle_fault_event(
+        self, *, symptom: Symptom, fault_tag: str, **_: object
+    ) -> None:
+        """EventBus handler for fault events."""
+        self.recovery(symptom, fault_tag)
+
     def _handle_cleared_state(self, symptom: Symptom) -> None:
         """Handles the cleared state of a symptom by clearing recovery actions."""
         self.hass_app.log(

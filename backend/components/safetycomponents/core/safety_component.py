@@ -39,7 +39,7 @@ import appdaemon.plugins.hass.hassapi as hass  # type: ignore
 
 from components.core.common_entities import CommonEntities
 from components.safetycomponents.core.derivative_monitor import DerivativeMonitor
-from components.faults_manager.fault_manager import FaultManager
+from components.core.event_bus import EventBus
 from components.core.types_common import FaultState, Symptom, RecoveryAction, SMState
 
 NO_NEEDED = False
@@ -139,15 +139,21 @@ class SafetyComponent:
 
     component_name: str = "UNKNOWN"  # Default value for the parent class
 
-    def __init__(self, hass_app: hass.Hass, common_entities: CommonEntities) -> None:
+    def __init__(
+        self,
+        hass_app: hass.Hass,
+        common_entities: CommonEntities,
+        event_bus: EventBus,
+    ) -> None:
         """
         Initialize the safety component.
 
         :param hass_app: The Home Assistant application instance.
         """
         self.hass_app: hass.Hass = hass_app
-        self.fault_man: Optional[FaultManager] = None
         self.common_entities: CommonEntities = common_entities
+        self.event_bus: EventBus = event_bus
+        self.symptom_states: dict[str, FaultState] = {}
         self.init_common_data()
         self.derivative_monitor = DerivativeMonitor(hass_app)
 
@@ -209,22 +215,12 @@ class SafetyComponent:
         """
         raise NotImplementedError
 
-    def register_fm(self, fm: FaultManager) -> None:
-        """
-        Registers a FaultManager instance with this component, enabling interaction with the fault management system.
-
-        This method associates a FaultManager object with the component, allowing it to set or clear fault conditions
-        based on the outcomes of safety mechanism evaluations. The registered FaultManager is essential for the component
-        to communicate fault states and recovery actions within the broader safety management system.
-
-        Args:
-            fm (FaultManager): An instance of FaultManager that will be used by this component to manage fault conditions.
-
-        Note:
-            It's important to register a FaultManager before invoking safety mechanisms that require fault state management
-            to ensure the component can appropriately respond to and manage fault conditions.
-        """
-        self.fault_man = fm
+    def register_fm(self, fm: Any) -> None:
+        """Deprecated: safety components now publish events via the EventBus."""
+        self.hass_app.log(
+            "register_fm is deprecated; use EventBus subscriptions instead.",
+            level="WARNING",
+        )
 
     def validate_entity(
         self, entity_name: str, entity: Any, expected_type: Type
@@ -393,8 +389,8 @@ class SafetyComponent:
             None
         """
 
-        if not self.fault_man:
-            self.hass_app.log("Fault manager not initialized!", level="ERROR")
+        if not self.event_bus:
+            self.hass_app.log("Event bus not initialized!", level="ERROR")
             return current_counter, False
 
         # Prepare retVal
@@ -404,7 +400,9 @@ class SafetyComponent:
         )
 
         # Get current symptom state
-        symptom_cur_state: FaultState = self.fault_man.check_symptom(symptom_id)
+        symptom_cur_state: FaultState = self.symptom_states.get(
+            symptom_id, FaultState.NOT_TESTED
+        )
         # Check if any actions is needed
         if (
             (pr_test and symptom_cur_state == FaultState.CLEARED)
@@ -415,7 +413,13 @@ class SafetyComponent:
 
             if debounce_result.action == DebounceAction.symptom_SET:
                 # Call Fault Manager to set symptom
-                self.fault_man.set_symptom(symptom_id, additional_info)
+                self.symptom_states[symptom_id] = FaultState.SET
+                self.event_bus.publish(
+                    "symptom",
+                    symptom_id=symptom_id,
+                    state=FaultState.SET,
+                    additional_info=additional_info,
+                )
                 self.hass_app.log(
                     f"symptom {symptom_id} with {additional_info} was set",
                     level="DEBUG",
@@ -423,7 +427,13 @@ class SafetyComponent:
                 force_sm = False
             elif debounce_result.action == DebounceAction.symptom_HEALED:
                 # Call Fault Manager to heal symptom
-                self.fault_man.clear_symptom(symptom_id, additional_info)
+                self.symptom_states[symptom_id] = FaultState.CLEARED
+                self.event_bus.publish(
+                    "symptom",
+                    symptom_id=symptom_id,
+                    state=FaultState.CLEARED,
+                    additional_info=additional_info,
+                )
                 self.hass_app.log(
                     f"symptom {symptom_id} with {additional_info} was cleared",
                     level="DEBUG",
