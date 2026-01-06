@@ -102,8 +102,6 @@ def test_recovery_process_execution(mocked_hass_app_with_temp_component):
 
     # Mock the recovery action to track if it's called
     app_instance.reco_man.recovery = Mock()
-    # Bind new Mock with recovery_interface
-    app_instance.fm.recovery_interface = app_instance.reco_man.recovery
 
     # Manually trigger a symptom
     app_instance.fm.set_symptom("RiskyTemperatureOffice", None)

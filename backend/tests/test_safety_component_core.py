@@ -4,6 +4,7 @@ from unittest.mock import Mock
 import pytest
 
 from components.core.common_entities import CommonEntities
+from components.core.event_bus import EventBus
 from components.core.types_common import FaultState, SMState
 from components.safetycomponents.core.safety_component import (
     SafetyComponent,
@@ -30,7 +31,8 @@ def _make_component():
     hass_app = Mock()
     hass_app.log = Mock()
     common_entities = CommonEntities(hass_app, {"outside_temp": "sensor.outside"})
-    return DummyComponent(hass_app, common_entities)
+    event_bus = EventBus()
+    return DummyComponent(hass_app, common_entities, event_bus)
 
 
 def test_register_safety_component_errors_on_unknown_name():
@@ -71,11 +73,19 @@ def test_validate_entities_reports_missing_and_type_errors():
     assert component.validate_entities(sm_args, {"temps": List[str]}) is False
 
 
-def test_process_symptom_without_fault_manager():
+def test_process_symptom_emits_event():
     component = _make_component()
-    counter, force = component.process_symptom("symptom", 0, True, {})
-    assert counter == 0
+    events = []
+
+    component.event_bus.subscribe("symptom", lambda **payload: events.append(payload))
+    counter, force = component.process_symptom(
+        "symptom", 0, True, {}, debounce_limit=1
+    )
+
+    assert counter == 1
     assert force is False
+    assert events[0]["symptom_id"] == "symptom"
+    assert events[0]["state"] == FaultState.SET
 
 
 def test_sm_recalled_raises_not_implemented():

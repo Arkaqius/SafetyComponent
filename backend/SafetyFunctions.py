@@ -42,6 +42,7 @@ from components.app_config_validator.app_cfg_validator import (
     AppCfgValidator,
 )
 from components.core.common_entities import CommonEntities
+from components.core.event_bus import EventBus
 from components.safetycomponents.core.derivative_monitor import DerivativeMonitor
 from components.faults_manager import cfg_parser as cfg_pr
 from components.faults_manager.fault_manager import FaultManager
@@ -94,6 +95,7 @@ class SafetyFunctions(hass.Hass):
         self.symptoms: dict[str, Symptom] = {}
         self.recovery_actions: dict[str, RecoveryAction] = {}
         self.derivative_monitor = DerivativeMonitor(self)
+        self.event_bus = EventBus()
 
         # 10.2. Get configuration data
         self.fault_dict: dict = self.args["app_config"]["faults"]
@@ -127,7 +129,9 @@ class SafetyFunctions(hass.Hass):
         # 30. Initialize components and collect symptoms/recovery actions
         for component_name, component_cls in get_registered_components().items():
             if component_name in self.safety_components_cfg:
-                component_instance = component_cls(self, self.common_entities)
+                component_instance = component_cls(
+                    self, self.common_entities, self.event_bus
+                )
                 self.sm_modules[component_name] = component_instance
 
                 component_cfg = self.safety_components_cfg[component_name]
@@ -143,7 +147,7 @@ class SafetyFunctions(hass.Hass):
 
         # 50. Initialize fault manager
         self.fm: FaultManager = FaultManager(
-            self, self.sm_modules, self.symptoms, self.faults
+            self, self.sm_modules, self.symptoms, self.faults, self.event_bus
         )
 
         # 60. Initialize notification manager
@@ -157,11 +161,17 @@ class SafetyFunctions(hass.Hass):
         )
 
         # 80. Register callbacks for faults
-        self.fm.register_callbacks(self.reco_man.recovery, self.notify_man.notify)
+        self.event_bus.subscribe(
+            "symptom", self.fm.handle_symptom_event, priority=0
+        )
+        self.event_bus.subscribe(
+            "fault", self.notify_man.handle_fault_event, priority=0
+        )
+        self.event_bus.subscribe(
+            "fault", self.reco_man.handle_fault_event, priority=1
+        )
 
-        # 90. Register fault manager to components
-        for sm in self.sm_modules.values():
-            sm.register_fm(self.fm)
+        # 90. Event-driven flow means components publish to the bus instead.
 
         # 100. Register entities for faults
         health_attributes: dict[str, Any] = self.register_entities()

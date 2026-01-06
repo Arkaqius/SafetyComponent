@@ -49,8 +49,9 @@ def test_fault_manager_initialization(mocked_hass_app_with_temp_component):
     app_instance.initialize()
 
     assert isinstance(app_instance.fm, FaultManager)
-    assert app_instance.fm.notify_interface == app_instance.notify_man.notify
-    assert app_instance.fm.recovery_interface == app_instance.reco_man.recovery
+    assert app_instance.fm.event_bus is app_instance.event_bus
+    assert "symptom" in app_instance.event_bus._subscribers
+    assert "fault" in app_instance.event_bus._subscribers
     assert (
         app_instance.fm.sm_modules["TemperatureComponent"]
         == app_instance.sm_modules["TemperatureComponent"]
@@ -62,7 +63,7 @@ def test_assign_fm(mocked_hass_app_with_temp_component):
     app_instance.initialize()
 
     for module in app_instance.sm_modules.values():
-        assert module.fault_man is app_instance.fm
+        assert module.event_bus is app_instance.event_bus
 
 
 def test_app_health_set_to_good_at_end_of_init(mocked_hass_app_with_temp_component):

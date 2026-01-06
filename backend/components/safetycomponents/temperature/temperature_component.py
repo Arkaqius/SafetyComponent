@@ -55,7 +55,12 @@ class TemperatureComponent(SafetyComponent):
     component_name: str = "TemperatureComponent"
 
     # region Init and enables
-    def __init__(self, hass_app: hass, common_entities: CommonEntities) -> None:  # type: ignore
+    def __init__(
+        self,
+        hass_app: hass,
+        common_entities: CommonEntities,
+        event_bus: Any,
+    ) -> None:  # type: ignore
         """
         Initializes the TemperatureComponent instance with the Home Assistant application context, setting up the foundation
         for temperature-related safety management within the smart home environment.
@@ -64,7 +69,7 @@ class TemperatureComponent(SafetyComponent):
             hass_app (hass.Hass): The Home Assistant application instance through which sensor data is accessed and actions are executed.
             common_entities (CommonEntities): A shared object providing access to common entities used across different safety mechanisms.
         """
-        super().__init__(hass_app, common_entities)
+        super().__init__(hass_app, common_entities, event_bus)
 
     def get_symptoms_data(
         self, sm_modules: dict, component_cfg: list[dict[str, Any]]

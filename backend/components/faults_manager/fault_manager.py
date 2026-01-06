@@ -29,6 +29,7 @@ import appdaemon.plugins.hass.hassapi as hass
 import hashlib
 
 from components.core.types_common import FaultState, SMState, Symptom, Fault
+from components.core.event_bus import EventBus
 
 
 class FaultManager:
@@ -59,6 +60,7 @@ class FaultManager:
         sm_modules: dict,
         symptom_dict: dict,
         fault_dict: dict,
+        event_bus: EventBus | None = None,
     ) -> None:
         """
         Initialize the Fault Manager.
@@ -73,14 +75,33 @@ class FaultManager:
         self.symptoms: dict[str, Symptom] = symptom_dict
         self.sm_modules: dict = sm_modules
         self.hass: hass.Hass = hass
+        self.event_bus = event_bus
 
     def register_callbacks(
         self,
         recovery_interface: Callable[[Symptom], None],
         notify_interface: Callable[[str, int, FaultState, dict | None], None],
     ) -> None:
+        self.hass.log(
+            "register_callbacks is deprecated; use EventBus subscriptions instead.",
+            level="WARNING",
+        )
         self.recovery_interface = recovery_interface
         self.notify_interface = notify_interface
+
+    def handle_symptom_event(
+        self,
+        *,
+        symptom_id: str,
+        state: FaultState,
+        additional_info: Optional[dict] = None,
+        **_: Any,
+    ) -> None:
+        """Handle symptom events emitted by safety components."""
+        if state == FaultState.SET:
+            self.set_symptom(symptom_id, additional_info)
+        elif state == FaultState.CLEARED:
+            self.clear_symptom(symptom_id, additional_info or {})
 
     def init_safety_mechanisms(self) -> None:
         """
@@ -250,23 +271,35 @@ class FaultManager:
                 "sensor.fault_" + fault.name, state="Set", attributes=attributes
             )
 
-            # Call notifications
-            if self.notify_interface:
-                self.notify_interface(
-                    fault.name,
-                    fault.level,
-                    FaultState.SET,
-                    additional_info,
-                    fault_tag,
+            if self.event_bus:
+                self.event_bus.publish(
+                    "fault",
+                    fault_name=fault.name,
+                    level=fault.level,
+                    fault_state=FaultState.SET,
+                    additional_info=additional_info,
+                    fault_tag=fault_tag,
+                    symptom=self.symptoms[symptom_id],
+                    should_notify=True,
                 )
             else:
-                self.hass.log("No notification interface", level="WARNING")
+                # Call notifications
+                if self.notify_interface:
+                    self.notify_interface(
+                        fault.name,
+                        fault.level,
+                        FaultState.SET,
+                        additional_info,
+                        fault_tag,
+                    )
+                else:
+                    self.hass.log("No notification interface", level="WARNING")
 
-            # Call recovery actions (specific for symptom)
-            if self.recovery_interface:
-                self.recovery_interface(self.symptoms[symptom_id], fault_tag)
-            else:
-                self.hass.log("No recovery interface", level="WARNING")
+                # Call recovery actions (specific for symptom)
+                if self.recovery_interface:
+                    self.recovery_interface(self.symptoms[symptom_id], fault_tag)
+                else:
+                    self.hass.log("No recovery interface", level="WARNING")
 
     def _determinate_info(
             self, entity_id: str, additional_info: Optional[dict], fault_state: FaultState
@@ -397,24 +430,37 @@ class FaultManager:
             )
             self.update_system_state_entity()  # Update the system state entity
 
-            if fault.previous_val == FaultState.SET:
-                # Call notifications
-                if self.notify_interface:
-                    self.notify_interface(
-                        fault.name,
-                        fault.level,
-                        FaultState.CLEARED,
-                        additional_info,
-                        fault_tag,
-                    )
-                else:
-                    self.hass.log("No notification interface", level="WARNING")
-
-            # Call recovery actions (specific for symptom)
-            if self.recovery_interface:
-                self.recovery_interface(self.symptoms[symptom_id], fault_tag)
+            should_notify = fault.previous_val == FaultState.SET
+            if self.event_bus:
+                self.event_bus.publish(
+                    "fault",
+                    fault_name=fault.name,
+                    level=fault.level,
+                    fault_state=FaultState.CLEARED,
+                    additional_info=additional_info,
+                    fault_tag=fault_tag,
+                    symptom=self.symptoms[symptom_id],
+                    should_notify=should_notify,
+                )
             else:
-                self.hass.log("No recovery interface", level="WARNING")
+                if should_notify:
+                    # Call notifications
+                    if self.notify_interface:
+                        self.notify_interface(
+                            fault.name,
+                            fault.level,
+                            FaultState.CLEARED,
+                            additional_info,
+                            fault_tag,
+                        )
+                    else:
+                        self.hass.log("No notification interface", level="WARNING")
+
+                # Call recovery actions (specific for symptom)
+                if self.recovery_interface:
+                    self.recovery_interface(self.symptoms[symptom_id], fault_tag)
+                else:
+                    self.hass.log("No recovery interface", level="WARNING")
 
     def check_fault(self, fault_id: str) -> FaultState:
         """

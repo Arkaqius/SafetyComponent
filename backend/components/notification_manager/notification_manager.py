@@ -105,6 +105,22 @@ class NotificationManager:
         else:
             self.hass_app.log(f"Invalid fault status '{fault_status}'", level="WARNING")
 
+    def handle_fault_event(
+        self,
+        *,
+        fault_name: str,
+        level: int,
+        fault_state: FaultState,
+        additional_info: Optional[dict],
+        fault_tag: str,
+        should_notify: bool = True,
+        **_: object,
+    ) -> None:
+        """EventBus handler for fault events."""
+        if not should_notify:
+            return
+        self.notify(fault_name, level, fault_state, additional_info, fault_tag)
+
     def _process_active_fault(self, level: int, message: str, fault_tag: str) -> None:
         self._notify_company_app(level, message, fault_tag, FaultState.SET)
         additional_actions = self.level_methods.get(level)
