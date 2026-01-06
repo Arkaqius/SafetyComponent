@@ -34,6 +34,20 @@ SafetyFunctions:
       # Recommended: true for production to avoid silently running with wrong IDs.
       validate_entity_existence: true
 
+    # Calibration defaults for safety components.
+    calibration:
+      temperature:
+        # Debounce counter threshold for sm_tc_1 before setting/clearing symptoms.
+        SM_TC_1_DEBOUNCE_LIMIT: 2
+        # Delay before re-evaluating sm_tc_1 when debouncing requires another run.
+        SM_TC_1_REEVAL_DELAY_SECONDS: 30
+        # Debounce counter threshold for sm_tc_2 before setting/clearing symptoms.
+        SM_TC_2_DEBOUNCE_LIMIT: 2
+        # Delay before re-evaluating sm_tc_2 when debouncing requires another run.
+        SM_TC_2_REEVAL_DELAY_SECONDS: 30
+        # Sampling interval (minutes) used to register derivative monitoring for sm_tc_2.
+        SM_TC_2_DERIVATIVE_SAMPLE_MINUTES: 15
+
     # Global fault catalog (shared policy).
     #
     # IMPORTANT:

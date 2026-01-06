@@ -113,7 +113,10 @@ def _to_runtime(
     for name, component_cfg in enabled_components.items():
         if name == TEMPERATURE_COMPONENT_NAME:
             runtime_components[name] = validate_temperature_config(
-                component_cfg, strict_validation=strict_validation, log=log
+                component_cfg,
+                strict_validation=strict_validation,
+                log=log,
+                calibration=cfg.app_config.calibration.temperature.model_dump(),
             )
         else:
             runtime_components[name] = component_cfg
@@ -169,6 +172,12 @@ class AppCfgValidator:
             log_extra_keys(cfg, log, "root")
             log_extra_keys(cfg.app_config, log, "app_config")
             log_extra_keys(cfg.app_config.validation, log, "app_config.validation")
+            log_extra_keys(cfg.app_config.calibration, log, "app_config.calibration")
+            log_extra_keys(
+                cfg.app_config.calibration.temperature,
+                log,
+                "app_config.calibration.temperature",
+            )
             log_extra_keys(cfg.user_config, log, "user_config")
 
         entity_ids = _collect_entity_ids(runtime_cfg)

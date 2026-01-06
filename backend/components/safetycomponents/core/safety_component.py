@@ -514,11 +514,13 @@ def safety_mechanism_decorator(func: Callable) -> Callable:
             sm_return = func(self, sm, entities_changes)
 
             # Perform SM logic
+            debounce_limit = sm.sm_args.get("debounce_limit", 2)
             new_debounce: tuple[int, bool] = self.process_symptom(
                 symptom_id=sm.name,
                 current_counter=current_state.debounce,
                 pr_test=sm_return.result,
                 additional_info=sm_return.additional_info,
+                debounce_limit=debounce_limit,
             )
 
             # Update the debounce state with the new values
@@ -526,14 +528,14 @@ def safety_mechanism_decorator(func: Callable) -> Callable:
                 debounce=new_debounce[0], force_sm=new_debounce[1]
             )
             if new_debounce[1]:
+                delay_seconds = sm.sm_args.get("re_eval_delay_seconds", 30)
                 self.hass_app.log(
-                    f"Scheduling {func.__name__} to run again in 5 seconds.",
+                    f"Scheduling {func.__name__} to run again in {delay_seconds} seconds.",
                     level="DEBUG",
                 )
-                # If force_sm is true, schedule to run the function again after 30 seconds TODO Cyclic time shall comes from SafetyMechanism config
                 self.hass_app.run_in(
                     self.sm_recalled,
-                    30,
+                    delay_seconds,
                     sm_method=func.__name__,
                     sm_name=sm.name,
                     entities_changes=entities_changes,

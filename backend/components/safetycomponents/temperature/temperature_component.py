@@ -38,8 +38,6 @@ from components.core.types_common import Symptom, RecoveryAction, SMState, Recov
 
 # CONFIG
 DEBOUNCE_INIT = 0
-SM_TC_2_DEBOUNCE_LIMIT = 0
-FORECAST_SAMPLING_TIME = 15  # minutes, but deviratives are ALWAYS in minutes
 
 
 @register_safety_component
@@ -112,6 +110,8 @@ class TemperatureComponent(SafetyComponent):
             required_keys: list[str] = [
                 "temperature_sensor",
                 "CAL_LOW_TEMP_THRESHOLD",
+                "SM_TC_1_DEBOUNCE_LIMIT",
+                "SM_TC_1_REEVAL_DELAY_SECONDS",
                 "location",
             ]
             sm_method = self.sm_tc_1
@@ -120,6 +120,9 @@ class TemperatureComponent(SafetyComponent):
                 "temperature_sensor",
                 "CAL_LOW_TEMP_THRESHOLD",
                 "CAL_FORECAST_TIMESPAN",
+                "SM_TC_2_DEBOUNCE_LIMIT",
+                "SM_TC_2_REEVAL_DELAY_SECONDS",
+                "SM_TC_2_DERIVATIVE_SAMPLE_MINUTES",
                 "location",
             ]
             sm_method = self.sm_tc_2
@@ -220,6 +223,7 @@ class TemperatureComponent(SafetyComponent):
         cold_threshold: float = sm.sm_args["cold_thr"]
         location: str = sm.sm_args["location"]
         forecast_span: float = sm.sm_args["forecast_timespan"]
+        sampling_minutes: int = sm.sm_args["derivative_sample_minutes"]
 
         # Fetch temperature value, using stubbed value if provided
         temperature: float | None = self._get_temperature_value(
@@ -235,7 +239,10 @@ class TemperatureComponent(SafetyComponent):
             return SafetyMechanismResult(False, None)
 
         forecasted_temperature = self.forecast_temperature(
-            temperature, temperature_rate, forecast_span
+            temperature,
+            temperature_rate,
+            forecast_span,
+            sampling_minutes,
         )
 
         sm_result: bool = forecasted_temperature < cold_threshold
@@ -248,14 +255,16 @@ class TemperatureComponent(SafetyComponent):
         initial_temperature: float,
         dT: float,
         forecast_timespan_hours: float,
+        sampling_minutes: float,
     ) -> float:
         """
         Forecast the temperature using an exponential decay model.
 
         Parameters:
         - initial_temperature (float): The initial temperature in degrees Celsius (T_0).
-        - dT (float): The temperature drop per 15 minute (initial rate).
+        - dT (float): The temperature drop per sampling interval (initial rate).
         - forecast_timespan_hours (float): The timespan for the forecast in hours.
+        - sampling_minutes (float): The sampling interval in minutes.
 
         Returns:
         - float: The forecasted temperature after the given timespan.
@@ -265,7 +274,7 @@ class TemperatureComponent(SafetyComponent):
 
         # Calculate decay constant k based on the initial rate of temperature change
         k: float = -math.log(
-            (initial_temperature + dT/FORECAST_SAMPLING_TIME) / initial_temperature
+            (initial_temperature + dT / sampling_minutes) / initial_temperature
         )
 
         # Calculate forecasted temperature for the specified timespan using exponential decay
@@ -489,8 +498,12 @@ class TemperatureComponent(SafetyComponent):
 
         # Additional setup for SM TC 2
         if sm_method == self.sm_tc_2:
+            sampling_minutes = extracted_params["SM_TC_2_DERIVATIVE_SAMPLE_MINUTES"]
             self.derivative_monitor.register_entity(
-                extracted_params["temperature_sensor"], 60*FORECAST_SAMPLING_TIME, -2, 2
+                extracted_params["temperature_sensor"],
+                sampling_minutes * 60,
+                -2,
+                2,
             )
 
         return True
@@ -546,6 +559,18 @@ class TemperatureComponent(SafetyComponent):
             sm_args.update(
                 {
                     "forecast_timespan": params["CAL_FORECAST_TIMESPAN"],
+                    "debounce_limit": params["SM_TC_2_DEBOUNCE_LIMIT"],
+                    "re_eval_delay_seconds": params["SM_TC_2_REEVAL_DELAY_SECONDS"],
+                    "derivative_sample_minutes": params[
+                        "SM_TC_2_DERIVATIVE_SAMPLE_MINUTES"
+                    ],
+                }
+            )
+        else:
+            sm_args.update(
+                {
+                    "debounce_limit": params["SM_TC_1_DEBOUNCE_LIMIT"],
+                    "re_eval_delay_seconds": params["SM_TC_1_REEVAL_DELAY_SECONDS"],
                 }
             )
 
