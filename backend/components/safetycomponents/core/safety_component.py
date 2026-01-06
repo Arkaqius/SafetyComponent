@@ -25,6 +25,7 @@ This module streamlines the creation of safety mechanisms, emphasizing reliabili
 from typing import (
     Type,
     Any,
+    Dict,
     get_origin,
     get_args,
     Callable,
@@ -42,6 +43,31 @@ from components.faults_manager.fault_manager import FaultManager
 from components.core.types_common import FaultState, Symptom, RecoveryAction, SMState
 
 NO_NEEDED = False
+
+_COMPONENT_REGISTRY: Dict[str, Type["SafetyComponent"]] = {}
+
+
+def register_safety_component(
+    cls: Type["SafetyComponent"],
+) -> Type["SafetyComponent"]:
+    """Register a safety component class by its component_name."""
+    name = getattr(cls, "component_name", None)
+    if not name or name == "UNKNOWN":
+        raise ValueError("SafetyComponent.component_name must be set for registration")
+    if name in _COMPONENT_REGISTRY:
+        raise ValueError(f"Safety component '{name}' is already registered")
+    _COMPONENT_REGISTRY[name] = cls
+    return cls
+
+
+def get_registered_components() -> Dict[str, Type["SafetyComponent"]]:
+    """Return a copy of the registered safety components."""
+    return dict(_COMPONENT_REGISTRY)
+
+
+def clear_registered_components() -> None:
+    """Clear the safety component registry (primarily for tests)."""
+    _COMPONENT_REGISTRY.clear()
 
 
 class DebounceState(NamedTuple):

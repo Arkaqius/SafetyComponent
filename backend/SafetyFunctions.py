@@ -47,8 +47,11 @@ from components.faults_manager import cfg_parser as cfg_pr
 from components.faults_manager.fault_manager import FaultManager
 from components.notification_manager.notification_manager import NotificationManager
 from components.recovery_manager.recovery_manager import RecoveryManager
-from components.safetycomponents.core.safety_component import SafetyComponent
-from components.safetycomponents.temperature.temperature_component import TemperatureComponent
+from components.safetycomponents.core.safety_component import (
+    SafetyComponent,
+    get_registered_components,
+)
+import components.safetycomponents.temperature.temperature_component  # side-effect registration
 from components.core.types_common import Fault, Symptom, RecoveryAction
 
 DEBUG = False
@@ -56,9 +59,6 @@ DEBUG = False
 if DEBUG:
     from remote_pdb import RemotePdb  # type: ignore
 
-COMPONENT_DICT: dict[str, SafetyComponent] = {
-    "TemperatureComponent": TemperatureComponent  # type: ignore
-}
 
 
 class SafetyFunctions(hass.Hass):
@@ -125,7 +125,7 @@ class SafetyFunctions(hass.Hass):
         )
 
         # 30. Initialize components and collect symptoms/recovery actions
-        for component_name, component_cls in COMPONENT_DICT.items():
+        for component_name, component_cls in get_registered_components().items():
             if component_name in self.safety_components_cfg:
                 component_instance = component_cls(self, self.common_entities)
                 self.sm_modules[component_name] = component_instance
