@@ -161,6 +161,7 @@ SafetyFunctions:
           Garage:
             # Override defaults for this room
             CAL_LOW_TEMP_THRESHOLD: 10.0
+            CAL_FORECAST_TIMESPAN: 2.0
             temperature_sensor: "sensor.garage_temperature"
             window_sensor: "binary_sensor.garage_gatedoorlow_contact_contact"
 
