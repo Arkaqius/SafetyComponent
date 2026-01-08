@@ -58,7 +58,6 @@ def _collect_entity_ids(runtime_cfg: Dict[str, Any]) -> list[tuple[str, str]]:
                     continue
                 for key in (
                     "temperature_sensor",
-                    "temperature_sensor_rate",
                     "window_sensor",
                     "actuator",
                 ):

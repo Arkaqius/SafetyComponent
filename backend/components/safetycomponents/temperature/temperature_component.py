@@ -421,7 +421,7 @@ class TemperatureComponent(SafetyComponent):
         params = {
             "location": location,
             "actuator": data.get("actuator"),
-            "window_sensor": data["window_sensor"],
+            "window_sensor": data.get("window_sensor"),
         }
         recovery_func = getattr(self, action_name)
 
@@ -635,7 +635,7 @@ class TemperatureComponent(SafetyComponent):
         notifications: list[str] = []
         location: str = kwargs["location"]  # type: ignore
         actuator: str = kwargs["actuator"]  # type: ignore
-        window_sensors: list[str] = kwargs["window_sensor"]  # type: ignore
+        window_sensors = kwargs.get("window_sensor")
 
         # Get room temperature
         meas_room_temp: float | None = SafetyComponent.get_num_sensor_val(
@@ -661,9 +661,10 @@ class TemperatureComponent(SafetyComponent):
             notification: str = f"Please open windows in {location} as recovery action"
 
         # Close windows if outside temperature is lower
-        changed_sensors = SafetyComponent.change_all_entities_state(
-            window_sensors, window_sensors_state
-        )
+        if window_sensors:
+            changed_sensors = SafetyComponent.change_all_entities_state(
+                window_sensors, window_sensors_state
+            )
         if actuator:
             changed_actuators[actuator] = actuator_sensors_state
         else:

@@ -67,7 +67,6 @@ def test_symptoms_init_RiskyTemperatureOfficeForecast(mocked_hass_app):
         "CAL_LOW_TEMP_THRESHOLD": 28,
         "CAL_FORECAST_TIMESPAN": 60,
         "temperature_sensor": "sensor.office_temperature",
-        "temperature_sensor_rate": "sensor.office_temperature_rate",
     }, "'RiskyTemperatureOfficeForeCast' does not have the correct parameters."
     assert (
         app_instance.symptoms["RiskyTemperatureOfficeForeCast"].recover_actions
