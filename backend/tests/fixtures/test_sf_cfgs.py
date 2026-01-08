@@ -6,12 +6,12 @@ def _base_faults():
         "RiskyTemperature": {
             "name": "Unsafe temperature",
             "level": 2,
-            "related_sms": ["sm_tc_1"],
+            "related_sms": ["sm_tc_1", "sm_tc_3"],
         },
         "RiskyTemperatureForecast": {
             "name": "Unsafe temperature forecast",
             "level": 3,
-            "related_sms": ["sm_tc_2"],
+            "related_sms": ["sm_tc_2", "sm_tc_4"],
         },
     }
 
@@ -20,12 +20,14 @@ def _temperature_component_rooms():
     return {
         "Office": {
             "CAL_LOW_TEMP_THRESHOLD": 18.0,
+            "CAL_HIGH_TEMP_THRESHOLD": 28.0,
             "CAL_FORECAST_TIMESPAN": 2.0,
             "temperature_sensor": "sensor.office_temperature",
             "window_sensor": "sensor.office_window_contact_contact",
         },
         "Kitchen": {
             "CAL_LOW_TEMP_THRESHOLD": 18.0,
+            "CAL_HIGH_TEMP_THRESHOLD": 28.0,
             "CAL_FORECAST_TIMESPAN": 2.0,
             "temperature_sensor": "sensor.kitchen_temperature",
             "window_sensor": "sensor.kitchen_window_contact_contact",
@@ -42,6 +44,7 @@ def _base_user_config():
             "TemperatureComponent": {
                 "defaults": {
                     "CAL_LOW_TEMP_THRESHOLD": 18.0,
+                    "CAL_HIGH_TEMP_THRESHOLD": 28.0,
                     "CAL_FORECAST_TIMESPAN": 2.0,
                 },
                 "rooms": _temperature_component_rooms(),

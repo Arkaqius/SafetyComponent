@@ -62,17 +62,17 @@ def test_temp_comp_notification(
         mocked_hass_app_with_temp_component
     )
 
+    app_instance.initialize()
+
     test_mock_behaviours: List[MockBehavior[str, Iterator[str]]] = [
         MockBehavior("sensor.office_temperature", iter(temperature))
     ]
     mock_behaviors_default: List[MockBehavior] = update_mocked_get_state(
         mock_behaviors_default, test_mock_behaviours
     )
-
     app_instance.get_state.side_effect = lambda entity_id, **kwargs: mock_get_state(
         entity_id, mock_behaviors_default
     )
-    app_instance.initialize()
 
     for _ in range(test_size):
         app_instance.sm_modules["TemperatureComponent"].sm_tc_1(

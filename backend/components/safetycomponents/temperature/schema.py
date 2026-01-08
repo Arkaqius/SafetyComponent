@@ -17,6 +17,7 @@ class TemperatureDefaults(StrictBaseModel):
     model_config = ConfigDict(extra="allow")
 
     CAL_LOW_TEMP_THRESHOLD: float
+    CAL_HIGH_TEMP_THRESHOLD: float
     CAL_FORECAST_TIMESPAN: float
 
 
@@ -28,19 +29,25 @@ class TemperatureRoom(StrictBaseModel):
     temperature_sensor: str
     window_sensor: Optional[str] = None
     CAL_LOW_TEMP_THRESHOLD: Optional[float] = None
+    CAL_HIGH_TEMP_THRESHOLD: Optional[float] = None
     CAL_FORECAST_TIMESPAN: Optional[float] = None
 
     @model_validator(mode="after")
     def _ensure_thresholds_present(self) -> "TemperatureRoom":
-        if self.CAL_LOW_TEMP_THRESHOLD is None and self.CAL_FORECAST_TIMESPAN is None:
+        has_low = self.CAL_LOW_TEMP_THRESHOLD is not None
+        has_high = self.CAL_HIGH_TEMP_THRESHOLD is not None
+        has_forecast = self.CAL_FORECAST_TIMESPAN is not None
+
+        if not (has_low or has_high or has_forecast):
             return self
-        if self.CAL_LOW_TEMP_THRESHOLD is None:
+        if not has_forecast and (has_low or has_high):
             raise ValueError(
-                "CAL_LOW_TEMP_THRESHOLD missing while CAL_FORECAST_TIMESPAN provided"
+                "CAL_FORECAST_TIMESPAN missing while threshold override provided"
             )
-        if self.CAL_FORECAST_TIMESPAN is None:
+        if has_forecast and not (has_low or has_high):
             raise ValueError(
-                "CAL_FORECAST_TIMESPAN missing while CAL_LOW_TEMP_THRESHOLD provided"
+                "CAL_LOW_TEMP_THRESHOLD or CAL_HIGH_TEMP_THRESHOLD missing "
+                "while CAL_FORECAST_TIMESPAN provided"
             )
         return self
 
@@ -55,19 +62,26 @@ class TemperatureRoom(StrictBaseModel):
             if self.CAL_LOW_TEMP_THRESHOLD is not None
             else defaults.CAL_LOW_TEMP_THRESHOLD
         )
+        high_temp = (
+            self.CAL_HIGH_TEMP_THRESHOLD
+            if self.CAL_HIGH_TEMP_THRESHOLD is not None
+            else defaults.CAL_HIGH_TEMP_THRESHOLD
+        )
         forecast = (
             self.CAL_FORECAST_TIMESPAN
             if self.CAL_FORECAST_TIMESPAN is not None
             else defaults.CAL_FORECAST_TIMESPAN
         )
 
-        if low_temp is None or forecast is None:
+        if low_temp is None or high_temp is None or forecast is None:
             raise ValueError(
                 "TemperatureComponent room configuration requires "
-                "CAL_LOW_TEMP_THRESHOLD and CAL_FORECAST_TIMESPAN"
+                "CAL_LOW_TEMP_THRESHOLD, CAL_HIGH_TEMP_THRESHOLD "
+                "and CAL_FORECAST_TIMESPAN"
             )
 
         merged["CAL_LOW_TEMP_THRESHOLD"] = low_temp
+        merged["CAL_HIGH_TEMP_THRESHOLD"] = high_temp
         merged["CAL_FORECAST_TIMESPAN"] = forecast
 
         extras = getattr(self, "model_extra", None) or {}

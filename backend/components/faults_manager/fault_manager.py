@@ -406,7 +406,7 @@ class FaultManager:
         if fault and not any(
             symptom.state == FaultState.SET
             for symptom in self.symptoms.values()
-            if symptom.sm_name == sm_name
+            if symptom.sm_name in set(fault.related_symptoms)
         ):  # If Fault was found and if other fault related symptoms are not raised
             # Generate a unique fault tag using the hash method
             fault_tag: str = self._generate_fault_tag(fault.name, additional_info)
