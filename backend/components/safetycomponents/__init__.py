@@ -1,7 +1,6 @@
 
 """Safety component base classes and concrete implementations."""
 
-from .core.derivative_monitor import DerivativeMonitor
 from .core.safety_component import (
     DebounceAction,
     DebounceResult,
@@ -26,7 +25,6 @@ __all__ = [
     "DebounceAction",
     "DebounceResult",
     "DebounceState",
-    "DerivativeMonitor",
     "SafetyComponent",
     "SafetyMechanism",
     "SafetyMechanismResult",
