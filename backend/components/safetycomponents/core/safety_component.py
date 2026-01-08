@@ -38,7 +38,7 @@ from enum import Enum
 import appdaemon.plugins.hass.hassapi as hass  # type: ignore
 
 from components.core.common_entities import CommonEntities
-from components.safetycomponents.core.derivative_monitor import DerivativeMonitor
+from components.core.derivative_monitor import DerivativeMonitor
 from components.core.event_bus import EventBus
 from components.core.types_common import FaultState, Symptom, RecoveryAction, SMState
 

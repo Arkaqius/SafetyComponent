@@ -43,7 +43,7 @@ from components.app_config_validator.app_cfg_validator import (
 )
 from components.core.common_entities import CommonEntities
 from components.core.event_bus import EventBus
-from components.safetycomponents.core.derivative_monitor import DerivativeMonitor
+from components.core.derivative_monitor import DerivativeMonitor
 from components.faults_manager import cfg_parser as cfg_pr
 from components.faults_manager.fault_manager import FaultManager
 from components.notification_manager.notification_manager import NotificationManager
