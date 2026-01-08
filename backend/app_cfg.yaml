@@ -136,47 +136,38 @@ SafetyFunctions:
         rooms:
           Office:
             temperature_sensor: "sensor.office_temperature"
-            temperature_sensor_rate: "sensor.office_temperature_rate"
             window_sensor: "binary_sensor.office_window_contact_contact"
 
           Bedroom:
             temperature_sensor: "sensor.bedroom_temperature"
-            temperature_sensor_rate: "sensor.bedroom_temperature_rate"
             window_sensor: "binary_sensor.bedroom_windowleft_sensor_contact"
 
           Bathroom:
             temperature_sensor: "sensor.bathroom_temperature"
-            temperature_sensor_rate: "sensor.bathroom_temperature_rate"
             window_sensor: "binary_sensor.bathroom_window_contact_contact"
 
           Livingroom:
             temperature_sensor: "sensor.livingroom_temperature"
-            temperature_sensor_rate: "sensor.livingroom_temperature_rate"
             window_sensor: "binary_sensor.livingroom_door_contact_contact"
 
           Kitchen:
             temperature_sensor: "sensor.corridor_temperature"
-            temperature_sensor_rate: "sensor.corridor_temperature_rate"
             window_sensor: "binary_sensor.kitchen_window_contact_contact"
 
           Entrance:
             temperature_sensor: "sensor.entrance_temperature"
-            temperature_sensor_rate: "sensor.entrance_temperature_rate"
             window_sensor: null
 
           Garage:
             # Override defaults for this room
             CAL_LOW_TEMP_THRESHOLD: 10.0
             temperature_sensor: "sensor.garage_temperature"
-            temperature_sensor_rate: "sensor.garage_temperature_rate"
             window_sensor: "binary_sensor.garage_gatedoorlow_contact_contact"
 
           Kidsroom:
             temperature_sensor: "sensor.kidsroom_temperature"
-            temperature_sensor_rate: "sensor.kidsroom_temperature_rate"
             window_sensor: "binary_sensor.kidsroom_window_contact_contact"
 
           Upperbathroom:
             temperature_sensor: "sensor.upperbathroom_temperature"
-            temperature_sensor_rate: "sensor.upperbathroom_temperature_rate"
             window_sensor: "sensor.upperbathroom_window_contact_contact"

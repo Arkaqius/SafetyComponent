@@ -22,14 +22,12 @@ def _temperature_component_rooms():
             "CAL_LOW_TEMP_THRESHOLD": 18.0,
             "CAL_FORECAST_TIMESPAN": 2.0,
             "temperature_sensor": "sensor.office_temperature",
-            "temperature_sensor_rate": "sensor.office_temperature_rate",
             "window_sensor": "sensor.office_window_contact_contact",
         },
         "Kitchen": {
             "CAL_LOW_TEMP_THRESHOLD": 18.0,
             "CAL_FORECAST_TIMESPAN": 2.0,
             "temperature_sensor": "sensor.kitchen_temperature",
-            "temperature_sensor_rate": "sensor.kitchen_temperature_rate",
             "window_sensor": "sensor.kitchen_window_contact_contact",
         },
     }

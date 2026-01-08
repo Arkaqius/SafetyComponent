@@ -56,7 +56,7 @@ class UserConfig(StrictBaseModel):
     model_config = ConfigDict(extra="allow")
 
     components_enabled: Dict[str, bool] = Field(default_factory=dict)
-    notification: Dict[str, Any]
+    notification: Dict[str, Any] = Field(default_factory=dict)
     common_entities: Dict[str, str]
     safety_components: Dict[str, Dict[str, Any]]
 

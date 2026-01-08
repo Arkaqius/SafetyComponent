@@ -26,7 +26,6 @@ class TemperatureRoom(StrictBaseModel):
     model_config = ConfigDict(extra="allow")
 
     temperature_sensor: str
-    temperature_sensor_rate: str
     window_sensor: Optional[str] = None
     CAL_LOW_TEMP_THRESHOLD: Optional[float] = None
     CAL_FORECAST_TIMESPAN: Optional[float] = None
@@ -48,7 +47,6 @@ class TemperatureRoom(StrictBaseModel):
     def with_defaults(self, defaults: TemperatureDefaults) -> Dict[str, Any]:
         merged: Dict[str, Any] = {
             "temperature_sensor": self.temperature_sensor,
-            "temperature_sensor_rate": self.temperature_sensor_rate,
             "window_sensor": self.window_sensor,
         }
 

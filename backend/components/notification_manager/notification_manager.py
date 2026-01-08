@@ -172,15 +172,30 @@ class NotificationManager:
             message (str): The detailed message for the notification, not directly used in this method but
                            required for consistency with the interface.
         """
-        self.hass_app.call_service(
-            "alarm_control_panel/alarm_trigger",
-            entity_id=self.notification_config["alarm_entity"],
-        )
-        self.hass_app.call_service(
-            "light/turn_on",
-            entity_id=self.notification_config["light_entity"],
-            color_name="red",
-        )
+        alarm_entity = self.notification_config.get("alarm_entity")
+        if alarm_entity:
+            self.hass_app.call_service(
+                "alarm_control_panel/alarm_trigger",
+                entity_id=alarm_entity,
+            )
+        else:
+            self.hass_app.log(
+                "Alarm entity not configured; skipping level 1 alarm action.",
+                level="WARNING",
+            )
+
+        light_entity = self.notification_config.get("light_entity")
+        if light_entity:
+            self.hass_app.call_service(
+                "light/turn_on",
+                entity_id=light_entity,
+                color_name="red",
+            )
+        else:
+            self.hass_app.log(
+                "Light entity not configured; skipping level 1 light action.",
+                level="WARNING",
+            )
         self.hass_app.log(
             "Performed _notify_level_1_additional",
             level="DEBUG",
@@ -195,11 +210,18 @@ class NotificationManager:
             message (str): The detailed message for the notification, not directly used in this method but
                            required for consistency with the interface.
         """
-        self.hass_app.call_service(
-            "light/turn_on",
-            entity_id=self.notification_config["light_entity"],
-            color_name="yellow",
-        )
+        light_entity = self.notification_config.get("light_entity")
+        if light_entity:
+            self.hass_app.call_service(
+                "light/turn_on",
+                entity_id=light_entity,
+                color_name="yellow",
+            )
+        else:
+            self.hass_app.log(
+                "Light entity not configured; skipping level 2 light action.",
+                level="WARNING",
+            )
         self.hass_app.log(
             "Performed _notify_level_2_additional",
             level="DEBUG",
