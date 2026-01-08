@@ -105,7 +105,7 @@ SafetyFunctions:
     # single place to expand notification channels without leaking entities into
     # individual safety components.
     notification:
-      light_entity: "light.warning_light"
+      light_entity: "light.livingroom_rightstrip_controler"
       # future examples:
       # phone_notify_service: "notify.mobile_app_my_phone"
       # tts_media_player: "media_player.livingroom_speaker"
@@ -142,9 +142,9 @@ SafetyFunctions:
             temperature_sensor: "sensor.bedroom_temperature"
             window_sensor: "binary_sensor.bedroom_windowleft_sensor_contact"
 
-          Bathroom:
-            temperature_sensor: "sensor.bathroom_temperature"
-            window_sensor: "binary_sensor.bathroom_window_contact_contact"
+          #Bathroom:
+          #  temperature_sensor: "sensor.bathroom_temperature"
+          #  window_sensor: "binary_sensor.bathroom_window_contact_contact"
 
           Livingroom:
             temperature_sensor: "sensor.livingroom_temperature"
@@ -171,4 +171,4 @@ SafetyFunctions:
 
           Upperbathroom:
             temperature_sensor: "sensor.upperbathroom_temperature"
-            window_sensor: "sensor.upperbathroom_window_contact_contact"
+            #window_sensor: "sensor.upperbathroom_window_contact_contact"
