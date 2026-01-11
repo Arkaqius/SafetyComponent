@@ -249,6 +249,12 @@ class FaultManager:
         # Collect all faults mapped from that symptom
         fault: Fault | None = self.found_mapped_fault(symptom_id, sm_name)
         if fault:
+            if self._is_fault_shadowed(fault.name):
+                self._set_fault_shadowed(
+                    fault, self.symptoms[symptom_id], additional_info
+                )
+                return
+
             # Generate a unique fault tag using the hash method
             fault_tag: str = self._generate_fault_tag(fault.name, additional_info)
             # Save previous value
@@ -300,6 +306,8 @@ class FaultManager:
                     self.recovery_interface(self.symptoms[symptom_id], fault_tag)
                 else:
                     self.hass.log("No recovery interface", level="WARNING")
+
+            self._apply_shadowing(fault, self.symptoms[symptom_id], additional_info)
 
     def _determinate_info(
             self, entity_id: str, additional_info: Optional[dict], fault_state: FaultState
@@ -372,6 +380,105 @@ class FaultManager:
                 return info_to_send
 
             return None
+
+    def _is_fault_shadowed(self, fault_name: str) -> bool:
+        """
+        Determines whether a fault is currently shadowed by another active fault.
+
+        Args:
+            fault_name (str): The fault name to check for shadowing.
+
+        Returns:
+            bool: True if any active fault shadows the provided fault name.
+        """
+        for active_fault in self.faults.values():
+            if (
+                active_fault.state == FaultState.SET
+                and fault_name in active_fault.shadows
+            ):
+                return True
+        return False
+
+    def _apply_shadowing(
+        self,
+        fault: Fault,
+        symptom: Symptom,
+        additional_info: Optional[dict],
+    ) -> None:
+        """
+        Applies shadowing rules declared by the active fault.
+
+        Args:
+            fault (Fault): The active fault that may shadow others.
+            symptom (Symptom): The symptom that triggered the fault.
+            additional_info (dict | None): Additional info to use for notifications.
+        """
+        for shadowed_fault_name in fault.shadows:
+            shadowed_fault = self.faults.get(shadowed_fault_name)
+            if not shadowed_fault:
+                self.hass.log(
+                    f"Unknown shadowed fault '{shadowed_fault_name}' referenced by '{fault.name}'.",
+                    level="WARNING",
+                )
+                continue
+            if shadowed_fault.state == FaultState.SET:
+                self._set_fault_shadowed(
+                    shadowed_fault, symptom, additional_info
+                )
+
+    def _set_fault_shadowed(
+        self,
+        fault: Fault,
+        symptom: Symptom,
+        additional_info: Optional[dict],
+    ) -> None:
+        """
+        Sets a fault to a shadowed state and clears its notification.
+
+        Args:
+            fault (Fault): The fault to shadow.
+            symptom (Symptom): The symptom that triggered the shadowing.
+            additional_info (dict | None): Additional info to use for clearing notifications.
+        """
+        fault_tag: str = self._generate_fault_tag(fault.name, additional_info)
+        fault.previous_val = fault.state
+        fault.state = FaultState.SHADOWED
+        self.update_system_state_entity()
+        self.hass.log(f"Fault {fault.name} was shadowed", level="DEBUG")
+
+        entity_id = "sensor.fault_" + fault.name
+        info_to_send: Optional[dict] = None
+        if additional_info:
+            info_to_send = self._determinate_info(
+                entity_id, additional_info, FaultState.CLEARED
+            )
+        if info_to_send is None:
+            state = self.hass.get_state(entity_id, attribute="all")
+            attributes = state.get("attributes", {}) if state else {}
+        else:
+            attributes = info_to_send
+
+        self.hass.set_state(entity_id, state="Shadowed", attributes=attributes)
+
+        if self.event_bus:
+            self.event_bus.publish(
+                "fault",
+                fault_name=fault.name,
+                level=fault.level,
+                fault_state=FaultState.SHADOWED,
+                additional_info=additional_info,
+                fault_tag=fault_tag,
+                symptom=symptom,
+                should_notify=True,
+            )
+        elif self.notify_interface:
+            self.notify_interface(
+                fault.name,
+                fault.level,
+                FaultState.SHADOWED,
+                additional_info,
+                fault_tag,
+            )
 
     def _clear_fault(self, symptom_id: str, additional_info: dict) -> None:
         """
@@ -476,7 +583,7 @@ class FaultManager:
 
         Returns:
             FaultState: The current state of the specified fault, indicating whether it is
-                        NOT_TESTED, SET, or CLEARED.
+                        NOT_TESTED, SET, CLEARED, or SHADOWED.
 
         Raises:
             KeyError: If the specified fault_id does not exist in the faults dictionary,

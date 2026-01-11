@@ -1,4 +1,4 @@
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, ANY
 import pytest
 from components.core.types_common import FaultState, SMState, Symptom, Fault
 from components.faults_manager.fault_manager import FaultManager
@@ -399,6 +399,61 @@ def test_fault_manager_state_transitions(fault_manager, mocked_hass_app, fault):
         FaultState.CLEARED,
         additional_info2,
         "mocked_fault_tag",
+    )
+
+
+def test_fault_shadowing_clears_notification(fault_manager, mocked_hass_app):
+    """
+    Test that a fault listed in a shadowing rule is shadowed and its notification cleared.
+    """
+    fault_manager.notify_interface = Mock()
+    fault_manager.recovery_interface = Mock()
+    mocked_hass_app.get_state = Mock(return_value={"attributes": {"Location": "Office"}})
+
+    symptom_actual = Symptom(
+        name="RiskyTemperatureOffice",
+        sm_name="sm_tc_1",
+        module=Mock(),
+        parameters={"CAL_LOW_TEMP_THRESHOLD": 18.0},
+    )
+    symptom_forecast = Symptom(
+        name="RiskyTemperatureOfficeForecast",
+        sm_name="sm_tc_2",
+        module=Mock(),
+        parameters={"CAL_LOW_TEMP_THRESHOLD": 18.0},
+    )
+
+    fault_actual = Fault(
+        "RiskyTemperature",
+        ["sm_tc_1"],
+        level=2,
+        shadows=["RiskyTemperatureForecast"],
+    )
+    fault_forecast = Fault("RiskyTemperatureForecast", ["sm_tc_2"], level=3)
+
+    fault_manager.symptoms = {
+        symptom_actual.name: symptom_actual,
+        symptom_forecast.name: symptom_forecast,
+    }
+    fault_manager.faults = {
+        fault_actual.name: fault_actual,
+        fault_forecast.name: fault_forecast,
+    }
+
+    additional_info = {"Location": "Office"}
+    fault_manager.set_symptom(symptom_forecast.name, additional_info)
+    assert fault_forecast.state == FaultState.SET
+
+    fault_manager.set_symptom(symptom_actual.name, additional_info)
+    assert fault_actual.state == FaultState.SET
+    assert fault_forecast.state == FaultState.SHADOWED
+
+    fault_manager.notify_interface.assert_any_call(
+        "RiskyTemperatureForecast",
+        fault_forecast.level,
+        FaultState.SHADOWED,
+        additional_info,
+        ANY,
     )
     
 def test_fault_manager_init_safety_mechanisms_failure(fault_manager):
