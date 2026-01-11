@@ -76,7 +76,7 @@ class NotificationManager:
             fault: The fault's name, used as a unique tag for the notification.
             level: Notification level, dictating the notification type.
             additional_info: Additional fault details (optional) for the notification message.
-            fault_status: Status of the fault (set, cleared, or inhibited).
+            fault_status: Status of the fault (set, cleared, or shadowed).
         """
 
         location = (
@@ -102,10 +102,10 @@ class NotificationManager:
                 f"Notification cleared for {fault} at {location}",
                 level="DEBUG",
             )
-        elif fault_status == FaultState.INHIBITED:
-            self._process_inhibited_fault(level, fault_tag)
+        elif fault_status == FaultState.SHADOWED:
+            self._process_shadowed_fault(level, fault_tag)
             self.hass_app.log(
-                f"Notification inhibited for {fault} at {location}",
+                f"Notification shadowed for {fault} at {location}",
                 level="DEBUG",
             )
         else:
@@ -146,7 +146,7 @@ class NotificationManager:
         else:
             self._clear_company_app(level, fault_tag)
 
-    def _process_inhibited_fault(self, level: int, fault_tag: str) -> None:
+    def _process_shadowed_fault(self, level: int, fault_tag: str) -> None:
         self._clear_company_app(level, fault_tag)
 
     def _set_dashboard_notification(self, message: str, level: int) -> None:

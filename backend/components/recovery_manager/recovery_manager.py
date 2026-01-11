@@ -331,7 +331,7 @@ class RecoveryManager:
         **_: object,
     ) -> None:
         """EventBus handler for fault events."""
-        if fault_state == FaultState.INHIBITED:
+        if fault_state == FaultState.SHADOWED:
             return
         self.recovery(symptom, fault_tag)
 

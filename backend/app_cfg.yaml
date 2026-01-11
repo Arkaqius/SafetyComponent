@@ -63,7 +63,7 @@ SafetyFunctions:
       RiskyTemperature:
         name: "Unsafe temperature"
         level: 2
-        inhibits:
+        shadows:
           - "RiskyTemperatureForecast"
         related_sms:
           - "sm_tc_1"

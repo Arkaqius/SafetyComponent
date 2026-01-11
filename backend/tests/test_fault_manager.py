@@ -358,9 +358,9 @@ def test_fault_manager_state_transitions(fault_manager, mocked_hass_app, fault):
     )
 
 
-def test_fault_inhibition_clears_notification(fault_manager, mocked_hass_app):
+def test_fault_shadowing_clears_notification(fault_manager, mocked_hass_app):
     """
-    Test that a fault listed in an inhibition rule is inhibited and its notification cleared.
+    Test that a fault listed in a shadowing rule is shadowed and its notification cleared.
     """
     fault_manager.notify_interface = Mock()
     fault_manager.recovery_interface = Mock()
@@ -383,7 +383,7 @@ def test_fault_inhibition_clears_notification(fault_manager, mocked_hass_app):
         "RiskyTemperature",
         ["sm_tc_1"],
         level=2,
-        inhibits=["RiskyTemperatureForecast"],
+        shadows=["RiskyTemperatureForecast"],
     )
     fault_forecast = Fault("RiskyTemperatureForecast", ["sm_tc_2"], level=3)
 
@@ -402,12 +402,12 @@ def test_fault_inhibition_clears_notification(fault_manager, mocked_hass_app):
 
     fault_manager.set_symptom(symptom_actual.name, additional_info)
     assert fault_actual.state == FaultState.SET
-    assert fault_forecast.state == FaultState.INHIBITED
+    assert fault_forecast.state == FaultState.SHADOWED
 
     fault_manager.notify_interface.assert_any_call(
         "RiskyTemperatureForecast",
         fault_forecast.level,
-        FaultState.INHIBITED,
+        FaultState.SHADOWED,
         additional_info,
         ANY,
     )

@@ -12,7 +12,7 @@ def get_faults(faults_dict: dict) -> dict[str, Fault]:
     Parses a dictionary of fault configurations and initializes Fault objects for each.
 
     Each fault configuration must include 'related_sms' (related safety mechanisms) and
-    a 'level' level. Optional 'inhibits' can define other faults to suppress when set.
+    a 'level' level. Optional 'shadows' can define other faults to suppress when set.
     The function creates a Fault object for each entry and collects them
     into a dictionary keyed by the fault name.
 
@@ -30,6 +30,6 @@ def get_faults(faults_dict: dict) -> dict[str, Fault]:
             fault_name,
             fault_data["related_sms"],
             fault_data["level"],
-            fault_data.get("inhibits", []),
+            fault_data.get("shadows", []),
         )
     return ret_val
