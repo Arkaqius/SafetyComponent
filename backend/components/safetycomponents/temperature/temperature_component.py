@@ -120,6 +120,15 @@ class TemperatureComponent(SafetyComponent):
                 "location",
             ]
             sm_method = self.sm_tc_1
+        elif sm_name == "sm_tc_3":
+            required_keys = [
+                "temperature_sensor",
+                "CAL_HIGH_TEMP_THRESHOLD",
+                "SM_TC_1_DEBOUNCE_LIMIT",
+                "SM_TC_1_REEVAL_DELAY_SECONDS",
+                "location",
+            ]
+            sm_method = self.sm_tc_3
         elif sm_name == "sm_tc_2":
             required_keys = [
                 "temperature_sensor",
@@ -131,6 +140,17 @@ class TemperatureComponent(SafetyComponent):
                 "location",
             ]
             sm_method = self.sm_tc_2
+        elif sm_name == "sm_tc_4":
+            required_keys = [
+                "temperature_sensor",
+                "CAL_HIGH_TEMP_THRESHOLD",
+                "CAL_FORECAST_TIMESPAN",
+                "SM_TC_2_DEBOUNCE_LIMIT",
+                "SM_TC_2_REEVAL_DELAY_SECONDS",
+                "SM_TC_2_DERIVATIVE_SAMPLE_MINUTES",
+                "location",
+            ]
+            sm_method = self.sm_tc_4
         else:
             self.hass_app.log(f"Unknown safety mechanism {sm_name}", level="ERROR")
             return False
@@ -255,6 +275,67 @@ class TemperatureComponent(SafetyComponent):
 
         return SafetyMechanismResult(result=sm_result, additional_info=additional_info)
 
+    @safety_mechanism_decorator
+    def sm_tc_3(
+        self, sm: SafetyMechanism, entities_changes: dict[str, str] | None = None
+    ) -> SafetyMechanismResult:
+        """
+        The core logic for a direct overtemperature safety mechanism. It reads current temperature
+        data, compares it against defined high thresholds, and, if a risk condition is detected,
+        executes configured actions to mitigate the risk.
+        """
+        temperature_sensor: str = sm.sm_args["temperature_sensor"]
+        hot_threshold: float = sm.sm_args["hot_thr"]
+        location: str = sm.sm_args["location"]
+
+        temperature: float | None = self._get_temperature_value(
+            temperature_sensor, entities_changes
+        )
+        if temperature is None:
+            return SafetyMechanismResult(False, None)
+
+        sm_result: bool = temperature > hot_threshold
+        additional_info: dict[str, str] = {"location": location}
+
+        return SafetyMechanismResult(result=sm_result, additional_info=additional_info)
+
+    @safety_mechanism_decorator
+    def sm_tc_4(
+        self, sm: SafetyMechanism, entities_changes: dict[str, str] | None = None
+    ) -> SafetyMechanismResult:
+        """
+        Implements logic for a forecast-based overtemperature safety mechanism. This method analyzes
+        temperature trends and forecasts future conditions to proactively address potential risks based
+        on predicted temperature increases.
+        """
+        temperature_sensor: str = sm.sm_args["temperature_sensor"]
+        hot_threshold: float = sm.sm_args["hot_thr"]
+        location: str = sm.sm_args["location"]
+        forecast_span: float = sm.sm_args["forecast_timespan"]
+        sampling_minutes: int = sm.sm_args["derivative_sample_minutes"]
+
+        temperature: float | None = self._get_temperature_value(
+            temperature_sensor, entities_changes
+        )
+        temperature_rate: float | None = self._get_temperature_value(
+            f"{temperature_sensor}_rate", entities_changes
+        )
+
+        if temperature is None or temperature_rate is None:
+            return SafetyMechanismResult(False, None)
+
+        forecasted_temperature = self.forecast_temperature(
+            temperature,
+            temperature_rate,
+            forecast_span,
+            sampling_minutes,
+        )
+
+        sm_result: bool = forecasted_temperature > hot_threshold
+        additional_info: dict[str, str] = {"location": location}
+
+        return SafetyMechanismResult(result=sm_result, additional_info=additional_info)
+
     def forecast_temperature(
         self,
         initial_temperature: float,
@@ -345,6 +426,12 @@ class TemperatureComponent(SafetyComponent):
         # Process SM TC 2
         self._process_sm_tc(sm_modules, location, data, ret_val_pr, ret_val_ra, tc_number=2)  # type: ignore[misc]
 
+        # Process SM TC 3
+        self._process_sm_tc(sm_modules, location, data, ret_val_pr, ret_val_ra, tc_number=3)  # type: ignore[misc]
+
+        # Process SM TC 4
+        self._process_sm_tc(sm_modules, location, data, ret_val_pr, ret_val_ra, tc_number=4)  # type: ignore[misc]
+
     def _process_sm_tc(
         self,
         sm_modules: dict,
@@ -374,7 +461,8 @@ class TemperatureComponent(SafetyComponent):
         recovery_action = recovery_action_func(sm_modules, location, data, symptom_name)
 
         ret_val_pr[symptom_name] = symptom
-        ret_val_ra[symptom_name] = recovery_action
+        if recovery_action is not None:
+            ret_val_ra[symptom_name] = recovery_action
 
     def _create_symptom(
         self, modules: dict, location: str, data: dict, symptom_name: str, sm_name: str
@@ -467,6 +555,36 @@ class TemperatureComponent(SafetyComponent):
             default_name="ManipulateWindow",
         )
 
+    def _get_sm_tc_3_pr_name(self, location: str) -> str:
+        return f"RiskyTemperatureHigh{location}"
+
+    def _get_sm_tc_3_symptom(
+        self, modules: dict, location: str, data: dict, symptom_name: str
+    ) -> Symptom:
+        return self._create_symptom(
+            modules, location, data, symptom_name, sm_name="sm_tc_3"
+        )
+
+    def _get_sm_tc_3_recovery_action(
+        self, _: dict, __: str, ___: dict, ____: str
+    ) -> RecoveryAction | None:
+        return None
+
+    def _get_sm_tc_4_pr_name(self, location: str) -> str:
+        return f"RiskyTemperatureHigh{location}ForeCast"
+
+    def _get_sm_tc_4_symptom(
+        self, modules: dict, location: str, data: dict, symptom_name: str
+    ) -> Symptom:
+        return self._create_symptom(
+            modules, location, data, symptom_name, sm_name="sm_tc_4"
+        )
+
+    def _get_sm_tc_4_recovery_action(
+        self, _: dict, __: str, ___: dict, ____: str
+    ) -> RecoveryAction | None:
+        return None
+
     def _init_sm(
         self, name: str, parameters: dict, sm_method: Callable, required_keys: list
     ) -> bool:
@@ -501,15 +619,19 @@ class TemperatureComponent(SafetyComponent):
             debounce=DEBOUNCE_INIT, force_sm=False
         )
 
-        # Additional setup for SM TC 2
-        if sm_method == self.sm_tc_2:
-            sampling_minutes = extracted_params["SM_TC_2_DERIVATIVE_SAMPLE_MINUTES"]
-            self.derivative_monitor.register_entity(
-                extracted_params["temperature_sensor"],
-                sampling_minutes * 60,
-                -2,
-                2,
-            )
+        # Additional setup for SM TC 2/4 (derivative monitor)
+        if sm_method in (self.sm_tc_2, self.sm_tc_4):
+            sensor_id = extracted_params["temperature_sensor"]
+            if sensor_id not in self.derivative_monitor.entities:
+                sampling_minutes = extracted_params[
+                    "SM_TC_2_DERIVATIVE_SAMPLE_MINUTES"
+                ]
+                self.derivative_monitor.register_entity(
+                    sensor_id,
+                    sampling_minutes * 60,
+                    -2,
+                    2,
+                )
 
         return True
 
@@ -555,12 +677,16 @@ class TemperatureComponent(SafetyComponent):
             "name": name,
             "isEnabled": False,
             "temperature_sensor": params["temperature_sensor"],
-            "cold_thr": params["CAL_LOW_TEMP_THRESHOLD"],
             "location": params["location"],
             "actuator": params["actuator"],
         }
 
-        if sm_method == self.sm_tc_2:
+        if sm_method in (self.sm_tc_1, self.sm_tc_2):
+            sm_args["cold_thr"] = params["CAL_LOW_TEMP_THRESHOLD"]
+        if sm_method in (self.sm_tc_3, self.sm_tc_4):
+            sm_args["hot_thr"] = params["CAL_HIGH_TEMP_THRESHOLD"]
+
+        if sm_method in (self.sm_tc_2, self.sm_tc_4):
             sm_args.update(
                 {
                     "forecast_timespan": params["CAL_FORECAST_TIMESPAN"],

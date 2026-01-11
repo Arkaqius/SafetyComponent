@@ -239,7 +239,7 @@ def test_fault_manager_multiple_symptoms(fault_manager, mocked_hass_app, fault):
 
     # Verify that fault remains set because the kitchen symptom is not cleared
     assert fault.state == FaultState.SET
-    
+
     # Clear the second symptom (Kitchen)
     fault_manager.clear_symptom("RiskyTemperatureKitchen", additional_info_kitchen)
 
@@ -260,6 +260,50 @@ def test_fault_manager_multiple_symptoms(fault_manager, mocked_hass_app, fault):
     fault_manager.recovery_interface.assert_any_call(
         symptom_kitchen, "mocked_fault_tag"
     )
+
+
+def test_fault_manager_multiple_sm_names_single_fault(
+    fault_manager, mocked_hass_app
+):
+    """
+    Test that a fault mapped to multiple safety mechanism names clears only when all related symptoms are cleared.
+    """
+    fault_manager._generate_fault_tag = Mock(return_value="mocked_fault_tag")
+    fault_manager.notify_interface = Mock()
+    fault_manager.recovery_interface = Mock()
+
+    symptom_low = Symptom(
+        name="RiskyTemperatureOffice",
+        sm_name="sm_tc_1",
+        module=Mock(),
+        parameters={"CAL_LOW_TEMP_THRESHOLD": 18.0},
+    )
+    symptom_high = Symptom(
+        name="RiskyTemperatureHighOffice",
+        sm_name="sm_tc_3",
+        module=Mock(),
+        parameters={"CAL_HIGH_TEMP_THRESHOLD": 28.0},
+    )
+
+    fault_manager.symptoms = {
+        symptom_low.name: symptom_low,
+        symptom_high.name: symptom_high,
+    }
+    fault_manager.faults = {
+        "RiskyTemperature": Fault("RiskyTemperature", ["sm_tc_1", "sm_tc_3"], level=2)
+    }
+
+    mocked_hass_app.get_state = Mock(return_value={"attributes": {"Location": ""}})
+
+    fault_manager.set_symptom(symptom_low.name, {"Location": "Office"})
+    fault_manager.set_symptom(symptom_high.name, {"Location": "Office"})
+    fault_manager.clear_symptom(symptom_low.name, {"Location": "Office"})
+
+    assert fault_manager.faults["RiskyTemperature"].state == FaultState.SET
+
+    fault_manager.clear_symptom(symptom_high.name, {"Location": "Office"})
+
+    assert fault_manager.faults["RiskyTemperature"].state == FaultState.CLEARED
 
 
 def test_fault_manager_state_transitions(fault_manager, mocked_hass_app, fault):

@@ -7,6 +7,13 @@ This file provides guidance and memory for Codex CLI.
 - Use a Python 3.10+ virtual environment with pytest installed; the test suite uses the bundled AppDaemon Hass stub under `backend/tests/appdaemon` to avoid external dependencies.
 - The most recent verification ran `pytest backend/tests` successfully.
 
+## Backend Coding Standards
+- Use type hints for function signatures, class attributes, and complex variables whenever practical.
+- Follow PEP 8 naming conventions (`snake_case` for functions/variables, `PascalCase` for classes, `UPPER_SNAKE_CASE` for constants).
+- Add docstrings to all public modules, classes, and functions describing purpose, inputs, and outputs.
+- Group imports into standard library, third-party, and local blocks, keeping imports ordered within each group.
+- Prefer clear, explicit logic and meaningful names over terse constructs.
+
 <!-- BEGIN: BMAD-AGENTS -->
 # BMAD-METHOD Agents and Tasks
 
@@ -7302,4 +7309,3 @@ Based on the analysis and agreed path forward:
 ```
 
 <!-- END: BMAD-AGENTS -->
-

@@ -62,17 +62,17 @@ def test_temp_comp_notification(
         mocked_hass_app_with_temp_component
     )
 
+    app_instance.initialize()
+
     test_mock_behaviours: List[MockBehavior[str, Iterator[str]]] = [
         MockBehavior("sensor.office_temperature", iter(temperature))
     ]
     mock_behaviors_default: List[MockBehavior] = update_mocked_get_state(
         mock_behaviors_default, test_mock_behaviours
     )
-
     app_instance.get_state.side_effect = lambda entity_id, **kwargs: mock_get_state(
         entity_id, mock_behaviors_default
     )
-    app_instance.initialize()
 
     for _ in range(test_size):
         app_instance.sm_modules["TemperatureComponent"].sm_tc_1(
@@ -97,6 +97,85 @@ def test_temp_comp_notification(
         # Check last one
         assert notify_call[-1].kwargs["title"] == prefault_title
         assert notify_call[-1].kwargs["message"] == prefault_message
+
+
+def test_temp_comp_overtemp_notification(mocked_hass_app_with_temp_component):
+    """
+    Test Case: Verify overtemperature notification is sent.
+    """
+    app_instance, _, __, ___, mock_behaviors_default = (
+        mocked_hass_app_with_temp_component
+    )
+    app_instance.initialize()
+
+    test_mock_behaviours: List[MockBehavior[str, Iterator[str]]] = [
+        MockBehavior("sensor.office_temperature", iter(["30", "31", "32", "33", "34"]))
+    ]
+    mock_behaviors_default: List[MockBehavior] = update_mocked_get_state(
+        mock_behaviors_default, test_mock_behaviours
+    )
+    app_instance.get_state.side_effect = lambda entity_id, **kwargs: mock_get_state(
+        entity_id, mock_behaviors_default
+    )
+
+    for _ in range(5):
+        app_instance.sm_modules["TemperatureComponent"].sm_tc_3(
+            app_instance.sm_modules["TemperatureComponent"].safety_mechanisms[
+                "RiskyTemperatureHighOffice"
+            ]
+        )
+
+    notify_call = [
+        call
+        for call in app_instance.call_service.call_args_list
+        if "notify" in call.args[0]
+    ]
+    assert notify_call[-1].kwargs["title"] == "Hazard!"
+    assert (
+        notify_call[-1].kwargs["message"]
+        == "Fault: RiskyTemperature\nlocation: Office\n"
+    )
+
+
+def test_temp_comp_overtemp_forecast_notification(
+    mocked_hass_app_with_temp_component,
+):
+    """
+    Test Case: Verify overtemperature forecast notification is sent.
+    """
+    app_instance, _, __, ___, mock_behaviors_default = (
+        mocked_hass_app_with_temp_component
+    )
+    app_instance.initialize()
+
+    test_mock_behaviours: List[MockBehavior[str, Iterator[str]]] = [
+        MockBehavior("sensor.office_temperature", iter(["30", "30", "30", "30"])),
+        MockBehavior("sensor.office_temperature_rate", iter(["1", "1", "1", "1"])),
+    ]
+    mock_behaviors_default: List[MockBehavior] = update_mocked_get_state(
+        mock_behaviors_default, test_mock_behaviours
+    )
+    app_instance.get_state.side_effect = lambda entity_id, **kwargs: mock_get_state(
+        entity_id, mock_behaviors_default
+    )
+
+    for _ in range(5):
+        app_instance.sm_modules["TemperatureComponent"].sm_tc_4(
+            app_instance.sm_modules["TemperatureComponent"].safety_mechanisms[
+                "RiskyTemperatureHighOfficeForeCast"
+            ]
+        )
+
+    notify_call = [
+        call
+        for call in app_instance.call_service.call_args_list
+        if "notify" in call.args[0]
+    ]
+    assert notify_call[-1].kwargs["title"] == "Warning!"
+    assert (
+        notify_call[-1].kwargs["message"]
+        == "Fault: RiskyTemperatureForecast\nlocation: Office\n"
+    )
         
 def test_notify_fault_set(mocked_hass_app_with_temp_component):
     """

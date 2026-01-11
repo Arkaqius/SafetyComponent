@@ -67,11 +67,13 @@ SafetyFunctions:
           - "RiskyTemperatureForecast"
         related_sms:
           - "sm_tc_1"
+          - "sm_tc_3"
       RiskyTemperatureForecast:
         name: "Unsafe temperature forecast"
         level: 3
         related_sms:
           - "sm_tc_2"
+          - "sm_tc_4"
 
   # ---------------------------------------------------------------------------
   # House/installation specific configuration (entities, thresholds, enablement).
@@ -132,6 +134,7 @@ SafetyFunctions:
         # Defaults shared across rooms, can be overridden per room.
         defaults:
           CAL_LOW_TEMP_THRESHOLD: 18.0
+          CAL_HIGH_TEMP_THRESHOLD: 28.0
           CAL_FORECAST_TIMESPAN: 2.0 # hours
 
         # Per-room configuration
@@ -163,6 +166,7 @@ SafetyFunctions:
           Garage:
             # Override defaults for this room
             CAL_LOW_TEMP_THRESHOLD: 10.0
+            CAL_HIGH_TEMP_THRESHOLD: 28.0
             CAL_FORECAST_TIMESPAN: 2.0
             temperature_sensor: "sensor.garage_temperature"
             window_sensor: "binary_sensor.garage_gatedoorlow_contact_contact"
