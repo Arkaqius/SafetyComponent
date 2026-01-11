@@ -323,9 +323,16 @@ class RecoveryManager:
         )
 
     def handle_fault_event(
-        self, *, symptom: Symptom, fault_tag: str, **_: object
+        self,
+        *,
+        symptom: Symptom,
+        fault_tag: str,
+        fault_state: FaultState,
+        **_: object,
     ) -> None:
         """EventBus handler for fault events."""
+        if fault_state == FaultState.INHIBITED:
+            return
         self.recovery(symptom, fault_tag)
 
     def _handle_cleared_state(self, symptom: Symptom) -> None:

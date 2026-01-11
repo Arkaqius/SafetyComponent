@@ -30,11 +30,13 @@ class FaultState(Enum):
         NOT_TESTED: Initial state, indicating the fault has not yet been tested.
         SET: Indicates that the fault condition has been detected.
         CLEARED: Indicates that the fault condition has been resolved.
+        INHIBITED: Indicates that the fault is suppressed by another active fault.
     """
 
     NOT_TESTED = 0
     SET = 1
     CLEARED = 2
+    INHIBITED = 3
 
 
 class SMState(Enum):
@@ -141,19 +143,28 @@ class Fault:
         state (FaultState): The current state of the fault.
         related_symptoms (list): A list of symptoms related to this fault.
         level (int): The severity level of the fault for notification purposes.
+        inhibits (list[str]): A list of fault names that should be inhibited when this fault is set.
 
     Args:
         name (str): The name identifier of the fault.
         related_symptoms (list): List of names of safety mechanism that can trigger this fault.
         level (int): The severity level assigned to this fault for notification purposes.
+        inhibits (list[str] | None): Faults to inhibit when this fault is active.
     """
 
-    def __init__(self, name: str, related_symptoms: list, level: int):
+    def __init__(
+        self,
+        name: str,
+        related_symptoms: list,
+        level: int,
+        inhibits: list[str] | None = None,
+    ):
         self.name: str = name
         self.state: FaultState = FaultState.NOT_TESTED
         self.previous_val = FaultState.NOT_TESTED
         self.related_symptoms: list = related_symptoms
         self.level: int = level
+        self.inhibits: list[str] = list(inhibits or [])
 
 
 class RecoveryResult(NamedTuple):

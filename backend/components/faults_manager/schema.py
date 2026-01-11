@@ -17,6 +17,7 @@ class FaultEntry(StrictBaseModel):
     name: str
     level: int = Field(..., ge=1)
     related_sms: list[str]
+    inhibits: list[str] = Field(default_factory=list)
 
 
 def validate_faults_config(
