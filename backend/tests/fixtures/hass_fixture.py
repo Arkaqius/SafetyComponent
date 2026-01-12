@@ -52,6 +52,35 @@ def mocked_hass_app_basic(mocked_hass, app_config_valid):
 
 
 @pytest.fixture
+def mocked_hass_app_with_door_window_component(mocked_hass, app_config_door_window_valid):
+    """Fixture that initializes SafetyFunctions with mocked Hass and DoorWindowSecurityComponent."""
+    with patch.object(
+        SafetyFunctions, "log", new_callable=MagicMock
+    ) as mock_log_method:
+        app_instance = SafetyFunctions(
+            mocked_hass,
+            "dummy_namespace",
+            mocked_hass.logger,
+            app_config_door_window_valid,
+            "mock_config",
+            "dummy_app_config",
+            "dummy_global_vars",
+        )
+
+        mock_behaviors = default_mock_behaviors()
+        app_instance.get_state = MagicMock(
+            side_effect=lambda entity_id, **kwargs: mock_get_state(
+                entity_id, mock_behaviors
+            )
+        )
+        app_instance.set_state = mocked_hass.set_state
+        app_instance.call_service = mocked_hass.call_service
+        app_instance.run_in = mocked_hass.run_in
+        app_instance.listen_state = mocked_hass.listen_state
+        yield app_instance, mocked_hass, mock_log_method, mock_behaviors
+
+
+@pytest.fixture
 def mocked_hass_app_with_temp_component(mocked_hass, app_config_valid):
     """Fixture that initializes SafetyFunctions with mocked Hass and TemperatureComponent."""
     with patch(
@@ -102,6 +131,9 @@ def default_mock_behaviors():
         ),
         MockBehavior("sensor.dom_temperature", iter(["1", "1", "1"])),
         MockBehavior("light.warning_light", iter(["on", "on", "on"])),
+        MockBehavior("sensor.house_occupancy", iter(["Occupied", "Occupied"])),
+        MockBehavior("binary_sensor.front_door_contact", iter(["off", "off"])),
+        MockBehavior("binary_sensor.kitchen_window_contact", iter(["off", "off"])),
     ]
 
 

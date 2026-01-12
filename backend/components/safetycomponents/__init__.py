@@ -20,6 +20,14 @@ from .temperature.schema import (
     validate_temperature_config,
 )
 from .temperature.temperature_component import TemperatureComponent
+from .security.schema import (
+    DoorWindowDefaults,
+    DoorWindowSecurityComponentConfig,
+    DoorConfig,
+    WindowConfig,
+    validate_door_window_security_config,
+)
+from .security.door_window_security_component import DoorWindowSecurityComponent
 
 __all__ = [
     "DebounceAction",
@@ -35,6 +43,12 @@ __all__ = [
     "TemperatureComponentConfig",
     "TemperatureDefaults",
     "TemperatureRoom",
+    "DoorWindowSecurityComponent",
+    "DoorWindowSecurityComponentConfig",
+    "DoorWindowDefaults",
+    "DoorConfig",
+    "WindowConfig",
     "safety_mechanism_decorator",
+    "validate_door_window_security_config",
     "validate_temperature_config",
 ]

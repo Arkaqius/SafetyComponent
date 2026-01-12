@@ -53,6 +53,7 @@ from components.safetycomponents.core.safety_component import (
     get_registered_components,
 )
 import components.safetycomponents.temperature.temperature_component  # side-effect registration
+import components.safetycomponents.security.door_window_security_component  # side-effect registration
 from components.core.types_common import Fault, Symptom, RecoveryAction
 
 DEBUG = False

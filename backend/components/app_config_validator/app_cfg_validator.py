@@ -15,6 +15,10 @@ from components.safetycomponents.temperature.schema import (
     COMPONENT_NAME as TEMPERATURE_COMPONENT_NAME,
     validate_temperature_config,
 )
+from components.safetycomponents.security.schema import (
+    COMPONENT_NAME as DOOR_WINDOW_COMPONENT_NAME,
+    validate_door_window_security_config,
+)
 
 
 class AppCfgValidationError(Exception):
@@ -72,6 +76,32 @@ def _collect_entity_ids(runtime_cfg: Dict[str, Any]) -> list[tuple[str, str]]:
                             )
                         )
 
+    security_cfg = components_cfg.get(DOOR_WINDOW_COMPONENT_NAME)
+    if isinstance(security_cfg, list):
+        for entry in security_cfg:
+            if not isinstance(entry, dict):
+                continue
+            for entry_name, entry_cfg in entry.items():
+                if not isinstance(entry_cfg, dict):
+                    continue
+                for key in (
+                    "door_sensor",
+                    "window_sensor",
+                    "lock_actuator",
+                    "window_actuator",
+                    "occupancy_sensor",
+                ):
+                    value = entry_cfg.get(key)
+                    if isinstance(value, str):
+                        entity_ids.append(
+                            (
+                                "user_config.safety_components."
+                                f"{DOOR_WINDOW_COMPONENT_NAME}."
+                                f"{entry_name}.{key}",
+                                value,
+                            )
+                        )
+
     return entity_ids
 
 
@@ -116,6 +146,12 @@ def _to_runtime(
                 strict_validation=strict_validation,
                 log=log,
                 calibration=cfg.app_config.calibration.temperature.model_dump(),
+            )
+        elif name == DOOR_WINDOW_COMPONENT_NAME:
+            runtime_components[name] = validate_door_window_security_config(
+                component_cfg,
+                strict_validation=strict_validation,
+                log=log,
             )
         else:
             runtime_components[name] = component_cfg

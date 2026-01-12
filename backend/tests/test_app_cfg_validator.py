@@ -9,6 +9,9 @@ from components.app_config_validator.app_cfg_validator import (
     _validate_entity_existence,
 )
 from components.safetycomponents.temperature.schema import COMPONENT_NAME as TEMP_COMPONENT_NAME
+from components.safetycomponents.security.schema import (
+    COMPONENT_NAME as SECURITY_COMPONENT_NAME,
+)
 
 
 def test_validate_app_cfg_normalizes_temperature_component(app_config_valid):
@@ -30,6 +33,19 @@ def test_validate_app_cfg_filters_disabled_components(app_config_valid):
     validated = AppCfgValidator.validate(cfg)
 
     assert "TemperatureComponent" not in validated["user_config"]["safety_components"]
+
+
+def test_validate_app_cfg_normalizes_door_window_component(app_config_door_window_valid):
+    validated = AppCfgValidator.validate(app_config_door_window_valid)
+
+    security_cfg = validated["user_config"]["safety_components"][SECURITY_COMPONENT_NAME]
+    assert isinstance(security_cfg, list)
+    entry_names = {list(entry.keys())[0] for entry in security_cfg}
+    assert {"FrontDoor", "KitchenWindow"} <= entry_names
+
+    door_cfg = next(entry["FrontDoor"] for entry in security_cfg if "FrontDoor" in entry)
+    assert door_cfg["door_sensor"] == "binary_sensor.front_door_contact"
+    assert door_cfg["entry_type"] == "door"
 
 
 def test_validate_app_cfg_requires_thresholds(app_config_valid):
@@ -153,6 +169,39 @@ def test_collect_entity_ids_skips_invalid_room_entries():
     }
     entity_ids = _collect_entity_ids(runtime_cfg)
     assert ("user_config.safety_components.TemperatureComponent.RoomB.temperature_sensor", "sensor.test") in entity_ids
+
+
+def test_collect_entity_ids_includes_security_entries():
+    runtime_cfg = {
+        "user_config": {
+            "common_entities": {},
+            "notification": {},
+            "safety_components": {
+                SECURITY_COMPONENT_NAME: [
+                    {
+                        "FrontDoor": {
+                            "door_sensor": "binary_sensor.front_door",
+                            "lock_actuator": "lock.front_door",
+                            "occupancy_sensor": "sensor.house_occupancy",
+                        }
+                    }
+                ]
+            },
+        }
+    }
+    entity_ids = _collect_entity_ids(runtime_cfg)
+    assert (
+        "user_config.safety_components.DoorWindowSecurityComponent.FrontDoor.door_sensor",
+        "binary_sensor.front_door",
+    ) in entity_ids
+    assert (
+        "user_config.safety_components.DoorWindowSecurityComponent.FrontDoor.lock_actuator",
+        "lock.front_door",
+    ) in entity_ids
+    assert (
+        "user_config.safety_components.DoorWindowSecurityComponent.FrontDoor.occupancy_sensor",
+        "sensor.house_occupancy",
+    ) in entity_ids
 
 
 def test_validate_entity_existence_handles_exception():

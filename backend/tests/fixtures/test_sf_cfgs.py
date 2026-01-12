@@ -53,6 +53,31 @@ def _base_user_config():
     }
 
 
+def _door_window_component_config():
+    return {
+        "occupancy_sensor": "sensor.house_occupancy",
+        "defaults": {
+            "T_door_close_timeout": 0,
+            "T_window_close_timeout": 0,
+            "T_escalate": 0,
+            "T_stable": 0,
+            "AutoLockEnabled": False,
+            "AutoCloseWindowsEnabled": False,
+            "OccupancyGateStates": ["Unoccupied", "Kids"],
+        },
+        "external_doors": {
+            "FrontDoor": {
+                "door_sensor": "binary_sensor.front_door_contact",
+            }
+        },
+        "critical_windows": {
+            "KitchenWindow": {
+                "window_sensor": "binary_sensor.kitchen_window_contact",
+            }
+        },
+    }
+
+
 def _app_config_base():
     return {
         "module": "SafetyFunctions",
@@ -74,6 +99,29 @@ def _app_config_base():
 @pytest.fixture(scope="module")
 def app_config_valid():
     return _app_config_base()
+
+
+@pytest.fixture(scope="module")
+def app_config_door_window_valid():
+    cfg = _app_config_base()
+    cfg["app_config"]["faults"]["DoorOpenTimeout"] = {
+        "name": "Door open timeout",
+        "level": 2,
+        "related_sms": ["sm_sec_door_timeout"],
+    }
+    cfg["app_config"]["faults"]["WindowOpenUnsafe"] = {
+        "name": "Window open unsafe",
+        "level": 2,
+        "related_sms": ["sm_sec_window_safety"],
+    }
+    cfg["user_config"]["components_enabled"] = {
+        "TemperatureComponent": False,
+        "DoorWindowSecurityComponent": True,
+    }
+    cfg["user_config"]["safety_components"]["DoorWindowSecurityComponent"] = (
+        _door_window_component_config()
+    )
+    return cfg
 
 
 @pytest.fixture(scope="module")

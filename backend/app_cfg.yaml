@@ -74,6 +74,16 @@ SafetyFunctions:
         related_sms:
           - "sm_tc_2"
           - "sm_tc_4"
+      DoorOpenTimeout:
+        name: "Door open timeout"
+        level: 2
+        related_sms:
+          - "sm_sec_door_timeout"
+      WindowOpenUnsafe:
+        name: "Window open unsafe"
+        level: 2
+        related_sms:
+          - "sm_sec_window_safety"
 
   # ---------------------------------------------------------------------------
   # House/installation specific configuration (entities, thresholds, enablement).
@@ -93,6 +103,7 @@ SafetyFunctions:
     # - If <ComponentName>: false -> component is not instantiated; config may be absent.
     components_enabled:
       TemperatureComponent: true
+      DoorWindowSecurityComponent: false
       # WaterLeakComponent: false
       # SmokeComponent: false
 
@@ -178,3 +189,26 @@ SafetyFunctions:
           Upperbathroom:
             temperature_sensor: "sensor.upperbathroom_temperature"
             #window_sensor: "sensor.upperbathroom_window_contact_contact"
+
+      DoorWindowSecurityComponent:
+        occupancy_sensor: "sensor.house_occupancy"
+        defaults:
+          T_door_close_timeout: 60
+          T_window_close_timeout: 120
+          T_escalate: 30
+          T_stable: 60
+          AutoLockEnabled: false
+          AutoCloseWindowsEnabled: false
+          OccupancyGateStates:
+            - Unoccupied
+            - Kids
+        external_doors:
+          FrontDoor:
+            door_sensor: "binary_sensor.frontdoor_contact"
+            lock_actuator: "lock.frontdoor"
+          BackDoor:
+            door_sensor: "binary_sensor.backdoor_contact"
+        critical_windows:
+          KidsRoomWindow:
+            window_sensor: "binary_sensor.kidsroom_window_contact"
+            window_actuator: "cover.kidsroom_window"

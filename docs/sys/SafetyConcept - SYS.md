@@ -567,7 +567,93 @@ _We model the system as **decoupled Safety Components**, each implementing one o
 
 ---
 
-> **Next components to define (same pattern):** Fire/CO/Gas (C‑ALARM), Water Leak (C‑LEAK), Air Quality (C‑AQ), HVAC Health (C‑HVAC), Unauthorized Access (C‑SEC), Privacy (C‑PRIV), Network/Platform Health (C‑NET), Weather Ingress (C‑WX). Say which one you want next and I’ll add it.
+### 8.3 Door/Window Security Component (C-SEC)
+
+**Scope:** SG-015 (Unauthorized Access / Entry left open).
+**Safety Mechanisms:** **SM1 DoorOpenTimeout**, **SM2 WindowOpenSafety**.
+
+#### 8.3.1 Inputs (from section 7)
+
+- **IR-001 Window/Door Contact** for external doors and critical windows.
+- **IR-021 Occupancy Status** (uses `Unoccupied` and `Kids` states).
+
+#### 8.3.2 Outputs (to section 7)
+
+- **OR-001 Smart Locks** (lock-on-timeout if configured).
+- **OR-007 Window Actuators** (auto-close if configured).
+- **OR-020/021** Notifications.
+- **OR-022** User prompts/reminders.
+
+#### 8.3.3 Parameters (from `safety.yaml`)
+
+- **ExternalDoors[]** - list of door contact entities to enforce.
+- **CriticalWindows[]** - list of window contact entities to enforce.
+- **T_door_close_timeout** - max allowed open duration before action.
+- **T_window_close_timeout** - max allowed open duration in gated conditions.
+- **T_escalate** - prefault-to-fault escalation time.
+- **T_stable** - time to hold closed before clearing.
+- **AutoLockEnabled** - enable lock attempts on external doors.
+- **AutoCloseWindowsEnabled** - enable actuator close attempts.
+- **OccupancyGateStates** - states that require closure (`Unoccupied`, `Kids`).
+
+#### 8.3.4 States & Events
+
+- **Prefaults:**
+  - `PR_DOOR_OPEN_TIMEOUT[door]` - door open longer than **T_door_close_timeout**.
+  - `PR_WINDOW_OPEN_UNSAFE[window]` - critical window open while occupancy is in **OccupancyGateStates**.
+
+- **Faults (aggregated):**
+  - `F_DOOR_OPEN` - any `PR_DOOR_OPEN_TIMEOUT[*]` active; attributes: `{doors:[...]}`.
+  - `F_WINDOW_OPEN_UNSAFE` - any `PR_WINDOW_OPEN_UNSAFE[*]` active; attributes: `{windows:[...]}`.
+
+#### 8.3.5 Requirements (C-SEC -> SYS-SR-SEC-xxx)
+
+**Detection & Escalation**
+
+- **SYS-SR-SEC-001 (Door timeout detect):** The component **shall** detect an external door open longer than **T_door_close_timeout** and raise `PR_DOOR_OPEN_TIMEOUT[door]` within **T_decision_max**.
+- **SYS-SR-SEC-002 (Door escalate):** If `PR_DOOR_OPEN_TIMEOUT[door]` persists for **T_escalate**, the system **shall** assert `F_DOOR_OPEN` (or update attributes to include `door`).
+- **SYS-SR-SEC-003 (Window unsafe detect):** When occupancy state is in **OccupancyGateStates**, the component **shall** detect any critical window open longer than **T_window_close_timeout** and raise `PR_WINDOW_OPEN_UNSAFE[window]` within **T_decision_max**.
+- **SYS-SR-SEC-004 (Window escalate):** If `PR_WINDOW_OPEN_UNSAFE[window]` persists for **T_escalate**, the system **shall** assert `F_WINDOW_OPEN_UNSAFE` (or update attributes).
+
+**Recovery & Control**
+
+- **SYS-SR-SEC-010 (Auto-lock):** On `PR_DOOR_OPEN_TIMEOUT` or `F_DOOR_OPEN`, if **AutoLockEnabled** and a lock actuator is configured, the system **shall** command **OR-001** and verify read-back within **T_verify_actuation**; failures trigger **L2** with `{door, reason}`.
+- **SYS-SR-SEC-011 (Auto-close window):** On `PR_WINDOW_OPEN_UNSAFE` or `F_WINDOW_OPEN_UNSAFE`, if **AutoCloseWindowsEnabled** and a window actuator is configured, the system **shall** command **OR-007** and verify closure; otherwise it **shall** issue a user prompt via **OR-022**.
+
+**Notifications**
+
+- **SYS-SR-SEC-020:** On `F_DOOR_OPEN` or `F_WINDOW_OPEN_UNSAFE`, send **L2** within **T_notify** with `{subjects, occupancy_state, duration}`.
+
+**Diagnostics & Evidence**
+
+- **SYS-SR-SEC-030:** Each decision **shall** emit an evidence record with `{subject, occupancy_state, timeout, decision, latency_ms}`.
+
+**Performance & FTTI**
+
+- **SYS-SR-SEC-040:** Ensure `T_detection + T_decision + T_recovery + T_effect <= FTTI` for **SG-015**.
+
+**Aggregation/UX**
+
+- **SYS-SR-SEC-050:** The UI **shall** present a single `F_DOOR_OPEN` and `F_WINDOW_OPEN_UNSAFE` card with an attribute list of affected doors/windows; prefaults are visible only in logs.
+
+**Dependencies & Conflicts**
+
+- **SYS-SR-SEC-060:** In **M3 Sleep**, continue enforcement but apply quiet notification profiles.
+- **SYS-SR-SEC-061:** In **M4 Local-Only**, queue cloud notifications; prefer local vectors per section 4.
+
+#### 8.3.6 Mapping
+
+- **SG-015:** SYS-SR-SEC-001/002/003/004/010/011/020/030/040/050/060/061
+
+#### 8.3.7 Verification
+
+- **Unit tests:** door/window open timeout logic; occupancy gating for `Unoccupied` and `Kids`.
+- **Integration:** contact sensor replay with lock/window actuator read-back.
+- **E2E drills:** unoccupied scenario with external door left open; verify escalation, notifications, and fault aggregation.
+
+---
+
+> **Next components to define (same pattern):** Fire/CO/Gas (C‑ALARM), Water Leak (C‑LEAK), Air Quality (C‑AQ), HVAC Health (C‑HVAC), Privacy (C‑PRIV), Network/Platform Health (C‑NET), Weather Ingress (C‑WX). Say which one you want next and I’ll add it.
 
 ## 9 Non‑Functional Requirements (NFR)
 
@@ -678,6 +764,13 @@ _Non‑functional constraints that apply across all components. IDs use `NFR‑x
 | **Leak_debounce**        | Debounce for leak sensors                    | 0.2–1.0 s        |
 | **Valve_close_s**        | Water/gas valve close verification time      | ≤ 5 s            |
 | **Window_close_start_s** | Start motion after close command             | ≤ 2 s            |
+| **ExternalDoors**        | External door contact entity list            | user-defined     |
+| **CriticalWindows**      | Critical window contact entity list          | user-defined     |
+| **T_door_close_timeout** | Door open timeout before enforcement         | 30-120 s         |
+| **T_window_close_timeout** | Window open timeout in gated conditions    | 30-300 s         |
+| **OccupancyGateStates**  | Occupancy states that require closure        | Unoccupied, Kids |
+| **AutoLockEnabled**      | Enable auto-lock attempts on external doors  | false            |
+| **AutoCloseWindowsEnabled** | Enable auto-close attempts on windows     | false            |
 | **N_retry**              | Retries for actuation/notify                 | 1–3              |
 | **T_cooldown**           | Cooldown between retries                     | 30–120 s         |
 | **T_watchdog**           | Loop stall detection interval                | 2–5 s            |

@@ -517,11 +517,11 @@ def safety_mechanism_decorator(func: Callable) -> Callable:
             return False
 
         if not entities_changes:
-            # Retrieve the current debounce state for this mechanism
-            current_state: DebounceState = self.debounce_states[sm.name]
-
             # Get sm result!
             sm_return = func(self, sm, entities_changes)
+
+            # Retrieve the current debounce state for this mechanism
+            current_state: DebounceState = self.debounce_states[sm.name]
 
             # Perform SM logic
             debounce_limit = sm.sm_args.get("debounce_limit", 2)

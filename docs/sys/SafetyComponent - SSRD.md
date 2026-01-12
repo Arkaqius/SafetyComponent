@@ -78,6 +78,7 @@ This Software Safety Requirements Document (SSRD) captures the current state of 
 | FR-007 | Send notifications with tagging/persistence.      | ✅ (NM)                                  |
 | FR-008 | Track active faults & expose highest severity.    | ✅ (`FM.update_system_state_entity`)     |
 | FR-009 | Enable/disable SMs programmatically.              | ✅ (FM)                                  |
+| FR-017 | Door/window security monitoring and closure enforcement.      | ✅ (`DoorWindowSecurityComponent`)     |
 
 ### 3.2 Functional Requirements (Backlog / Gaps)
 
@@ -111,6 +112,7 @@ This Software Safety Requirements Document (SSRD) captures the current state of 
 - **SafetyFunctions (AppDaemon app)**: Orchestrator; loads config; instantiates components; wires FM/NM/RM; sets health entity.
 - **SafetyComponent (abstract base)**: Provides SM lifecycle, debouncing, FM integration, decorator for enable/disable & retries.
 - **TemperatureComponent (MVP)**: Implements under-temperature & forecast SMs.
+- **DoorWindowSecurityComponent**: Monitors external doors and critical windows with occupancy gating.
 - **FaultManager**: Owns Symptom/Fault models, aggregates, manages lifecycle.
 - **NotificationManager**: Maps fault lifecycle to HA notify service.
 - **RecoveryManager**: Orchestrates recovery actions, resolves conflicts.
@@ -184,6 +186,11 @@ This Software Safety Requirements Document (SSRD) captures the current state of 
 
 - SYS defines modes; none implemented.
 
+### 5.11 DoorWindowSecurityComponent
+
+- Scope: Door/window closure enforcement per SYS 8.3 (unauthorized access).
+- Status: Implemented with door timeout and occupancy-gated window checks.
+
 ---
 
 ## 6. Testing
@@ -224,6 +231,7 @@ This Software Safety Requirements Document (SSRD) captures the current state of 
 
 - Hazard ↔ Requirement linkage maintained in SYS/HARA.
 - Current implementation covers **Cold Exposure hazard (HARA §1.1)**.
+- Unauthorized Access / door-window safety requirements are implemented via DoorWindowSecurityComponent (SYS 8.3).
 - Trace matrix to be expanded as new hazard components are added.
 
 ---
