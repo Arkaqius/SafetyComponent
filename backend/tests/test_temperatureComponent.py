@@ -73,6 +73,140 @@ def test_temp_comp_smtc1(
     assert app_instance.fm.check_fault("RiskyTemperature") == expected_fault_state
 
 
+@pytest.mark.parametrize(
+    "temperature, expected_symptom_state, expected_fault_state",
+    [
+        (
+            ["20", "21", "22", "23", "24"],
+            FaultState.CLEARED,
+            FaultState.CLEARED,
+        ),
+        (
+            ["30", "31", "32", "33", "34"],
+            FaultState.SET,
+            FaultState.SET,
+        ),
+    ],
+)
+def test_temp_comp_smtc3(
+    mocked_hass_app_with_temp_component,
+    temperature,
+    expected_symptom_state,
+    expected_fault_state,
+):
+    """
+    Test Case: Verify overtemperature symptom and fault states based on temperature input.
+
+    Scenario:
+        - Input: Temperature sequences with varying levels.
+        - Expected Result: Symptom and fault states should match expected values based on temperature.
+    """
+    app_instance, _, __, ___, mock_behaviors_default = (
+        mocked_hass_app_with_temp_component
+    )
+
+    test_mock_behaviours: List[MockBehavior[str, Iterator[str]]] = [
+        MockBehavior("sensor.office_temperature", iter(temperature))
+    ]
+    mock_behaviors_default: List[MockBehavior] = update_mocked_get_state(
+        mock_behaviors_default, test_mock_behaviours
+    )
+
+    app_instance.get_state.side_effect = lambda entity_id, **kwargs: mock_get_state(
+        entity_id, mock_behaviors_default
+    )
+    app_instance.initialize()
+
+    for _ in range(5):
+        app_instance.sm_modules["TemperatureComponent"].sm_tc_3(
+            app_instance.sm_modules["TemperatureComponent"].safety_mechanisms[
+                "RiskyTemperatureHighOffice"
+            ]
+        )
+
+    assert (
+        app_instance.fm.check_symptom("RiskyTemperatureHighOffice")
+        == expected_symptom_state
+    )
+    assert app_instance.fm.check_fault("RiskyTemperature") == expected_fault_state
+
+
+def test_temp_comp_overtemp_and_undertemp_multi_room_fault_clear(
+    mocked_hass_app_with_temp_component,
+):
+    """
+    Test Case: Shared fault stays SET until all high/low symptoms clear across rooms.
+    """
+    app_instance, _, __, ___, mock_behaviors_default = (
+        mocked_hass_app_with_temp_component
+    )
+    app_instance.initialize()
+
+    # Set Office overtemperature and Kitchen undertemperature
+    test_mock_behaviours: List[MockBehavior[str, Iterator[str]]] = [
+        MockBehavior("sensor.office_temperature", iter(["30"])),
+        MockBehavior("sensor.kitchen_temperature", iter(["5"])),
+    ]
+    mock_behaviors_default = update_mocked_get_state(
+        mock_behaviors_default, test_mock_behaviours
+    )
+    app_instance.get_state.side_effect = lambda entity_id, **kwargs: mock_get_state(
+        entity_id, mock_behaviors_default
+    )
+
+    for _ in range(5):
+        app_instance.sm_modules["TemperatureComponent"].sm_tc_3(
+            app_instance.sm_modules["TemperatureComponent"].safety_mechanisms[
+                "RiskyTemperatureHighOffice"
+            ]
+        )
+        app_instance.sm_modules["TemperatureComponent"].sm_tc_1(
+            app_instance.sm_modules["TemperatureComponent"].safety_mechanisms[
+                "RiskyTemperatureKitchen"
+            ]
+        )
+
+    assert app_instance.fm.check_fault("RiskyTemperature") == FaultState.SET
+
+    # Clear Office overtemperature, Kitchen still low
+    test_mock_behaviours = [
+        MockBehavior("sensor.office_temperature", iter(["20"])),
+    ]
+    mock_behaviors_default = update_mocked_get_state(
+        mock_behaviors_default, test_mock_behaviours
+    )
+
+    for _ in range(5):
+        app_instance.sm_modules["TemperatureComponent"].sm_tc_3(
+            app_instance.sm_modules["TemperatureComponent"].safety_mechanisms[
+                "RiskyTemperatureHighOffice"
+            ]
+        )
+
+    assert (
+        app_instance.fm.check_symptom("RiskyTemperatureHighOffice")
+        == FaultState.CLEARED
+    )
+    assert app_instance.fm.check_fault("RiskyTemperature") == FaultState.SET
+
+    # Clear Kitchen undertemperature
+    test_mock_behaviours = [
+        MockBehavior("sensor.kitchen_temperature", iter(["20"])),
+    ]
+    mock_behaviors_default = update_mocked_get_state(
+        mock_behaviors_default, test_mock_behaviours
+    )
+
+    for _ in range(5):
+        app_instance.sm_modules["TemperatureComponent"].sm_tc_1(
+            app_instance.sm_modules["TemperatureComponent"].safety_mechanisms[
+                "RiskyTemperatureKitchen"
+            ]
+        )
+
+    assert app_instance.fm.check_fault("RiskyTemperature") == FaultState.CLEARED
+
+
 def test_symptom_set_when_temp_NOT_below_threshold(mocked_hass_app_with_temp_component):
     """
     Test Case: Symptom Set When Temperature is Below Threshold
@@ -244,6 +378,137 @@ def test_forecasted_symptom_set_when_temp_rate_indicates_drop(
     assert (
         app_instance.fm.check_symptom("RiskyTemperatureOfficeForeCast")
         is FaultState.SET
+    )
+
+
+def test_forecasted_overtemp_symptom_set_when_temp_rate_indicates_rise(
+    mocked_hass_app_with_temp_component,
+):
+    """
+    Test Case: Forecasted Overtemperature Symptom Set When Temperature Rate Indicates a Rise
+
+    Scenario:
+        - Input: Initial temperature is 30.0\u0abbC, rate is 1.0\u0abbC/min, and forecast timespan is 2 hours.
+        - Expected Result: Symptom "RiskyTemperatureHighOfficeForeCast" should be set to True.
+    """
+    app_instance, __, _, ___, mock_behaviors_default = (
+        mocked_hass_app_with_temp_component
+    )
+    temperature_sequence = ["30.0"]
+    rate_of_change = "1"
+
+    # Initialize the application and register the monitored entity in DerivativeMonitor
+    app_instance.initialize()
+    app_instance.derivative_monitor.register_entity(
+        "sensor.office_temperature",
+        sample_time=60*15,  # Sampling every 1 minute
+        low_saturation=-10.0,
+        high_saturation=10.0,
+    )
+
+    # Mock the states for temperature and rate
+    app_instance.get_state.side_effect = lambda entity_id, **kwargs: mock_get_state(
+        entity_id,
+        [
+            MockBehavior("sensor.office_temperature", iter(temperature_sequence)),
+            MockBehavior("sensor.office_temperature_rate", iter([rate_of_change])),
+        ],
+    )
+
+    # Simulate multiple iterations to reach the debounce limit
+    for _ in range(DEBOUNCE_LIMIT + 2):
+        app_instance.sm_modules["TemperatureComponent"].sm_tc_4(
+            app_instance.sm_modules["TemperatureComponent"].safety_mechanisms[
+                "RiskyTemperatureHighOfficeForeCast"
+            ]
+        )
+
+    # Assert the symptom state
+    assert (
+        app_instance.fm.check_symptom("RiskyTemperatureHighOfficeForeCast")
+        is FaultState.SET
+    )
+
+
+def test_forecasted_overtemp_multi_room_fault_clear(
+    mocked_hass_app_with_temp_component,
+):
+    """
+    Test Case: Forecasted overtemperature stays SET until all rooms clear.
+    """
+    app_instance, __, _, ___, mock_behaviors_default = (
+        mocked_hass_app_with_temp_component
+    )
+    app_instance.initialize()
+
+    test_mock_behaviours = [
+        MockBehavior("sensor.office_temperature", iter(["30"])),
+        MockBehavior("sensor.office_temperature_rate", iter(["1"])),
+        MockBehavior("sensor.kitchen_temperature", iter(["30"])),
+        MockBehavior("sensor.kitchen_temperature_rate", iter(["1"])),
+    ]
+    mock_behaviors_default = update_mocked_get_state(
+        mock_behaviors_default, test_mock_behaviours
+    )
+    app_instance.get_state.side_effect = lambda entity_id, **kwargs: mock_get_state(
+        entity_id, mock_behaviors_default
+    )
+
+    for _ in range(5):
+        app_instance.sm_modules["TemperatureComponent"].sm_tc_4(
+            app_instance.sm_modules["TemperatureComponent"].safety_mechanisms[
+                "RiskyTemperatureHighOfficeForeCast"
+            ]
+        )
+        app_instance.sm_modules["TemperatureComponent"].sm_tc_4(
+            app_instance.sm_modules["TemperatureComponent"].safety_mechanisms[
+                "RiskyTemperatureHighKitchenForeCast"
+            ]
+        )
+
+    assert app_instance.fm.check_fault("RiskyTemperatureForecast") == FaultState.SET
+
+    test_mock_behaviours = [
+        MockBehavior("sensor.office_temperature", iter(["25"])),
+        MockBehavior("sensor.office_temperature_rate", iter(["0"])),
+    ]
+    mock_behaviors_default = update_mocked_get_state(
+        mock_behaviors_default, test_mock_behaviours
+    )
+
+    for _ in range(5):
+        app_instance.sm_modules["TemperatureComponent"].sm_tc_4(
+            app_instance.sm_modules["TemperatureComponent"].safety_mechanisms[
+                "RiskyTemperatureHighOfficeForeCast"
+            ]
+        )
+
+    assert (
+        app_instance.fm.check_symptom("RiskyTemperatureHighOfficeForeCast")
+        == FaultState.CLEARED
+    )
+    assert (
+        app_instance.fm.check_fault("RiskyTemperatureForecast") == FaultState.SET
+    )
+
+    test_mock_behaviours = [
+        MockBehavior("sensor.kitchen_temperature", iter(["25"])),
+        MockBehavior("sensor.kitchen_temperature_rate", iter(["0"])),
+    ]
+    mock_behaviors_default = update_mocked_get_state(
+        mock_behaviors_default, test_mock_behaviours
+    )
+
+    for _ in range(5):
+        app_instance.sm_modules["TemperatureComponent"].sm_tc_4(
+            app_instance.sm_modules["TemperatureComponent"].safety_mechanisms[
+                "RiskyTemperatureHighKitchenForeCast"
+            ]
+        )
+
+    assert (
+        app_instance.fm.check_fault("RiskyTemperatureForecast")
+        == FaultState.CLEARED
     )
 
 

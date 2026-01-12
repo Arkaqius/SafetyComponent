@@ -48,8 +48,10 @@ def test_validate_app_cfg_uses_defaults_when_room_thresholds_missing(app_config_
     component_cfg = cfg["user_config"]["safety_components"]["TemperatureComponent"]
     defaults = component_cfg["defaults"]
     component_cfg["rooms"]["Office"].pop("CAL_LOW_TEMP_THRESHOLD")
+    component_cfg["rooms"]["Office"].pop("CAL_HIGH_TEMP_THRESHOLD")
     component_cfg["rooms"]["Office"].pop("CAL_FORECAST_TIMESPAN")
     component_cfg["rooms"]["Kitchen"].pop("CAL_LOW_TEMP_THRESHOLD")
+    component_cfg["rooms"]["Kitchen"].pop("CAL_HIGH_TEMP_THRESHOLD")
     component_cfg["rooms"]["Kitchen"].pop("CAL_FORECAST_TIMESPAN")
 
     validated = AppCfgValidator.validate(cfg)
@@ -59,8 +61,13 @@ def test_validate_app_cfg_uses_defaults_when_room_thresholds_missing(app_config_
     kitchen_cfg = next(room["Kitchen"] for room in temperature_cfg if "Kitchen" in room)
 
     assert office_cfg["CAL_LOW_TEMP_THRESHOLD"] == defaults["CAL_LOW_TEMP_THRESHOLD"]
+    assert office_cfg["CAL_HIGH_TEMP_THRESHOLD"] == defaults["CAL_HIGH_TEMP_THRESHOLD"]
     assert office_cfg["CAL_FORECAST_TIMESPAN"] == defaults["CAL_FORECAST_TIMESPAN"]
     assert kitchen_cfg["CAL_LOW_TEMP_THRESHOLD"] == defaults["CAL_LOW_TEMP_THRESHOLD"]
+    assert (
+        kitchen_cfg["CAL_HIGH_TEMP_THRESHOLD"]
+        == defaults["CAL_HIGH_TEMP_THRESHOLD"]
+    )
     assert kitchen_cfg["CAL_FORECAST_TIMESPAN"] == defaults["CAL_FORECAST_TIMESPAN"]
 
 

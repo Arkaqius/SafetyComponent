@@ -40,8 +40,43 @@ class DerivativeMonitor:
             self.filter_window_size = (
                 4  # Default window size for moving average filtering
             )
+            self._sampling_handles: Dict[str, Any] = {}
             self.initialized = True
             self.hass_app.log("DerivativeMonitor initialized.", level="DEBUG")
+        elif self.hass_app is not hass_app:
+            self.reset_for_app(hass_app)
+
+    def reset_for_app(self, hass_app: Hass) -> None:
+        """
+        Reset internal state when a new app instance starts.
+
+        Args:
+            hass_app (Hass): The new Home Assistant app instance.
+        """
+        old_hass_app = getattr(self, "hass_app", None)
+        if not hasattr(self, "_sampling_handles"):
+            self._sampling_handles = {}
+        if old_hass_app is not None:
+            self._cancel_sampling_handles(old_hass_app)
+        self.hass_app = hass_app
+        self.entities = {}
+        self.derivative_data = {}
+        self._sampling_handles = {}
+        self.filter_window_size = 4
+        self.hass_app.log(
+            "DerivativeMonitor reset for new app instance.", level="DEBUG"
+        )
+
+    def _cancel_sampling_handles(self, hass_app: Hass) -> None:
+        """Cancel scheduled sampling timers from the previous app instance."""
+        for handle in self._sampling_handles.values():
+            try:
+                hass_app.cancel_timer(handle)
+            except Exception as exc:
+                hass_app.log(
+                    f"Failed to cancel derivative sampling timer: {exc}",
+                    level="WARNING",
+                )
 
     def register_entity(
         self,
@@ -108,21 +143,25 @@ class DerivativeMonitor:
         self.hass_app.log(
             f"Derivative entities created for {entity_id}.", level="DEBUG"
         )
-        self.schedule_sampling(entity_id, sample_time)
+        handle = self.schedule_sampling(entity_id, sample_time)
+        self._sampling_handles[entity_id] = handle
 
-    def schedule_sampling(self, entity_id: str, sample_time: int) -> None:
+    def schedule_sampling(self, entity_id: str, sample_time: int) -> Any:
         """
         Schedules periodic sampling for the specified entity based on its sampling time.
 
         Args:
             entity_id (str): The ID of the entity to sample.
             sample_time (int): Sampling time in seconds.
+
+        Returns:
+            Any: The handle returned by the scheduler.
         """
         self.hass_app.log(
             f"Scheduling sampling for {entity_id} every {sample_time} seconds.",
             level="DEBUG",
         )
-        self.hass_app.run_every(
+        return self.hass_app.run_every(
             self._calculate_diff, "now", sample_time, entity_id=entity_id, sample_time = sample_time
         )
 
