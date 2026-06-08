@@ -15,8 +15,8 @@ Primary functionalities include:
 Initializing and tracking the states of faults and symptoms based on system configuration and runtime observations.
 Dynamically updating fault states in response to changes in associated symptom conditions.
 Executing defined recovery actions and notifications as part of the fault resolution process.
-Generating a unique faulttag for each fault instance to uniquely identify and manage notifications and recovery actions associated with specific faults.
-The faulttag feature is used across the system to create a unique identifier for each fault by hashing the fault name and additional context information. This allows consistent tracking and correlation of notifications, fault states, and recovery actions, ensuring accurate fault management.
+Generating a stable faulttag for each fault to identify and manage notifications and recovery actions associated with specific faults.
+The faulttag feature is used across the system to create a stable identifier for each fault by hashing the fault name. This keeps multiple symptom contributions for the same fault correlated to one notification and recovery flow.
 
 This module is integral to the safety system's ability to maintain operational integrity and respond effectively to detected issues, ensuring a high level of safety and reliability.
 
@@ -255,7 +255,7 @@ class FaultManager:
                 )
                 return
 
-            # Generate a unique fault tag using the hash method
+            # Generate a stable fault tag using the hash method
             fault_tag: str = self._generate_fault_tag(fault.name, additional_info)
             # Save previous value
             fault.previous_val = fault.state
@@ -283,7 +283,9 @@ class FaultManager:
                     fault_name=fault.name,
                     level=fault.level,
                     fault_state=FaultState.SET,
-                    additional_info=additional_info,
+                    additional_info=self._notification_info_from_merged(
+                        additional_info, info_to_send
+                    ),
                     fault_tag=fault_tag,
                     symptom=self.symptoms[symptom_id],
                     should_notify=True,
@@ -510,13 +512,41 @@ class FaultManager:
         # Collect all faults mapped from that symptom
         fault: Fault | None = self.found_mapped_fault(symptom_id, sm_name)
 
-        if fault and not any(
+        if not fault:
+            return
+
+        entity_id = "sensor.fault_" + fault.name
+        fault_tag: str = self._generate_fault_tag(fault.name, additional_info)
+        has_active_related_symptoms = any(
             symptom.state == FaultState.SET
             for symptom in self.symptoms.values()
             if symptom.sm_name in set(fault.related_symptoms)
-        ):  # If Fault was found and if other fault related symptoms are not raised
-            # Generate a unique fault tag using the hash method
-            fault_tag: str = self._generate_fault_tag(fault.name, additional_info)
+        )
+
+        if has_active_related_symptoms:
+            info_to_send = self._determinate_info(
+                entity_id, additional_info, FaultState.CLEARED
+            )
+            attributes = info_to_send if info_to_send else {}
+
+            self.hass.set_state(entity_id, state="Set", attributes=attributes)
+
+            if self.event_bus:
+                self.event_bus.publish(
+                    "fault",
+                    fault_name=fault.name,
+                    level=fault.level,
+                    fault_state=FaultState.SET,
+                    additional_info=self._notification_info_from_merged(
+                        additional_info, info_to_send
+                    ),
+                    fault_tag=fault_tag,
+                    symptom=self.symptoms[symptom_id],
+                    should_notify=fault.state == FaultState.SET,
+                )
+            return
+
+        if not has_active_related_symptoms:
             # Save previous value
             fault.previous_val = fault.state
             # Clear Fault
@@ -525,7 +555,7 @@ class FaultManager:
 
             # Determinate additional info
             info_to_send = self._determinate_info(
-                "sensor.fault_" + fault.name, additional_info, FaultState.CLEARED
+                entity_id, additional_info, FaultState.CLEARED
             )
 
             # Prepare the attributes for the state update
@@ -533,7 +563,7 @@ class FaultManager:
 
             # Clear HA entity
             self.hass.set_state(
-                "sensor.fault_" + fault.name, state="Cleared", attributes=attributes
+                entity_id, state="Cleared", attributes=attributes
             )
             self.update_system_state_entity()  # Update the system state entity
 
@@ -698,26 +728,38 @@ class FaultManager:
         self, fault: str, additional_info: Optional[dict] = None
     ) -> str:
         """
-        Generates a unique fault tag by hashing the fault name and additional information.
+        Generates a stable fault tag by hashing the fault name.
 
         Parameters:
             fault: The fault's name.
-            additional_info: Additional information about the fault, such as location.
+            additional_info: Kept for call compatibility; not used for tag identity.
 
         Returns:
-            A unique fault tag as a string.
+            A stable fault tag as a string.
         """
-        # Combine fault name and additional info into a single string
         fault_str = fault
-        if additional_info:
-            # Sort the dictionary items to ensure consistent hash generation
-            sorted_info = sorted(additional_info.items())
-            for key, value in sorted_info:
-                fault_str += f"|{key}:{value}"
-
-        # Generate a hash of the combined string
         fault_hash = hashlib.sha256(fault_str.encode()).hexdigest()
         return fault_hash
+
+    @staticmethod
+    def _notification_info_from_merged(
+        additional_info: Optional[dict], merged_info: Optional[dict]
+    ) -> Optional[dict]:
+        """
+        Build notification details from merged fault attributes.
+
+        Only fields provided by the triggering symptom are sent to notifications,
+        but values are taken from the merged fault state so descriptions reflect
+        all active prefault contributors without leaking Home Assistant metadata.
+        """
+        if not additional_info:
+            return None
+        if not merged_info:
+            return additional_info
+        return {
+            key: merged_info.get(key, value)
+            for key, value in additional_info.items()
+        }
     
     def get_system_fault_level(self) -> int:
         """

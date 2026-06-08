@@ -28,6 +28,7 @@ class TemperatureRoom(StrictBaseModel):
 
     temperature_sensor: str
     window_sensor: Optional[str] = None
+    actuator: Optional[str] = None
     CAL_LOW_TEMP_THRESHOLD: Optional[float] = None
     CAL_HIGH_TEMP_THRESHOLD: Optional[float] = None
     CAL_FORECAST_TIMESPAN: Optional[float] = None
@@ -55,6 +56,7 @@ class TemperatureRoom(StrictBaseModel):
         merged: Dict[str, Any] = {
             "temperature_sensor": self.temperature_sensor,
             "window_sensor": self.window_sensor,
+            "actuator": self.actuator,
         }
 
         low_temp = (

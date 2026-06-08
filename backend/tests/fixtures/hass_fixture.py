@@ -18,6 +18,7 @@ def mocked_hass() -> Generator[Any, Any, None]:
         mock_hass.set_state = MagicMock()
         mock_hass.call_service = MagicMock()
         mock_hass.run_in = MagicMock()
+        mock_hass.run_every = MagicMock()
         mock_hass.listen_state = MagicMock()
         yield mock_hass
 
@@ -47,6 +48,7 @@ def mocked_hass_app_basic(mocked_hass, app_config_valid):
         app_instance.set_state = mocked_hass.set_state
         app_instance.call_service = mocked_hass.call_service
         app_instance.run_in = mocked_hass.run_in
+        app_instance.run_every = mocked_hass.run_every
         app_instance.listen_state = mocked_hass.listen_state
         yield app_instance, mocked_hass, mock_log_method
 
@@ -80,6 +82,7 @@ def mocked_hass_app_with_temp_component(mocked_hass, app_config_valid):
         app_instance.set_state = mocked_hass.set_state
         app_instance.call_service = mocked_hass.call_service
         app_instance.run_in = mocked_hass.run_in
+        app_instance.run_every = mocked_hass.run_every
         app_instance.listen_state = mocked_hass.listen_state
 
         yield app_instance, mocked_hass, mock_log_method, MockTemperatureComponent, mock_behaviors
