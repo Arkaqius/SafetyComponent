@@ -53,16 +53,16 @@ def test_register_entity(setup_derivative_monitor):
     # Verify derivative entities are created in Home Assistant
     mock_hass.set_state.assert_has_calls(
         [
-            call(
-                f"{entity_id}_rate",
-                state=None,
-                attributes={'friendly_name': 'sensor.temperature Rate', 'state_class': 'measurement', 'unit_of_measurement': '°C/min', 'attribution': 'Data provided by SafetyFunction', 'device_class': 'temperature', 'icon': 'mdi:chart-timeline-variant'},
-            ),
-            call(
-                f"{entity_id}_rateOfRate",
-                state=None,
-                attributes={'friendly_name': 'sensor.temperature Rate', 'state_class': 'measurement', 'unit_of_measurement': '°C/min', 'attribution': 'Data provided by SafetyFunction', 'device_class': 'temperature', 'icon': 'mdi:chart-timeline-variant'},
-            ),
+                call(
+                    f"{entity_id}_rate",
+                    state=None,
+                    attributes={'friendly_name': 'sensor.temperature Rate', 'state_class': 'measurement', 'unit_of_measurement': '°C/min', 'attribution': 'Data provided by SafetyFunction', 'icon': 'mdi:chart-timeline-variant'},
+                ),
+                call(
+                    f"{entity_id}_rateOfRate",
+                    state=None,
+                    attributes={'friendly_name': 'sensor.temperature Rate Of Rate', 'state_class': 'measurement', 'unit_of_measurement': '°C/min²', 'attribution': 'Data provided by SafetyFunction', 'icon': 'mdi:chart-timeline-variant'},
+                ),
         ]
     )
     
@@ -97,7 +97,14 @@ def test_calculate_diff_updates_derivatives(setup_derivative_monitor):
     set_mock_state(entity_id, 17.0)
     derivative_monitor._calculate_diff(entity_id=entity_id, sample_time=sample_time)
     assert derivative_monitor.get_second_derivative(entity_id) == 1.25
-    mock_hass.set_state.assert_called_with(f"{entity_id}_rate", state=derivative_monitor.get_first_derivative(entity_id))
+    mock_hass.set_state.assert_any_call(
+        f"{entity_id}_rate",
+        state=derivative_monitor.get_first_derivative(entity_id),
+    )
+    mock_hass.set_state.assert_any_call(
+        f"{entity_id}_rateOfRate",
+        state=derivative_monitor.get_second_derivative(entity_id),
+    )
 
 
 def test_calculate_diff_handles_missing_value(setup_derivative_monitor):

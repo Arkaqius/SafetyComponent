@@ -32,6 +32,37 @@ def test_validate_app_cfg_filters_disabled_components(app_config_valid):
     assert "TemperatureComponent" not in validated["user_config"]["safety_components"]
 
 
+def test_validate_app_cfg_applies_safe_mqtt_defaults(app_config_valid):
+    validated = AppCfgValidator.validate(app_config_valid)
+
+    mqtt_config = validated["user_config"]["mqtt"]
+    assert mqtt_config["retain_discovery"] is True
+    assert mqtt_config["retain_state"] is False
+    assert mqtt_config["availability_topic"] == "safety_component/status"
+    assert mqtt_config["heartbeat_seconds"] == 60
+    assert mqtt_config["expire_after"] == 180
+
+
+@pytest.mark.parametrize(
+    "mqtt_config",
+    [
+        {"qos": 4},
+        {"retain_discovery": False},
+        {"base_topic": "safety/#"},
+        {"retain_state": "false"},
+        {"heartbeat_seconds": 0, "expire_after": 180},
+    ],
+)
+def test_validate_app_cfg_rejects_invalid_mqtt_settings(
+    app_config_valid, mqtt_config
+):
+    cfg = copy.deepcopy(app_config_valid)
+    cfg["user_config"]["mqtt"] = mqtt_config
+
+    with pytest.raises(AppCfgValidationError):
+        AppCfgValidator.validate(cfg)
+
+
 def test_validate_app_cfg_requires_thresholds(app_config_valid):
     cfg = copy.deepcopy(app_config_valid)
     component_cfg = cfg["user_config"]["safety_components"]["TemperatureComponent"]
@@ -40,6 +71,60 @@ def test_validate_app_cfg_requires_thresholds(app_config_valid):
     component_cfg["rooms"]["Office"].pop("CAL_FORECAST_TIMESPAN")
 
     with pytest.raises(AppCfgValidationError):
+        AppCfgValidator.validate(cfg)
+
+
+def test_validate_app_cfg_rejects_non_cover_temperature_actuator(
+    app_config_valid,
+):
+    cfg = copy.deepcopy(app_config_valid)
+    cfg["user_config"]["safety_components"]["TemperatureComponent"]["rooms"][
+        "Office"
+    ]["actuator"] = "switch.window_relay"
+
+    with pytest.raises(AppCfgValidationError, match="cover entity"):
+        AppCfgValidator.validate(cfg)
+
+
+def test_validate_app_cfg_treats_dashboard_sensor_as_mqtt_output(
+    app_config_valid,
+):
+    cfg = copy.deepcopy(app_config_valid)
+    cfg["app_config"]["validation"]["validate_entity_existence"] = True
+    cfg["user_config"]["notification"][
+        "dashboard_1_entity"
+    ] = "sensor.safety_dashboard_emergency"
+
+    class ExistingDependenciesHass:
+        def get_state(self, entity_id):
+            if entity_id == "sensor.safety_dashboard_emergency":
+                return None
+            return "available"
+
+    validated = AppCfgValidator.validate(cfg, hass=ExistingDependenciesHass())
+
+    assert (
+        validated["user_config"]["notification"]["dashboard_1_entity"]
+        == "sensor.safety_dashboard_emergency"
+    )
+
+
+@pytest.mark.parametrize(
+    "entity_id",
+    [
+        "text.safety_dashboard_emergency",
+        "sensor.",
+        "sensor.foo.bar",
+        "sensor.Invalid",
+    ],
+)
+def test_validate_app_cfg_rejects_invalid_dashboard_output(
+    app_config_valid, entity_id
+):
+    cfg = copy.deepcopy(app_config_valid)
+    cfg["user_config"]["notification"]["dashboard_1_entity"] = entity_id
+
+    with pytest.raises(AppCfgValidationError, match="valid sensor entity_id"):
         AppCfgValidator.validate(cfg)
 
 

@@ -7,6 +7,8 @@ from unittest.mock import Mock, patch
 from .fixtures.hass_fixture import (
     mock_get_state,
     MockBehavior,
+    mqtt_payloads,
+    mqtt_topic_for,
     update_mocked_get_state,
 )  # Import utilities from conftest.py
 from unittest.mock import ANY
@@ -37,9 +39,34 @@ def test_safety_functions_initialization(mocked_hass_app_with_temp_component) ->
     # Ensure that the correct common entity was used
     assert app_instance.common_entities_cfg["outside_temp"] == "sensor.dom_temperature"
 
-    # Verify that safety mechanisms are initialized and enabled
-    mocked_hass.set_state.assert_any_call("sensor.safety_app_health", state="init")
-    mocked_hass.set_state.assert_any_call("sensor.safety_app_health", state="running",attributes = ANY)
+    # Verify that safety mechanisms are initialized and enabled via MQTT state.
+    health_topic = mqtt_topic_for("sensor.safety_app_health")
+    health_payloads = mqtt_payloads(mocked_hass, health_topic)
+    assert "init" in health_payloads
+    assert "running" in health_payloads
+    assert mqtt_payloads(mocked_hass, "safety_component/status") == [
+        "offline",
+        "online",
+    ]
+    assert {
+        "sensor.safetysystem_state",
+        "sensor.fault_riskytemperature",
+        "sensor.fault_riskytemperatureforecast",
+        "sensor.recovery_manipulatewindowoffice",
+    }.issubset(app_instance.mqtt_entities.discovered_entities)
+
+
+def test_mqtt_heartbeat_accepts_appdaemon_dictionary_unpacking_callback(
+    mocked_hass_app_with_temp_component,
+) -> None:
+    app_instance, _, __, ___, _ = mocked_hass_app_with_temp_component
+    app_instance.initialize()
+    app_instance.mqtt_entities.publish_heartbeat = Mock()
+
+    app_instance._mqtt_heartbeat()
+    app_instance._mqtt_heartbeat(timer="heartbeat")
+
+    assert app_instance.mqtt_entities.publish_heartbeat.call_count == 2
 
     # Verify TemperatureComponent configurations are set up correctly
     assert "TemperatureComponent" in app_instance.sm_modules
@@ -119,9 +146,35 @@ def test_app_initialization_health_state(mocked_hass_app_with_temp_component):
 
     app_instance.initialize()
 
-    # Verify that health state transitions from 'init' to 'good'
-    mocked_hass.set_state.assert_any_call("sensor.safety_app_health", state="init")
-    mocked_hass.set_state.assert_any_call("sensor.safety_app_health", state="running",attributes = ANY)
+    # Verify that health state transitions from 'init' to 'running'.
+    health_topic = mqtt_topic_for("sensor.safety_app_health")
+    health_payloads = mqtt_payloads(mocked_hass, health_topic)
+    assert "init" in health_payloads
+    assert "running" in health_payloads
+
+
+def test_terminate_publishes_offline(mocked_hass_app_with_temp_component):
+    app_instance, mocked_hass, __, ___, _ = mocked_hass_app_with_temp_component
+    app_instance.initialize()
+
+    app_instance.terminate()
+
+    assert mqtt_payloads(mocked_hass, "safety_component/status")[-1] == "offline"
+
+
+def test_invalid_user_config_type_stops_cleanly(
+    mocked_hass_app_with_temp_component,
+):
+    app_instance, _, __, ___, _ = mocked_hass_app_with_temp_component
+    app_instance.args = {"app_config": {}, "user_config": None}
+
+    app_instance.initialize()
+
+    app_instance.log.assert_called_with(
+        "Invalid MQTT configuration: user_config must be a mapping",
+        level="ERROR",
+    )
+    assert app_instance._stopped == app_instance.name
 
 def test_common_entities_lookup(mocked_hass_app_with_temp_component):
     """Test that common entities are properly initialized and accessible."""
@@ -153,5 +206,6 @@ def test_initialize_no_faults_or_safety_components(mocked_hass_app_with_temp_com
     # Check if the warning log was called
     app_instance.log.assert_called_with("No faults or safety components defined. Stopping the app.", level="WARNING")
 
-    # Check if the app state was set to 'invalid_cfg'
-    mocked_hass.set_state.assert_called_with("sensor.safety_app_health", state="invalid_cfg")
+    # Check if the app state was published as 'invalid_cfg'
+    health_topic = mqtt_topic_for("sensor.safety_app_health")
+    assert mqtt_payloads(mocked_hass, health_topic)[-1] == "invalid_cfg"

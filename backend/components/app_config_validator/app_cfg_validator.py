@@ -44,7 +44,11 @@ def _collect_entity_ids(runtime_cfg: Dict[str, Any]) -> list[tuple[str, str]]:
 
     notification_cfg = user_cfg.get("notification", {}) or {}
     for key, value in notification_cfg.items():
-        if key.endswith("_entity") and isinstance(value, str):
+        if (
+            key.endswith("_entity")
+            and not key.startswith("dashboard_")
+            and isinstance(value, str)
+        ):
             entity_ids.append((f"user_config.notification.{key}", value))
 
     components_cfg = user_cfg.get("safety_components", {}) or {}
@@ -178,6 +182,7 @@ class AppCfgValidator:
                 "app_config.calibration.temperature",
             )
             log_extra_keys(cfg.user_config, log, "user_config")
+            log_extra_keys(cfg.user_config.mqtt, log, "user_config.mqtt")
 
         entity_ids = _collect_entity_ids(runtime_cfg)
 

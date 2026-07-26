@@ -125,6 +125,27 @@ SafetyFunctions:
     common_entities:
       outside_temp: "sensor.dom_temperature"
 
+    # MQTT entity publishing.
+    #
+    # SafetyFunctions creates its internal entities through Home Assistant MQTT
+    # discovery instead of AppDaemon set_state. State updates are published to
+    # MQTT state topics and JSON attributes to attributes topics. Recovery
+    # actuators continue to use native Home Assistant services.
+    mqtt:
+      discovery_prefix: "homeassistant"
+      base_topic: "safety_component"
+      availability_topic: "safety_component/status"
+      device_identifier: "safety_component"
+      device_name: "Safety Component"
+      retain_discovery: true
+      retain_state: false
+      clear_retained_state_on_start: true
+      qos: 0
+      heartbeat_seconds: 60
+      expire_after: 180
+      legacy_discovery_entity_ids:
+        - "sensor.safety_app_health"
+
     # Safety components configuration (house-specific calibration + entities).
     #
     # Each component has its own schema. If a component is enabled above, its
@@ -140,11 +161,11 @@ SafetyFunctions:
         # Per-room configuration
         rooms:
           Office:
-            temperature_sensor: "sensor.office_temperature"
+            temperature_sensor: "sensor.office_climatesensor_temperature"
             window_sensor: "binary_sensor.office_window_contact_contact"
 
           Bedroom:
-            temperature_sensor: "sensor.bedroom_temperature"
+            temperature_sensor: "sensor.bedroom_climatesensor_temperature"
             window_sensor: "binary_sensor.bedroom_windowleft_sensor_contact"
 
           #Bathroom:
@@ -152,15 +173,16 @@ SafetyFunctions:
           #  window_sensor: "binary_sensor.bathroom_window_contact_contact"
 
           Livingroom:
-            temperature_sensor: "sensor.livingroom_temperature"
+            temperature_sensor: "sensor.livingroom_climatesensor_temperature"
             window_sensor: "binary_sensor.livingroom_door_contact_contact"
 
           Kitchen:
-            temperature_sensor: "sensor.corridor_temperature"
+            # The downstairs HC1 thermostat is the corridor temperature source.
+            temperature_sensor: "sensor.thermostat_hc1_current_room_temperature_2"
             window_sensor: "binary_sensor.kitchen_window_contact_contact"
 
           Entrance:
-            temperature_sensor: "sensor.entrance_temperature"
+            temperature_sensor: "sensor.entrance_climatesensor_temperature"
             window_sensor: null
 
           Garage:
@@ -168,13 +190,13 @@ SafetyFunctions:
             CAL_LOW_TEMP_THRESHOLD: 10.0
             CAL_HIGH_TEMP_THRESHOLD: 28.0
             CAL_FORECAST_TIMESPAN: 2.0
-            temperature_sensor: "sensor.garage_temperature"
+            temperature_sensor: "sensor.garage_climatesensor_temperature"
             window_sensor: "binary_sensor.garage_gatedoorlow_contact_contact"
 
           Kidsroom:
-            temperature_sensor: "sensor.kidsroom_temperature"
+            temperature_sensor: "sensor.kidsroom_climatesensor_temperature"
             window_sensor: "binary_sensor.kidsroom_window_contact_contact"
 
           Upperbathroom:
-            temperature_sensor: "sensor.upperbathroom_temperature"
+            temperature_sensor: "sensor.upperbathroom_climatesensor_temperature"
             #window_sensor: "sensor.upperbathroom_window_contact_contact"

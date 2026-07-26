@@ -89,3 +89,6 @@ class Hass:
 
     def cancel_timer(self, handle: Any) -> None:
         return None
+
+    def cancel_listen_state(self, handle: Any) -> None:
+        return None

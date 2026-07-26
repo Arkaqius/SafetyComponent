@@ -6,6 +6,7 @@ from typing import Any, ClassVar, Dict, Optional
 
 from pydantic import ConfigDict, Field
 
+from components.core.mqtt_entity_manager import MqttSettings
 from components.core.pydantic_utils import StrictBaseModel
 
 
@@ -57,6 +58,7 @@ class UserConfig(StrictBaseModel):
 
     components_enabled: Dict[str, bool] = Field(default_factory=dict)
     notification: Dict[str, Any] = Field(default_factory=dict)
+    mqtt: MqttSettings = Field(default_factory=MqttSettings)
     common_entities: Dict[str, str]
     safety_components: Dict[str, Dict[str, Any]]
 

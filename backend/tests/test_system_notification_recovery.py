@@ -6,7 +6,13 @@ from unittest.mock import MagicMock
 
 from components.core.types_common import FaultState, RecoveryActionState
 
-from .fixtures.hass_fixture import MockBehavior, mock_get_state, update_mocked_get_state
+from .fixtures.hass_fixture import (
+    MockBehavior,
+    mock_get_state,
+    mqtt_payloads,
+    mqtt_topic_for,
+    update_mocked_get_state,
+)
 
 
 class _StatefulHassState:
@@ -110,7 +116,9 @@ def test_notification_updates_single_fault_notification_for_prefault_lifecycle(
     )
     assert notify_calls[-1].kwargs["data"]["tag"] == fault_tag
     assert (
-        state_store.entities["sensor.fault_RiskyTemperature"]["attributes"]["location"]
+        app_instance.mqtt_entities.get_attributes("sensor.fault_RiskyTemperature")[
+            "location"
+        ]
         == "Office, Kitchen"
     )
 
@@ -124,7 +132,9 @@ def test_notification_updates_single_fault_notification_for_prefault_lifecycle(
         == "Fault: RiskyTemperature\nlocation: Kitchen\n"
     )
     assert (
-        state_store.entities["sensor.fault_RiskyTemperature"]["attributes"]["location"]
+        app_instance.mqtt_entities.get_attributes("sensor.fault_RiskyTemperature")[
+            "location"
+        ]
         == "Kitchen"
     )
 
@@ -135,9 +145,17 @@ def test_notification_updates_single_fault_notification_for_prefault_lifecycle(
     assert app_instance.notify_man.active_notification == {}
     assert notify_calls[-1].kwargs["message"].endswith(" has been cleared.")
     assert notify_calls[-1].kwargs["data"]["tag"] == fault_tag
-    assert state_store.entities["sensor.fault_RiskyTemperature"]["state"] == "Cleared"
     assert (
-        state_store.entities["sensor.fault_RiskyTemperature"]["attributes"]["location"]
+        mqtt_payloads(
+            app_instance,
+            mqtt_topic_for("sensor.fault_RiskyTemperature"),
+        )[-1]
+        == "Cleared"
+    )
+    assert (
+        app_instance.mqtt_entities.get_attributes("sensor.fault_RiskyTemperature")[
+            "location"
+        ]
         == ""
     )
 
@@ -165,6 +183,10 @@ def test_recovery_manager_sets_recovery_state_and_actuator_entities(
         [
             MockBehavior("sensor.office_temperature", iter(["5"])),
             MockBehavior("sensor.dom_temperature", iter(["1"])),
+            MockBehavior(
+                "sensor.office_window_contact_contact",
+                iter(["on", "on", "on"]),
+            ),
         ],
     )
     _install_stateful_hass(app_instance, mock_behaviors)
@@ -172,7 +194,7 @@ def test_recovery_manager_sets_recovery_state_and_actuator_entities(
     app_instance.initialize()
     app_instance.reco_man._is_dry_test_failed = MagicMock(return_value=False)
     app_instance.reco_man._isRecoveryConflict = MagicMock(return_value=False)
-    app_instance.set_state.reset_mock()
+    app_instance.call_service.reset_mock()
     app_instance.listen_state.reset_mock()
 
     app_instance.fm.set_symptom("RiskyTemperatureOffice", {"location": "Office"})
@@ -180,17 +202,25 @@ def test_recovery_manager_sets_recovery_state_and_actuator_entities(
     symptom = app_instance.symptoms["RiskyTemperatureOffice"]
     recovery_action = app_instance.reco_man.recovery_actions["RiskyTemperatureOffice"]
     assert recovery_action.current_status == RecoveryActionState.TO_PERFORM
-    app_instance.set_state.assert_any_call(
-        "sensor.recovery_manipulatewindowoffice", state="TO_PERFORM"
+    assert (
+        mqtt_payloads(
+            app_instance,
+            mqtt_topic_for("sensor.recovery_ManipulateWindowOffice"),
+        )[-1]
+        == "TO_PERFORM"
     )
-    app_instance.set_state.assert_any_call("cover.office_window", state="off")
+    app_instance.call_service.assert_any_call(
+        "cover/close_cover", entity_id="cover.office_window"
+    )
+    assert not mqtt_payloads(
+        app_instance,
+        "safety_component/command/cover_office_window/set",
+    )
     app_instance.listen_state.assert_any_call(
         app_instance.reco_man._recovery_performed,
         "sensor.office_window_contact_contact",
+        new="off",
         symptom=symptom,
-    )
-    app_instance.listen_state.assert_any_call(
-        app_instance.reco_man._recovery_performed,
-        "cover.office_window",
-        symptom=symptom,
+        confirmation_entity="sensor.office_window_contact_contact",
+        expected_state="off",
     )

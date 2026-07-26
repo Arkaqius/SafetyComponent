@@ -23,6 +23,7 @@ from typing import Optional, Callable
 
 import appdaemon.plugins.hass.hassapi as hass  # type: ignore
 
+from components.core.mqtt_entity_manager import MqttEntityManager
 from components.core.types_common import FaultState
 
 
@@ -41,7 +42,12 @@ class NotificationManager:
         notification_config (dict): Configuration for different notification levels and entities.
     """
 
-    def __init__(self, hass_app: hass.Hass, notification_config: dict):
+    def __init__(
+        self,
+        hass_app: hass.Hass,
+        notification_config: dict,
+        mqtt_entities: MqttEntityManager | None = None,
+    ):
         """
         Initializes the NotificationManager with Home Assistant and notification configurations.
 
@@ -51,6 +57,7 @@ class NotificationManager:
         """
         self.hass_app = hass_app
         self.notification_config = notification_config
+        self.mqtt_entities = mqtt_entities
         self.active_notification: dict[str, dict] = {}
 
         # Map notification levels to their respective methods
@@ -162,7 +169,15 @@ class NotificationManager:
         # to display messages
         dashboard_entity = self.notification_config.get(f"dashboard_{level}_entity")
         if dashboard_entity:
-            self.hass_app.set_state(dashboard_entity, state=message)
+            if self.mqtt_entities:
+                self.mqtt_entities.register_sensor(
+                    dashboard_entity,
+                    f"Safety Dashboard Level {level}",
+                    icon="mdi:message-alert-outline",
+                )
+                self.mqtt_entities.publish_sensor_state(dashboard_entity, message)
+            else:
+                self.hass_app.set_state(dashboard_entity, state=message)
             self.hass_app.log(
                 f"Dashboard entity {dashboard_entity} was changed to {message}",
                 level="DEBUG",

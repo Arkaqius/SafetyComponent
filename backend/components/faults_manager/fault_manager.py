@@ -30,6 +30,7 @@ import hashlib
 
 from components.core.types_common import FaultState, SMState, Symptom, Fault
 from components.core.event_bus import EventBus
+from components.core.mqtt_entity_manager import MqttEntityManager
 
 
 class FaultManager:
@@ -61,6 +62,7 @@ class FaultManager:
         symptom_dict: dict,
         fault_dict: dict,
         event_bus: EventBus | None = None,
+        mqtt_entities: MqttEntityManager | None = None,
     ) -> None:
         """
         Initialize the Fault Manager.
@@ -76,6 +78,7 @@ class FaultManager:
         self.sm_modules: dict = sm_modules
         self.hass: hass.Hass = hass
         self.event_bus = event_bus
+        self.mqtt_entities = mqtt_entities
 
     def register_callbacks(
         self,
@@ -273,8 +276,8 @@ class FaultManager:
             attributes: dict = info_to_send if info_to_send else {}
 
             # Set HA entity
-            self.hass.set_state(
-                "sensor.fault_" + fault.name, state="Set", attributes=attributes
+            self._set_internal_entity(
+                "sensor.fault_" + fault.name, "Set", attributes
             )
 
             if self.event_bus:
@@ -331,13 +334,10 @@ class FaultManager:
                 return None
 
             # Retrieve the current state object for the entity
-            state = self.hass.get_state(entity_id, attribute="all")
-            # If the entity does not exist, simply return the additional info if the fault is being set
-            if not state:
+            current_attributes = self._get_entity_attributes(entity_id)
+            if not current_attributes:
                 return additional_info if fault_state == FaultState.SET else {}
 
-            # Get the current attributes of the entity; if none exist, initialize to an empty dict
-            current_attributes = state.get("attributes", {})
             if fault_state == FaultState.SET:
                 # Prepare the information to send by merging or updating current attributes with additional info
                 info_to_send = current_attributes.copy()
@@ -455,12 +455,11 @@ class FaultManager:
                 entity_id, additional_info, FaultState.CLEARED
             )
         if info_to_send is None:
-            state = self.hass.get_state(entity_id, attribute="all")
-            attributes = state.get("attributes", {}) if state else {}
+            attributes = self._get_entity_attributes(entity_id)
         else:
             attributes = info_to_send
 
-        self.hass.set_state(entity_id, state="Shadowed", attributes=attributes)
+        self._set_internal_entity(entity_id, "Shadowed", attributes)
 
         if self.event_bus:
             self.event_bus.publish(
@@ -529,7 +528,7 @@ class FaultManager:
             )
             attributes = info_to_send if info_to_send else {}
 
-            self.hass.set_state(entity_id, state="Set", attributes=attributes)
+            self._set_internal_entity(entity_id, "Set", attributes)
 
             if self.event_bus:
                 self.event_bus.publish(
@@ -562,9 +561,7 @@ class FaultManager:
             attributes = info_to_send if info_to_send else {}
 
             # Clear HA entity
-            self.hass.set_state(
-                entity_id, state="Cleared", attributes=attributes
-            )
+            self._set_internal_entity(entity_id, "Cleared", attributes)
             self.update_system_state_entity()  # Update the system state entity
 
             should_notify = fault.previous_val == FaultState.SET
@@ -790,8 +787,30 @@ class FaultManager:
             ),
             "highest_fault_level": highest_fault_level,
         }
-        self.hass.set_state(
-            "sensor.system_state",
-            state=str(highest_fault_level),  # Use the fault level as the state
-            attributes=attributes,
+        self._set_internal_entity(
+            "sensor.safetysystem_state",
+            str(highest_fault_level),
+            attributes,
         )
+
+    def _get_entity_attributes(self, entity_id: str) -> dict:
+        """Return attributes for an internal entity from MQTT state or HA fallback."""
+        if self.mqtt_entities:
+            return self.mqtt_entities.get_attributes(entity_id)
+
+        state = self.hass.get_state(entity_id, attribute="all")
+        if not state:
+            return {}
+        return state.get("attributes", {})
+
+    def _set_internal_entity(
+        self, entity_id: str, state: str, attributes: Optional[dict] = None
+    ) -> None:
+        """Publish an internal entity through MQTT discovery or test fallback."""
+        if self.mqtt_entities:
+            self.mqtt_entities.publish_sensor_state(
+                entity_id, state, attributes=attributes
+            )
+            return
+
+        self.hass.set_state(entity_id, state=state, attributes=attributes or {})

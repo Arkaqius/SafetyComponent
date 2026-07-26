@@ -22,6 +22,7 @@ A developer might create a `TemperatureSafetyComponent` subclass that monitors t
 This module streamlines the creation of safety mechanisms, emphasizing reliability, flexibility, and integration with Home Assistant's dynamic ecosystem.
 """
 
+from collections.abc import Iterable
 from typing import (
     Type,
     Any,
@@ -312,9 +313,12 @@ class SafetyComponent:
             return None
 
     @staticmethod
-    def change_all_entities_state(entities: list[str], state: str) -> dict[str, str]:
-        """Create a dictionary to change the state of entities."""
-        return {entity: state for entity in [entities]}  # type: ignore
+    def change_all_entities_state(
+        entities: str | Iterable[str], state: str
+    ) -> dict[str, str]:
+        """Map one entity or an iterable of entities to an expected state."""
+        entity_ids = [entities] if isinstance(entities, str) else list(entities)
+        return {entity_id: state for entity_id in entity_ids}
 
     def _debounce(
         self, current_counter: int, pr_test: bool, debounce_limit: int = 3

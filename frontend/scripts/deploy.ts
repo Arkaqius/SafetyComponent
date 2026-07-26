@@ -21,7 +21,7 @@ async function checkDirectoryExists() {
   try {
     await access(LOCAL_DIRECTORY, constants.F_OK);
     return true;
-  } catch (err) {
+  } catch {
     return false;
   }
 }

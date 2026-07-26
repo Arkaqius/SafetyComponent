@@ -1,21 +1,35 @@
 import React, { useState } from 'react';
-import { useEntity } from '@hakit/core';
+import { useEntity, useHass } from '@hakit/core';
+
+interface EntitySnapshot {
+  state?: string;
+  attributes?: Record<string, unknown>;
+}
+
+interface HealthConfiguration {
+  faults?: Record<string, unknown>;
+}
 
 const FaultSection: React.FC = () => {
   const [openLevels, setOpenLevels] = useState<string[]>([]); // Track multiple opened levels
   const healthEntity = useEntity('sensor.safety_app_health');
-  const faultsConfig = healthEntity?.attributes?.configuration?.faults || {};
+  const { getAllEntities } = useHass();
+  const entities = getAllEntities() as unknown as Record<string, EntitySnapshot>;
+  const configuration = healthEntity.attributes?.configuration as HealthConfiguration | undefined;
+  const faultsConfig = configuration?.faults || {};
 
   const faultEntities = Object.keys(faultsConfig).map(faultKey => `sensor.fault_${faultKey.toLowerCase()}`);
 
   const faultData = faultEntities.map(entityId => {
+    const entity = entities[entityId];
+    const attributes = entity?.attributes || {};
     return {
       id: entityId,
-      state: (useEntity(entityId) || {}).state || 'Unknown',
-      friendlyName: ((useEntity(entityId) || {}).attributes || {}).friendly_name || entityId.replace('sensor.fault_', ''),
-      description: ((useEntity(entityId) || {}).attributes || {}).description || '',
-      location: ((useEntity(entityId) || {}).attributes || {}).location || '',
-      level: ((useEntity(entityId) || {}).attributes || {}).level || 'level_4',
+      state: entity?.state || 'Unknown',
+      friendlyName: String(attributes.friendly_name || entityId.replace('sensor.fault_', '')),
+      description: String(attributes.description || ''),
+      location: String(attributes.location || ''),
+      level: String(attributes.level || 'level_4'),
     };
   });
 

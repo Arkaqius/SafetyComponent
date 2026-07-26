@@ -3,6 +3,7 @@
 
 from .common_entities import CommonEntities
 from .derivative_monitor import DerivativeMonitor
+from .mqtt_entity_manager import MqttEntityManager, MqttSettings
 from .pydantic_utils import StrictBaseModel, log_extra_keys
 from .types_common import (
     FaultState,
@@ -19,6 +20,8 @@ __all__ = [
     "DerivativeMonitor",
     "Fault",
     "FaultState",
+    "MqttEntityManager",
+    "MqttSettings",
     "RecoveryAction",
     "RecoveryActionState",
     "RecoveryResult",

@@ -1,8 +1,8 @@
 import { useEntity } from '@hakit/core';
 
 export default function Topbar() {
-  const safetyState = useEntity('sensor.safetysystem_state');
-  const healthState = useEntity('sensor.safety_app_health');
+  const safetyEntity = useEntity('sensor.safetysystem_state');
+  const healthEntity = useEntity('sensor.safety_app_health');
 
   // Configuration for Safety Status
   const statusConfig = {
@@ -46,17 +46,41 @@ export default function Topbar() {
       textColor: 'text-white',
       animation: '', // No animation
     },
+    init: {
+      label: 'System Starting',
+      bgColor: 'from-yellow-400 to-yellow-600',
+      textColor: 'text-black',
+      animation: 'animate-pulse',
+    },
+    invalid_cfg: {
+      label: 'Invalid Configuration',
+      bgColor: 'from-red-500 to-red-700',
+      textColor: 'text-white',
+      animation: 'animate-pulse',
+    },
     stopped: {
       label: 'System Stopped',
       bgColor: 'from-red-500 to-red-700',
       textColor: 'text-white',
       animation: 'animate-pulse', // Pulsating animation for stopped state
     },
+    unavailable: {
+      label: 'System Unavailable',
+      bgColor: 'from-red-500 to-red-700',
+      textColor: 'text-white',
+      animation: 'animate-pulse',
+    },
   };
 
   // Current configurations
-  const currentStatus = statusConfig[safetyState] || statusConfig.cleared;
-  const currentHealth = healthConfig[healthState] || healthConfig.running;
+  const safetyState =
+    safetyEntity.state === 'safe' || safetyEntity.state === '0'
+      ? 'cleared'
+      : safetyEntity.state.startsWith('level_')
+        ? safetyEntity.state
+        : `level_${safetyEntity.state}`;
+  const currentStatus = statusConfig[safetyState as keyof typeof statusConfig] || statusConfig.cleared;
+  const currentHealth = healthConfig[healthEntity.state as keyof typeof healthConfig] || healthConfig.unavailable;
 
   return (
     <div

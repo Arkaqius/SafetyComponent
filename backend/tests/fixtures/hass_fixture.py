@@ -1,10 +1,12 @@
 from itertools import cycle
+import json
 from typing import Any, Generator, List
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from SafetyFunctions import SafetyFunctions
+from components.core.mqtt_entity_manager import MqttEntityManager
 from components.safetycomponents.temperature.temperature_component import TemperatureComponent
 
 
@@ -146,3 +148,31 @@ def update_mocked_get_state(default: List[MockBehavior], test_specyfic: List[Moc
             default.append(test_mock)
 
     return default
+
+
+def mqtt_topic_for(entity_id: str, topic_kind: str = "state") -> str:
+    """Return the default SafetyFunctions MQTT topic for an entity."""
+    object_id = MqttEntityManager._slug(entity_id.split(".", 1)[-1])
+    return f"safety_component/{topic_kind}/{object_id}"
+
+
+def mqtt_publish_calls(hass_app: Any, topic: str | None = None) -> list[Any]:
+    """Return mqtt.publish service calls, optionally filtered by topic."""
+    calls = [
+        call
+        for call in hass_app.call_service.call_args_list
+        if call.args and call.args[0] == "mqtt/publish"
+    ]
+    if topic is None:
+        return calls
+    return [call for call in calls if call.kwargs.get("topic") == topic]
+
+
+def mqtt_payloads(hass_app: Any, topic: str) -> list[str]:
+    """Return MQTT payloads published to a topic."""
+    return [call.kwargs["payload"] for call in mqtt_publish_calls(hass_app, topic)]
+
+
+def mqtt_json_payloads(hass_app: Any, topic: str) -> list[dict[str, Any]]:
+    """Return JSON MQTT payloads published to a topic."""
+    return [json.loads(payload) for payload in mqtt_payloads(hass_app, topic)]

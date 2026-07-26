@@ -1,6 +1,6 @@
 import React from 'react';
 
-interface Log {
+export interface Log {
   timestamp: string;
   type: 'info' | 'warning' | 'error';
   message: string;
