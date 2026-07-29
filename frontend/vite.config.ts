@@ -1,24 +1,16 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 
-import dotenv from 'dotenv';
-dotenv.config();
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), 'VITE_');
+  const folderName = env.VITE_FOLDER_NAME?.trim() || 'SafetyHome';
 
-const VITE_FOLDER_NAME = process.env.VITE_FOLDER_NAME;
+  if (!/^[A-Za-z0-9_-]+$/.test(folderName)) {
+    throw new Error('VITE_FOLDER_NAME może zawierać wyłącznie litery, cyfry, myślnik i podkreślenie.');
+  }
 
-// Check if the environment variable is set
-if (typeof VITE_FOLDER_NAME === 'undefined' || VITE_FOLDER_NAME === '') {
-  console.error(
-    'VITE_FOLDER_NAME environment variable is not set, update your .env file with a value naming your dashboard, eg "VITE_FOLDER_NAME=ha-dashboard"'
-  );
-  process.exit(1);
-}
-
-// https://vite.dev/config/
-export default defineConfig({
-  base: `/local/${VITE_FOLDER_NAME}/`,
-  plugins: [react()],
-  css: {
-    postcss: './postcss.config.js',
-  },
+  return {
+    base: `/local/${folderName}/`,
+    plugins: [react()],
+  };
 });

@@ -1,152 +1,76 @@
-import { useEntity } from '@hakit/core';
+import { type RefObject } from 'react';
+import { useLocation } from 'react-router-dom';
+import { MOCK_MODE } from '../config';
+import { formatRelativeTime, normalizeState } from '../domain/safety';
+import { useSafetyEntities } from '../hooks/useSafetyEntities';
+import Icon from './Icon';
+import StatusBadge from './StatusBadge';
 
-export default function Topbar() {
-  const safetyEntity = useEntity('sensor.safetysystem_state');
-  const healthEntity = useEntity('sensor.safety_app_health');
+interface TopbarProps {
+  menuButtonRef: RefObject<HTMLButtonElement>;
+  navigationOpen: boolean;
+  onMenuClick: () => void;
+}
 
-  // Configuration for Safety Status
-  const statusConfig = {
-    level_4: {
-      label: 'Critical Alert',
-      bgColor: 'from-red-500 to-red-700',
-      textColor: 'text-white',
-      animation: 'animate-pulse', // Pulsating animation for critical state
-    },
-    level_3: {
-      label: 'High Alert',
-      bgColor: 'from-orange-500 to-orange-700',
-      textColor: 'text-white',
-      animation: 'animate-pulse', // Pulsating animation for high alert
-    },
-    level_2: {
-      label: 'Warning',
-      bgColor: 'from-yellow-400 to-yellow-600',
-      textColor: 'text-black',
-      animation: '', // No animation
-    },
-    level_1: {
-      label: 'Caution',
-      bgColor: 'from-blue-400 to-blue-600',
-      textColor: 'text-white',
-      animation: '', // No animation
-    },
-    cleared: {
-      label: 'System Safe',
-      bgColor: 'from-green-500 to-green-700',
-      textColor: 'text-white',
-      animation: '', // No animation
-    },
-  };
+const pageLabels: Record<string, { eyebrow: string; title: string }> = {
+  '/': { eyebrow: 'SafetyComponent', title: 'Przegląd systemu' },
+  '/temperature': { eyebrow: 'Monitoring środowiska', title: 'Temperatury i trendy' },
+  '/history': { eyebrow: 'Diagnostyka', title: 'Historia stanów' },
+};
 
-  // Configuration for System Health
-  const healthConfig = {
-    running: {
-      label: 'System Running',
-      bgColor: 'from-green-400 to-green-600',
-      textColor: 'text-white',
-      animation: '', // No animation
-    },
-    init: {
-      label: 'System Starting',
-      bgColor: 'from-yellow-400 to-yellow-600',
-      textColor: 'text-black',
-      animation: 'animate-pulse',
-    },
-    invalid_cfg: {
-      label: 'Invalid Configuration',
-      bgColor: 'from-red-500 to-red-700',
-      textColor: 'text-white',
-      animation: 'animate-pulse',
-    },
-    stopped: {
-      label: 'System Stopped',
-      bgColor: 'from-red-500 to-red-700',
-      textColor: 'text-white',
-      animation: 'animate-pulse', // Pulsating animation for stopped state
-    },
-    unavailable: {
-      label: 'System Unavailable',
-      bgColor: 'from-red-500 to-red-700',
-      textColor: 'text-white',
-      animation: 'animate-pulse',
-    },
-  };
-
-  // Current configurations
-  const safetyState =
-    safetyEntity.state === 'safe' || safetyEntity.state === '0'
-      ? 'cleared'
-      : safetyEntity.state.startsWith('level_')
-        ? safetyEntity.state
-        : `level_${safetyEntity.state}`;
-  const currentStatus = statusConfig[safetyState as keyof typeof statusConfig] || statusConfig.cleared;
-  const currentHealth = healthConfig[healthEntity.state as keyof typeof healthConfig] || healthConfig.unavailable;
+export default function Topbar({ menuButtonRef, navigationOpen, onMenuClick }: TopbarProps) {
+  const location = useLocation();
+  const { healthEntity, summary, connection } = useSafetyEntities();
+  const page = pageLabels[location.pathname] ?? pageLabels['/'];
+  const healthState = normalizeState(healthEntity?.state);
+  const isConnected = connection.ready && !connection.cannotConnect;
+  const healthLabel =
+    healthState === 'running'
+      ? 'Usługa działa'
+      : healthState === 'init'
+        ? 'Uruchamianie'
+        : healthState === 'invalid_cfg'
+          ? 'Błąd konfiguracji'
+          : 'Usługa niedostępna';
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        justifyContent: 'flex-start',
-        alignItems: 'center',
-        padding: '15px 20px',
-        background: 'linear-gradient(to right, #0f172a, #1e293b)',
-        borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-        gap: '40px',
-      }}
-    >
-      {/* Left Section: Title */}
-      <div>
-        <h1
-          style={{
-            margin: 0,
-            fontSize: '2rem',
-            fontFamily: 'Poppins, sans-serif',
-            color: '#3b82f6',
-            fontWeight: 'bold',
-            textShadow: '1px 1px 4px rgba(0, 0, 0, 0.5)',
-          }}
+    <header className='topbar'>
+      <div className='topbar-title'>
+        <button
+          aria-controls='primary-navigation'
+          aria-expanded={navigationOpen}
+          aria-label='Otwórz nawigację'
+          className='icon-button mobile-menu-button'
+          onClick={onMenuClick}
+          ref={menuButtonRef}
+          type='button'
         >
-          Home Safety System
-        </h1>
-        <p
-          style={{
-            margin: 0,
-            fontSize: '1rem',
-            color: '#94a3b8',
-            fontFamily: 'Roboto, sans-serif',
-          }}
-        >
-          Comprehensive Monitoring & Protection
-        </p>
-      </div>
-
-      {/* Safety Status */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-        <h3 style={{ margin: 0, fontSize: '1rem', color: '#94a3b8' }}>Safety Status:</h3>
-        <div
-          className={`px-4 py-2 rounded-full text-sm font-medium inline-flex items-center bg-gradient-to-r ${currentStatus.bgColor} ${currentStatus.textColor} ${currentStatus.animation}`}
-          style={{
-            boxShadow: '0px 4px 8px rgba(0, 0, 0, 0.2)',
-            cursor: 'pointer',
-          }}
-        >
-          <span>{currentStatus.label}</span>
+          <Icon name='menu' />
+        </button>
+        <div>
+          <span className='eyebrow'>{page.eyebrow}</span>
+          <h1>{page.title}</h1>
         </div>
       </div>
 
-      {/* System Health */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-        <h3 style={{ margin: 0, fontSize: '1rem', color: '#94a3b8' }}>System Health:</h3>
-        <div
-          className={`px-4 py-2 rounded-full text-sm font-medium inline-flex items-center bg-gradient-to-r ${currentHealth.bgColor} ${currentHealth.textColor} ${currentHealth.animation}`}
-          style={{
-            boxShadow: '0px 4px 8px rgba(0, 0, 0, 0.2)',
-            cursor: 'pointer',
-          }}
-        >
-          <span>{currentHealth.label}</span>
+      <div aria-live='polite' className='topbar-statuses'>
+        <div className='topbar-status-group'>
+          <span className='topbar-status-label'>Bezpieczeństwo</span>
+          <StatusBadge pulse={summary.tone === 'critical'} tone={summary.tone}>
+            {summary.label}
+          </StatusBadge>
+        </div>
+        <div className='topbar-status-group desktop-status'>
+          <span className='topbar-status-label'>Usługa</span>
+          <StatusBadge tone={healthState === 'running' && isConnected ? 'safe' : healthState === 'init' ? 'warning' : 'muted'}>
+            {healthLabel}
+          </StatusBadge>
+        </div>
+        <div className='connection-copy'>
+          <span>{MOCK_MODE ? 'Tryb demonstracyjny' : isConnected ? 'Połączono z Home Assistant' : 'Brak połączenia'}</span>
+          <small>{MOCK_MODE ? 'Lokalne dane testowe' : `Aktualizacja ${formatRelativeTime(connection.lastUpdated?.toISOString())}`}</small>
         </div>
       </div>
-    </div>
+    </header>
   );
 }
