@@ -1,112 +1,144 @@
-import React, { useState } from 'react';
-import { useEntity, useHass } from '@hakit/core';
+import { useMemo, useState } from 'react';
+import { LEVEL_PRESENTATION, formatRelativeTime, type FaultStatus, type FaultView, type StatusTone } from '../domain/safety';
+import Icon from './Icon';
+import StatusBadge from './StatusBadge';
 
-interface EntitySnapshot {
-  state?: string;
-  attributes?: Record<string, unknown>;
+type FaultFilter = 'attention' | 'set' | 'shadowed' | 'all';
+
+interface FaultSectionProps {
+  faults: FaultView[];
+  compact?: boolean;
 }
 
-interface HealthConfiguration {
-  faults?: Record<string, unknown>;
-}
-
-const FaultSection: React.FC = () => {
-  const [openLevels, setOpenLevels] = useState<string[]>([]); // Track multiple opened levels
-  const healthEntity = useEntity('sensor.safety_app_health');
-  const { getAllEntities } = useHass();
-  const entities = getAllEntities() as unknown as Record<string, EntitySnapshot>;
-  const configuration = healthEntity.attributes?.configuration as HealthConfiguration | undefined;
-  const faultsConfig = configuration?.faults || {};
-
-  const faultEntities = Object.keys(faultsConfig).map(faultKey => `sensor.fault_${faultKey.toLowerCase()}`);
-
-  const faultData = faultEntities.map(entityId => {
-    const entity = entities[entityId];
-    const attributes = entity?.attributes || {};
-    return {
-      id: entityId,
-      state: entity?.state || 'Unknown',
-      friendlyName: String(attributes.friendly_name || entityId.replace('sensor.fault_', '')),
-      description: String(attributes.description || ''),
-      location: String(attributes.location || ''),
-      level: String(attributes.level || 'level_4'),
-    };
-  });
-
-  const groupedFaults = faultData.reduce<Record<string, typeof faultData>>((acc, fault) => {
-    if (!acc[fault.level]) acc[fault.level] = [];
-    acc[fault.level].push(fault);
-    return acc;
-  }, {});
-
-  const levelOrder = ['level_1', 'level_2', 'level_3', 'level_4'];
-  const levelTitles: Record<string, string> = {
-    level_1: 'Immediate Emergency',
-    level_2: 'Hazard',
-    level_3: 'Warning',
-    level_4: 'Notice',
-  };
-
-  const levelColors: Record<string, string> = {
-    level_1: '#EF4444', // red
-    level_2: '#F97316', // orange
-    level_3: '#EAB308', // yellow
-    level_4: '#3B82F6', // blue
-  };
-
-  const toggleLevel = (level: string) => {
-    setOpenLevels(prev => (prev.includes(level) ? prev.filter(l => l !== level) : [...prev, level]));
-  };
-
-  return (
-    <div className='w-full max-w-4xl mx-auto bg-gray-800 shadow-lg rounded-lg overflow-hidden'>
-      <div className='p-6 text-gray-100'>
-        <h2 className='text-2xl font-bold mb-6'>System Faults</h2>
-        <div>
-          {levelOrder.map(level => {
-            if (!groupedFaults[level]) return null;
-
-            return (
-              <div key={level} className='mb-4'>
-                <button
-                  onClick={() => toggleLevel(level)}
-                  className='w-full text-left p-4 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors duration-200 focus:outline-none'
-                >
-                  <div className='flex items-center justify-between'>
-                    <span className='text-lg font-semibold text-gray-100'>{levelTitles[level]}</span>
-                    <span className='bg-gray-600 text-gray-100 px-2 py-1 rounded-full text-sm'>{groupedFaults[level].length}</span>
-                  </div>
-                </button>
-                {openLevels.includes(level) && (
-                  <div className='mt-2 space-y-4'>
-                    {groupedFaults[level].map((fault, index) => (
-                      <div key={index} className='border rounded-lg overflow-hidden bg-gray-700'>
-                        <div style={{ backgroundColor: levelColors[fault.level] }} className='text-white p-4'>
-                          <h3 className='text-lg font-semibold'>{fault.friendlyName}</h3>
-                        </div>
-                        <div className='p-4 text-gray-100'>
-                          <p className='text-sm mb-2'>{fault.description}</p>
-                          <div className='flex justify-between items-center'>
-                            <span className='text-sm font-medium'>Location: {fault.location || 'None'}</span>
-                            <span
-                              style={{ backgroundColor: levelColors[fault.level] }}
-                              className='text-white font-bold px-3 py-1 rounded-full text-sm'
-                            >
-                              {fault.state}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
+const statusPresentation: Record<FaultStatus, { label: string; tone: StatusTone }> = {
+  set: { label: 'Aktywna', tone: 'danger' },
+  shadowed: { label: 'Przesłonięta', tone: 'warning' },
+  cleared: { label: 'Usunięta', tone: 'safe' },
+  not_tested: { label: 'Nieprzetestowana', tone: 'muted' },
+  unavailable: { label: 'Niedostępna', tone: 'muted' },
+  unknown: { label: 'Nieznana', tone: 'muted' },
 };
 
-export default FaultSection;
+const filters: Array<{ value: FaultFilter; label: string }> = [
+  { value: 'attention', label: 'Wymagające uwagi' },
+  { value: 'set', label: 'Aktywne' },
+  { value: 'shadowed', label: 'Przesłonięte' },
+  { value: 'all', label: 'Wszystkie' },
+];
+
+export default function FaultSection({ faults, compact = false }: FaultSectionProps) {
+  const [filter, setFilter] = useState<FaultFilter>('attention');
+  const [query, setQuery] = useState('');
+
+  const filteredFaults = useMemo(() => {
+    const normalizedQuery = query.trim().toLocaleLowerCase('pl');
+    return faults.filter(fault => {
+      const matchesFilter =
+        filter === 'all' ||
+        fault.status === filter ||
+        (filter === 'attention' && ['set', 'shadowed', 'unavailable', 'unknown'].includes(fault.status));
+      const matchesQuery =
+        normalizedQuery.length === 0 ||
+        [fault.name, fault.description, fault.entityId, ...fault.locations].join(' ').toLocaleLowerCase('pl').includes(normalizedQuery);
+      return matchesFilter && matchesQuery;
+    });
+  }, [faults, filter, query]);
+
+  const activeCount = faults.filter(fault => fault.status === 'set').length;
+
+  return (
+    <section className='panel fault-panel'>
+      <div className='panel-header'>
+        <div>
+          <span className='section-kicker'>Fault Manager</span>
+          <h2>Usterki systemu</h2>
+        </div>
+        <span className={`count-badge${activeCount > 0 ? ' count-badge-alert' : ''}`}>{activeCount} aktywnych</span>
+      </div>
+
+      <div className='filter-row' role='group' aria-label='Filtr usterek'>
+        {filters.map(item => (
+          <button
+            aria-pressed={filter === item.value}
+            className={`filter-button${filter === item.value ? ' filter-button-active' : ''}`}
+            key={item.value}
+            onClick={() => setFilter(item.value)}
+            type='button'
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+
+      {!compact && (
+        <label className='search-field'>
+          <span className='sr-only'>Szukaj usterek</span>
+          <Icon name='alert' size={17} />
+          <input
+            onChange={event => setQuery(event.target.value)}
+            placeholder='Szukaj po nazwie, lokalizacji lub encji…'
+            type='search'
+            value={query}
+          />
+        </label>
+      )}
+
+      <div aria-live='polite' className='fault-list'>
+        {filteredFaults.length > 0 ? (
+          filteredFaults.map(fault => <FaultCard fault={fault} key={fault.entityId} />)
+        ) : (
+          <div className='empty-state'>
+            <div className='empty-state-icon'>
+              <Icon name='shield' size={28} />
+            </div>
+            <strong>{faults.length === 0 ? 'Brak encji usterek' : 'Brak usterek w tym widoku'}</strong>
+            <p>
+              {faults.length === 0
+                ? 'Home Assistant nie udostępnia obecnie żadnych encji sensor.fault_*.'
+                : 'System nie raportuje zdarzeń spełniających wybrany filtr.'}
+            </p>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function FaultCard({ fault }: { fault: FaultView }) {
+  const status = statusPresentation[fault.status];
+  const level = fault.level ? LEVEL_PRESENTATION[fault.level] : undefined;
+
+  return (
+    <details className={`fault-card fault-${status.tone}`} open={fault.status === 'set'}>
+      <summary>
+        <span className='fault-card-icon'>
+          <Icon name='alert' size={20} />
+        </span>
+        <span className='fault-card-title'>
+          <strong>{fault.name}</strong>
+          <small>{fault.locations.length > 0 ? fault.locations.join(' · ') : fault.entityId}</small>
+        </span>
+        {level && <span className={`level-chip status-${level.tone}`}>{level.shortLabel}</span>}
+        <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
+        <Icon className='details-chevron' name='chevron' size={17} />
+      </summary>
+      <div className='fault-card-details'>
+        <p>{fault.description || 'Brak dodatkowego opisu dla tej usterki.'}</p>
+        <dl className='details-grid'>
+          <div>
+            <dt>Poziom</dt>
+            <dd>{level?.label ?? 'Nie podano'}</dd>
+          </div>
+          <div>
+            <dt>Stan HA</dt>
+            <dd>{fault.state}</dd>
+          </div>
+          <div>
+            <dt>Ostatnia zmiana</dt>
+            <dd>{formatRelativeTime(fault.lastChanged)}</dd>
+          </div>
+        </dl>
+      </div>
+    </details>
+  );
+}

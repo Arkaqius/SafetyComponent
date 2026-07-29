@@ -5,13 +5,16 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:mock": "vite --mode mock",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "prettier": "prettier --write .",
-    "sync": "npx tsx ./sync-types.ts",
-    "prebuild": "npm run prettier",
-    "deploy": "npx tsx scripts/deploy.ts"
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc -p tsconfig.app.json --noEmit",
+    "test": "tsc -p tsconfig.test.json && node .test-dist/domain/safety.test.js",
+    "sync": "node scripts/sync-types.mjs",
+    "deploy": "npm run build && node scripts/deploy.mjs"
   },
   "dependencies": {
     "@hakit/components": "^4.0.4",
