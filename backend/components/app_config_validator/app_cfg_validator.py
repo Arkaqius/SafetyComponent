@@ -11,6 +11,10 @@ from components.app_config_validator.schema import AppCfg
 from components.core.pydantic_utils import log_extra_keys
 from components.faults_manager.schema import validate_faults_config
 from components.notification_manager.schema import validate_notification_config
+from components.safetycomponents.safety_doors.schema import (
+    COMPONENT_NAME as SAFETY_DOORS_COMPONENT_NAME,
+    validate_safety_doors_config,
+)
 from components.safetycomponents.temperature.schema import (
     COMPONENT_NAME as TEMPERATURE_COMPONENT_NAME,
     validate_temperature_config,
@@ -72,6 +76,25 @@ def _collect_entity_ids(runtime_cfg: Dict[str, Any]) -> list[tuple[str, str]]:
                             )
                         )
 
+    safety_doors_cfg = components_cfg.get(SAFETY_DOORS_COMPONENT_NAME)
+    if isinstance(safety_doors_cfg, list):
+        for door in safety_doors_cfg:
+            if not isinstance(door, dict):
+                continue
+            for door_name, door_cfg in door.items():
+                if not isinstance(door_cfg, dict):
+                    continue
+                entity_id = door_cfg.get("entity_id")
+                if isinstance(entity_id, str):
+                    entity_ids.append(
+                        (
+                            "user_config.safety_components."
+                            f"{SAFETY_DOORS_COMPONENT_NAME}."
+                            f"{door_name}.entity_id",
+                            entity_id,
+                        )
+                    )
+
     return entity_ids
 
 
@@ -116,6 +139,12 @@ def _to_runtime(
                 strict_validation=strict_validation,
                 log=log,
                 calibration=cfg.app_config.calibration.temperature.model_dump(),
+            )
+        elif name == SAFETY_DOORS_COMPONENT_NAME:
+            runtime_components[name] = validate_safety_doors_config(
+                component_cfg,
+                strict_validation=strict_validation,
+                log=log,
             )
         else:
             runtime_components[name] = component_cfg

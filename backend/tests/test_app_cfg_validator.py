@@ -9,6 +9,9 @@ from components.app_config_validator.app_cfg_validator import (
     _validate_entity_existence,
 )
 from components.safetycomponents.temperature.schema import COMPONENT_NAME as TEMP_COMPONENT_NAME
+from components.safetycomponents.safety_doors.schema import (
+    COMPONENT_NAME as SAFETY_DOORS_COMPONENT_NAME,
+)
 
 
 def test_validate_app_cfg_normalizes_temperature_component(app_config_valid):
@@ -45,6 +48,54 @@ def test_validate_app_cfg_applies_safe_mqtt_defaults(app_config_valid):
     assert mqtt_config["availability_topic"] == "safety_component/status"
     assert mqtt_config["heartbeat_seconds"] == 60
     assert mqtt_config["expire_after"] == 180
+
+
+def test_validate_app_cfg_normalizes_safety_doors_component(app_config_valid):
+    cfg = copy.deepcopy(app_config_valid)
+    cfg["user_config"]["components_enabled"][SAFETY_DOORS_COMPONENT_NAME] = True
+    cfg["user_config"]["safety_components"][SAFETY_DOORS_COMPONENT_NAME] = {
+        "defaults": {"timeout_seconds": 120},
+        "doors": {
+            "GarageGate": {
+                "entity_id": "binary_sensor.garage_gate",
+            },
+            "EntranceDoor": {
+                "entity_id": "binary_sensor.entrance_door",
+                "timeout_seconds": 30,
+            },
+        },
+    }
+
+    validated = AppCfgValidator.validate(cfg)
+    doors = validated["user_config"]["safety_components"][
+        SAFETY_DOORS_COMPONENT_NAME
+    ]
+
+    assert doors == [
+        {
+            "GarageGate": {
+                "entity_id": "binary_sensor.garage_gate",
+                "timeout_seconds": 120,
+            }
+        },
+        {
+            "EntranceDoor": {
+                "entity_id": "binary_sensor.entrance_door",
+                "timeout_seconds": 30,
+            }
+        },
+    ]
+
+
+def test_validate_app_cfg_rejects_safety_doors_without_entries(app_config_valid):
+    cfg = copy.deepcopy(app_config_valid)
+    cfg["user_config"]["components_enabled"][SAFETY_DOORS_COMPONENT_NAME] = True
+    cfg["user_config"]["safety_components"][SAFETY_DOORS_COMPONENT_NAME] = {
+        "doors": {}
+    }
+
+    with pytest.raises(AppCfgValidationError):
+        AppCfgValidator.validate(cfg)
 
 
 @pytest.mark.parametrize(
