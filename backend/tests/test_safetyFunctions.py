@@ -191,7 +191,7 @@ def test_initialize_no_faults_or_safety_components(mocked_hass_app_with_temp_com
 
     Scenario:
         - The configuration does not include any faults or safety components.
-        - Expected Result: The app stops, logging an appropriate warning, setting the app state to 'invalid_cfg', and calling terminate.
+        - Expected Result: The validator reports the error while MQTT health remains observable.
     """
     app_instance, mocked_hass, _, _, _ = mocked_hass_app_with_temp_component
 
@@ -199,13 +199,14 @@ def test_initialize_no_faults_or_safety_components(mocked_hass_app_with_temp_com
     app_instance.args['app_config']['faults'] = {}  # No faults defined
     app_instance.args['user_config']['safety_components'] = {}  # No safety components defined
 
-    mocked_hass.stop_app = Mock()
-    # Call initialize to test behavior
     app_instance.initialize()
 
-    # Check if the warning log was called
-    app_instance.log.assert_called_with("No faults or safety components defined. Stopping the app.", level="WARNING")
+    app_instance.log.assert_called_with(
+        "Invalid app configuration: app_config.faults must define at least one fault",
+        level="ERROR",
+    )
 
-    # Check if the app state was published as 'invalid_cfg'
     health_topic = mqtt_topic_for("sensor.safety_app_health")
     assert mqtt_payloads(mocked_hass, health_topic)[-1] == "invalid_cfg"
+    assert mqtt_payloads(mocked_hass, "safety_component/status")[-1] == "online"
+    assert not hasattr(app_instance, "_stopped")

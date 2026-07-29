@@ -26,6 +26,7 @@ from typing import Dict, Any, Callable, Optional
 import appdaemon.plugins.hass.hassapi as hass  # type: ignore
 
 from components.core.common_entities import CommonEntities
+from components.core.mqtt_entity_manager import MqttEntityManager
 from components.safetycomponents.core.safety_component import (
     SafetyComponent,
     safety_mechanism_decorator,
@@ -60,6 +61,7 @@ class TemperatureComponent(SafetyComponent):
         hass_app: hass,
         common_entities: CommonEntities,
         event_bus: Any,
+        mqtt_entities: MqttEntityManager,
     ) -> None:  # type: ignore
         """
         Initializes the TemperatureComponent instance with the Home Assistant application context, setting up the foundation
@@ -69,7 +71,7 @@ class TemperatureComponent(SafetyComponent):
             hass_app (hass.Hass): The Home Assistant application instance through which sensor data is accessed and actions are executed.
             common_entities (CommonEntities): A shared object providing access to common entities used across different safety mechanisms.
         """
-        super().__init__(hass_app, common_entities, event_bus)
+        super().__init__(hass_app, common_entities, event_bus, mqtt_entities)
 
     def get_symptoms_data(
         self, sm_modules: dict, component_cfg: list[dict[str, Any]]

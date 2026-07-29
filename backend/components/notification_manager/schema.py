@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import re
 from typing import Any, Callable, Optional
 
-from pydantic import ConfigDict, ValidationError, field_validator
+from pydantic import ConfigDict, ValidationError
 
 from components.core.pydantic_utils import StrictBaseModel, log_extra_keys
 
@@ -17,26 +16,6 @@ class NotificationConfig(StrictBaseModel):
 
     light_entity: Optional[str] = None
     alarm_entity: Optional[str] = None
-    dashboard_1_entity: Optional[str] = None
-    dashboard_2_entity: Optional[str] = None
-    dashboard_3_entity: Optional[str] = None
-    dashboard_4_entity: Optional[str] = None
-
-    @field_validator(
-        "dashboard_1_entity",
-        "dashboard_2_entity",
-        "dashboard_3_entity",
-        "dashboard_4_entity",
-    )
-    @classmethod
-    def _validate_dashboard_sensor(cls, value: str | None) -> str | None:
-        if value is not None and not re.fullmatch(
-            r"sensor\.[a-z0-9_]+", value
-        ):
-            raise ValueError(
-                "dashboard notification entity must be a valid sensor entity_id"
-            )
-        return value
 
 
 def validate_notification_config(

@@ -23,13 +23,17 @@ def test_validate_app_cfg_normalizes_temperature_component(app_config_valid):
     assert office_cfg["CAL_FORECAST_TIMESPAN"] == 2.0
 
 
-def test_validate_app_cfg_filters_disabled_components(app_config_valid):
+def test_validate_app_cfg_rejects_configuration_without_enabled_components(
+    app_config_valid,
+):
     cfg = copy.deepcopy(app_config_valid)
     cfg["user_config"]["components_enabled"]["TemperatureComponent"] = False
 
-    validated = AppCfgValidator.validate(cfg)
-
-    assert "TemperatureComponent" not in validated["user_config"]["safety_components"]
+    with pytest.raises(
+        AppCfgValidationError,
+        match="must enable at least one component",
+    ):
+        AppCfgValidator.validate(cfg)
 
 
 def test_validate_app_cfg_applies_safe_mqtt_defaults(app_config_valid):
@@ -86,45 +90,15 @@ def test_validate_app_cfg_rejects_non_cover_temperature_actuator(
         AppCfgValidator.validate(cfg)
 
 
-def test_validate_app_cfg_treats_dashboard_sensor_as_mqtt_output(
+def test_validate_app_cfg_rejects_removed_dashboard_notification_config(
     app_config_valid,
 ):
     cfg = copy.deepcopy(app_config_valid)
-    cfg["app_config"]["validation"]["validate_entity_existence"] = True
     cfg["user_config"]["notification"][
         "dashboard_1_entity"
     ] = "sensor.safety_dashboard_emergency"
 
-    class ExistingDependenciesHass:
-        def get_state(self, entity_id):
-            if entity_id == "sensor.safety_dashboard_emergency":
-                return None
-            return "available"
-
-    validated = AppCfgValidator.validate(cfg, hass=ExistingDependenciesHass())
-
-    assert (
-        validated["user_config"]["notification"]["dashboard_1_entity"]
-        == "sensor.safety_dashboard_emergency"
-    )
-
-
-@pytest.mark.parametrize(
-    "entity_id",
-    [
-        "text.safety_dashboard_emergency",
-        "sensor.",
-        "sensor.foo.bar",
-        "sensor.Invalid",
-    ],
-)
-def test_validate_app_cfg_rejects_invalid_dashboard_output(
-    app_config_valid, entity_id
-):
-    cfg = copy.deepcopy(app_config_valid)
-    cfg["user_config"]["notification"]["dashboard_1_entity"] = entity_id
-
-    with pytest.raises(AppCfgValidationError, match="valid sensor entity_id"):
+    with pytest.raises(AppCfgValidationError, match="Unknown keys.*dashboard_1_entity"):
         AppCfgValidator.validate(cfg)
 
 

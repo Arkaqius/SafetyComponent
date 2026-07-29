@@ -41,6 +41,7 @@ import appdaemon.plugins.hass.hassapi as hass  # type: ignore
 from components.core.common_entities import CommonEntities
 from components.core.derivative_monitor import DerivativeMonitor
 from components.core.event_bus import EventBus
+from components.core.mqtt_entity_manager import MqttEntityManager
 from components.core.types_common import FaultState, Symptom, RecoveryAction, SMState
 
 NO_NEEDED = False
@@ -145,6 +146,7 @@ class SafetyComponent:
         hass_app: hass.Hass,
         common_entities: CommonEntities,
         event_bus: EventBus,
+        mqtt_entities: MqttEntityManager,
     ) -> None:
         """
         Initialize the safety component.
@@ -156,7 +158,7 @@ class SafetyComponent:
         self.event_bus: EventBus = event_bus
         self.symptom_states: dict[str, FaultState] = {}
         self.init_common_data()
-        self.derivative_monitor = DerivativeMonitor(hass_app)
+        self.derivative_monitor = DerivativeMonitor(hass_app, mqtt_entities)
 
     def init_common_data(self) -> None:
         # Initialize dictionaries that need to be unique to each instance

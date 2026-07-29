@@ -46,29 +46,19 @@ const ActionCard: React.FC<{ action: Action }> = ({ action }) => (
   </div>
 );
 
-interface BackendRecoveryAction {
-  name?: string;
-  params?: Record<string, unknown>;
-  status?: string;
-}
-
 const ActionsList: React.FC = () => {
   const { getAllEntities } = useHass();
   const entities = getAllEntities();
 
-  const appHealthEntity = entities['sensor.safety_app_health'];
-  const recoveryActions = appHealthEntity?.attributes?.recovery_actions as Record<string, BackendRecoveryAction> | undefined;
-  const actions: Action[] = Object.entries(recoveryActions || {}).map(([id, action]) => {
-    const description = Object.entries(action.params || {})
-      .map(([key, value]) => `${key}: ${String(value)}`)
-      .join(', ');
-    return {
-      id,
-      title: action.name || id,
-      description: description || 'No parameters',
-      status: action.status === 'TO_PERFORM' ? 'in-progress' : 'pending',
-    };
-  });
+  const actions: Action[] = Object.entries(entities)
+    .filter(([entityId]) => entityId.startsWith('sensor.recovery_'))
+    .map<Action>(([entityId, entity]) => ({
+      id: entityId,
+      title: String(entity.attributes.friendly_name || '') || entityId.replace('sensor.recovery_', '').replace(/_/g, ' '),
+      description: String(entity.attributes.description || '') || `MQTT entity: ${entityId}`,
+      status: entity.state === 'TO_PERFORM' ? 'in-progress' : 'pending',
+    }))
+    .sort((left, right) => left.title.localeCompare(right.title));
 
   return (
     <div style={{ padding: '20px', backgroundColor: '#1e293b', borderRadius: '8px' }}>

@@ -143,8 +143,6 @@ SafetyFunctions:
       qos: 0
       heartbeat_seconds: 60
       expire_after: 180
-      legacy_discovery_entity_ids:
-        - "sensor.safety_app_health"
 
     # Safety components configuration (house-specific calibration + entities).
     #

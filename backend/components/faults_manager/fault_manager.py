@@ -23,10 +23,10 @@ This module is integral to the safety system's ability to maintain operational i
 Note: This module is designed for internal use within the Home Assistant safety system and relies on configurations and interactions with other system components, including safety mechanisms and recovery action definitions.
 """
 
-from typing import Optional, Callable, Any
+import hashlib
+from typing import Any, Optional
 
 import appdaemon.plugins.hass.hassapi as hass
-import hashlib
 
 from components.core.types_common import FaultState, SMState, Symptom, Fault
 from components.core.event_bus import EventBus
@@ -61,36 +61,20 @@ class FaultManager:
         sm_modules: dict,
         symptom_dict: dict,
         fault_dict: dict,
-        event_bus: EventBus | None = None,
-        mqtt_entities: MqttEntityManager | None = None,
+        event_bus: EventBus,
+        mqtt_entities: MqttEntityManager,
     ) -> None:
         """
         Initialize the Fault Manager.
 
         :param config_path: Path to the YAML configuration file.
         """
-        self.notify_interface: (
-            Callable[[str, int, FaultState, dict | None], None] | None
-        ) = None
-        self.recovery_interface: Callable[[Symptom], None] | None = None
         self.faults: dict[str, Fault] = fault_dict
         self.symptoms: dict[str, Symptom] = symptom_dict
         self.sm_modules: dict = sm_modules
         self.hass: hass.Hass = hass
         self.event_bus = event_bus
         self.mqtt_entities = mqtt_entities
-
-    def register_callbacks(
-        self,
-        recovery_interface: Callable[[Symptom], None],
-        notify_interface: Callable[[str, int, FaultState, dict | None], None],
-    ) -> None:
-        self.hass.log(
-            "register_callbacks is deprecated; use EventBus subscriptions instead.",
-            level="WARNING",
-        )
-        self.recovery_interface = recovery_interface
-        self.notify_interface = notify_interface
 
     def handle_symptom_event(
         self,
@@ -280,37 +264,18 @@ class FaultManager:
                 "sensor.fault_" + fault.name, "Set", attributes
             )
 
-            if self.event_bus:
-                self.event_bus.publish(
-                    "fault",
-                    fault_name=fault.name,
-                    level=fault.level,
-                    fault_state=FaultState.SET,
-                    additional_info=self._notification_info_from_merged(
-                        additional_info, info_to_send
-                    ),
-                    fault_tag=fault_tag,
-                    symptom=self.symptoms[symptom_id],
-                    should_notify=True,
-                )
-            else:
-                # Call notifications
-                if self.notify_interface:
-                    self.notify_interface(
-                        fault.name,
-                        fault.level,
-                        FaultState.SET,
-                        additional_info,
-                        fault_tag,
-                    )
-                else:
-                    self.hass.log("No notification interface", level="WARNING")
-
-                # Call recovery actions (specific for symptom)
-                if self.recovery_interface:
-                    self.recovery_interface(self.symptoms[symptom_id], fault_tag)
-                else:
-                    self.hass.log("No recovery interface", level="WARNING")
+            self.event_bus.publish(
+                "fault",
+                fault_name=fault.name,
+                level=fault.level,
+                fault_state=FaultState.SET,
+                additional_info=self._notification_info_from_merged(
+                    additional_info, info_to_send
+                ),
+                fault_tag=fault_tag,
+                symptom=self.symptoms[symptom_id],
+                should_notify=True,
+            )
 
             self._apply_shadowing(fault, self.symptoms[symptom_id], additional_info)
 
@@ -461,25 +426,16 @@ class FaultManager:
 
         self._set_internal_entity(entity_id, "Shadowed", attributes)
 
-        if self.event_bus:
-            self.event_bus.publish(
-                "fault",
-                fault_name=fault.name,
-                level=fault.level,
-                fault_state=FaultState.SHADOWED,
-                additional_info=additional_info,
-                fault_tag=fault_tag,
-                symptom=symptom,
-                should_notify=True,
-            )
-        elif self.notify_interface:
-            self.notify_interface(
-                fault.name,
-                fault.level,
-                FaultState.SHADOWED,
-                additional_info,
-                fault_tag,
-            )
+        self.event_bus.publish(
+            "fault",
+            fault_name=fault.name,
+            level=fault.level,
+            fault_state=FaultState.SHADOWED,
+            additional_info=additional_info,
+            fault_tag=fault_tag,
+            symptom=symptom,
+            should_notify=True,
+        )
 
     def _clear_fault(self, symptom_id: str, additional_info: dict) -> None:
         """
@@ -530,19 +486,18 @@ class FaultManager:
 
             self._set_internal_entity(entity_id, "Set", attributes)
 
-            if self.event_bus:
-                self.event_bus.publish(
-                    "fault",
-                    fault_name=fault.name,
-                    level=fault.level,
-                    fault_state=FaultState.SET,
-                    additional_info=self._notification_info_from_merged(
-                        additional_info, info_to_send
-                    ),
-                    fault_tag=fault_tag,
-                    symptom=self.symptoms[symptom_id],
-                    should_notify=fault.state == FaultState.SET,
-                )
+            self.event_bus.publish(
+                "fault",
+                fault_name=fault.name,
+                level=fault.level,
+                fault_state=FaultState.SET,
+                additional_info=self._notification_info_from_merged(
+                    additional_info, info_to_send
+                ),
+                fault_tag=fault_tag,
+                symptom=self.symptoms[symptom_id],
+                should_notify=fault.state == FaultState.SET,
+            )
             return
 
         if not has_active_related_symptoms:
@@ -565,36 +520,16 @@ class FaultManager:
             self.update_system_state_entity()  # Update the system state entity
 
             should_notify = fault.previous_val == FaultState.SET
-            if self.event_bus:
-                self.event_bus.publish(
-                    "fault",
-                    fault_name=fault.name,
-                    level=fault.level,
-                    fault_state=FaultState.CLEARED,
-                    additional_info=additional_info,
-                    fault_tag=fault_tag,
-                    symptom=self.symptoms[symptom_id],
-                    should_notify=should_notify,
-                )
-            else:
-                if should_notify:
-                    # Call notifications
-                    if self.notify_interface:
-                        self.notify_interface(
-                            fault.name,
-                            fault.level,
-                            FaultState.CLEARED,
-                            additional_info,
-                            fault_tag,
-                        )
-                    else:
-                        self.hass.log("No notification interface", level="WARNING")
-
-                # Call recovery actions (specific for symptom)
-                if self.recovery_interface:
-                    self.recovery_interface(self.symptoms[symptom_id], fault_tag)
-                else:
-                    self.hass.log("No recovery interface", level="WARNING")
+            self.event_bus.publish(
+                "fault",
+                fault_name=fault.name,
+                level=fault.level,
+                fault_state=FaultState.CLEARED,
+                additional_info=additional_info,
+                fault_tag=fault_tag,
+                symptom=self.symptoms[symptom_id],
+                should_notify=should_notify,
+            )
 
     def check_fault(self, fault_id: str) -> FaultState:
         """
@@ -794,23 +729,13 @@ class FaultManager:
         )
 
     def _get_entity_attributes(self, entity_id: str) -> dict:
-        """Return attributes for an internal entity from MQTT state or HA fallback."""
-        if self.mqtt_entities:
-            return self.mqtt_entities.get_attributes(entity_id)
-
-        state = self.hass.get_state(entity_id, attribute="all")
-        if not state:
-            return {}
-        return state.get("attributes", {})
+        """Return attributes cached for an internal MQTT entity."""
+        return self.mqtt_entities.get_attributes(entity_id)
 
     def _set_internal_entity(
         self, entity_id: str, state: str, attributes: Optional[dict] = None
     ) -> None:
-        """Publish an internal entity through MQTT discovery or test fallback."""
-        if self.mqtt_entities:
-            self.mqtt_entities.publish_sensor_state(
-                entity_id, state, attributes=attributes
-            )
-            return
-
-        self.hass.set_state(entity_id, state=state, attributes=attributes or {})
+        """Publish an internal entity through MQTT."""
+        self.mqtt_entities.publish_sensor_state(
+            entity_id, state, attributes=attributes
+        )

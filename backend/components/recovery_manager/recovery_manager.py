@@ -68,7 +68,7 @@ class RecoveryManager:
         recovery_actions: dict,
         common_entities: CommonEntities,
         nm: NotificationManager,
-        mqtt_entities: MqttEntityManager | None = None,
+        mqtt_entities: MqttEntityManager,
     ) -> None:
         """
         Initializes the RecoveryManager with the necessary application context and recovery configuration.
@@ -274,16 +274,16 @@ class RecoveryManager:
             sensor_name, expected_domain="sensor"
         )
         sensor_value: str = str(recovery.current_status.name)
-        if self.mqtt_entities:
-            self.mqtt_entities.register_sensor(
-                sensor_name,
-                f"Recovery {recovery.name}",
-                icon="mdi:lifebuoy",
-            )
-            self.mqtt_entities.publish_sensor_state(sensor_name, sensor_value)
-            return
-
-        self.hass_app.set_state(sensor_name, state=sensor_value)
+        self.mqtt_entities.register_sensor(
+            sensor_name,
+            f"Recovery {recovery.name}",
+            attributes={
+                "description": f"Recovery status for {recovery.name}.",
+            },
+            icon="mdi:lifebuoy",
+            entity_category="diagnostic",
+        )
+        self.mqtt_entities.publish_sensor_state(sensor_name, sensor_value)
 
     def _execute_entity_action(self, entity: str, value: str) -> None:
         """Execute a supported recovery action through a native HA service."""

@@ -1,14 +1,14 @@
 """
 Notification Manager Module for Home Assistant Safety System
 
-This module contains the NotificationManager class, designed to handle various types of notifications within a Home Assistant-based safety system. It facilitates the delivery of notifications through Home Assistant's notification services, dashboard updates, and other notification mechanisms such as lights and alarms. The NotificationManager is configurable, allowing for dynamic notification behaviors based on the severity of detected faults and system states.
+This module contains the NotificationManager class, designed to handle various types of notifications within a Home Assistant-based safety system. It facilitates the delivery of notifications through Home Assistant's notification services and other notification mechanisms such as lights and alarms. The NotificationManager is configurable, allowing for dynamic notification behaviors based on the severity of detected faults and system states.
 
 The NotificationManager class provides a structured way to manage and execute notifications based on predefined levels of urgency. It maps different notification levels to specific methods that handle the logic for each notification type, ensuring that users are informed of system states and faults in a timely and appropriate manner.
 
 Features include:
 
 Configurable notification levels, allowing for tailored responses to different fault conditions.
-Integration with Home Assistant services for sending notifications to devices, updating dashboard states, and controlling home automation entities like lights and alarms.
+Integration with Home Assistant services for sending notifications to devices and controlling home automation entities like lights and alarms.
 Support for additional information in notifications, enabling detailed fault descriptions to be communicated to the user.
 Use of a unique faulttag to manage notifications effectively, ensuring that notifications related to the same fault instance can be tracked and correlated properly.
 The faulttag feature is utilized to uniquely identify notifications associated with specific fault instances, facilitating efficient management of notification lifecycles, such as setting, updating, and clearing notifications. This ensures that users receive coherent and timely information regarding the status of faults.
@@ -23,14 +23,13 @@ from typing import Optional, Callable
 
 import appdaemon.plugins.hass.hassapi as hass  # type: ignore
 
-from components.core.mqtt_entity_manager import MqttEntityManager
 from components.core.types_common import FaultState
 
 
 class NotificationManager:
     """
     A manager for sending notifications within a Home Assistant-based safety system, using various
-    methods like alerts to mobile devices, dashboard updates, and control of home automation entities
+    methods like alerts to mobile devices and control of home automation entities
     (e.g., lights, alarms) based on event severity.
 
     Attributes:
@@ -46,7 +45,6 @@ class NotificationManager:
         self,
         hass_app: hass.Hass,
         notification_config: dict,
-        mqtt_entities: MqttEntityManager | None = None,
     ):
         """
         Initializes the NotificationManager with Home Assistant and notification configurations.
@@ -57,7 +55,6 @@ class NotificationManager:
         """
         self.hass_app = hass_app
         self.notification_config = notification_config
-        self.mqtt_entities = mqtt_entities
         self.active_notification: dict[str, dict] = {}
 
         # Map notification levels to their respective methods
@@ -155,37 +152,6 @@ class NotificationManager:
 
     def _process_shadowed_fault(self, level: int, fault_tag: str) -> None:
         self._clear_company_app(level, fault_tag)
-
-    def _set_dashboard_notification(self, message: str, level: int) -> None:
-        """
-        Displays a notification message on the Home Assistant dashboard based on severity level.
-
-        Parameters:
-            message: The message to be displayed.
-            level: The message's severity level, influencing its presentation.
-        """
-        # This function assumes that you have an entity in Home Assistant that represents
-        # a text field on a dashboard. You would need to create this entity and configure it
-        # to display messages
-        dashboard_entity = self.notification_config.get(f"dashboard_{level}_entity")
-        if dashboard_entity:
-            if self.mqtt_entities:
-                self.mqtt_entities.register_sensor(
-                    dashboard_entity,
-                    f"Safety Dashboard Level {level}",
-                    icon="mdi:message-alert-outline",
-                )
-                self.mqtt_entities.publish_sensor_state(dashboard_entity, message)
-            else:
-                self.hass_app.set_state(dashboard_entity, state=message)
-            self.hass_app.log(
-                f"Dashboard entity {dashboard_entity} was changed to {message}",
-                level="DEBUG",
-            )
-        else:
-            self.hass_app.log(
-                f"No dashboard entity configured for level '{level}'", level="WARNING"
-            )
 
     def _notify_level_1_additional(self) -> None:
         """

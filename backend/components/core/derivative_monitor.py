@@ -35,7 +35,7 @@ class DerivativeMonitor:
         return cls._instance
 
     def __init__(
-        self, hass_app: Hass, mqtt_entities: MqttEntityManager | None = None
+        self, hass_app: Hass, mqtt_entities: MqttEntityManager
     ) -> None:
         """Initializes the singleton instance if not already initialized."""
         if not hasattr(self, "initialized"):
@@ -53,7 +53,7 @@ class DerivativeMonitor:
             self.reset_for_app(hass_app, mqtt_entities)
 
     def reset_for_app(
-        self, hass_app: Hass, mqtt_entities: MqttEntityManager | None = None
+        self, hass_app: Hass, mqtt_entities: MqttEntityManager
     ) -> None:
         """
         Reset internal state when a new app instance starts.
@@ -124,41 +124,10 @@ class DerivativeMonitor:
         }
         self.entities[entity_id]["first_derivative_history"].append(0.00)
         self.entities[entity_id]["second_derivative_history"].append(0.00)
-        if self.mqtt_entities:
-            self._register_derivative_entity(
-                f"{entity_id}_rate",
-                f"{entity_id} Rate",
-                {
-                    "friendly_name": f"{entity_id} Rate",
-                    "state_class": "measurement",
-                    "unit_of_measurement": "°C/min",
-                    "attribution": "Data provided by SafetyFunction",
-                    "icon": "mdi:chart-timeline-variant",
-                },
-            )
-            self._register_derivative_entity(
-                f"{entity_id}_rateOfRate",
-                f"{entity_id} Rate Of Rate",
-                {
-                    "friendly_name": f"{entity_id} Rate Of Rate",
-                    "state_class": "measurement",
-                    "unit_of_measurement": "°C/min²",
-                    "attribution": "Data provided by SafetyFunction",
-                    "icon": "mdi:chart-timeline-variant",
-                },
-            )
-            self.hass_app.log(
-                f"Derivative entities created for {entity_id}.", level="DEBUG"
-            )
-            handle = self.schedule_sampling(entity_id, sample_time)
-            self._sampling_handles[entity_id] = handle
-            return
-
-        # Create derivative entities in Home Assistant with additional attributes
-        self.hass_app.set_state(
+        self._register_derivative_entity(
             f"{entity_id}_rate",
-            state=None,
-            attributes={
+            f"{entity_id} Rate",
+            {
                 "friendly_name": f"{entity_id} Rate",
                 "state_class": "measurement",
                 "unit_of_measurement": "°C/min",
@@ -166,10 +135,10 @@ class DerivativeMonitor:
                 "icon": "mdi:chart-timeline-variant",
             },
         )
-        self.hass_app.set_state(
+        self._register_derivative_entity(
             f"{entity_id}_rateOfRate",
-            state=None,
-            attributes={
+            f"{entity_id} Rate Of Rate",
+            {
                 "friendly_name": f"{entity_id} Rate Of Rate",
                 "state_class": "measurement",
                 "unit_of_measurement": "°C/min²",
@@ -326,24 +295,20 @@ class DerivativeMonitor:
         attributes: dict[str, Any],
     ) -> None:
         """Register a derivative sensor through MQTT discovery."""
-        if self.mqtt_entities:
-            self.mqtt_entities.register_sensor(
-                entity_id,
-                name,
-                state=None,
-                attributes=attributes,
-                icon=attributes.get("icon"),
-                unit_of_measurement=attributes.get("unit_of_measurement"),
-                state_class=attributes.get("state_class"),
-            )
+        self.mqtt_entities.register_sensor(
+            entity_id,
+            name,
+            state=None,
+            attributes=attributes,
+            icon=attributes.get("icon"),
+            unit_of_measurement=attributes.get("unit_of_measurement"),
+            state_class=attributes.get("state_class"),
+            entity_category="diagnostic",
+        )
 
     def _publish_derivative_state(self, entity_id: str, state: Any) -> None:
-        """Publish a derivative state through MQTT or the direct test fallback."""
-        if self.mqtt_entities:
-            self.mqtt_entities.publish_sensor_state(entity_id, state)
-            return
-
-        self.hass_app.set_state(entity_id, state=state)
+        """Publish a derivative state through MQTT."""
+        self.mqtt_entities.publish_sensor_state(entity_id, state)
 
     def get_first_derivative(self, entity_id: str) -> Optional[float]:
         """

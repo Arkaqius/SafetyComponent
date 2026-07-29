@@ -32,7 +32,7 @@ def _make_component():
     hass_app.log = Mock()
     common_entities = CommonEntities(hass_app, {"outside_temp": "sensor.outside"})
     event_bus = EventBus()
-    return DummyComponent(hass_app, common_entities, event_bus)
+    return DummyComponent(hass_app, common_entities, event_bus, Mock())
 
 
 def test_register_safety_component_errors_on_unknown_name():

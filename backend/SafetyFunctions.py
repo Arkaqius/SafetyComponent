@@ -79,6 +79,7 @@ class SafetyFunctions(hass.Hass):
         # Disable all the no-member violations in this function
         # pylint: disable=attribute-defined-outside-init
         if not self._initialize_mqtt():
+            self.stop_app(self.name)
             return
 
         try:
@@ -92,7 +93,7 @@ class SafetyFunctions(hass.Hass):
                 "invalid_cfg",
                 attributes={"configuration_error": str(exc)},
             )
-            self.stop_app(self.name)
+            self._start_mqtt_reporting()
             return
 
         if DEBUG:
@@ -111,24 +112,6 @@ class SafetyFunctions(hass.Hass):
         self.notification_cfg: dict = self.args["user_config"]["notification"]
         self.common_entities_cfg: dict = self.args["user_config"]["common_entities"]
 
-        # Combine configuration for export later
-        combined_config = {
-            "faults": self.fault_dict,
-            "safety_components": self.safety_components_cfg,
-            "notification": self.notification_cfg,
-            "common_entities": self.common_entities_cfg,
-        }
-
-        # 10.3. Stop if configurations are invalid
-        if not self.fault_dict or not self.safety_components_cfg:
-            self.log(
-                "No faults or safety components defined. Stopping the app.",
-                level="WARNING",
-            )
-            self._set_internal_entity("sensor.safety_app_health", "invalid_cfg")
-            self.stop_app(self.name)
-            return
-
         # 20. Initialize common entities
         self.common_entities: CommonEntities = CommonEntities(
             self, self.common_entities_cfg
@@ -138,7 +121,10 @@ class SafetyFunctions(hass.Hass):
         for component_name, component_cls in get_registered_components().items():
             if component_name in self.safety_components_cfg:
                 component_instance = component_cls(
-                    self, self.common_entities, self.event_bus
+                    self,
+                    self.common_entities,
+                    self.event_bus,
+                    self.mqtt_entities,
                 )
                 self.sm_modules[component_name] = component_instance
 
@@ -165,7 +151,7 @@ class SafetyFunctions(hass.Hass):
 
         # 60. Initialize notification manager
         self.notify_man: NotificationManager = NotificationManager(
-            self, self.notification_cfg, self.mqtt_entities
+            self, self.notification_cfg
         )
 
         # 70. Initialize recovery manager
@@ -192,7 +178,7 @@ class SafetyFunctions(hass.Hass):
         # 90. Event-driven flow means components publish to the bus instead.
 
         # 100. Register entities for faults
-        health_attributes: dict[str, Any] = self.register_entities()
+        self.register_entities()
 
         # 110. Initialize safety mechanisms
         self.fm.init_safety_mechanisms()
@@ -201,16 +187,8 @@ class SafetyFunctions(hass.Hass):
         self.fm.enable_all_symptoms()
 
         # 130 Emit config and set state to running
-        self._set_internal_entity(
-            "sensor.safety_app_health", "running", attributes=health_attributes
-        )
-        self.mqtt_entities.publish_availability(True)
-        if self.mqtt_entities.settings.heartbeat_seconds > 0:
-            self.run_every(
-                self._mqtt_heartbeat,
-                "now",
-                self.mqtt_entities.settings.heartbeat_seconds,
-            )
+        self._set_internal_entity("sensor.safety_app_health", "running")
+        self._start_mqtt_reporting()
         self.log("Safety app started successfully", level="DEBUG")
 
     def _initialize_mqtt(self) -> bool:
@@ -240,13 +218,21 @@ class SafetyFunctions(hass.Hass):
             self._set_internal_entity("sensor.safety_app_health", "init")
         except (ValidationError, ValueError) as exc:
             self.log(f"Invalid MQTT configuration: {exc}", level="ERROR")
-            self.stop_app(self.name)
             return False
         except Exception as exc:
             self.log(f"Unable to initialize MQTT publishing: {exc}", level="ERROR")
-            self.stop_app(self.name)
             return False
         return True
+
+    def _start_mqtt_reporting(self) -> None:
+        """Make MQTT entities available and keep their states fresh."""
+        self.mqtt_entities.publish_availability(True)
+        if self.mqtt_entities.settings.heartbeat_seconds > 0:
+            self.run_every(
+                self._mqtt_heartbeat,
+                "now",
+                self.mqtt_entities.settings.heartbeat_seconds,
+            )
 
     def _mqtt_heartbeat(self, **_: Any) -> None:
         """Refresh MQTT sensor states used by ``expire_after``."""
@@ -268,6 +254,7 @@ class SafetyFunctions(hass.Hass):
             "sensor.safety_app_health",
             "Safety App Health",
             icon="mdi:heart-pulse",
+            entity_category="diagnostic",
         )
 
     def _set_internal_entity(
@@ -284,14 +271,13 @@ class SafetyFunctions(hass.Hass):
             attributes=attributes,
         )
 
-    def register_entities(self) -> dict[str, Any]:
+    def register_entities(self) -> None:
         """
         Registers all entities required by the Safety Functions app in Home Assistant.
 
         This includes:
         - Initializing the `sensor.system_state` entity with a default safe state.
         - Registering fault entities for each fault in the system.
-        - Exporting the app health entity attributes.
 
         Ensures that the entities are properly initialized and available for monitoring in Home Assistant.
         """
@@ -305,6 +291,7 @@ class SafetyFunctions(hass.Hass):
                 "description": "Overall safety system state based on fault conditions.",
             },
             icon="mdi:shield-check",
+            entity_category="diagnostic",
         )
 
         # Register fault entities
@@ -319,29 +306,5 @@ class SafetyFunctions(hass.Hass):
                     "level": f"level_{fault.level}",
                 },
                 icon="mdi:alert-outline",
+                entity_category="diagnostic",
             )
-
-        # Register health entity
-        combined_config = {
-            "faults": self.fault_dict,
-            "safety_components": self.safety_components_cfg,
-            "notification": self.notification_cfg,
-            "common_entities": self.common_entities_cfg,
-        }
-        health_attributes = {
-            "friendly_name": "Safety App Health",
-            "configuration": combined_config,
-            "symptoms": {
-                name: vars(symptom) for name, symptom in self.symptoms.items()
-            },
-            "recovery_actions": {
-                name: {
-                    "name": action.name,
-                    "params": action.params,
-                    "status": action.current_status.name,
-                }
-                for name, action in self.recovery_actions.items()
-            },
-        }
-
-        return health_attributes
