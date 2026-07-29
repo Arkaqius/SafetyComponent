@@ -1,75 +1,87 @@
-import React from 'react';
-import { useHass } from '@hakit/core';
+import { useState } from 'react';
+import { formatRelativeTime, recoveryNeedsAttention, type RecoveryStatus, type RecoveryView, type StatusTone } from '../domain/safety';
+import Icon from './Icon';
+import StatusBadge from './StatusBadge';
 
-interface Action {
-  id: string;
-  title: string;
-  description: string;
-  status: 'pending' | 'in-progress' | 'completed';
+interface ActionsListProps {
+  recoveries: RecoveryView[];
 }
 
-const statusStyles: Record<Action['status'], React.CSSProperties> = {
-  pending: { backgroundColor: '#7c2d12', color: '#fde68a' },
-  'in-progress': { backgroundColor: '#1e3a8a', color: '#bfdbfe' },
-  completed: { backgroundColor: '#065f46', color: '#d1fae5' },
+const statusPresentation: Record<RecoveryStatus, { label: string; tone: StatusTone }> = {
+  to_perform: { label: 'Do wykonania', tone: 'warning' },
+  do_not_perform: { label: 'Brak potrzeby', tone: 'safe' },
+  unavailable: { label: 'Niedostępna', tone: 'muted' },
+  unknown: { label: 'Stan nieznany', tone: 'muted' },
 };
 
-const ActionCard: React.FC<{ action: Action }> = ({ action }) => (
-  <div
-    style={{
-      backgroundColor: '#374151',
-      padding: '15px',
-      borderRadius: '8px',
-      boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
-      marginBottom: '15px',
-      color: '#f3f4f6',
-    }}
-  >
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-      <div>
-        <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 'bold', color: '#f3f4f6' }}>{action.title}</h3>
-        <p style={{ margin: '5px 0 0', color: '#9ca3af' }}>{action.description}</p>
-      </div>
-      <span
-        style={{
-          padding: '5px 10px',
-          borderRadius: '16px',
-          fontSize: '0.875rem',
-          fontWeight: 'bold',
-          whiteSpace: 'nowrap',
-          ...statusStyles[action.status],
-        }}
-      >
-        {action.status}
-      </span>
-    </div>
-  </div>
-);
-
-const ActionsList: React.FC = () => {
-  const { getAllEntities } = useHass();
-  const entities = getAllEntities();
-
-  const actions: Action[] = Object.entries(entities)
-    .filter(([entityId]) => entityId.startsWith('sensor.recovery_'))
-    .map<Action>(([entityId, entity]) => ({
-      id: entityId,
-      title: String(entity.attributes.friendly_name || '') || entityId.replace('sensor.recovery_', '').replace(/_/g, ' '),
-      description: String(entity.attributes.description || '') || `MQTT entity: ${entityId}`,
-      status: entity.state === 'TO_PERFORM' ? 'in-progress' : 'pending',
-    }))
-    .sort((left, right) => left.title.localeCompare(right.title));
+export default function ActionsList({ recoveries }: ActionsListProps) {
+  const [showAll, setShowAll] = useState(false);
+  const actionable = recoveries.filter(recovery => recovery.status === 'to_perform');
+  const requiringAttention = recoveries.filter(recoveryNeedsAttention);
+  const visibleRecoveries = showAll ? recoveries : requiringAttention;
+  const countLabel =
+    requiringAttention.length === 0
+      ? '0 do wykonania'
+      : actionable.length > 0 && actionable.length === requiringAttention.length
+        ? `${actionable.length} do wykonania`
+        : requiringAttention.length === 1
+          ? '1 wymaga uwagi'
+          : `${requiringAttention.length} wymagają uwagi`;
 
   return (
-    <div style={{ padding: '20px', backgroundColor: '#1e293b', borderRadius: '8px' }}>
-      <h1 style={{ marginBottom: '20px', fontSize: '1.5rem', color: '#3b82f6' }}>Actions</h1>
-      {actions.length > 0 ? (
-        actions.map(action => <ActionCard key={action.id} action={action} />)
-      ) : (
-        <p style={{ color: '#9ca3af' }}>No recovery actions available.</p>
-      )}
-    </div>
-  );
-};
+    <section className='panel recovery-panel'>
+      <div className='panel-header'>
+        <div>
+          <span className='section-kicker'>Recovery Manager</span>
+          <h2>Działania naprawcze</h2>
+        </div>
+        <span className={`count-badge${requiringAttention.length > 0 ? ' count-badge-warning' : ''}`}>{countLabel}</span>
+      </div>
 
-export default ActionsList;
+      <div className='panel-toolbar'>
+        <p>Sensory diagnostyczne — wykonanie akcji pozostaje po stronie SafetyComponent.</p>
+        {recoveries.length > 0 && (
+          <button className='text-button' onClick={() => setShowAll(value => !value)} type='button'>
+            {showAll ? 'Pokaż wymagające uwagi' : `Pokaż wszystkie (${recoveries.length})`}
+          </button>
+        )}
+      </div>
+
+      <div aria-live='polite' className='recovery-list'>
+        {visibleRecoveries.length > 0 ? (
+          visibleRecoveries.map(recovery => <RecoveryCard key={recovery.entityId} recovery={recovery} />)
+        ) : (
+          <div className='empty-state'>
+            <div className='empty-state-icon'>
+              <Icon name='recovery' size={28} />
+            </div>
+            <strong>{recoveries.length === 0 ? 'Brak encji recovery' : 'Brak działań do wykonania'}</strong>
+            <p>
+              {recoveries.length === 0
+                ? 'Home Assistant nie udostępnia obecnie żadnych encji sensor.recovery_*.'
+                : 'Wszystkie działania naprawcze mają stan DO_NOT_PERFORM.'}
+            </p>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function RecoveryCard({ recovery }: { recovery: RecoveryView }) {
+  const presentation = statusPresentation[recovery.status];
+
+  return (
+    <article className={`recovery-card recovery-${presentation.tone}`}>
+      <span className='recovery-card-icon'>
+        <Icon name='recovery' size={20} />
+      </span>
+      <div className='recovery-card-copy'>
+        <strong>{recovery.name}</strong>
+        <p>{recovery.description || recovery.entityId}</p>
+        <small>Zmiana {formatRelativeTime(recovery.lastChanged)}</small>
+      </div>
+      <StatusBadge tone={presentation.tone}>{presentation.label}</StatusBadge>
+    </article>
+  );
+}

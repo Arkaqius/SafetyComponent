@@ -1,87 +1,88 @@
-## Prerequisites
-Node version manager - [NVM](https://github.com/nvm-sh/nvm) to easily install and manage node versions
+# SafetyHome frontend
 
-## Local Development
-Simply, run `nvm use && npm i && npm run dev` and it will start a local server for you to develop on, it will also watch for changes and reload the page for you. 
+Responsywna aplikacja React/Vite prezentująca bieżące dane SafetyComponent bezpośrednio z Home Assistanta przez
+`@hakit/core`.
 
-## Dependencies
+## Uruchomienie lokalne
 
-```json
-Node.js >=18.0.0
-npm >=7.0.0
+Wymagane są Node.js 18+ i npm 7+.
+
+```powershell
+Copy-Item .env.example .env
+npm install
+npm run dev
 ```
 
-## Building
-Run `npm run build` and it will build the files for you, you can then upload them to your home assistant instance using the deploy script mentioned below.
+W trybie deweloperskim `VITE_HA_URL` wskazuje instancję Home Assistanta. Aplikacja nie przyjmuje długowiecznego tokenu
+w kodzie klienta — `HassConnect` prowadzi normalne logowanie HA.
 
-## Deploy to Home Assistant via SSH
-1. Replace the values in the .env file provided with your `VITE_SSH_USERNAME`, `VITE_SSH_HOSTNAME` and `VITE_SSH_PASSWORD`.
-2. To automatically deploy to your home assistant instance, you can run `npm run deploy` after you've retrieved the SSH information specified [here](https://shannonhochkins.github.io/ha-component-kit/?path=/docs/introduction-deploying--docs), NOTE! The script has already been created for you, you just need to run it after you've updated the .env values.
-3. The `VITE_FOLDER_NAME` is the folder that will be created on your home assistant instance, this is where the files will be uploaded to.
+Do przeglądu wszystkich stanów interfejsu bez logowania można użyć wyłącznie lokalnego trybu demonstracyjnego:
 
-## Folder name & Vite
-The `VITE_FOLDER_NAME` is the folder that will be created on your home assistant instance, this is where the files will be uploaded to. If you change the `VITE_FOLDER_NAME` variable, it will also update the `vite.config.ts` value named `base` to the same value so that when deployed using the deployment script the pathname's are correct.
-
-## Typescript Sync
-
-1. Replace the values in the .env file provided with your own!
-2. The `VITE_HA_URL` should be a https url if you want to sync your types successfully.
-3. The `VITE_HA_TOKEN` instructions can be found [here](https://shannonhochkins.github.io/ha-component-kit/?path=/docs/introduction-typescriptsync--docs) under the pre-requisites section.
-
-Once you have both the above environment variables set, you can run `npm run sync` and it will create a file for you, you then just have to add it to the tsconfig.json.
-
-## Further documentation
-For further documentation, please visit the [documentation website](https://shannonhochkins.github.io/ha-component-kit/) for more information.
-
-
-
-# React + TypeScript + Vite
-
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
-
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type aware lint rules:
-
-- Configure the top-level `parserOptions` property like this:
-
-```js
-export default tseslint.config({
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
+```powershell
+npm run dev:mock
 ```
 
-- Replace `tseslint.configs.recommended` to `tseslint.configs.recommendedTypeChecked` or `tseslint.configs.strictTypeChecked`
-- Optionally add `...tseslint.configs.stylisticTypeChecked`
-- Install [eslint-plugin-react](https://github.com/jsx-eslint/eslint-plugin-react) and update the config:
+Tryb demonstracyjny działa tylko przy deweloperskim buildzie Vite i jest jawnie oznaczony w nagłówku. Produkcyjny build
+zawsze korzysta z rzeczywistych encji Home Assistanta.
 
-```js
-// eslint.config.js
-import react from 'eslint-plugin-react'
+## Weryfikacja
 
-export default tseslint.config({
-  // Set the react version
-  settings: { react: { version: '18.3' } },
-  plugins: {
-    // Add the react plugin
-    react,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended rules
-    ...react.configs.recommended.rules,
-    ...react.configs['jsx-runtime'].rules,
-  },
-})
+```powershell
+npm test
+npm run typecheck
+npm run lint -- --max-warnings=0
+npm run format:check
+npm run build
 ```
+
+## Deploy do Home Assistanta
+
+Home Assistant udostępnia pliki z `/config/www` pod adresem `/local`. Skrypt deploy:
+
+1. wykonuje świeży build,
+2. wysyła go przez SFTP do katalogu tymczasowego,
+3. sprawdza obecność `index.html`,
+4. atomowo podmienia `/config/www/<VITE_FOLDER_NAME>`,
+5. przy błędzie podmiany przywraca poprzednią wersję.
+
+Uzupełnij w `.env` wartości `HA_SSH_*`, a następnie:
+
+```powershell
+npm run deploy
+```
+
+Przy pierwszym wdrożeniu katalog `/config/www` musi już istnieć. Jeśli tworzysz go po raz pierwszy, uruchom ponownie Home
+Assistanta przed wykonaniem deployu, aby ścieżka `/local` została udostępniona.
+
+Dla domyślnego `VITE_FOLDER_NAME=SafetyHome` aplikacja będzie dostępna pod:
+
+```text
+https://ADRES_HA/local/SafetyHome/index.html
+```
+
+Do panelu bocznego można ją dodać w Home Assistant jako dashboard typu **Webpage** wskazujący powyższą ścieżkę.
+Routing używa fragmentu URL (`#/temperature`, `#/history`), dlatego odświeżenie podstrony działa także przy zwykłym
+hostingu statycznym.
+
+Alternatywą jest aplikacja HAKit z `html_file_path: www/SafetyHome/index.html` i `spa_mode: true`.
+
+### Bezpieczeństwo sekretów
+
+- Home Assistant udostępnia pliki z `/config/www` publicznie pod `/local`; nie są one chronione logowaniem HA. Produkcyjny
+  bundle nie może zawierać sekretów, a dostęp do stanów nadal odbywa się przez OAuth Home Assistanta.
+- Nie umieszczaj tokenów ani danych SSH w zmiennych z prefiksem `VITE_` — trafiają do publicznego kodu klienta.
+- `HA_SYNC_TOKEN` służy tylko do lokalnego `npm run sync`.
+- Do SSH preferuj `HA_SSH_PRIVATE_KEY_PATH`; hasło jest obsługiwane jako wariant zapasowy.
+- `HA_SSH_HOST_FINGERPRINT` jest wymagany i musi mieć standardowy format `SHA256:<base64>`. Odcisk można odczytać
+  z zaufanego wpisu `known_hosts` albo konsoli hosta. Wynik `ssh-keyscan` należy porównać z zaufanym źródłem — sam skan
+  sieci nie potwierdza tożsamości serwera.
+
+## Synchronizacja typów HA
+
+Ustaw `HA_SYNC_TOKEN` i uruchom:
+
+```powershell
+npm run sync
+```
+
+Wygenerowany plik `src/supported-types.d.ts` rozszerzy typy encji oraz usług `@hakit/core`.
