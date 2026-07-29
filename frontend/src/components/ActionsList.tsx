@@ -8,10 +8,10 @@ interface Action {
   status: 'pending' | 'in-progress' | 'completed';
 }
 
-const statusColors: Record<Action['status'], string> = {
-  pending: 'background-color: #7c2d12; color: #fde68a;',
-  'in-progress': 'background-color: #1e3a8a; color: #bfdbfe;',
-  completed: 'background-color: #065f46; color: #d1fae5;',
+const statusStyles: Record<Action['status'], React.CSSProperties> = {
+  pending: { backgroundColor: '#7c2d12', color: '#fde68a' },
+  'in-progress': { backgroundColor: '#1e3a8a', color: '#bfdbfe' },
+  completed: { backgroundColor: '#065f46', color: '#d1fae5' },
 };
 
 const ActionCard: React.FC<{ action: Action }> = ({ action }) => (
@@ -27,9 +27,7 @@ const ActionCard: React.FC<{ action: Action }> = ({ action }) => (
   >
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
       <div>
-        <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 'bold', color: '#f3f4f6' }}>
-          {action.title}
-        </h3>
+        <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 'bold', color: '#f3f4f6' }}>{action.title}</h3>
         <p style={{ margin: '5px 0 0', color: '#9ca3af' }}>{action.description}</p>
       </div>
       <span
@@ -39,7 +37,7 @@ const ActionCard: React.FC<{ action: Action }> = ({ action }) => (
           fontSize: '0.875rem',
           fontWeight: 'bold',
           whiteSpace: 'nowrap',
-          ...parseStatusStyle(statusColors[action.status]),
+          ...statusStyles[action.status],
         }}
       >
         {action.status}
@@ -48,23 +46,19 @@ const ActionCard: React.FC<{ action: Action }> = ({ action }) => (
   </div>
 );
 
-function parseStatusStyle(style: string) {
-  const styleObj: React.CSSProperties = {};
-  style.split(';').forEach(rule => {
-    const [key, value] = rule.split(':').map(s => s.trim());
-    if (key && value) {
-      styleObj[key as keyof React.CSSProperties] = value;
-    }
-  });
-  return styleObj;
-}
-
 const ActionsList: React.FC = () => {
   const { getAllEntities } = useHass();
   const entities = getAllEntities();
 
-  const appHealthEntity = entities['app_health'];
-  const actions: Action[] = appHealthEntity?.recoveryActions || [];
+  const actions: Action[] = Object.entries(entities)
+    .filter(([entityId]) => entityId.startsWith('sensor.recovery_'))
+    .map<Action>(([entityId, entity]) => ({
+      id: entityId,
+      title: String(entity.attributes.friendly_name || '') || entityId.replace('sensor.recovery_', '').replace(/_/g, ' '),
+      description: String(entity.attributes.description || '') || `MQTT entity: ${entityId}`,
+      status: entity.state === 'TO_PERFORM' ? 'in-progress' : 'pending',
+    }))
+    .sort((left, right) => left.title.localeCompare(right.title));
 
   return (
     <div style={{ padding: '20px', backgroundColor: '#1e293b', borderRadius: '8px' }}>

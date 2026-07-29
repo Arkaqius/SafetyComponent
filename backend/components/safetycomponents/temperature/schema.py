@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Dict, Optional
 
-from pydantic import ConfigDict, ValidationError, model_validator
+from pydantic import ConfigDict, ValidationError, field_validator, model_validator
 
 from components.core.pydantic_utils import StrictBaseModel, log_extra_keys
 
@@ -28,9 +28,19 @@ class TemperatureRoom(StrictBaseModel):
 
     temperature_sensor: str
     window_sensor: Optional[str] = None
+    actuator: Optional[str] = None
     CAL_LOW_TEMP_THRESHOLD: Optional[float] = None
     CAL_HIGH_TEMP_THRESHOLD: Optional[float] = None
     CAL_FORECAST_TIMESPAN: Optional[float] = None
+
+    @field_validator("actuator")
+    @classmethod
+    def _validate_window_actuator(cls, value: str | None) -> str | None:
+        if value is not None and not value.startswith("cover."):
+            raise ValueError(
+                "TemperatureComponent actuator must be a cover entity"
+            )
+        return value
 
     @model_validator(mode="after")
     def _ensure_thresholds_present(self) -> "TemperatureRoom":
@@ -55,6 +65,7 @@ class TemperatureRoom(StrictBaseModel):
         merged: Dict[str, Any] = {
             "temperature_sensor": self.temperature_sensor,
             "window_sensor": self.window_sensor,
+            "actuator": self.actuator,
         }
 
         low_temp = (

@@ -16,10 +16,6 @@ class NotificationConfig(StrictBaseModel):
 
     light_entity: Optional[str] = None
     alarm_entity: Optional[str] = None
-    dashboard_1_entity: Optional[str] = None
-    dashboard_2_entity: Optional[str] = None
-    dashboard_3_entity: Optional[str] = None
-    dashboard_4_entity: Optional[str] = None
 
 
 def validate_notification_config(

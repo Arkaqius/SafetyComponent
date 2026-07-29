@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable, Dict
 import re
+from typing import Any, Callable, Dict
 
 from pydantic import ValidationError
 
@@ -164,6 +164,14 @@ class AppCfgValidator:
                 strict_validation=strict_validation,
                 log=log,
             )
+            if not runtime_cfg["app_config"]["faults"]:
+                raise AppCfgValidationError(
+                    "app_config.faults must define at least one fault"
+                )
+            if not runtime_cfg["user_config"]["safety_components"]:
+                raise AppCfgValidationError(
+                    "user_config.safety_components must enable at least one component"
+                )
         except (ValidationError, ValueError) as exc:
             raise AppCfgValidationError(str(exc))
 
@@ -178,6 +186,7 @@ class AppCfgValidator:
                 "app_config.calibration.temperature",
             )
             log_extra_keys(cfg.user_config, log, "user_config")
+            log_extra_keys(cfg.user_config.mqtt, log, "user_config.mqtt")
 
         entity_ids = _collect_entity_ids(runtime_cfg)
 

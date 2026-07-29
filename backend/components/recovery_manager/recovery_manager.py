@@ -20,22 +20,30 @@ logic within callable functions and associating them with particular fault condi
 This module's approach to fault recovery empowers developers to construct robust and adaptable safety mechanisms, enhancing the resilience and reliability of automated systems. The faulttag feature helps uniquely identify each fault scenario, aiding in efficient fault resolution and ensuring accurate system state tracking throughout the recovery process.
 """
 
-from typing import Any, Optional
+from typing import Any, Mapping, Optional
 
 import appdaemon.plugins.hass.hassapi as hass  # type: ignore
 
 from components.core.common_entities import CommonEntities
-from components.faults_manager.fault_manager import FaultManager
-from components.notification_manager.notification_manager import NotificationManager
+from components.core.mqtt_entity_manager import MqttEntityManager
 from components.core.types_common import (
-    RecoveryAction,
-    Symptom,
-    SMState,
-    FaultState,
     Fault,
+    FaultState,
+    RecoveryAction,
     RecoveryActionState,
     RecoveryResult,
+    SMState,
+    Symptom,
 )
+from components.faults_manager.fault_manager import FaultManager
+from components.notification_manager.notification_manager import NotificationManager
+
+
+_TOGGLE_SERVICE_DOMAINS = frozenset(
+    {"fan", "input_boolean", "light", "siren", "switch"}
+)
+_COVER_OPEN_VALUES = frozenset({"on", "open", "opened"})
+_COVER_CLOSE_VALUES = frozenset({"off", "close", "closed"})
 
 
 class RecoveryManager:
@@ -60,6 +68,7 @@ class RecoveryManager:
         recovery_actions: dict,
         common_entities: CommonEntities,
         nm: NotificationManager,
+        mqtt_entities: MqttEntityManager,
     ) -> None:
         """
         Initializes the RecoveryManager with the necessary application context and recovery configuration.
@@ -87,6 +96,9 @@ class RecoveryManager:
         self.common_entities: CommonEntities = common_entities
         self.fm: FaultManager = fm
         self.nm: NotificationManager = nm
+        self.mqtt_entities = mqtt_entities
+        self._pending_recovery_confirmations: dict[str, dict[str, str]] = {}
+        self._recovery_confirmation_handles: dict[str, list[Any]] = {}
 
         self._init_all_rec_entities()
 
@@ -185,7 +197,7 @@ class RecoveryManager:
         notifications: list,
         entities_changes: dict[str, str],
         fault_tag: str,
-    ) -> None:
+    ) -> dict[str, str]:
         """
         Executes the recovery actions for the given symptom, including notifications and entity changes.
 
@@ -194,18 +206,22 @@ class RecoveryManager:
         to system entities to resolve the fault condition.
 
         Args:
-            symptom (symptom): The symptom object representing the fault to recover from.
+            symptom (Symptom): The symptom object representing the fault to recover from.
             notifications (list): A list of notifications to send as part of the recovery process.
             entities_changes (dict[str, str]): A dictionary mapping entity names to their new values as part of the recovery process.
+
+        Returns:
+            dict[str, str]: Actuator commands accepted by Home Assistant.
         """
+        executed_changes: dict[str, str] = {}
         rec: RecoveryAction | None = self._find_recovery(symptom.name)
         if rec:
             rec.current_status = RecoveryActionState.TO_PERFORM
             self._set_rec_entity(rec)
-            # Set entitity actions as recovery
             for entity, value in entities_changes.items():
                 try:
-                    self.hass_app.set_state(entity, state=value)
+                    self._execute_entity_action(entity, value)
+                    executed_changes[entity] = value
                 except Exception as err:
                     self.hass_app.log(
                         f"Exception during setting {entity} to {value} value. {err}",
@@ -221,6 +237,7 @@ class RecoveryManager:
             self.hass_app.log(
                 f"Recovery action for {symptom.name} was not found!", level="ERROR"
             )
+        return executed_changes
 
     def _find_recovery(self, symptom_name: str) -> RecoveryAction | None:
         """
@@ -252,9 +269,62 @@ class RecoveryManager:
         Args:
             recovery (RecoveryAction): The recovery action to set the state for.
         """
-        sensor_name: str = f"sensor.recovery_{recovery.name}".lower()
+        sensor_name = f"sensor.recovery_{recovery.name}"
+        sensor_name = MqttEntityManager.canonical_entity_id(
+            sensor_name, expected_domain="sensor"
+        )
         sensor_value: str = str(recovery.current_status.name)
-        self.hass_app.set_state(sensor_name, state=sensor_value)
+        self.mqtt_entities.register_sensor(
+            sensor_name,
+            f"Recovery {recovery.name}",
+            attributes={
+                "description": f"Recovery status for {recovery.name}.",
+            },
+            icon="mdi:lifebuoy",
+            entity_category="diagnostic",
+        )
+        self.mqtt_entities.publish_sensor_state(sensor_name, sensor_value)
+
+    def _execute_entity_action(self, entity: str, value: str) -> None:
+        """Execute a supported recovery action through a native HA service."""
+        service = self._resolve_entity_action(entity, value)
+        response = self.hass_app.call_service(service, entity_id=entity)
+        if isinstance(response, Mapping) and response.get("success") is False:
+            raise RuntimeError(
+                f"Home Assistant service {service} rejected {entity}: {response}"
+            )
+
+    @staticmethod
+    def _resolve_entity_action(entity: str, value: str) -> str:
+        """Resolve a constrained entity/value pair to a Home Assistant service."""
+        if not isinstance(entity, str) or entity.count(".") != 1:
+            raise ValueError(f"Invalid recovery entity_id: {entity!r}")
+        domain, object_id = entity.split(".", 1)
+        if not domain or not object_id:
+            raise ValueError(f"Invalid recovery entity_id: {entity!r}")
+
+        normalized_value = str(value).strip().lower()
+        if domain == "cover":
+            if normalized_value in _COVER_OPEN_VALUES:
+                return "cover/open_cover"
+            if normalized_value in _COVER_CLOSE_VALUES:
+                return "cover/close_cover"
+            raise ValueError(
+                f"Unsupported cover target {value!r} for recovery entity {entity}"
+            )
+
+        if domain in _TOGGLE_SERVICE_DOMAINS:
+            if normalized_value == "on":
+                return f"{domain}/turn_on"
+            if normalized_value == "off":
+                return f"{domain}/turn_off"
+            raise ValueError(
+                f"Unsupported {domain} target {value!r} for recovery entity {entity}"
+            )
+
+        raise ValueError(
+            f"Unsupported recovery domain {domain!r} for entity {entity}"
+        )
 
     def _is_dry_test_failed(
         self, prefaul_name: str, entities_changes: dict[str, str]
@@ -416,7 +486,7 @@ class RecoveryManager:
         self.hass_app.log(
             f"Executing recovery for symptom: {symptom.name}", level="DEBUG"
         )
-        self._perform_recovery(
+        executed_actuator_changes = self._perform_recovery(
             symptom,
             recovery_result.notifications,
             recovery_result.changed_actuators,
@@ -428,7 +498,8 @@ class RecoveryManager:
         )
         self._listen_to_changes(
             symptom,
-            recovery_result.changed_sensors | recovery_result.changed_actuators,
+            recovery_result.changed_sensors,
+            executed_actuator_changes,
         )
         self.hass_app.log(f"Listeners set for symptom: {symptom.name}", level="DEBUG")
 
@@ -444,6 +515,8 @@ class RecoveryManager:
             symptom (symptom): The symptom object representing the fault to clear the recovery action for.
         """
         if symptom.name in self.recovery_actions:
+            self._cancel_recovery_confirmation_listeners(symptom.name)
+            self._pending_recovery_confirmations.pop(symptom.name, None)
             # Clear internal register
             self.recovery_actions[symptom.name].current_status = (
                 RecoveryActionState.DO_NOT_PERFORM
@@ -451,7 +524,12 @@ class RecoveryManager:
             # Set HA entity
             self._set_rec_entity(self.recovery_actions[symptom.name])
 
-    def _listen_to_changes(self, symptom: Symptom, entities_changes: dict) -> None:
+    def _listen_to_changes(
+        self,
+        symptom: Symptom,
+        sensor_changes: dict[str, str],
+        actuator_changes: dict[str, str],
+    ) -> None:
         """
         Sets up listeners for state changes in the specified entities to monitor recovery action completion.
 
@@ -461,13 +539,80 @@ class RecoveryManager:
 
         Args:
             symptom (symptom): The symptom object representing the fault being recovered from.
-            entities_changes (dict): A dictionary mapping entity names to their new values to monitor.
+            sensor_changes (dict[str, str]): Physical postconditions to monitor.
+            actuator_changes (dict[str, str]): Successfully requested actuators,
+                used only when no dedicated postcondition sensor exists.
         """
-        for name in entities_changes:
-            self.hass_app.listen_state(self._recovery_performed, name, symptom=symptom)
+        expected_changes = dict(sensor_changes)
+        if not expected_changes:
+            expected_changes = self._actuator_postconditions(actuator_changes)
+
+        if not expected_changes:
+            self.hass_app.log(
+                f"No observable postcondition for recovery {symptom.name}.",
+                level="WARNING",
+            )
+            return
+
+        self._cancel_recovery_confirmation_listeners(symptom.name)
+        self._pending_recovery_confirmations[symptom.name] = {
+            entity_id: str(expected_state)
+            for entity_id, expected_state in expected_changes.items()
+        }
+        handles: list[Any] = []
+        self._recovery_confirmation_handles[symptom.name] = handles
+        for entity_id, expected_state in expected_changes.items():
+            handle = self.hass_app.listen_state(
+                self._recovery_performed,
+                entity_id,
+                new=str(expected_state),
+                symptom=symptom,
+                confirmation_entity=entity_id,
+                expected_state=str(expected_state),
+            )
+            handles.append(handle)
+
+        if self._all_recovery_postconditions_met(symptom.name):
+            self._recovery_clear(symptom)
+
+    def _cancel_recovery_confirmation_listeners(self, symptom_name: str) -> None:
+        """Cancel state listeners left by a completed or superseded recovery."""
+        handles = self._recovery_confirmation_handles.pop(symptom_name, [])
+        cancel_listener = getattr(self.hass_app, "cancel_listen_state", None)
+        if cancel_listener is None:
+            return
+        for handle in handles:
+            try:
+                cancel_listener(handle)
+            except Exception as exc:
+                self.hass_app.log(
+                    f"Failed to cancel recovery listener: {exc}",
+                    level="WARNING",
+                )
+
+    @staticmethod
+    def _actuator_postconditions(
+        actuator_changes: dict[str, str],
+    ) -> dict[str, str]:
+        """Translate actuator commands into observable fallback states."""
+        expected_states: dict[str, str] = {}
+        for entity_id, value in actuator_changes.items():
+            domain = entity_id.split(".", 1)[0] if "." in entity_id else ""
+            normalized_value = str(value).strip().lower()
+            if domain == "cover":
+                if normalized_value in _COVER_OPEN_VALUES:
+                    expected_states[entity_id] = "open"
+                elif normalized_value in _COVER_CLOSE_VALUES:
+                    expected_states[entity_id] = "closed"
+            elif domain in _TOGGLE_SERVICE_DOMAINS and normalized_value in {
+                "on",
+                "off",
+            }:
+                expected_states[entity_id] = normalized_value
+        return expected_states
 
     def _recovery_performed(
-        self, _: Any, __: Any, ___: Any, ____: Any, cb_args: dict
+        self, _: Any, __: Any, ___: Any, new: Any, **cb_args: Any
     ) -> None:
         """
         Callback function invoked when a recovery action is performed.
@@ -481,6 +626,32 @@ class RecoveryManager:
             __ (Any): Placeholder for the second callback argument (not used).
             ___ (Any): Placeholder for the third callback argument (not used).
             ____ (Any): Placeholder for the fourth callback argument (not used).
-            cb_args (dict): A dictionary containing callback arguments, including the symptom to clear.
+            **cb_args (Any): AppDaemon callback arguments, including the symptom
+                and expected confirmation state.
         """
-        self._recovery_clear(cb_args["symptom"])
+        symptom: Symptom = cb_args["symptom"]
+        expected_state = cb_args["expected_state"]
+        if str(new) != expected_state:
+            return
+
+        expected_changes = self._pending_recovery_confirmations.get(symptom.name)
+        if expected_changes is None:
+            return
+        confirmation_entity = cb_args["confirmation_entity"]
+        if expected_changes.get(confirmation_entity) != expected_state:
+            return
+
+        if self._all_recovery_postconditions_met(symptom.name):
+            self._recovery_clear(symptom)
+
+    def _all_recovery_postconditions_met(self, symptom_name: str) -> bool:
+        """Return whether all current recovery postconditions are satisfied."""
+        expected_changes = self._pending_recovery_confirmations.get(symptom_name)
+        if not expected_changes:
+            return False
+
+        for entity_id, current_expected_state in expected_changes.items():
+            current_state = self.hass_app.get_state(entity_id)
+            if str(current_state) != current_expected_state:
+                return False
+        return True

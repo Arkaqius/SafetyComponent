@@ -6,6 +6,7 @@ This repository is dedicated to developing a Safety Component for the Home Assis
 - AppDaemon app (`SafetyFunctions`) that manages safety mechanisms, faults, notifications, and recovery flows.
 - Component framework for domain-specific safety logic (e.g., temperature monitoring).
 - Configuration schema validation with strict mode and runtime entity checks.
+- MQTT discovery, state, attributes, availability, and heartbeat for internal SafetyFunctions entities.
 - In-repo system documentation for safety concept and system requirements.
 
 ## Documentation
@@ -24,14 +25,16 @@ This repository is dedicated to developing a Safety Component for the Home Assis
 ## Usage
 1. Copy or merge `backend/app_cfg.yaml` into your AppDaemon `apps.yaml` (or set it as your AppDaemon config file).
 2. Update entity IDs and room configuration under `user_config`.
-3. Start AppDaemon and verify the health entity `sensor.safety_app_health` transitions to `running`.
+3. Start AppDaemon and verify Home Assistant discovers `sensor.safety_app_health` through MQTT and that it transitions to `running`.
 
 ## Configuration
 Configuration is split into:
 - `app_config`: instance-independent policy (fault catalog, strict validation, entity validation flags).
-- `user_config`: house-specific entities, component enablement, and calibration.
+- `user_config`: house-specific entities, MQTT topic settings, component enablement, and calibration.
 
 See `backend/app_cfg.yaml` for a fully annotated example. The `config_version` value must match the supported version in code.
+
+By default, internal entity discovery is published below `homeassistant/.../config`, states below `safety_component/state/...`, and attributes below `safety_component/attributes/...`. Retained discovery is kept for entity restoration, while stale retained state is cleared on startup and refreshed with a non-retained heartbeat. Recovery commands are executed through explicit Home Assistant services; MQTT is not used as an unacknowledged actuator transport.
 
 ## Code Organization
 Backend code is organized under `backend/components` by responsibility:

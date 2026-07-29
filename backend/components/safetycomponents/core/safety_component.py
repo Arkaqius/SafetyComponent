@@ -22,6 +22,7 @@ A developer might create a `TemperatureSafetyComponent` subclass that monitors t
 This module streamlines the creation of safety mechanisms, emphasizing reliability, flexibility, and integration with Home Assistant's dynamic ecosystem.
 """
 
+from collections.abc import Iterable
 from typing import (
     Type,
     Any,
@@ -40,6 +41,7 @@ import appdaemon.plugins.hass.hassapi as hass  # type: ignore
 from components.core.common_entities import CommonEntities
 from components.core.derivative_monitor import DerivativeMonitor
 from components.core.event_bus import EventBus
+from components.core.mqtt_entity_manager import MqttEntityManager
 from components.core.types_common import FaultState, Symptom, RecoveryAction, SMState
 
 NO_NEEDED = False
@@ -144,6 +146,7 @@ class SafetyComponent:
         hass_app: hass.Hass,
         common_entities: CommonEntities,
         event_bus: EventBus,
+        mqtt_entities: MqttEntityManager,
     ) -> None:
         """
         Initialize the safety component.
@@ -155,7 +158,7 @@ class SafetyComponent:
         self.event_bus: EventBus = event_bus
         self.symptom_states: dict[str, FaultState] = {}
         self.init_common_data()
-        self.derivative_monitor = DerivativeMonitor(hass_app)
+        self.derivative_monitor = DerivativeMonitor(hass_app, mqtt_entities)
 
     def init_common_data(self) -> None:
         # Initialize dictionaries that need to be unique to each instance
@@ -312,9 +315,12 @@ class SafetyComponent:
             return None
 
     @staticmethod
-    def change_all_entities_state(entities: list[str], state: str) -> dict[str, str]:
-        """Create a dictionary to change the state of entities."""
-        return {entity: state for entity in [entities]}  # type: ignore
+    def change_all_entities_state(
+        entities: str | Iterable[str], state: str
+    ) -> dict[str, str]:
+        """Map one entity or an iterable of entities to an expected state."""
+        entity_ids = [entities] if isinstance(entities, str) else list(entities)
+        return {entity_id: state for entity_id in entity_ids}
 
     def _debounce(
         self, current_counter: int, pr_test: bool, debounce_limit: int = 3

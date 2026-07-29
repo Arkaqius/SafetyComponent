@@ -15,21 +15,22 @@ Primary functionalities include:
 Initializing and tracking the states of faults and symptoms based on system configuration and runtime observations.
 Dynamically updating fault states in response to changes in associated symptom conditions.
 Executing defined recovery actions and notifications as part of the fault resolution process.
-Generating a unique faulttag for each fault instance to uniquely identify and manage notifications and recovery actions associated with specific faults.
-The faulttag feature is used across the system to create a unique identifier for each fault by hashing the fault name and additional context information. This allows consistent tracking and correlation of notifications, fault states, and recovery actions, ensuring accurate fault management.
+Generating a stable faulttag for each fault to identify and manage notifications and recovery actions associated with specific faults.
+The faulttag feature is used across the system to create a stable identifier for each fault by hashing the fault name. This keeps multiple symptom contributions for the same fault correlated to one notification and recovery flow.
 
 This module is integral to the safety system's ability to maintain operational integrity and respond effectively to detected issues, ensuring a high level of safety and reliability.
 
 Note: This module is designed for internal use within the Home Assistant safety system and relies on configurations and interactions with other system components, including safety mechanisms and recovery action definitions.
 """
 
-from typing import Optional, Callable, Any
+import hashlib
+from typing import Any, Optional
 
 import appdaemon.plugins.hass.hassapi as hass
-import hashlib
 
 from components.core.types_common import FaultState, SMState, Symptom, Fault
 from components.core.event_bus import EventBus
+from components.core.mqtt_entity_manager import MqttEntityManager
 
 
 class FaultManager:
@@ -60,34 +61,20 @@ class FaultManager:
         sm_modules: dict,
         symptom_dict: dict,
         fault_dict: dict,
-        event_bus: EventBus | None = None,
+        event_bus: EventBus,
+        mqtt_entities: MqttEntityManager,
     ) -> None:
         """
         Initialize the Fault Manager.
 
         :param config_path: Path to the YAML configuration file.
         """
-        self.notify_interface: (
-            Callable[[str, int, FaultState, dict | None], None] | None
-        ) = None
-        self.recovery_interface: Callable[[Symptom], None] | None = None
         self.faults: dict[str, Fault] = fault_dict
         self.symptoms: dict[str, Symptom] = symptom_dict
         self.sm_modules: dict = sm_modules
         self.hass: hass.Hass = hass
         self.event_bus = event_bus
-
-    def register_callbacks(
-        self,
-        recovery_interface: Callable[[Symptom], None],
-        notify_interface: Callable[[str, int, FaultState, dict | None], None],
-    ) -> None:
-        self.hass.log(
-            "register_callbacks is deprecated; use EventBus subscriptions instead.",
-            level="WARNING",
-        )
-        self.recovery_interface = recovery_interface
-        self.notify_interface = notify_interface
+        self.mqtt_entities = mqtt_entities
 
     def handle_symptom_event(
         self,
@@ -255,7 +242,7 @@ class FaultManager:
                 )
                 return
 
-            # Generate a unique fault tag using the hash method
+            # Generate a stable fault tag using the hash method
             fault_tag: str = self._generate_fault_tag(fault.name, additional_info)
             # Save previous value
             fault.previous_val = fault.state
@@ -273,39 +260,22 @@ class FaultManager:
             attributes: dict = info_to_send if info_to_send else {}
 
             # Set HA entity
-            self.hass.set_state(
-                "sensor.fault_" + fault.name, state="Set", attributes=attributes
+            self._set_internal_entity(
+                "sensor.fault_" + fault.name, "Set", attributes
             )
 
-            if self.event_bus:
-                self.event_bus.publish(
-                    "fault",
-                    fault_name=fault.name,
-                    level=fault.level,
-                    fault_state=FaultState.SET,
-                    additional_info=additional_info,
-                    fault_tag=fault_tag,
-                    symptom=self.symptoms[symptom_id],
-                    should_notify=True,
-                )
-            else:
-                # Call notifications
-                if self.notify_interface:
-                    self.notify_interface(
-                        fault.name,
-                        fault.level,
-                        FaultState.SET,
-                        additional_info,
-                        fault_tag,
-                    )
-                else:
-                    self.hass.log("No notification interface", level="WARNING")
-
-                # Call recovery actions (specific for symptom)
-                if self.recovery_interface:
-                    self.recovery_interface(self.symptoms[symptom_id], fault_tag)
-                else:
-                    self.hass.log("No recovery interface", level="WARNING")
+            self.event_bus.publish(
+                "fault",
+                fault_name=fault.name,
+                level=fault.level,
+                fault_state=FaultState.SET,
+                additional_info=self._notification_info_from_merged(
+                    additional_info, info_to_send
+                ),
+                fault_tag=fault_tag,
+                symptom=self.symptoms[symptom_id],
+                should_notify=True,
+            )
 
             self._apply_shadowing(fault, self.symptoms[symptom_id], additional_info)
 
@@ -329,13 +299,10 @@ class FaultManager:
                 return None
 
             # Retrieve the current state object for the entity
-            state = self.hass.get_state(entity_id, attribute="all")
-            # If the entity does not exist, simply return the additional info if the fault is being set
-            if not state:
+            current_attributes = self._get_entity_attributes(entity_id)
+            if not current_attributes:
                 return additional_info if fault_state == FaultState.SET else {}
 
-            # Get the current attributes of the entity; if none exist, initialize to an empty dict
-            current_attributes = state.get("attributes", {})
             if fault_state == FaultState.SET:
                 # Prepare the information to send by merging or updating current attributes with additional info
                 info_to_send = current_attributes.copy()
@@ -453,32 +420,22 @@ class FaultManager:
                 entity_id, additional_info, FaultState.CLEARED
             )
         if info_to_send is None:
-            state = self.hass.get_state(entity_id, attribute="all")
-            attributes = state.get("attributes", {}) if state else {}
+            attributes = self._get_entity_attributes(entity_id)
         else:
             attributes = info_to_send
 
-        self.hass.set_state(entity_id, state="Shadowed", attributes=attributes)
+        self._set_internal_entity(entity_id, "Shadowed", attributes)
 
-        if self.event_bus:
-            self.event_bus.publish(
-                "fault",
-                fault_name=fault.name,
-                level=fault.level,
-                fault_state=FaultState.SHADOWED,
-                additional_info=additional_info,
-                fault_tag=fault_tag,
-                symptom=symptom,
-                should_notify=True,
-            )
-        elif self.notify_interface:
-            self.notify_interface(
-                fault.name,
-                fault.level,
-                FaultState.SHADOWED,
-                additional_info,
-                fault_tag,
-            )
+        self.event_bus.publish(
+            "fault",
+            fault_name=fault.name,
+            level=fault.level,
+            fault_state=FaultState.SHADOWED,
+            additional_info=additional_info,
+            fault_tag=fault_tag,
+            symptom=symptom,
+            should_notify=True,
+        )
 
     def _clear_fault(self, symptom_id: str, additional_info: dict) -> None:
         """
@@ -510,13 +467,40 @@ class FaultManager:
         # Collect all faults mapped from that symptom
         fault: Fault | None = self.found_mapped_fault(symptom_id, sm_name)
 
-        if fault and not any(
+        if not fault:
+            return
+
+        entity_id = "sensor.fault_" + fault.name
+        fault_tag: str = self._generate_fault_tag(fault.name, additional_info)
+        has_active_related_symptoms = any(
             symptom.state == FaultState.SET
             for symptom in self.symptoms.values()
             if symptom.sm_name in set(fault.related_symptoms)
-        ):  # If Fault was found and if other fault related symptoms are not raised
-            # Generate a unique fault tag using the hash method
-            fault_tag: str = self._generate_fault_tag(fault.name, additional_info)
+        )
+
+        if has_active_related_symptoms:
+            info_to_send = self._determinate_info(
+                entity_id, additional_info, FaultState.CLEARED
+            )
+            attributes = info_to_send if info_to_send else {}
+
+            self._set_internal_entity(entity_id, "Set", attributes)
+
+            self.event_bus.publish(
+                "fault",
+                fault_name=fault.name,
+                level=fault.level,
+                fault_state=FaultState.SET,
+                additional_info=self._notification_info_from_merged(
+                    additional_info, info_to_send
+                ),
+                fault_tag=fault_tag,
+                symptom=self.symptoms[symptom_id],
+                should_notify=fault.state == FaultState.SET,
+            )
+            return
+
+        if not has_active_related_symptoms:
             # Save previous value
             fault.previous_val = fault.state
             # Clear Fault
@@ -525,49 +509,27 @@ class FaultManager:
 
             # Determinate additional info
             info_to_send = self._determinate_info(
-                "sensor.fault_" + fault.name, additional_info, FaultState.CLEARED
+                entity_id, additional_info, FaultState.CLEARED
             )
 
             # Prepare the attributes for the state update
             attributes = info_to_send if info_to_send else {}
 
             # Clear HA entity
-            self.hass.set_state(
-                "sensor.fault_" + fault.name, state="Cleared", attributes=attributes
-            )
+            self._set_internal_entity(entity_id, "Cleared", attributes)
             self.update_system_state_entity()  # Update the system state entity
 
             should_notify = fault.previous_val == FaultState.SET
-            if self.event_bus:
-                self.event_bus.publish(
-                    "fault",
-                    fault_name=fault.name,
-                    level=fault.level,
-                    fault_state=FaultState.CLEARED,
-                    additional_info=additional_info,
-                    fault_tag=fault_tag,
-                    symptom=self.symptoms[symptom_id],
-                    should_notify=should_notify,
-                )
-            else:
-                if should_notify:
-                    # Call notifications
-                    if self.notify_interface:
-                        self.notify_interface(
-                            fault.name,
-                            fault.level,
-                            FaultState.CLEARED,
-                            additional_info,
-                            fault_tag,
-                        )
-                    else:
-                        self.hass.log("No notification interface", level="WARNING")
-
-                # Call recovery actions (specific for symptom)
-                if self.recovery_interface:
-                    self.recovery_interface(self.symptoms[symptom_id], fault_tag)
-                else:
-                    self.hass.log("No recovery interface", level="WARNING")
+            self.event_bus.publish(
+                "fault",
+                fault_name=fault.name,
+                level=fault.level,
+                fault_state=FaultState.CLEARED,
+                additional_info=additional_info,
+                fault_tag=fault_tag,
+                symptom=self.symptoms[symptom_id],
+                should_notify=should_notify,
+            )
 
     def check_fault(self, fault_id: str) -> FaultState:
         """
@@ -698,26 +660,38 @@ class FaultManager:
         self, fault: str, additional_info: Optional[dict] = None
     ) -> str:
         """
-        Generates a unique fault tag by hashing the fault name and additional information.
+        Generates a stable fault tag by hashing the fault name.
 
         Parameters:
             fault: The fault's name.
-            additional_info: Additional information about the fault, such as location.
+            additional_info: Kept for call compatibility; not used for tag identity.
 
         Returns:
-            A unique fault tag as a string.
+            A stable fault tag as a string.
         """
-        # Combine fault name and additional info into a single string
         fault_str = fault
-        if additional_info:
-            # Sort the dictionary items to ensure consistent hash generation
-            sorted_info = sorted(additional_info.items())
-            for key, value in sorted_info:
-                fault_str += f"|{key}:{value}"
-
-        # Generate a hash of the combined string
         fault_hash = hashlib.sha256(fault_str.encode()).hexdigest()
         return fault_hash
+
+    @staticmethod
+    def _notification_info_from_merged(
+        additional_info: Optional[dict], merged_info: Optional[dict]
+    ) -> Optional[dict]:
+        """
+        Build notification details from merged fault attributes.
+
+        Only fields provided by the triggering symptom are sent to notifications,
+        but values are taken from the merged fault state so descriptions reflect
+        all active prefault contributors without leaking Home Assistant metadata.
+        """
+        if not additional_info:
+            return None
+        if not merged_info:
+            return additional_info
+        return {
+            key: merged_info.get(key, value)
+            for key, value in additional_info.items()
+        }
     
     def get_system_fault_level(self) -> int:
         """
@@ -748,8 +722,20 @@ class FaultManager:
             ),
             "highest_fault_level": highest_fault_level,
         }
-        self.hass.set_state(
-            "sensor.system_state",
-            state=str(highest_fault_level),  # Use the fault level as the state
-            attributes=attributes,
+        self._set_internal_entity(
+            "sensor.safetysystem_state",
+            str(highest_fault_level),
+            attributes,
+        )
+
+    def _get_entity_attributes(self, entity_id: str) -> dict:
+        """Return attributes cached for an internal MQTT entity."""
+        return self.mqtt_entities.get_attributes(entity_id)
+
+    def _set_internal_entity(
+        self, entity_id: str, state: str, attributes: Optional[dict] = None
+    ) -> None:
+        """Publish an internal entity through MQTT."""
+        self.mqtt_entities.publish_sensor_state(
+            entity_id, state, attributes=attributes
         )

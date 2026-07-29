@@ -23,13 +23,48 @@ def test_validate_app_cfg_normalizes_temperature_component(app_config_valid):
     assert office_cfg["CAL_FORECAST_TIMESPAN"] == 2.0
 
 
-def test_validate_app_cfg_filters_disabled_components(app_config_valid):
+def test_validate_app_cfg_rejects_configuration_without_enabled_components(
+    app_config_valid,
+):
     cfg = copy.deepcopy(app_config_valid)
     cfg["user_config"]["components_enabled"]["TemperatureComponent"] = False
 
-    validated = AppCfgValidator.validate(cfg)
+    with pytest.raises(
+        AppCfgValidationError,
+        match="must enable at least one component",
+    ):
+        AppCfgValidator.validate(cfg)
 
-    assert "TemperatureComponent" not in validated["user_config"]["safety_components"]
+
+def test_validate_app_cfg_applies_safe_mqtt_defaults(app_config_valid):
+    validated = AppCfgValidator.validate(app_config_valid)
+
+    mqtt_config = validated["user_config"]["mqtt"]
+    assert mqtt_config["retain_discovery"] is True
+    assert mqtt_config["retain_state"] is False
+    assert mqtt_config["availability_topic"] == "safety_component/status"
+    assert mqtt_config["heartbeat_seconds"] == 60
+    assert mqtt_config["expire_after"] == 180
+
+
+@pytest.mark.parametrize(
+    "mqtt_config",
+    [
+        {"qos": 4},
+        {"retain_discovery": False},
+        {"base_topic": "safety/#"},
+        {"retain_state": "false"},
+        {"heartbeat_seconds": 0, "expire_after": 180},
+    ],
+)
+def test_validate_app_cfg_rejects_invalid_mqtt_settings(
+    app_config_valid, mqtt_config
+):
+    cfg = copy.deepcopy(app_config_valid)
+    cfg["user_config"]["mqtt"] = mqtt_config
+
+    with pytest.raises(AppCfgValidationError):
+        AppCfgValidator.validate(cfg)
 
 
 def test_validate_app_cfg_requires_thresholds(app_config_valid):
@@ -40,6 +75,30 @@ def test_validate_app_cfg_requires_thresholds(app_config_valid):
     component_cfg["rooms"]["Office"].pop("CAL_FORECAST_TIMESPAN")
 
     with pytest.raises(AppCfgValidationError):
+        AppCfgValidator.validate(cfg)
+
+
+def test_validate_app_cfg_rejects_non_cover_temperature_actuator(
+    app_config_valid,
+):
+    cfg = copy.deepcopy(app_config_valid)
+    cfg["user_config"]["safety_components"]["TemperatureComponent"]["rooms"][
+        "Office"
+    ]["actuator"] = "switch.window_relay"
+
+    with pytest.raises(AppCfgValidationError, match="cover entity"):
+        AppCfgValidator.validate(cfg)
+
+
+def test_validate_app_cfg_rejects_removed_dashboard_notification_config(
+    app_config_valid,
+):
+    cfg = copy.deepcopy(app_config_valid)
+    cfg["user_config"]["notification"][
+        "dashboard_1_entity"
+    ] = "sensor.safety_dashboard_emergency"
+
+    with pytest.raises(AppCfgValidationError, match="Unknown keys.*dashboard_1_entity"):
         AppCfgValidator.validate(cfg)
 
 

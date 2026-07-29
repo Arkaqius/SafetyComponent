@@ -108,13 +108,14 @@ This Software Safety Requirements Document (SSRD) captures the current state of 
 
 ### 4.1 Logical Components
 
-- **SafetyFunctions (AppDaemon app)**: Orchestrator; loads config; instantiates components; wires FM/NM/RM; sets health entity.
+- **SafetyFunctions (AppDaemon app)**: Orchestrator; loads config; instantiates components; wires FM/NM/RM; publishes MQTT-discovered health and status entities.
 - **SafetyComponent (abstract base)**: Provides SM lifecycle, debouncing, FM integration, decorator for enable/disable & retries.
 - **TemperatureComponent (MVP)**: Implements under-temperature & forecast SMs.
 - **FaultManager**: Owns Symptom/Fault models, aggregates, manages lifecycle.
 - **NotificationManager**: Maps fault lifecycle to HA notify service.
 - **RecoveryManager**: Orchestrates recovery actions, resolves conflicts.
 - **DerivativeMonitor**: Singleton calculating derivatives, publishing `_rate` entities.
+- **MqttEntityManager**: Owns MQTT discovery, internal entity state publishing, JSON attributes, retained cleanup, availability, and heartbeat refresh.
 - **CommonEntities**: Accessor for shared HA entities.
 
 ### 4.2 Data Flow Summary
@@ -123,13 +124,15 @@ This Software Safety Requirements Document (SSRD) captures the current state of 
 2. Components register SMs; decorator handles debounce + FM.
 3. HA triggers SM; SafetyComponent → FM.
 4. FM updates Fault state → NM + RM.
-5. RM executes recovery actions; NM sends notifications.
-6. DerivativeMonitor runs periodically; outputs consumed by TC forecast SM.
+5. RM invokes an allow-listed native HA service and waits for the configured postcondition; NM sends notifications.
+6. DerivativeMonitor runs periodically; publishes MQTT `_rate` sensor states consumed by TC forecast SM.
+
+Internal SafetyFunctions entities are exposed through MQTT discovery and are updated through MQTT state and JSON attributes topics, not through AppDaemon `set_state`.
 
 ### 4.3 Deployment
 
 - Runs in HA/AppDaemon container.
-- Interfaces: `set_state`, `listen_state`, `run_in`, `run_every`, `call_service`.
+- Interfaces: MQTT discovery/state/attribute/availability publishing via `call_service("mqtt/publish")`; allow-listed actuator services through `call_service`; plus `listen_state`, `run_in`, and `run_every` for external HA inputs, recovery confirmation, and scheduling.
 - Debugging: `remote_pdb` when enabled.
 
 ---

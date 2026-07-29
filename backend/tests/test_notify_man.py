@@ -188,7 +188,6 @@ def test_notify_fault_set(mocked_hass_app_with_temp_component):
     notification_config: dict[str, str] = {
         "light_entity": "light.warning_light",
         "alarm_entity": "alarm_control_panel.safety_alarm",
-        "dashboard_1_entity": "sensor.dash_emergency",
     }
     app_instance, _, __, ___, mock_behaviors_default = (
     mocked_hass_app_with_temp_component
@@ -230,9 +229,7 @@ def test_notify_fault_cleared(mocked_hass_app_with_temp_component):
     app_instance, _, __, ___, mock_behaviors_default = (
         mocked_hass_app_with_temp_component
     )
-    notification_config = {
-        "dashboard_1_entity": "sensor.dash_emergency",
-    }
+    notification_config = {}
 
     notification_manager = NotificationManager(app_instance, notification_config)
     app_instance.call_service = Mock()
@@ -283,9 +280,7 @@ def test_notify_company_app(mocked_hass_app_with_temp_component):
     app_instance, _, __, ___, mock_behaviors_default = (
         mocked_hass_app_with_temp_component
     )
-    notification_config = {
-        "dashboard_1_entity": "sensor.dash_emergency",
-    }
+    notification_config = {}
 
     notification_manager = NotificationManager(app_instance, notification_config)
     app_instance.call_service = Mock()
@@ -330,46 +325,6 @@ def test_notify_invalid_fault_status(mocked_hass_app_with_temp_component):
 
     # Verify that a warning log was triggered for the invalid fault status
     app_instance.log.assert_called_with(f"Invalid fault status '{fault_status}'", level="WARNING")
-    
-def test_set_dashboard_notification(mocked_hass_app_with_temp_component):
-    """
-    Test Case: Set dashboard notification.
-
-    Scenario:
-        - Set a notification on the dashboard based on severity level.
-        - Expected Result: The dashboard entity state is updated, or a warning is logged if the entity is not configured.
-    """
-    app_instance, _, __, ___, mock_behaviors_default = (
-        mocked_hass_app_with_temp_component
-    )
-    notification_config = {
-        "dashboard_1_entity": "sensor.dash_emergency"
-    }
-
-    notification_manager = NotificationManager(app_instance, notification_config)
-    app_instance.set_state = Mock()
-    app_instance.log = Mock()
-
-    message = "Test Dashboard Message"
-    level = 1
-
-    # Call _set_dashboard_notification with a valid level
-    notification_manager._set_dashboard_notification(message, level)
-
-    # Verify that the dashboard entity state was set
-    app_instance.set_state.assert_called_with("sensor.dash_emergency", state=message)
-    app_instance.log.assert_called_with(
-        f"Dashboard entity sensor.dash_emergency was changed to {message}", level="DEBUG"
-    )
-
-    # Call _set_dashboard_notification with an invalid level (not configured)
-    level = 2
-    notification_manager._set_dashboard_notification(message, level)
-
-    # Verify that a warning log was triggered for missing dashboard entity configuration
-    app_instance.log.assert_called_with(
-        f"No dashboard entity configured for level '{level}'", level="WARNING"
-    )
     
 def test_notify_company_app_no_notification_data(mocked_hass_app_with_temp_component):
     """

@@ -1,8 +1,8 @@
 import React from 'react';
-import LogList from '../components/LogList'; // Reusable LogList component
+import LogList, { type Log } from '../components/LogList'; // Reusable LogList component
 
 // Sample logs
-const logs = [
+const logs: Log[] = [
   {
     timestamp: '2025-01-14T12:00:00Z',
     type: 'info',

@@ -46,6 +46,7 @@ class Hass:
         self.get_state = getattr(ad, "get_state", self.get_state)  # type: ignore
         self.call_service = getattr(ad, "call_service", self.call_service)  # type: ignore
         self.run_in = getattr(ad, "run_in", self.run_in)  # type: ignore
+        self.run_every = getattr(ad, "run_every", self.run_every)  # type: ignore
         self.listen_state = getattr(ad, "listen_state", self.listen_state)  # type: ignore
 
     def log(self, msg: str, *args: Any, **kwargs: Any) -> None:
@@ -72,9 +73,22 @@ class Hass:
         # In test mode, immediately execute the callback to keep behavior predictable
         return callback(**kwargs)
 
+    def run_every(
+        self,
+        callback: Callable,
+        start: Any,
+        interval: int,
+        **kwargs: Any,
+    ) -> Any:
+        # Return a dummy timer handle; periodic execution is driven explicitly in tests.
+        return (callback, start, interval, kwargs)
+
     def listen_state(self, callback: Callable, entity: str, **kwargs: Any) -> Any:
         # Return a dummy handle for cancellation in potential future extensions
         return (callback, entity, kwargs)
 
     def cancel_timer(self, handle: Any) -> None:
+        return None
+
+    def cancel_listen_state(self, handle: Any) -> None:
         return None
