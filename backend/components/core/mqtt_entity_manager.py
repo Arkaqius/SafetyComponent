@@ -16,6 +16,7 @@ from pydantic import (
     model_validator,
 )
 
+from components.core.localization import Localizer, LocalizationSettings
 from components.core.pydantic_utils import StrictBaseModel
 
 
@@ -131,6 +132,7 @@ class MqttEntityManager:
         mqtt_config: MqttSettings | Mapping[str, Any] | None = None,
         *,
         strict_validation: bool = True,
+        localization: LocalizationSettings | Mapping[str, Any] | None = None,
     ) -> None:
         self.hass_app = hass_app
         if isinstance(mqtt_config, MqttSettings):
@@ -149,6 +151,7 @@ class MqttEntityManager:
         self.retain_discovery = self.settings.retain_discovery
         self.retain_state = self.settings.retain_state
         self.qos = self.settings.qos
+        self.localizer = Localizer(localization)
 
         self.entity_attributes: dict[str, dict[str, Any]] = {}
         self.entity_states: dict[str, Any] = {}
@@ -190,10 +193,11 @@ class MqttEntityManager:
         """
         canonical_id = self.canonical_entity_id(entity_id, expected_domain="sensor")
         self._prepare_entity_topics(canonical_id)
+        display_name = self.localizer.entity_name(canonical_id, name)
 
         discovery_payload = self._sensor_discovery_payload(
             canonical_id,
-            name,
+            display_name,
             icon=icon,
             device_class=device_class,
             unit_of_measurement=unit_of_measurement,
@@ -213,8 +217,18 @@ class MqttEntityManager:
 
         self.discovered_entities.add(canonical_id)
 
-        if attributes is not None:
-            self.publish_sensor_attributes(canonical_id, attributes)
+        effective_attributes = attributes
+        state_label = self.localizer.state_label(canonical_id, state)
+        if state_label is not None:
+            effective_attributes = dict(
+                attributes
+                if attributes is not None
+                else self.entity_attributes.get(canonical_id, {})
+            )
+            effective_attributes["state_label"] = state_label
+
+        if effective_attributes is not None:
+            self.publish_sensor_attributes(canonical_id, effective_attributes)
         if state is not _UNSET:
             self.publish_sensor_state(canonical_id, state)
         return canonical_id
@@ -237,8 +251,18 @@ class MqttEntityManager:
             )
             return
 
-        if attributes is not None:
-            self.publish_sensor_attributes(canonical_id, attributes)
+        effective_attributes = attributes
+        state_label = self.localizer.state_label(canonical_id, state)
+        if state_label is not None:
+            effective_attributes = dict(
+                attributes
+                if attributes is not None
+                else self.entity_attributes.get(canonical_id, {})
+            )
+            effective_attributes["state_label"] = state_label
+
+        if effective_attributes is not None:
+            self.publish_sensor_attributes(canonical_id, effective_attributes)
 
         self.entity_states[canonical_id] = state
         self._publish(

@@ -10,6 +10,7 @@ import {
   getFaultStatus,
   getRecoveryStatus,
   normalizeState,
+  systemStatePresentation,
   type EntitySnapshot,
   type StatusTone,
 } from '../domain/safety';
@@ -208,7 +209,5 @@ function statePresentation(item: HistoryEntity): { label: string; tone: StatusTo
     if (state === 'init') return { label: 'Uruchamianie', tone: 'warning' };
     return { label: item.entity.state, tone: 'critical' };
   }
-  return state === '0' || state === 'safe'
-    ? { label: 'Bezpieczny', tone: 'safe' }
-    : { label: `Poziom ${item.entity.state}`, tone: 'warning' };
+  return systemStatePresentation(state);
 }

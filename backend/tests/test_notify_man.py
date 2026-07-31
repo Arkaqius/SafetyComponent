@@ -12,6 +12,7 @@ from .fixtures.hass_fixture import (
 )  # Import utilities from conftest.py
 
 from components.notification_manager.notification_manager import NotificationManager
+from components.core.localization import Localizer
 
 @pytest.mark.parametrize(
     "test_size,temperature, expected_symptom_state, expected_fault_state, prefault_title, prefault_message",
@@ -38,7 +39,7 @@ from components.notification_manager.notification_manager import NotificationMan
             FaultState.CLEARED,
             FaultState.CLEARED,
             "Safety issue detected",
-            "Good news - unsafe temperature is no longer active.\nLocation: Office",
+            "Good news - Unsafe temperature is no longer active.\nLocation: Office",
         ),
     ],
 )
@@ -465,3 +466,35 @@ def test_active_fault_update_keeps_existing_recovery_guidance():
         "- Check the kitchen window."
     )
     assert hass_app.call_service.call_args.kwargs["data"]["tag"] == "same-tag"
+
+
+def test_polish_notification_copy_and_labels_are_localized():
+    hass_app = Mock()
+    hass_app.call_service = Mock()
+    hass_app.log = Mock()
+    notification_manager = NotificationManager(
+        hass_app,
+        {},
+        localizer=Localizer({"language": "pl"}),
+    )
+
+    notification_manager.notify(
+        "RiskyTemperature",
+        2,
+        FaultState.SET,
+        {"location": "Biuro"},
+        "tag-pl",
+        friendly_name="Niebezpieczna temperatura",
+    )
+    notification_manager._add_recovery_action(
+        "Zamknij okno w biurze.", "tag-pl"
+    )
+
+    notification = notification_manager.active_notification["tag-pl"]
+    assert notification["title"] == "Wykryto zagrożenie w domu"
+    assert notification["message"] == (
+        "Wymaga uwagi: Niebezpieczna temperatura.\n"
+        "Lokalizacja: Biuro\n\n"
+        "Co możesz zrobić:\n"
+        "- Zamknij okno w biurze."
+    )

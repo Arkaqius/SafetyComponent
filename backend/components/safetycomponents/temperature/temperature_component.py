@@ -26,6 +26,7 @@ from typing import Dict, Any, Callable, Optional
 import appdaemon.plugins.hass.hassapi as hass  # type: ignore
 
 from components.core.common_entities import CommonEntities
+from components.core.localization import Localizer
 from components.core.mqtt_entity_manager import MqttEntityManager
 from components.safetycomponents.core.safety_component import (
     SafetyComponent,
@@ -794,11 +795,17 @@ class TemperatureComponent(SafetyComponent):
         if outside_temp < meas_room_temp:
             window_sensors_state = "off"
             actuator_sensors_state = "off"
-            notification: str = f"Please close windows in {location} as recovery action"
+            localizer = getattr(hass_app, "localizer", Localizer())
+            notification = localizer.text(
+                "recovery.close_windows", location=location
+            )
         else:
             window_sensors_state = "on"
             actuator_sensors_state = "on"
-            notification: str = f"Please open windows in {location} as recovery action"
+            localizer = getattr(hass_app, "localizer", Localizer())
+            notification = localizer.text(
+                "recovery.open_windows", location=location
+            )
 
         # Close windows if outside temperature is lower
         if window_sensors:

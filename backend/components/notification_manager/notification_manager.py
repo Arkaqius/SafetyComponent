@@ -24,6 +24,7 @@ from typing import Any, Callable, Optional
 
 import appdaemon.plugins.hass.hassapi as hass  # type: ignore
 
+from components.core.localization import Localizer
 from components.core.types_common import FaultState
 
 
@@ -46,6 +47,8 @@ class NotificationManager:
         self,
         hass_app: hass.Hass,
         notification_config: dict,
+        *,
+        localizer: Localizer | None = None,
     ):
         """
         Initializes the NotificationManager with Home Assistant and notification configurations.
@@ -56,6 +59,7 @@ class NotificationManager:
         """
         self.hass_app = hass_app
         self.notification_config = notification_config
+        self.localizer = localizer or Localizer()
         self.active_notification: dict[str, dict[str, Any]] = {}
 
         # Map notification levels to their respective methods
@@ -161,32 +165,35 @@ class NotificationManager:
             None,
         )
 
-    @classmethod
-    def _format_details(cls, additional_info: Optional[dict]) -> list[str]:
+    def _format_details(self, additional_info: Optional[dict]) -> list[str]:
         """Format technical fault details as short, readable message lines."""
         if not additional_info:
             return []
-        return [
-            f"{cls._humanize_identifier(str(key))}: {value}"
-            for key, value in additional_info.items()
-        ]
+        details = []
+        for key, value in additional_info.items():
+            normalized_key = str(key).strip().lower()
+            label = (
+                self.localizer.text("detail.location")
+                if normalized_key == "location"
+                else self._humanize_identifier(str(key))
+            )
+            details.append(f"{label}: {value}")
+        return details
 
-    @classmethod
     def _format_active_message(
-        cls, friendly_name: str, additional_info: Optional[dict]
+        self, friendly_name: str, additional_info: Optional[dict]
     ) -> str:
         """Build a user-friendly message for an active fault."""
-        lines = [f"{friendly_name} needs your attention."]
-        lines.extend(cls._format_details(additional_info))
+        lines = [self.localizer.text("notification.active", fault=friendly_name)]
+        lines.extend(self._format_details(additional_info))
         return "\n".join(lines)
 
-    @classmethod
     def _format_cleared_message(
-        cls, friendly_name: str, additional_info: Optional[dict]
+        self, friendly_name: str, additional_info: Optional[dict]
     ) -> str:
         """Build a reassuring message for a cleared fault."""
-        lines = [f"Good news - {friendly_name.lower()} is no longer active."]
-        lines.extend(cls._format_details(additional_info))
+        lines = [self.localizer.text("notification.cleared", fault=friendly_name)]
+        lines.extend(self._format_details(additional_info))
         return "\n".join(lines)
 
     def _process_active_fault(self, level: int, message: str, fault_tag: str) -> None:
@@ -294,7 +301,7 @@ class NotificationManager:
 
         notification_configs = {
             1: {
-                "title": "Immediate action needed",
+                "title": self.localizer.text("notification.title.1"),
                 "message": message,
                 "data": {
                     **common_data,
@@ -306,7 +313,7 @@ class NotificationManager:
                 },
             },
             2: {
-                "title": "Safety issue detected",
+                "title": self.localizer.text("notification.title.2"),
                 "message": message,
                 "data": {
                     **common_data,
@@ -316,7 +323,7 @@ class NotificationManager:
                 },
             },
             3: {
-                "title": "Please check your home",
+                "title": self.localizer.text("notification.title.3"),
                 "message": message,
                 "data": {
                     **common_data,
@@ -445,14 +452,14 @@ class NotificationManager:
         self._refresh_notification_message(notification)
         self._send_notification(notification)
 
-    @staticmethod
-    def _refresh_notification_message(notification: dict[str, Any]) -> None:
+    def _refresh_notification_message(self, notification: dict[str, Any]) -> None:
         """Compose the current fault description with all recovery guidance."""
         message = notification.get("_base_message", notification["message"])
         recovery_messages = notification.get("_recovery_messages", [])
         if recovery_messages:
             guidance = "\n".join(f"- {item}" for item in recovery_messages)
-            message = f"{message}\n\nWhat you can do:\n{guidance}"
+            header = self.localizer.text("notification.guidance")
+            message = f"{message}\n\n{header}\n{guidance}"
         notification["message"] = message
 
     def _clear_symptom_msg(self, notification: dict, notification_msg: str) -> None:

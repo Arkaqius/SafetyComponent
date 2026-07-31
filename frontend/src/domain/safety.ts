@@ -99,6 +99,27 @@ export const LEVEL_PRESENTATION: Record<number, { label: string; shortLabel: str
   4: { label: 'Informacja', shortLabel: 'L4', tone: 'info' },
 };
 
+const SYSTEM_LEVEL_BY_STATE: Record<string, number> = {
+  working: 0,
+  emergency: 1,
+  hazard: 2,
+  warning: 3,
+  information: 4,
+};
+
+export function systemStatePresentation(state: unknown): { label: string; tone: StatusTone } {
+  const normalized = normalizeState(state);
+  if (normalized === 'working' || normalized === 'safe' || normalized === '0') {
+    return { label: 'Działa prawidłowo', tone: 'safe' };
+  }
+  if (normalized === 'stopped') return { label: 'Zatrzymany', tone: 'critical' };
+  const level = parseSystemLevel(normalized);
+  const presentation = level === null ? undefined : LEVEL_PRESENTATION[level];
+  return presentation
+    ? { label: presentation.label, tone: presentation.tone }
+    : { label: String(state ?? 'Stan nieznany'), tone: 'muted' };
+}
+
 const UNAVAILABLE_STATES = new Set(['unavailable', 'unknown', 'none', '']);
 
 export function normalizeState(value: unknown): string {
@@ -547,6 +568,7 @@ function activityCategory(entityId: string): ActivityItem['category'] {
 function parseSystemLevel(value: unknown): number | null {
   const normalized = normalizeState(value);
   if (normalized === 'safe') return 0;
+  if (normalized in SYSTEM_LEVEL_BY_STATE) return SYSTEM_LEVEL_BY_STATE[normalized];
   const level = Number(normalized.replace(/^level_/, ''));
   return Number.isInteger(level) && level >= 0 && level <= 4 ? level : null;
 }

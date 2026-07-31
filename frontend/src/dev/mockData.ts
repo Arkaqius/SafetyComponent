@@ -24,11 +24,12 @@ export const MOCK_ENTITIES: EntityMap = {
   'binary_sensor.garage_door_contact_contact': entity('off', 'Drzwi do garażu', {}, 2),
   'sensor.home_monitor_occupancy': entity('occupied', 'Obecność w domu', {}, 1),
   'sensor.safetysystem_state': entity(
-    '2',
-    'SafetySystem state',
+    'hazard',
+    'Stan systemu bezpieczeństwa',
     {
       fault_count: 1,
       highest_fault_level: 2,
+      state_label: 'Zagrożenie',
     },
     3
   ),

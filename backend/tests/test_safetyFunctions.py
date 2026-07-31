@@ -159,6 +159,10 @@ def test_terminate_publishes_offline(mocked_hass_app_with_temp_component):
 
     app_instance.terminate()
 
+    health_topic = mqtt_topic_for("sensor.safety_app_health")
+    system_topic = mqtt_topic_for("sensor.safetysystem_state")
+    assert mqtt_payloads(mocked_hass, health_topic)[-1] == "stopped"
+    assert mqtt_payloads(mocked_hass, system_topic)[-1] == "stopped"
     assert mqtt_payloads(mocked_hass, "safety_component/status")[-1] == "offline"
 
 

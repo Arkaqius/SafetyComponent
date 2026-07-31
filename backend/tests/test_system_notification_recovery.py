@@ -144,7 +144,7 @@ def test_notification_updates_single_fault_notification_for_prefault_lifecycle(
     assert app_instance.fm.check_fault("RiskyTemperature") == FaultState.CLEARED
     assert app_instance.notify_man.active_notification == {}
     assert notify_calls[-1].kwargs["message"].startswith(
-        "Good news - unsafe temperature is no longer active."
+        "Good news - Unsafe temperature is no longer active."
     )
     assert notify_calls[-1].kwargs["data"]["tag"] == fault_tag
     assert (

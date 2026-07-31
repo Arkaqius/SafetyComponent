@@ -47,6 +47,7 @@ from components.app_config_validator.app_cfg_validator import (
 from components.core.common_entities import CommonEntities
 from components.core.event_bus import EventBus
 from components.core.derivative_monitor import DerivativeMonitor
+from components.core.localization import LocalizationSettings
 from components.core.mqtt_entity_manager import MqttEntityManager
 from components.faults_manager import cfg_parser as cfg_pr
 from components.faults_manager.fault_manager import FaultManager
@@ -152,7 +153,7 @@ class SafetyFunctions(hass.Hass):
 
         # 60. Initialize notification manager
         self.notify_man: NotificationManager = NotificationManager(
-            self, self.notification_cfg
+            self, self.notification_cfg, localizer=self.localizer
         )
 
         # 70. Initialize recovery manager
@@ -204,15 +205,24 @@ class SafetyFunctions(hass.Hass):
             if not isinstance(app_config, Mapping):
                 raise ValueError("app_config must be a mapping")
             raw_mqtt_cfg = user_config.get("mqtt", {})
+            raw_localization_cfg = user_config.get("localization", {})
             if not isinstance(raw_mqtt_cfg, Mapping):
                 raise ValueError("user_config.mqtt must be a mapping")
+            if not isinstance(raw_localization_cfg, Mapping):
+                raise ValueError("user_config.localization must be a mapping")
             strict_validation = bool(app_config.get("strict_validation", True))
+            localization = LocalizationSettings.model_validate(
+                dict(raw_localization_cfg),
+                context={"strict_validation": strict_validation},
+            )
 
             self.mqtt_entities = MqttEntityManager(
                 self,
                 raw_mqtt_cfg,
                 strict_validation=strict_validation,
+                localization=localization,
             )
+            self.localizer = self.mqtt_entities.localizer
             self.mqtt_entities.publish_availability(False)
             self.mqtt_entities.cleanup_legacy_discovery_topics()
             self._register_health_entity()
@@ -245,6 +255,14 @@ class SafetyFunctions(hass.Hass):
         if mqtt_entities is None:
             return
         try:
+            if "sensor.safety_app_health" in mqtt_entities.discovered_entities:
+                mqtt_entities.publish_sensor_state(
+                    "sensor.safety_app_health", "stopped"
+                )
+            if "sensor.safetysystem_state" in mqtt_entities.discovered_entities:
+                mqtt_entities.publish_sensor_state(
+                    "sensor.safetysystem_state", "stopped"
+                )
             mqtt_entities.publish_availability(False)
         except Exception as exc:
             self.log(f"Unable to publish MQTT offline state: {exc}", level="ERROR")
@@ -286,7 +304,7 @@ class SafetyFunctions(hass.Hass):
         self.mqtt_entities.register_sensor(
             "sensor.safetysystem_state",
             "System State",
-            state="safe",
+            state="working",
             attributes={
                 "attribution": "Managed by SafetyFunction",
                 "description": "Overall safety system state based on fault conditions.",
@@ -299,7 +317,7 @@ class SafetyFunctions(hass.Hass):
         for name, fault in self.faults.items():
             self.mqtt_entities.register_sensor(
                 "sensor.fault_" + name,
-                f"Fault: {name}",
+                fault.friendly_name,
                 state="Not_tested",
                 attributes={
                     "attribution": "Managed by SafetyFunction",

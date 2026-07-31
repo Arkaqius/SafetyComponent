@@ -225,11 +225,24 @@ test('maps level 1 as the most severe active fault', () => {
     'sensor.fault_warning': entity('Set', { level: 'level_3' }),
     'sensor.fault_emergency': entity('Set', { level: 'level_1' }),
   });
-  const summary = getSafetySummary(entity('running'), entity('3'), faults, []);
+  const summary = getSafetySummary(entity('running'), entity('warning'), faults, []);
 
   assert.equal(summary.effectiveLevel, 1);
   assert.equal(summary.label, 'Alarm krytyczny');
   assert.equal(summary.tone, 'critical');
+});
+
+test('maps semantic system states while retaining numeric compatibility', () => {
+  const semanticSummary = getSafetySummary(
+    entity('running'),
+    entity('hazard'),
+    [],
+    []
+  );
+  const legacySummary = getSafetySummary(entity('running'), entity('2'), [], []);
+
+  assert.equal(semanticSummary.effectiveLevel, 2);
+  assert.equal(legacySummary.effectiveLevel, 2);
 });
 
 test('never reports a missing system entity as safe', () => {

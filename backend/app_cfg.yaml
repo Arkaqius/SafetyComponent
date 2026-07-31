@@ -61,7 +61,7 @@ SafetyFunctions:
     # - House-specific tuning belongs in user_config (entities/thresholds), not here.
     faults:
       RiskyTemperature:
-        name: "Unsafe temperature"
+        name: "Niebezpieczna temperatura"
         level: 2
         shadows:
           - "RiskyTemperatureForecast"
@@ -69,13 +69,13 @@ SafetyFunctions:
           - "sm_tc_1"
           - "sm_tc_3"
       RiskyTemperatureForecast:
-        name: "Unsafe temperature forecast"
+        name: "Prognoza niebezpiecznej temperatury"
         level: 3
         related_sms:
           - "sm_tc_2"
           - "sm_tc_4"
       SafetyDoorOpenTimeout:
-        name: "Safety door open timeout"
+        name: "Zbyt długo otwarte drzwi lub brama"
         level: 2
         related_sms:
           - "sm_safety_door_open_timeout"
@@ -119,6 +119,30 @@ SafetyFunctions:
       # future examples:
       # phone_notify_service: "notify.mobile_app_my_phone"
       # tts_media_player: "media_player.livingroom_speaker"
+
+    # User-facing language. Backend state codes and entity IDs remain stable
+    # English API values; Home Assistant names, state_label attributes, and
+    # notification copy are localized for this installation.
+    localization:
+      language: "pl"
+      entity_names:
+        sensor.safety_app_health: "Stan aplikacji bezpieczeństwa"
+        sensor.safetysystem_state: "Stan systemu bezpieczeństwa"
+        sensor.fault_riskytemperature: "Niebezpieczna temperatura"
+        sensor.fault_riskytemperatureforecast: "Prognoza niebezpiecznej temperatury"
+        sensor.fault_safetydooropentimeout: "Zbyt długo otwarte drzwi lub brama"
+        sensor.safety_door_garagegate: "Brama garażowa"
+        sensor.safety_door_externalgate: "Brama zewnętrzna"
+        sensor.safety_door_livingroomterracedoor: "Drzwi tarasowe w salonie"
+        sensor.safety_door_garagedoor: "Drzwi do garażu"
+        sensor.recovery_manipulatewindowoffice: "Działanie naprawcze: okno w biurze"
+        sensor.recovery_manipulatewindowbedroom: "Działanie naprawcze: okno w sypialni"
+        sensor.recovery_manipulatewindowlivingroom: "Działanie naprawcze: okno w salonie"
+        sensor.recovery_manipulatewindowkitchen: "Działanie naprawcze: okno w kuchni"
+        sensor.recovery_manipulatewindowentrance: "Działanie naprawcze: wejście"
+        sensor.recovery_manipulatewindowgarage: "Działanie naprawcze: okno w garażu"
+        sensor.recovery_manipulatewindowkidsroom: "Działanie naprawcze: okno w pokoju dzieci"
+        sensor.recovery_manipulatewindowupperbathroom: "Działanie naprawcze: okno w górnej łazience"
 
     # Common (shared) entities used across the whole application.
     #
