@@ -1440,6 +1440,24 @@ details summary:focus-visible {
   vector-effect: non-scaling-stroke;
 }
 
+.connection-message {
+  align-items: center;
+  background: var(--background);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 24px;
+  text-align: center;
+}
+
+.connection-message span {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
 .sparkline-threshold line {
   stroke-dasharray: 6 4;
   stroke-width: 1;

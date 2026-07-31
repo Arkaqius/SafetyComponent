@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { requestExternalAuthToken, type ExternalAuthHost } from '../auth/externalAuth.js';
 import {
   getFaults,
   getMonitoredTemperatures,
@@ -21,6 +22,42 @@ test('normalizes Home Assistant states without treating unknown as safe', () => 
   assert.equal(normalizeState('DO_NOT_PERFORM'), 'do_not_perform');
   assert.equal(normalizeState('Not tested'), 'not_tested');
   assert.equal(normalizeState(undefined), '');
+});
+
+test('uses Companion App V2 external authentication when available', async () => {
+  const host: ExternalAuthHost = {
+    externalAppV2: {
+      postMessage(message) {
+        const request = JSON.parse(message) as {
+          type: string;
+          payload: { callback: string; force: boolean };
+        };
+        assert.equal(request.type, 'getExternalAuth');
+        assert.equal(request.payload.callback, 'externalAuthSetToken');
+        assert.equal(request.payload.force, true);
+        host.externalAuthSetToken?.(true, {
+          access_token: 'companion-token',
+          expires_in: 1800,
+        });
+      },
+    },
+  };
+
+  const result = await requestExternalAuthToken(host, { force: true });
+
+  assert.deepEqual(result, {
+    supported: true,
+    token: {
+      accessToken: 'companion-token',
+      expiresIn: 1800,
+    },
+  });
+});
+
+test('falls back to browser authentication without a Companion bridge', async () => {
+  assert.deepEqual(await requestExternalAuthToken({}, { timeoutMs: 1 }), {
+    supported: false,
+  });
 });
 
 test('discovers faults from MQTT entity IDs and orders active faults first', () => {
