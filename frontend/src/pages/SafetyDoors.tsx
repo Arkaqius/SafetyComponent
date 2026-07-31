@@ -86,7 +86,7 @@ function SafetyDoorCard({ door }: { door: SafetyDoorView }) {
 
       <dl className='safety-door-details'>
         <div>
-          <dt>Timeout</dt>
+          <dt>Timeout otwarcia</dt>
           <dd>{formatDuration(door.timeoutSeconds)}</dd>
         </div>
         <div>
@@ -97,6 +97,20 @@ function SafetyDoorCard({ door }: { door: SafetyDoorView }) {
           <dt>Pozostało</dt>
           <dd>{door.doorState === 'open' && door.status === 'inactive' ? formatDuration(door.remainingSeconds) : '—'}</dd>
         </div>
+        {door.conditionEntityId ? (
+          <>
+            <div>
+              <dt>Encja warunku</dt>
+              <dd>
+                <code>{door.conditionEntityId}</code>
+              </dd>
+            </div>
+            <div>
+              <dt>Stan warunku</dt>
+              <dd>{door.conditionState || 'Brak danych'}</dd>
+            </div>
+          </>
+        ) : null}
       </dl>
 
       <span className='card-updated'>Aktualizacja {formatRelativeTime(door.lastUpdated)}</span>

@@ -129,18 +129,20 @@ export const MOCK_ENTITIES: EntityMap = {
   ),
 };
 
-const temperatureSpecs: Array<[entityId: string, friendlyName: string, value: number, rate: number, acceleration: number]> = [
-  ['sensor.bedroom_climatesensor_temperature', 'Bedroom ClimateSensor temperature', 21.6, 0.001, 0],
-  ['sensor.entrance_climatesensor_temperature', 'Entrance ClimateSensor temperature', 20.8, -0.012, -0.001],
-  ['sensor.garage_climatesensor_temperature', 'Garage ClimateSensor temperature', 17.2, 0.008, 0],
-  ['sensor.kidsroom_climatesensor_temperature', 'Kidsroom ClimateSensor temperature', 22.1, 0.003, 0],
-  ['sensor.livingroom_climatesensor_temperature', 'Livingroom ClimateSensor temperature', 22.8, 0.011, 0.001],
-  ['sensor.office_climatesensor_temperature', 'Office ClimateSensor temperature', 27.4, 0.086, 0.004],
-  ['sensor.thermostat_hc1_current_room_temperature_2', 'Heating circuit temperature', 22.5, 0.002, 0],
-  ['sensor.upperbathroom_climatesensor_temperature', 'Upper bathroom ClimateSensor temperature', 23.3, -0.006, 0],
+const temperatureSpecs: Array<
+  [entityId: string, friendlyName: string, value: number, rate: number, acceleration: number, lowThreshold: number, highThreshold: number]
+> = [
+  ['sensor.bedroom_climatesensor_temperature', 'Bedroom ClimateSensor temperature', 21.6, 0.001, 0, 18, 28],
+  ['sensor.entrance_climatesensor_temperature', 'Entrance ClimateSensor temperature', 20.8, -0.012, -0.001, 18, 28],
+  ['sensor.garage_climatesensor_temperature', 'Garage ClimateSensor temperature', 17.2, 0.008, 0, 10, 28],
+  ['sensor.kidsroom_climatesensor_temperature', 'Kidsroom ClimateSensor temperature', 22.1, 0.003, 0, 18, 28],
+  ['sensor.livingroom_climatesensor_temperature', 'Livingroom ClimateSensor temperature', 22.8, 0.011, 0.001, 18, 28],
+  ['sensor.office_climatesensor_temperature', 'Office ClimateSensor temperature', 27.4, 0.086, 0.004, 18, 28],
+  ['sensor.thermostat_hc1_current_room_temperature_2', 'Heating circuit temperature', 22.5, 0.002, 0, 18, 28],
+  ['sensor.upperbathroom_climatesensor_temperature', 'Upper bathroom ClimateSensor temperature', 23.3, -0.006, 0, 18, 28],
 ];
 
-for (const [entityId, friendlyName, value, rate, acceleration] of temperatureSpecs) {
+for (const [entityId, friendlyName, value, rate, acceleration, lowThreshold, highThreshold] of temperatureSpecs) {
   MOCK_ENTITIES[entityId] = entity(String(value), friendlyName, {
     device_class: 'temperature',
     state_class: 'measurement',
@@ -149,6 +151,8 @@ for (const [entityId, friendlyName, value, rate, acceleration] of temperatureSpe
   MOCK_ENTITIES[`${entityId}_rate`] = entity(String(rate), `${friendlyName} rate`, {
     attribution: 'Data provided by SafetyFunction',
     unit_of_measurement: '°C/min',
+    low_temperature_threshold: lowThreshold,
+    high_temperature_threshold: highThreshold,
   });
   MOCK_ENTITIES[`${entityId}_rateofrate`] = entity(String(acceleration), `${friendlyName} rate of rate`, {
     attribution: 'Data provided by SafetyFunction',

@@ -35,8 +35,8 @@ export default function Temperature() {
           <span className='section-kicker'>Temperature Component</span>
           <h2>Odczyty monitorowane przez system</h2>
           <p>
-            Lista powstaje automatycznie na podstawie encji trendów <code>_rate</code> publikowanych przez SafetyComponent. Nie stosuje
-            dodatkowych, wymyślonych progów.
+            Lista i progi bezpieczeństwa pochodzą z encji <code>_rate</code> publikowanych przez SafetyComponent. Linie na wykresach
+            pokazują dokładne dolne i górne progi skonfigurowane dla pomieszczeń.
           </p>
         </div>
         <div className='page-introduction-stat'>
@@ -145,7 +145,12 @@ function TemperatureCard({ temperature }: { temperature: TemperatureView }) {
         <span>{temperature.unit}</span>
       </div>
 
-      <Sparkline loading={history.loading} values={historyValues} />
+      <Sparkline
+        highThreshold={temperature.highThreshold}
+        loading={history.loading}
+        lowThreshold={temperature.lowThreshold}
+        values={historyValues}
+      />
 
       <dl className='temperature-details'>
         <div>
@@ -162,6 +167,14 @@ function TemperatureCard({ temperature }: { temperature: TemperatureView }) {
             {formatNumeric(historyMinimum, 1)} / {formatNumeric(historyMaximum, 1)} °C
           </dd>
         </div>
+        <div>
+          <dt>Próg dolny</dt>
+          <dd>{formatThreshold(temperature.lowThreshold)}</dd>
+        </div>
+        <div>
+          <dt>Próg górny</dt>
+          <dd>{formatThreshold(temperature.highThreshold)}</dd>
+        </div>
       </dl>
 
       <span className='card-updated'>Aktualizacja {formatRelativeTime(temperature.lastUpdated)}</span>
@@ -169,7 +182,17 @@ function TemperatureCard({ temperature }: { temperature: TemperatureView }) {
   );
 }
 
-function Sparkline({ values, loading }: { values: number[]; loading: boolean }) {
+function Sparkline({
+  values,
+  loading,
+  lowThreshold,
+  highThreshold,
+}: {
+  values: number[];
+  loading: boolean;
+  lowThreshold: number | null;
+  highThreshold: number | null;
+}) {
   if (loading && values.length < 2) {
     return <div aria-label='Ładowanie historii' className='sparkline sparkline-loading' />;
   }
@@ -183,13 +206,19 @@ function Sparkline({ values, loading }: { values: number[]; loading: boolean }) 
 
   const width = 320;
   const height = 82;
-  const minimum = Math.min(...values);
-  const maximum = Math.max(...values);
+  const chartValues = [
+    ...values,
+    ...(lowThreshold === null ? [] : [lowThreshold]),
+    ...(highThreshold === null ? [] : [highThreshold]),
+  ];
+  const minimum = Math.min(...chartValues);
+  const maximum = Math.max(...chartValues);
   const range = Math.max(maximum - minimum, 0.1);
+  const yForValue = (value: number) => height - ((value - minimum) / range) * (height - 12) - 6;
   const points = values
     .map((value, index) => {
       const x = (index / Math.max(values.length - 1, 1)) * width;
-      const y = height - ((value - minimum) / range) * (height - 12) - 6;
+      const y = yForValue(value);
       return `${x.toFixed(1)},${y.toFixed(1)}`;
     })
     .join(' ');
@@ -198,9 +227,31 @@ function Sparkline({ values, loading }: { values: number[]; loading: boolean }) 
     <div className='sparkline'>
       <svg aria-label='Wykres temperatury z ostatnich 24 godzin' preserveAspectRatio='none' role='img' viewBox={`0 0 ${width} ${height}`}>
         <line className='sparkline-grid' x1='0' x2={width} y1={height / 2} y2={height / 2} />
+        {lowThreshold !== null ? (
+          <ThresholdLine label={`Dolny ${formatNumeric(lowThreshold, 1)} °C`} tone='low' width={width} y={yForValue(lowThreshold)} />
+        ) : null}
+        {highThreshold !== null ? (
+          <ThresholdLine label={`Górny ${formatNumeric(highThreshold, 1)} °C`} tone='high' width={width} y={yForValue(highThreshold)} />
+        ) : null}
         <polyline className='sparkline-line' points={points} />
       </svg>
       <span>24 godziny</span>
     </div>
   );
+}
+
+function ThresholdLine({ label, tone, width, y }: { label: string; tone: 'low' | 'high'; width: number; y: number }) {
+  const labelY = tone === 'high' ? y + 7 : y - 5;
+  return (
+    <g className={`sparkline-threshold sparkline-threshold-${tone}`}>
+      <line x1='0' x2={width} y1={y} y2={y} />
+      <text dominantBaseline='middle' textAnchor='end' x={width - 4} y={labelY}>
+        {label}
+      </text>
+    </g>
+  );
+}
+
+function formatThreshold(value: number | null): string {
+  return value === null ? '—' : `${formatNumeric(value, 1)} °C`;
 }

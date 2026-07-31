@@ -1440,6 +1440,40 @@ details summary:focus-visible {
   vector-effect: non-scaling-stroke;
 }
 
+.sparkline-threshold line {
+  stroke-dasharray: 6 4;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.sparkline-threshold text {
+  font-size: 8px;
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 3px;
+}
+
+.sparkline-threshold-low {
+  color: var(--info);
+}
+
+.sparkline-threshold-high {
+  color: var(--danger);
+}
+
+.sparkline-threshold-low line,
+.sparkline-threshold-low text,
+.sparkline-threshold-high line,
+.sparkline-threshold-high text {
+  fill: currentColor;
+  stroke: currentColor;
+}
+
+.sparkline-threshold text {
+  stroke: var(--surface);
+}
+
 .sparkline > span {
   bottom: 0;
   color: var(--text-muted);
@@ -1608,6 +1642,12 @@ details summary:focus-visible {
   color: var(--text-soft);
   font-size: 0.68rem;
   margin: 0;
+}
+
+.safety-door-details code {
+  display: block;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .page-empty-state {

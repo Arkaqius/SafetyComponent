@@ -74,6 +74,8 @@ test('discovers monitored temperature from SafetyComponent derivative pair', () 
     'sensor.office_climatesensor_temperature_rate': entity('-0.015', {
       unit_of_measurement: '°C/min',
       attribution: 'Data provided by SafetyFunction',
+      low_temperature_threshold: 18,
+      high_temperature_threshold: 28,
     }),
     'sensor.office_climatesensor_temperature_rateofrate': entity('0.001', {
       unit_of_measurement: '°C/min²',
@@ -85,6 +87,8 @@ test('discovers monitored temperature from SafetyComponent derivative pair', () 
   assert.equal(temperatures[0].state, 23.25);
   assert.equal(temperatures[0].rate, -0.015);
   assert.equal(temperatures[0].acceleration, 0.001);
+  assert.equal(temperatures[0].lowThreshold, 18);
+  assert.equal(temperatures[0].highThreshold, 28);
 });
 
 test('discovers only configured Safety Doors MQTT entities', () => {

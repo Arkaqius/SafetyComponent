@@ -46,6 +46,8 @@ export interface TemperatureView {
   rate: number | null;
   accelerationEntityId: string;
   acceleration: number | null;
+  lowThreshold: number | null;
+  highThreshold: number | null;
   lastUpdated?: string;
 }
 
@@ -218,6 +220,8 @@ export function getMonitoredTemperatures(entities: EntityMap): TemperatureView[]
           rate: numericState(rateEntity.state),
           accelerationEntityId,
           acceleration: numericState(entities[accelerationEntityId]?.state),
+          lowThreshold: numericAttribute(rateEntity, 'low_temperature_threshold'),
+          highThreshold: numericAttribute(rateEntity, 'high_temperature_threshold'),
           lastUpdated: latestTimestamp(sourceEntity.last_updated, rateEntity.last_updated),
         },
       ];

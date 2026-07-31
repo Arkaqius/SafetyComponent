@@ -114,6 +114,37 @@ def test_calculate_diff_updates_derivatives(setup_derivative_monitor):
     )
 
 
+def test_register_entity_publishes_temperature_thresholds(
+    setup_derivative_monitor,
+):
+    """Expose configured temperature thresholds on derivative MQTT sensors."""
+    _, mqtt_entities, derivative_monitor, _ = setup_derivative_monitor
+    entity_id = "sensor.temperature"
+
+    derivative_monitor.register_entity(
+        entity_id,
+        60,
+        -2.0,
+        2.0,
+        low_temperature_threshold=18.0,
+        high_temperature_threshold=28.0,
+    )
+
+    assert derivative_monitor.entities[entity_id][
+        "low_temperature_threshold"
+    ] == 18.0
+    assert derivative_monitor.entities[entity_id][
+        "high_temperature_threshold"
+    ] == 28.0
+    rate_call = next(
+        call_args
+        for call_args in mqtt_entities.register_sensor.call_args_list
+        if call_args.args[0] == f"{entity_id}_rate"
+    )
+    assert rate_call.kwargs["attributes"]["low_temperature_threshold"] == 18.0
+    assert rate_call.kwargs["attributes"]["high_temperature_threshold"] == 28.0
+
+
 def test_calculate_diff_handles_missing_value(setup_derivative_monitor):
     """Ensure missing values skip calculation."""
     mock_hass, _, derivative_monitor, _ = setup_derivative_monitor

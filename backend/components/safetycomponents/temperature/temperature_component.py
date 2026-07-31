@@ -633,6 +633,12 @@ class TemperatureComponent(SafetyComponent):
                     sampling_minutes * 60,
                     -2,
                     2,
+                    low_temperature_threshold=extracted_params.get(
+                        "CAL_LOW_TEMP_THRESHOLD"
+                    ),
+                    high_temperature_threshold=extracted_params.get(
+                        "CAL_HIGH_TEMP_THRESHOLD"
+                    ),
                 )
 
         return True
@@ -652,6 +658,12 @@ class TemperatureComponent(SafetyComponent):
         try:
             for key in required_keys:
                 extracted_params[key] = parameters[key]
+            for key in (
+                "CAL_LOW_TEMP_THRESHOLD",
+                "CAL_HIGH_TEMP_THRESHOLD",
+            ):
+                if key in parameters:
+                    extracted_params[key] = parameters[key]
             extracted_params["actuator"] = parameters.get("actuator")
         except KeyError as e:
             self.hass_app.log(f"Key not found in sm_cfg: {e}", level="ERROR")
