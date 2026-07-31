@@ -267,6 +267,7 @@ class FaultManager:
             self.event_bus.publish(
                 "fault",
                 fault_name=fault.name,
+                fault_friendly_name=fault.friendly_name,
                 level=fault.level,
                 fault_state=FaultState.SET,
                 additional_info=self._notification_info_from_merged(
@@ -429,6 +430,7 @@ class FaultManager:
         self.event_bus.publish(
             "fault",
             fault_name=fault.name,
+            fault_friendly_name=fault.friendly_name,
             level=fault.level,
             fault_state=FaultState.SHADOWED,
             additional_info=additional_info,
@@ -489,6 +491,7 @@ class FaultManager:
             self.event_bus.publish(
                 "fault",
                 fault_name=fault.name,
+                fault_friendly_name=fault.friendly_name,
                 level=fault.level,
                 fault_state=FaultState.SET,
                 additional_info=self._notification_info_from_merged(
@@ -523,6 +526,7 @@ class FaultManager:
             self.event_bus.publish(
                 "fault",
                 fault_name=fault.name,
+                fault_friendly_name=fault.friendly_name,
                 level=fault.level,
                 fault_state=FaultState.CLEARED,
                 additional_info=additional_info,
