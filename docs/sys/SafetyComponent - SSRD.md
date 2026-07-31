@@ -79,7 +79,7 @@ This Software Safety Requirements Document (SSRD) captures the current state of 
 | FR-008 | Track active faults & expose highest severity.    | ✅ (`FM.update_system_state_entity`)     |
 | FR-009 | Enable/disable SMs programmatically.              | ✅ (FM)                                  |
 
-| FR-017 | Monitor configured safety doors and assert an MQTT/fault state after a continuous open timeout. | Implemented (`SafetyDoorsComponent`, SYS-SR-SEC-001/002). |
+| FR-017 | Monitor configured safety doors and assert an MQTT/fault state after a continuous open timeout, subject to an optional configured state condition. | Implemented (`SafetyDoorsComponent`, SYS-SR-SEC-001/002). |
 
 ### 3.2 Functional Requirements (Backlog / Gaps)
 

@@ -62,6 +62,11 @@ def test_validate_app_cfg_normalizes_safety_doors_component(app_config_valid):
             "EntranceDoor": {
                 "entity_id": "binary_sensor.entrance_door",
                 "timeout_seconds": 30,
+                "condition": {
+                    "entity_id": "sensor.home_occupancy",
+                    "pass_states": [" Empty "],
+                    "blocked_states": ["OCCUPIED"],
+                },
             },
         },
     }
@@ -82,6 +87,11 @@ def test_validate_app_cfg_normalizes_safety_doors_component(app_config_valid):
             "EntranceDoor": {
                 "entity_id": "binary_sensor.entrance_door",
                 "timeout_seconds": 30,
+                "condition": {
+                    "entity_id": "sensor.home_occupancy",
+                    "pass_states": ["empty"],
+                    "blocked_states": ["occupied"],
+                },
             }
         },
     ]
@@ -95,6 +105,28 @@ def test_validate_app_cfg_rejects_safety_doors_without_entries(app_config_valid)
     }
 
     with pytest.raises(AppCfgValidationError):
+        AppCfgValidator.validate(cfg)
+
+
+def test_validate_app_cfg_rejects_overlapping_door_condition_states(
+    app_config_valid,
+):
+    cfg = copy.deepcopy(app_config_valid)
+    cfg["user_config"]["components_enabled"][SAFETY_DOORS_COMPONENT_NAME] = True
+    cfg["user_config"]["safety_components"][SAFETY_DOORS_COMPONENT_NAME] = {
+        "doors": {
+            "TerraceDoor": {
+                "entity_id": "binary_sensor.terrace_door",
+                "condition": {
+                    "entity_id": "sensor.home_occupancy",
+                    "pass_states": ["empty"],
+                    "blocked_states": ["empty"],
+                },
+            }
+        }
+    }
+
+    with pytest.raises(AppCfgValidationError, match="must be disjoint"):
         AppCfgValidator.validate(cfg)
 
 
@@ -263,6 +295,37 @@ def test_collect_entity_ids_skips_invalid_room_entries():
     }
     entity_ids = _collect_entity_ids(runtime_cfg)
     assert ("user_config.safety_components.TemperatureComponent.RoomB.temperature_sensor", "sensor.test") in entity_ids
+
+
+def test_collect_entity_ids_includes_safety_door_condition():
+    runtime_cfg = {
+        "user_config": {
+            "common_entities": {},
+            "notification": {},
+            "safety_components": {
+                SAFETY_DOORS_COMPONENT_NAME: [
+                    {
+                        "TerraceDoor": {
+                            "entity_id": "binary_sensor.terrace_door",
+                            "condition": {
+                                "entity_id": "sensor.home_occupancy",
+                                "pass_states": ["empty"],
+                                "blocked_states": ["occupied"],
+                            },
+                        }
+                    }
+                ]
+            },
+        }
+    }
+
+    entity_ids = _collect_entity_ids(runtime_cfg)
+
+    assert (
+        "user_config.safety_components."
+        "SafetyDoorsComponent.TerraceDoor.condition.entity_id",
+        "sensor.home_occupancy",
+    ) in entity_ids
 
 
 def test_validate_entity_existence_handles_exception():

@@ -94,6 +94,18 @@ def _collect_entity_ids(runtime_cfg: Dict[str, Any]) -> list[tuple[str, str]]:
                             entity_id,
                         )
                     )
+                condition = door_cfg.get("condition")
+                if isinstance(condition, dict):
+                    condition_entity_id = condition.get("entity_id")
+                    if isinstance(condition_entity_id, str):
+                        entity_ids.append(
+                            (
+                                "user_config.safety_components."
+                                f"{SAFETY_DOORS_COMPONENT_NAME}."
+                                f"{door_name}.condition.entity_id",
+                                condition_entity_id,
+                            )
+                        )
 
     return entity_ids
 

@@ -93,7 +93,7 @@ export const MOCK_ENTITIES: EntityMap = {
     2
   ),
   'sensor.safety_door_livingroomterracedoor': entity(
-    'inactive',
+    'blocked',
     'Safety Door: LivingRoomTerraceDoor',
     {
       description: 'Configured door open-timeout monitor.',
@@ -101,9 +101,14 @@ export const MOCK_ENTITIES: EntityMap = {
       door_state: 'open',
       source_entity: 'binary_sensor.livingroom_door_contact_contact',
       timeout_seconds: 120,
-      open_duration_seconds: 35,
-      remaining_seconds: 85,
-      opened_at: timestamp(0.6),
+      open_duration_seconds: 0,
+      remaining_seconds: 120,
+      opened_at: null,
+      condition_entity: 'sensor.home_monitor_occupancy',
+      condition_state: 'occupied',
+      condition_result: 'blocked',
+      condition_pass_states: ['empty'],
+      condition_blocked_states: ['occupied'],
     },
     1
   ),

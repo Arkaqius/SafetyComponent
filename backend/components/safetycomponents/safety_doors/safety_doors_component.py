@@ -92,6 +92,7 @@ class SafetyDoorsComponent(SafetyComponent):
             door_name = str(parameters["door_name"])
             entity_id = str(parameters["entity_id"])
             timeout_seconds = int(parameters["timeout_seconds"])
+            condition = self._normalize_condition(parameters.get("condition"))
         except (KeyError, TypeError, ValueError) as exc:
             self.hass_app.log(
                 f"Invalid Safety Doors configuration for {name}: {exc}",
@@ -99,18 +100,23 @@ class SafetyDoorsComponent(SafetyComponent):
             )
             return False
 
+        monitored_entities = [entity_id]
+        if condition is not None:
+            monitored_entities.append(condition["entity_id"])
+
         mechanism = SafetyMechanism(
             hass_app=self.hass_app,
             callback=self.sm_safety_door_open_timeout,
             name=name,
             isEnabled=False,
-            monitored_entities=[entity_id],
+            monitored_entities=list(dict.fromkeys(monitored_entities)),
         )
         mechanism.sm_args.update(
             {
                 "door_name": door_name,
                 "entity_id": entity_id,
                 "timeout_seconds": timeout_seconds,
+                "condition": condition,
             }
         )
         self.safety_mechanisms[name] = mechanism
@@ -153,9 +159,47 @@ class SafetyDoorsComponent(SafetyComponent):
             return False
 
         runtime = self._door_runtime[sm.name]
-        door_state, last_changed = self._read_door_state(sm.sm_args["entity_id"])
         now = self._now()
         timeout_seconds = int(sm.sm_args["timeout_seconds"])
+        condition_result, condition_state, condition_last_changed = (
+            self._read_condition_state(sm)
+        )
+        door_state, door_last_changed = self._read_door_state(
+            sm.sm_args["entity_id"]
+        )
+
+        if condition_result == "blocked":
+            self._cancel_timer(sm.name)
+            runtime.opened_at = None
+            runtime.active = False
+            self._publish_symptom(
+                sm,
+                FaultState.CLEARED,
+                elapsed_seconds=0,
+                condition_state=condition_state,
+            )
+            self._publish_door_state(
+                sm,
+                state="blocked",
+                door_state=door_state,
+                condition_result=condition_result,
+                condition_state=condition_state,
+                now=now,
+            )
+            return False
+
+        if condition_result == "unavailable":
+            self._cancel_timer(sm.name)
+            runtime.opened_at = None
+            self._publish_door_state(
+                sm,
+                state="unavailable",
+                door_state=door_state,
+                condition_result=condition_result,
+                condition_state=condition_state,
+                now=now,
+            )
+            return runtime.active
 
         if door_state == "unavailable":
             self._cancel_timer(sm.name)
@@ -163,6 +207,8 @@ class SafetyDoorsComponent(SafetyComponent):
                 sm,
                 state="unavailable",
                 door_state=door_state,
+                condition_result=condition_result,
+                condition_state=condition_state,
                 now=now,
             )
             return runtime.active
@@ -171,17 +217,31 @@ class SafetyDoorsComponent(SafetyComponent):
             self._cancel_timer(sm.name)
             runtime.opened_at = None
             runtime.active = False
-            self._publish_symptom(sm, FaultState.CLEARED, elapsed_seconds=0)
+            self._publish_symptom(
+                sm,
+                FaultState.CLEARED,
+                elapsed_seconds=0,
+                condition_state=condition_state,
+            )
             self._publish_door_state(
                 sm,
                 state="inactive",
                 door_state=door_state,
+                condition_result=condition_result,
+                condition_state=condition_state,
                 now=now,
             )
             return False
 
         if runtime.opened_at is None:
-            runtime.opened_at = last_changed or now
+            active_since_candidates = [
+                changed_at
+                for changed_at in (door_last_changed, condition_last_changed)
+                if changed_at is not None
+            ]
+            runtime.opened_at = (
+                max(active_since_candidates) if active_since_candidates else now
+            )
         elapsed_seconds = max(
             0, int((now - runtime.opened_at).total_seconds())
         )
@@ -193,11 +253,14 @@ class SafetyDoorsComponent(SafetyComponent):
                 sm,
                 FaultState.SET,
                 elapsed_seconds=elapsed_seconds,
+                condition_state=condition_state,
             )
             self._publish_door_state(
                 sm,
                 state="active",
                 door_state=door_state,
+                condition_result=condition_result,
+                condition_state=condition_state,
                 now=now,
             )
             return True
@@ -207,12 +270,15 @@ class SafetyDoorsComponent(SafetyComponent):
             sm,
             FaultState.CLEARED,
             elapsed_seconds=elapsed_seconds,
+            condition_state=condition_state,
         )
         self._schedule_timeout(sm, timeout_seconds - elapsed_seconds)
         self._publish_door_state(
             sm,
             state="inactive",
             door_state=door_state,
+            condition_result=condition_result,
+            condition_state=condition_state,
             now=now,
         )
         return False
@@ -256,20 +322,26 @@ class SafetyDoorsComponent(SafetyComponent):
         state: FaultState,
         *,
         elapsed_seconds: int,
+        condition_state: str | None,
     ) -> None:
         if self.symptom_states.get(mechanism.name) == state:
             return
         self.symptom_states[mechanism.name] = state
+        additional_info = {
+            "location": str(mechanism.sm_args["door_name"]),
+            "doors": str(mechanism.sm_args["door_name"]),
+            "source_entity": str(mechanism.sm_args["entity_id"]),
+            "open_duration_seconds": str(elapsed_seconds),
+        }
+        condition = mechanism.sm_args.get("condition")
+        if isinstance(condition, dict):
+            additional_info["condition_entity"] = str(condition["entity_id"])
+            additional_info["condition_state"] = str(condition_state or "")
         self.event_bus.publish(
             "symptom",
             symptom_id=mechanism.name,
             state=state,
-            additional_info={
-                "location": str(mechanism.sm_args["door_name"]),
-                "doors": str(mechanism.sm_args["door_name"]),
-                "source_entity": str(mechanism.sm_args["entity_id"]),
-                "open_duration_seconds": str(elapsed_seconds),
-            },
+            additional_info=additional_info,
         )
 
     def _publish_door_state(
@@ -278,6 +350,8 @@ class SafetyDoorsComponent(SafetyComponent):
         *,
         state: str,
         door_state: str,
+        condition_result: str,
+        condition_state: str | None,
         now: datetime,
     ) -> None:
         runtime = self._door_runtime[mechanism.name]
@@ -288,6 +362,22 @@ class SafetyDoorsComponent(SafetyComponent):
             else 0
         )
         timeout_seconds = int(mechanism.sm_args["timeout_seconds"])
+        condition = mechanism.sm_args.get("condition")
+        condition_attributes = {
+            "condition_entity": None,
+            "condition_state": None,
+            "condition_result": "not_configured",
+            "condition_pass_states": [],
+            "condition_blocked_states": [],
+        }
+        if isinstance(condition, dict):
+            condition_attributes = {
+                "condition_entity": condition["entity_id"],
+                "condition_state": condition_state,
+                "condition_result": condition_result,
+                "condition_pass_states": condition["pass_states"],
+                "condition_blocked_states": condition["blocked_states"],
+            }
         self.mqtt_entities.publish_sensor_state(
             self._mqtt_entity_ids[mechanism.name],
             state,
@@ -301,8 +391,47 @@ class SafetyDoorsComponent(SafetyComponent):
                 "open_duration_seconds": elapsed_seconds,
                 "remaining_seconds": max(0, timeout_seconds - elapsed_seconds),
                 "opened_at": opened_at.isoformat() if opened_at else None,
+                **condition_attributes,
             },
         )
+
+    def _read_condition_state(
+        self, mechanism: SafetyMechanism
+    ) -> tuple[str, str | None, datetime | None]:
+        condition = mechanism.sm_args.get("condition")
+        if not isinstance(condition, dict):
+            return "pass", None, None
+
+        entity_id = str(condition["entity_id"])
+        try:
+            raw_state = self.hass_app.get_state(entity_id, attribute="all")
+        except Exception as exc:
+            self.hass_app.log(
+                f"Unable to read Safety Doors condition {entity_id}: {exc}",
+                level="WARNING",
+            )
+            return "unavailable", "unavailable", None
+
+        last_changed: datetime | None = None
+        if isinstance(raw_state, dict):
+            state = raw_state.get("state")
+            last_changed = self._parse_datetime(raw_state.get("last_changed"))
+        else:
+            state = raw_state
+
+        normalized = str(state or "").strip().lower()
+        if normalized in condition["pass_states"]:
+            return "pass", normalized, last_changed
+        if normalized in condition["blocked_states"]:
+            return "blocked", normalized, last_changed
+
+        if normalized not in UNAVAILABLE_STATES:
+            self.hass_app.log(
+                f"Unsupported Safety Doors condition state '{state}' "
+                f"for {entity_id}",
+                level="WARNING",
+            )
+        return "unavailable", normalized or "unavailable", last_changed
 
     def _read_door_state(
         self, entity_id: str
@@ -342,6 +471,48 @@ class SafetyDoorsComponent(SafetyComponent):
     @staticmethod
     def _now() -> datetime:
         return datetime.now(timezone.utc)
+
+    @staticmethod
+    def _normalize_condition(value: Any) -> dict[str, Any] | None:
+        if value is None:
+            return None
+        if not isinstance(value, dict):
+            raise ValueError("condition must be a mapping")
+
+        entity_id_value = value["entity_id"]
+        pass_states_value = value["pass_states"]
+        blocked_states_value = value["blocked_states"]
+        if not isinstance(entity_id_value, str):
+            raise ValueError("condition entity_id must be a string")
+        if not isinstance(pass_states_value, list) or not isinstance(
+            blocked_states_value, list
+        ):
+            raise ValueError(
+                "condition pass_states and blocked_states must be lists"
+            )
+
+        entity_id = entity_id_value.strip()
+        pass_states = [
+            str(state).strip().lower() for state in pass_states_value
+        ]
+        blocked_states = [
+            str(state).strip().lower() for state in blocked_states_value
+        ]
+        if not entity_id or not pass_states or not blocked_states:
+            raise ValueError(
+                "condition requires entity_id, pass_states and blocked_states"
+            )
+        if any(not state for state in pass_states + blocked_states):
+            raise ValueError("condition states must not be empty")
+        if set(pass_states) & set(blocked_states):
+            raise ValueError(
+                "condition pass_states and blocked_states must be disjoint"
+            )
+        return {
+            "entity_id": entity_id,
+            "pass_states": pass_states,
+            "blocked_states": blocked_states,
+        }
 
     @staticmethod
     def _symptom_name(door_name: str) -> str:

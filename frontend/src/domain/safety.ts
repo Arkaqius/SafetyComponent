@@ -49,7 +49,9 @@ export interface TemperatureView {
   lastUpdated?: string;
 }
 
-export type SafetyDoorStatus = 'active' | 'inactive' | 'unavailable' | 'unknown';
+export type SafetyDoorStatus = 'active' | 'blocked' | 'inactive' | 'unavailable' | 'unknown';
+
+export type SafetyDoorConditionResult = 'pass' | 'blocked' | 'unavailable' | 'not_configured' | 'unknown';
 
 export interface SafetyDoorView {
   entityId: string;
@@ -61,6 +63,9 @@ export interface SafetyDoorView {
   timeoutSeconds: number | null;
   openDurationSeconds: number;
   remainingSeconds: number;
+  conditionEntityId: string;
+  conditionState: string;
+  conditionResult: SafetyDoorConditionResult;
   openedAt?: string;
   lastUpdated?: string;
 }
@@ -223,9 +228,10 @@ export function getMonitoredTemperatures(entities: EntityMap): TemperatureView[]
 export function getSafetyDoors(entities: EntityMap): SafetyDoorView[] {
   const statusPriority: Record<SafetyDoorStatus, number> = {
     active: 0,
-    unavailable: 1,
-    unknown: 2,
-    inactive: 3,
+    blocked: 1,
+    unavailable: 2,
+    unknown: 3,
+    inactive: 4,
   };
 
   return Object.entries(entities)
@@ -238,6 +244,8 @@ export function getSafetyDoors(entities: EntityMap): SafetyDoorView[] {
       const status: SafetyDoorStatus =
         normalizedState === 'active'
           ? 'active'
+          : normalizedState === 'blocked'
+            ? 'blocked'
           : normalizedState === 'inactive'
             ? 'inactive'
             : UNAVAILABLE_STATES.has(normalizedState)
@@ -250,6 +258,15 @@ export function getSafetyDoors(entities: EntityMap): SafetyDoorView[] {
           ? Math.max(reportedOpenDuration, elapsedSeconds(openedAt))
           : reportedOpenDuration;
       const timeoutSeconds = numericAttribute(entity, 'timeout_seconds');
+      const rawConditionResult = normalizeState(entity.attributes.condition_result);
+      const conditionResult: SafetyDoorConditionResult =
+        rawConditionResult === 'pass' ||
+        rawConditionResult === 'blocked' ||
+        rawConditionResult === 'unavailable' ||
+        rawConditionResult === 'not_configured'
+          ? rawConditionResult
+          : 'unknown';
+      const reportedRemainingSeconds = numericAttribute(entity, 'remaining_seconds') ?? 0;
 
       return {
         entityId,
@@ -261,9 +278,12 @@ export function getSafetyDoors(entities: EntityMap): SafetyDoorView[] {
         timeoutSeconds,
         openDurationSeconds: liveOpenDuration,
         remainingSeconds:
-          timeoutSeconds === null
-            ? numericAttribute(entity, 'remaining_seconds') ?? 0
+          status === 'blocked' || timeoutSeconds === null
+            ? reportedRemainingSeconds
             : Math.max(0, timeoutSeconds - liveOpenDuration),
+        conditionEntityId: stringAttribute(entity, 'condition_entity'),
+        conditionState: stringAttribute(entity, 'condition_state'),
+        conditionResult,
         openedAt,
         lastUpdated: entity.last_updated ?? entity.last_changed,
       };

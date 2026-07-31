@@ -166,6 +166,13 @@ SafetyFunctions:
             entity_id: "binary_sensor.frontyard_externalgate_contact_contact"
           LivingRoomTerraceDoor:
             entity_id: "binary_sensor.livingroom_door_contact_contact"
+            # Monitor the terrace door only while the home is empty.
+            condition:
+              entity_id: "sensor.home_monitor_occupancy"
+              pass_states:
+                - "empty"
+              blocked_states:
+                - "occupied"
           GarageDoor:
             entity_id: "binary_sensor.garage_door_contact_contact"
 

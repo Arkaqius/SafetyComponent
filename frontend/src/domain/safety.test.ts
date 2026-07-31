@@ -98,15 +98,32 @@ test('discovers only configured Safety Doors MQTT entities', () => {
       remaining_seconds: 0,
       opened_at: '2026-07-29T07:57:35+00:00',
     }),
+    'sensor.safety_door_terracedoor': entity('blocked', {
+      friendly_name: 'Safety Door: TerraceDoor',
+      source_entity: 'binary_sensor.terrace_door',
+      door_state: 'open',
+      timeout_seconds: 120,
+      open_duration_seconds: 0,
+      remaining_seconds: 120,
+      opened_at: null,
+      condition_entity: 'sensor.home_monitor_occupancy',
+      condition_state: 'occupied',
+      condition_result: 'blocked',
+    }),
     'binary_sensor.unconfigured_door': entity('on'),
   });
 
-  assert.equal(doors.length, 1);
+  assert.equal(doors.length, 2);
   assert.equal(doors[0].name, 'Garage Gate');
   assert.equal(doors[0].status, 'active');
   assert.equal(doors[0].doorState, 'open');
   assert.equal(doors[0].timeoutSeconds, 120);
   assert.equal(doors[0].sourceEntityId, 'binary_sensor.garage_gate');
+  assert.equal(doors[1].status, 'blocked');
+  assert.equal(doors[1].conditionEntityId, 'sensor.home_monitor_occupancy');
+  assert.equal(doors[1].conditionState, 'occupied');
+  assert.equal(doors[1].conditionResult, 'blocked');
+  assert.equal(doors[1].remainingSeconds, 120);
 });
 
 test('maps level 1 as the most severe active fault', () => {

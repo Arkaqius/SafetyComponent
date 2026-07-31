@@ -95,7 +95,7 @@ function SafetyDoorCard({ door }: { door: SafetyDoorView }) {
         </div>
         <div>
           <dt>Pozostało</dt>
-          <dd>{door.doorState === 'open' && door.status !== 'active' ? formatDuration(door.remainingSeconds) : '—'}</dd>
+          <dd>{door.doorState === 'open' && door.status === 'inactive' ? formatDuration(door.remainingSeconds) : '—'}</dd>
         </div>
       </dl>
 
@@ -116,6 +116,18 @@ function doorPresentation(door: SafetyDoorView): {
       headline: 'Timeout przekroczony',
       detail: 'Drzwi lub brama nadal pozostają otwarte.',
       tone: 'danger',
+    };
+  }
+  if (door.status === 'blocked') {
+    const conditionDetail =
+      door.conditionEntityId && door.conditionState
+        ? `Warunek ${door.conditionEntityId} ma stan „${door.conditionState}”.`
+        : 'Skonfigurowany warunek blokuje monitorowanie.';
+    return {
+      label: 'Wstrzymane',
+      headline: 'Monitoring zablokowany',
+      detail: `${conditionDetail} Timeout nie jest liczony.`,
+      tone: 'muted',
     };
   }
   if (door.status === 'unavailable' || door.status === 'unknown') {
