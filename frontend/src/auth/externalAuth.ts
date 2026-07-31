@@ -16,8 +16,10 @@ interface ExternalAuthPayload {
 }
 
 type ExternalAuthCallback = (success: boolean, payload?: ExternalAuthPayload) => void;
+type ExternalAuthOptions = { callback: string; force?: boolean };
 
 export interface ExternalAuthHost {
+  top?: ExternalAuthHost | null;
   externalAppV2?: {
     postMessage(message: string): void;
   };
@@ -27,7 +29,7 @@ export interface ExternalAuthHost {
   webkit?: {
     messageHandlers?: {
       getExternalAuth?: {
-        postMessage(options: { callback: string; force: boolean }): void;
+        postMessage(options: ExternalAuthOptions): void;
       };
     };
   };
@@ -36,24 +38,50 @@ export interface ExternalAuthHost {
 
 const CALLBACK_NAME = 'externalAuthSetToken';
 
+function supportsExternalAuth(host: ExternalAuthHost): boolean {
+  return (
+    typeof host.externalAppV2?.postMessage === 'function' ||
+    typeof host.externalApp?.getExternalAuth === 'function' ||
+    typeof host.webkit?.messageHandlers?.getExternalAuth?.postMessage === 'function'
+  );
+}
+
+/**
+ * Resolve the frame that owns the Companion App bridge. Webpage dashboards
+ * render applications in an iframe, while Android invokes auth callbacks in
+ * the main WebView frame.
+ */
+export function resolveExternalAuthHost(host: ExternalAuthHost): ExternalAuthHost {
+  try {
+    const topHost = host.top;
+    if (topHost && topHost !== host && supportsExternalAuth(topHost)) {
+      return topHost;
+    }
+  } catch {
+    // Cross-origin iframe: the main frame cannot be accessed safely.
+  }
+  return host;
+}
+
 /**
  * Request the active Home Assistant access token from an Android or iOS
  * Companion App WebView. Returns unsupported in a regular browser.
  */
 export async function requestExternalAuthToken(
-  host: ExternalAuthHost = window as unknown as ExternalAuthHost,
-  { force = false, timeoutMs = 10_000 }: { force?: boolean; timeoutMs?: number } = {}
+  host: ExternalAuthHost = resolveExternalAuthHost(window as unknown as ExternalAuthHost),
+  { force = false, timeoutMs = 30_000 }: { force?: boolean; timeoutMs?: number } = {}
 ): Promise<ExternalAuthResult> {
-  const hasV2 = typeof host.externalAppV2?.postMessage === 'function';
-  const hasV1 = typeof host.externalApp?.getExternalAuth === 'function';
-  const hasIos = typeof host.webkit?.messageHandlers?.getExternalAuth?.postMessage === 'function';
+  const authHost = resolveExternalAuthHost(host);
+  const hasV2 = typeof authHost.externalAppV2?.postMessage === 'function';
+  const hasV1 = typeof authHost.externalApp?.getExternalAuth === 'function';
+  const hasIos = typeof authHost.webkit?.messageHandlers?.getExternalAuth?.postMessage === 'function';
 
   if (!hasV2 && !hasV1 && !hasIos) {
     return { supported: false };
   }
 
   return new Promise(resolve => {
-    const previousCallback = host.externalAuthSetToken;
+    const previousCallback = authHost.externalAuthSetToken;
     let settled = false;
 
     const finish = (result: ExternalAuthResult) => {
@@ -61,9 +89,9 @@ export async function requestExternalAuthToken(
       settled = true;
       globalThis.clearTimeout(timeoutHandle);
       if (previousCallback) {
-        host.externalAuthSetToken = previousCallback;
+        authHost.externalAuthSetToken = previousCallback;
       } else {
-        delete host.externalAuthSetToken;
+        delete authHost.externalAuthSetToken;
       }
       resolve(result);
     };
@@ -73,7 +101,7 @@ export async function requestExternalAuthToken(
       timeoutMs
     );
 
-    host.externalAuthSetToken = (success, payload) => {
+    authHost.externalAuthSetToken = (success, payload) => {
       const accessToken = typeof payload?.access_token === 'string' ? payload.access_token : '';
       const expiresIn = Number(payload?.expires_in);
       if (!success || !accessToken || !Number.isFinite(expiresIn) || expiresIn <= 0) {
@@ -89,23 +117,27 @@ export async function requestExternalAuthToken(
       });
     };
 
-    const options = { callback: CALLBACK_NAME, force };
-    try {
-      if (hasV2) {
-        host.externalAppV2!.postMessage(
-          JSON.stringify({
-            type: 'getExternalAuth',
-            payload: options,
-          })
-        );
-      } else if (hasV1) {
-        host.externalApp!.getExternalAuth(JSON.stringify(options));
-      } else {
-        host.webkit!.messageHandlers!.getExternalAuth!.postMessage(options);
+    const options: ExternalAuthOptions = { callback: CALLBACK_NAME };
+    if (force) options.force = true;
+
+    void Promise.resolve().then(() => {
+      try {
+        if (hasV2) {
+          authHost.externalAppV2!.postMessage(
+            JSON.stringify({
+              type: 'getExternalAuth',
+              payload: options,
+            })
+          );
+        } else if (hasV1) {
+          authHost.externalApp!.getExternalAuth(JSON.stringify(options));
+        } else {
+          authHost.webkit!.messageHandlers!.getExternalAuth!.postMessage(options);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        finish({ supported: true, error: `Nie udało się pobrać tokena Companion App: ${message}` });
       }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      finish({ supported: true, error: `Nie udało się pobrać tokena Companion App: ${message}` });
-    }
+    });
   });
 }

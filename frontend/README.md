@@ -60,7 +60,9 @@ Dla domyślnego `VITE_FOLDER_NAME=SafetyHome` aplikacja będzie dostępna pod:
 https://ADRES_HA/local/SafetyHome/index.html
 ```
 
-Do panelu bocznego można ją dodać w Home Assistant jako dashboard typu **Webpage** wskazujący powyższą ścieżkę.
+Do panelu bocznego można ją dodać w Home Assistant jako dashboard typu **Webpage**. Użyj ścieżki względnej
+`/local/SafetyHome/index.html`, aby iframe zawsze miał ten sam origin co aktualny adres Home Assistant — również po
+przełączeniu między adresem wewnętrznym i zewnętrznym w Companion App.
 Routing używa fragmentu URL (`#/temperature`, `#/history`), dlatego odświeżenie podstrony działa także przy zwykłym
 hostingu statycznym.
 

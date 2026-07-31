@@ -54,6 +54,47 @@ test('uses Companion App V2 external authentication when available', async () =>
   });
 });
 
+test('uses the main frame Companion bridge when rendered in a webpage dashboard iframe', async () => {
+  const mainFrame: ExternalAuthHost = {
+    externalAppV2: {
+      postMessage(message) {
+        const request = JSON.parse(message) as {
+          type: string;
+          payload: { callback: string; force?: boolean };
+        };
+        assert.equal(request.type, 'getExternalAuth');
+        assert.equal(request.payload.callback, 'externalAuthSetToken');
+        assert.equal('force' in request.payload, false);
+        assert.equal(typeof mainFrame.externalAuthSetToken, 'function');
+        mainFrame.externalAuthSetToken?.(true, {
+          access_token: 'main-frame-token',
+          expires_in: 1800,
+        });
+      },
+    },
+  };
+  mainFrame.top = mainFrame;
+  const iframe: ExternalAuthHost = {
+    top: mainFrame,
+    externalAppV2: {
+      postMessage() {
+        assert.fail('The iframe bridge must not be used for external authentication.');
+      },
+    },
+  };
+
+  const result = await requestExternalAuthToken(iframe);
+
+  assert.deepEqual(result, {
+    supported: true,
+    token: {
+      accessToken: 'main-frame-token',
+      expiresIn: 1800,
+    },
+  });
+  assert.equal(iframe.externalAuthSetToken, undefined);
+});
+
 test('falls back to browser authentication without a Companion bridge', async () => {
   assert.deepEqual(await requestExternalAuthToken({}, { timeoutMs: 1 }), {
     supported: false,
