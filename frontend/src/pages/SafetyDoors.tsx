@@ -71,8 +71,10 @@ function SafetyDoorCard({ door }: { door: SafetyDoorView }) {
           <Icon name='door' size={22} />
         </span>
         <div>
-          <h3>{door.name}</h3>
-          <code>{door.sourceEntityId || door.entityId}</code>
+          <h3 title={door.entityId}>{door.name}</h3>
+          <small className='entity-friendly-name' title={door.sourceEntityId || door.entityId}>
+            {door.sourceEntityName}
+          </small>
         </div>
         <StatusBadge pulse={door.status === 'active'} tone={presentation.tone}>
           {presentation.label}
@@ -100,10 +102,8 @@ function SafetyDoorCard({ door }: { door: SafetyDoorView }) {
         {door.conditionEntityId ? (
           <>
             <div>
-              <dt>Encja warunku</dt>
-              <dd>
-                <code>{door.conditionEntityId}</code>
-              </dd>
+              <dt>Warunek monitorowania</dt>
+              <dd title={door.conditionEntityId}>{door.conditionEntityName}</dd>
             </div>
             <div>
               <dt>Stan warunku</dt>
@@ -135,7 +135,7 @@ function doorPresentation(door: SafetyDoorView): {
   if (door.status === 'blocked') {
     const conditionDetail =
       door.conditionEntityId && door.conditionState
-        ? `Warunek ${door.conditionEntityId} ma stan „${door.conditionState}”.`
+        ? `Warunek „${door.conditionEntityName}” ma stan „${door.conditionState}”.`
         : 'Skonfigurowany warunek blokuje monitorowanie.';
     return {
       label: 'Wstrzymane',

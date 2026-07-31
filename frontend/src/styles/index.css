@@ -1386,8 +1386,10 @@ details summary:focus-visible {
   white-space: nowrap;
 }
 
-.temperature-card-header code {
+.temperature-card-header .entity-friendly-name {
+  color: var(--text-muted);
   display: block;
+  font-size: 0.68rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1596,8 +1598,10 @@ details summary:focus-visible {
   white-space: nowrap;
 }
 
-.safety-door-card-header code {
+.safety-door-card-header .entity-friendly-name {
+  color: var(--text-muted);
   display: block;
+  font-size: 0.68rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1709,8 +1713,10 @@ details summary:focus-visible {
   white-space: nowrap;
 }
 
-.history-card-header code {
+.history-card-header .entity-friendly-name {
+  color: var(--text-muted);
   display: block;
+  font-size: 0.68rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

@@ -59,6 +59,7 @@ export interface SafetyDoorView {
   entityId: string;
   name: string;
   sourceEntityId: string;
+  sourceEntityName: string;
   state: string;
   status: SafetyDoorStatus;
   doorState: 'open' | 'closed' | 'unavailable';
@@ -66,6 +67,7 @@ export interface SafetyDoorView {
   openDurationSeconds: number;
   remainingSeconds: number;
   conditionEntityId: string;
+  conditionEntityName: string;
   conditionState: string;
   conditionResult: SafetyDoorConditionResult;
   openedAt?: string;
@@ -271,11 +273,16 @@ export function getSafetyDoors(entities: EntityMap): SafetyDoorView[] {
           ? rawConditionResult
           : 'unknown';
       const reportedRemainingSeconds = numericAttribute(entity, 'remaining_seconds') ?? 0;
+      const sourceEntityId = stringAttribute(entity, 'source_entity');
+      const conditionEntityId = stringAttribute(entity, 'condition_entity');
 
       return {
         entityId,
         name: friendlyEntityName(entityId, entity),
-        sourceEntityId: stringAttribute(entity, 'source_entity'),
+        sourceEntityId,
+        sourceEntityName: sourceEntityId
+          ? friendlyEntityName(sourceEntityId, entities[sourceEntityId])
+          : friendlyEntityName(entityId, entity),
         state: entity.state,
         status,
         doorState,
@@ -285,7 +292,10 @@ export function getSafetyDoors(entities: EntityMap): SafetyDoorView[] {
           status === 'blocked' || timeoutSeconds === null
             ? reportedRemainingSeconds
             : Math.max(0, timeoutSeconds - liveOpenDuration),
-        conditionEntityId: stringAttribute(entity, 'condition_entity'),
+        conditionEntityId,
+        conditionEntityName: conditionEntityId
+          ? friendlyEntityName(conditionEntityId, entities[conditionEntityId])
+          : '',
         conditionState: stringAttribute(entity, 'condition_state'),
         conditionResult,
         openedAt,

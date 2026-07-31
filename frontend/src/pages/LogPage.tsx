@@ -128,8 +128,8 @@ function HistoryCard({ item, hours }: { item: HistoryEntity; hours: HistoryHours
           <Icon name={icon} size={20} />
         </span>
         <div>
-          <h3>{friendlyEntityName(item.entityId, item.entity)}</h3>
-          <code>{item.entityId}</code>
+          <h3 title={item.entityId}>{friendlyEntityName(item.entityId, item.entity)}</h3>
+          <small className='entity-friendly-name'>{historyCategoryLabel(item.category)}</small>
         </div>
         <StatusBadge tone={presentation.tone}>{presentation.label}</StatusBadge>
       </div>
@@ -178,6 +178,12 @@ function entityCategory(entityId: string): HistoryEntity['category'] {
   if (entityId.startsWith(FAULT_PREFIX)) return 'fault';
   if (entityId.startsWith(RECOVERY_PREFIX)) return 'recovery';
   return 'system';
+}
+
+function historyCategoryLabel(category: HistoryEntity['category']): string {
+  if (category === 'fault') return 'Usterka';
+  if (category === 'recovery') return 'Działanie naprawcze';
+  return 'Stan systemu';
 }
 
 function statePresentation(item: HistoryEntity): { label: string; tone: StatusTone } {

@@ -18,6 +18,11 @@ function entity(state: string, friendlyName: string, attributes: Record<string, 
 /** Deterministic entity contract used only by the local visual demo. */
 export const MOCK_ENTITIES: EntityMap = {
   'sensor.safety_app_health': entity('running', 'Safety app health', {}, 1),
+  'binary_sensor.garage_gatedoorlow_contact_contact': entity('on', 'Brama garażowa', {}, 1),
+  'binary_sensor.frontyard_externalgate_contact_contact': entity('off', 'Brama zewnętrzna', {}, 2),
+  'binary_sensor.livingroom_door_contact_contact': entity('on', 'Drzwi tarasowe w salonie', {}, 1),
+  'binary_sensor.garage_door_contact_contact': entity('off', 'Drzwi do garażu', {}, 2),
+  'sensor.home_monitor_occupancy': entity('occupied', 'Obecność w domu', {}, 1),
   'sensor.safetysystem_state': entity(
     '2',
     'SafetySystem state',

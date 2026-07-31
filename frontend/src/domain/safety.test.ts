@@ -192,6 +192,15 @@ test('discovers only configured Safety Doors MQTT entities', () => {
       condition_state: 'occupied',
       condition_result: 'blocked',
     }),
+    'binary_sensor.garage_gate': entity('on', {
+      friendly_name: 'Brama garażowa',
+    }),
+    'binary_sensor.terrace_door': entity('on', {
+      friendly_name: 'Drzwi tarasowe w salonie',
+    }),
+    'sensor.home_monitor_occupancy': entity('occupied', {
+      friendly_name: 'Obecność w domu',
+    }),
     'binary_sensor.unconfigured_door': entity('on'),
   });
 
@@ -201,8 +210,11 @@ test('discovers only configured Safety Doors MQTT entities', () => {
   assert.equal(doors[0].doorState, 'open');
   assert.equal(doors[0].timeoutSeconds, 120);
   assert.equal(doors[0].sourceEntityId, 'binary_sensor.garage_gate');
+  assert.equal(doors[0].sourceEntityName, 'Brama garażowa');
   assert.equal(doors[1].status, 'blocked');
+  assert.equal(doors[1].sourceEntityName, 'Drzwi tarasowe w salonie');
   assert.equal(doors[1].conditionEntityId, 'sensor.home_monitor_occupancy');
+  assert.equal(doors[1].conditionEntityName, 'Obecność w domu');
   assert.equal(doors[1].conditionState, 'occupied');
   assert.equal(doors[1].conditionResult, 'blocked');
   assert.equal(doors[1].remainingSeconds, 120);

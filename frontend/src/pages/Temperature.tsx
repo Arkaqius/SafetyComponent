@@ -132,8 +132,8 @@ function TemperatureCard({ temperature }: { temperature: TemperatureView }) {
           <Icon name='temperature' size={21} />
         </span>
         <div>
-          <h3>{temperature.name}</h3>
-          <code>{temperature.entityId}</code>
+          <h3 title={temperature.entityId}>{temperature.name}</h3>
+          <small className='entity-friendly-name'>Czujnik temperatury</small>
         </div>
         <span className={`trend-chip ${trend.className}`}>
           {trend.symbol} {trend.label}
