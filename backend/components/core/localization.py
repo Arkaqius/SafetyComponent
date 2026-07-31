@@ -13,6 +13,7 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
     "en": {
         "entity.safety_app_health": "Safety app health",
         "entity.safety_system_state": "Safety system state",
+        "entity.recovery_window": "Window recovery: {location}",
         "state.health.init": "Starting",
         "state.health.running": "Running",
         "state.health.invalid_cfg": "Invalid configuration",
@@ -42,6 +43,7 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
     "pl": {
         "entity.safety_app_health": "Stan aplikacji bezpieczeństwa",
         "entity.safety_system_state": "Stan systemu bezpieczeństwa",
+        "entity.recovery_window": "Działanie naprawcze: okna — {location}",
         "state.health.init": "Uruchamianie",
         "state.health.running": "Działa",
         "state.health.invalid_cfg": "Błędna konfiguracja",

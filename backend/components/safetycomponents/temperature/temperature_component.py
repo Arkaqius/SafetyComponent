@@ -484,7 +484,7 @@ class TemperatureComponent(SafetyComponent):
             symptom: The created symptom object.
         """
         symptom_params = data.copy()
-        symptom_params["location"] = location
+        symptom_params["location"] = str(data.get("area_name", location))
 
         return Symptom(
             module=modules[self.__class__.__name__],
@@ -509,8 +509,15 @@ class TemperatureComponent(SafetyComponent):
             RecoveryAction: The created RecoveryAction object.
         """
         name: str = f"{default_name}{location}"
+        display_location = str(data.get("area_name", location))
+        localizer = getattr(self.hass_app, "localizer", Localizer())
         params = {
-            "location": location,
+            "location": display_location,
+            "area_id": data["area_id"],
+            "friendly_name": localizer.text(
+                "entity.recovery_window",
+                location=display_location,
+            ),
             "actuator": data.get("actuator"),
             "window_sensor": data.get("window_sensor"),
         }

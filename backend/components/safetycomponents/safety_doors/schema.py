@@ -60,13 +60,23 @@ class SafetyDoorConfig(StrictBaseModel):
 
     model_config = ConfigDict(extra="allow")
 
+    area_id: str
     entity_id: str
     timeout_seconds: int | None = Field(default=None, ge=1)
     condition: SafetyDoorCondition | None = None
 
+    @field_validator("area_id")
+    @classmethod
+    def _validate_area_id(cls, value: str) -> str:
+        area_id = value.strip()
+        if not area_id:
+            raise ValueError("SafetyDoorsComponent area_id must not be empty")
+        return area_id
+
     def with_defaults(self, defaults: SafetyDoorDefaults) -> Dict[str, Any]:
         """Return the normalized runtime configuration for this door."""
         runtime: Dict[str, Any] = {
+            "area_id": self.area_id,
             "entity_id": self.entity_id,
             "timeout_seconds": (
                 self.timeout_seconds

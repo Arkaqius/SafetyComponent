@@ -22,6 +22,13 @@ def mocked_hass() -> Generator[Any, Any, None]:
         mock_hass.run_in = MagicMock()
         mock_hass.run_every = MagicMock()
         mock_hass.listen_state = MagicMock()
+        mock_hass.render_template = MagicMock(
+            side_effect=lambda template, **_kwargs: (
+                "Office" if '"office"' in template else "Kitchen"
+                if '"kitchen"' in template
+                else None
+            )
+        )
         yield mock_hass
 
 

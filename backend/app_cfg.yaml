@@ -135,14 +135,6 @@ SafetyFunctions:
         sensor.safety_door_externalgate: "Brama zewnętrzna"
         sensor.safety_door_livingroomterracedoor: "Drzwi tarasowe w salonie"
         sensor.safety_door_garagedoor: "Drzwi do garażu"
-        sensor.recovery_manipulatewindowoffice: "Działanie naprawcze: okno w biurze"
-        sensor.recovery_manipulatewindowbedroom: "Działanie naprawcze: okno w sypialni"
-        sensor.recovery_manipulatewindowlivingroom: "Działanie naprawcze: okno w salonie"
-        sensor.recovery_manipulatewindowkitchen: "Działanie naprawcze: okno w kuchni"
-        sensor.recovery_manipulatewindowentrance: "Działanie naprawcze: wejście"
-        sensor.recovery_manipulatewindowgarage: "Działanie naprawcze: okno w garażu"
-        sensor.recovery_manipulatewindowkidsroom: "Działanie naprawcze: okno w pokoju dzieci"
-        sensor.recovery_manipulatewindowupperbathroom: "Działanie naprawcze: okno w górnej łazience"
 
     # Common (shared) entities used across the whole application.
     #
@@ -185,10 +177,13 @@ SafetyFunctions:
           timeout_seconds: 120
         doors:
           GarageGate:
+            area_id: "garage"
             entity_id: "binary_sensor.garage_gatedoorlow_contact_contact"
           ExternalGate:
+            area_id: "frontyard"
             entity_id: "binary_sensor.frontyard_externalgate_contact_contact"
           LivingRoomTerraceDoor:
+            area_id: "45db77f4035011eb9a3115c8afedaa08"
             entity_id: "binary_sensor.livingroom_door_contact_contact"
             # Monitor the terrace door only while the home is empty.
             condition:
@@ -198,6 +193,7 @@ SafetyFunctions:
               blocked_states:
                 - "occupied"
           GarageDoor:
+            area_id: "garage"
             entity_id: "binary_sensor.garage_door_contact_contact"
 
       TemperatureComponent:
@@ -210,10 +206,12 @@ SafetyFunctions:
         # Per-room configuration
         rooms:
           Office:
+            area_id: "office"
             temperature_sensor: "sensor.office_climatesensor_temperature"
             window_sensor: "binary_sensor.office_window_contact_contact"
 
           Bedroom:
+            area_id: "45dba350035011ebb7723b97d0dd3541"
             temperature_sensor: "sensor.bedroom_climatesensor_temperature"
             window_sensor: "binary_sensor.bedroom_windowleft_sensor_contact"
 
@@ -222,19 +220,23 @@ SafetyFunctions:
           #  window_sensor: "binary_sensor.bathroom_window_contact_contact"
 
           Livingroom:
+            area_id: "45db77f4035011eb9a3115c8afedaa08"
             temperature_sensor: "sensor.livingroom_climatesensor_temperature"
             window_sensor: "binary_sensor.livingroom_door_contact_contact"
 
           Kitchen:
+            area_id: "45db9126035011ebb67629f8118eef32"
             # The downstairs HC1 thermostat is the corridor temperature source.
             temperature_sensor: "sensor.thermostat_hc1_current_room_temperature_2"
             window_sensor: "binary_sensor.kitchen_window_contact_contact"
 
           Entrance:
+            area_id: "entryway"
             temperature_sensor: "sensor.entrance_climatesensor_temperature"
             window_sensor: null
 
           Garage:
+            area_id: "garage"
             # Override defaults for this room
             CAL_LOW_TEMP_THRESHOLD: 10.0
             CAL_HIGH_TEMP_THRESHOLD: 28.0
@@ -243,9 +245,11 @@ SafetyFunctions:
             window_sensor: "binary_sensor.garage_gatedoorlow_contact_contact"
 
           Kidsroom:
+            area_id: "kids_room"
             temperature_sensor: "sensor.kidsroom_climatesensor_temperature"
             window_sensor: "binary_sensor.kidsroom_window_contact_contact"
 
           Upperbathroom:
+            area_id: "upper_bathroom"
             temperature_sensor: "sensor.upperbathroom_climatesensor_temperature"
             #window_sensor: "sensor.upperbathroom_window_contact_contact"

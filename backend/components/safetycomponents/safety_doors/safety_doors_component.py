@@ -90,6 +90,8 @@ class SafetyDoorsComponent(SafetyComponent):
 
         try:
             door_name = str(parameters["door_name"])
+            area_id = str(parameters["area_id"])
+            area_name = str(parameters["area_name"])
             entity_id = str(parameters["entity_id"])
             timeout_seconds = int(parameters["timeout_seconds"])
             condition = self._normalize_condition(parameters.get("condition"))
@@ -114,6 +116,8 @@ class SafetyDoorsComponent(SafetyComponent):
         mechanism.sm_args.update(
             {
                 "door_name": door_name,
+                "area_id": area_id,
+                "area_name": area_name,
                 "entity_id": entity_id,
                 "timeout_seconds": timeout_seconds,
                 "condition": condition,
@@ -328,7 +332,7 @@ class SafetyDoorsComponent(SafetyComponent):
             return
         self.symptom_states[mechanism.name] = state
         additional_info = {
-            "location": str(mechanism.sm_args["door_name"]),
+            "location": str(mechanism.sm_args["area_name"]),
             "doors": str(mechanism.sm_args["door_name"]),
             "source_entity": str(mechanism.sm_args["entity_id"]),
             "open_duration_seconds": str(elapsed_seconds),
@@ -385,6 +389,8 @@ class SafetyDoorsComponent(SafetyComponent):
                 "attribution": "Managed by SafetyFunction",
                 "description": "Configured door open-timeout monitor.",
                 "door_name": mechanism.sm_args["door_name"],
+                "area_id": mechanism.sm_args["area_id"],
+                "area_name": mechanism.sm_args["area_name"],
                 "door_state": door_state,
                 "source_entity": mechanism.sm_args["entity_id"],
                 "timeout_seconds": timeout_seconds,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Any, Callable, Dict
 
@@ -133,6 +134,65 @@ def _validate_entity_existence(
     return missing
 
 
+def _resolve_area_name(hass: Any, area_id: str, config_path: str) -> str:
+    """Resolve and validate a Home Assistant area reference."""
+    render_template = getattr(hass, "render_template", None)
+    if not callable(render_template):
+        raise AppCfgValidationError(
+            "Home Assistant area resolution is unavailable; "
+            f"cannot validate {config_path}={area_id}"
+        )
+
+    template = f"{{{{ area_name({json.dumps(area_id)}) }}}}"
+    try:
+        resolved = render_template(template)
+    except Exception as exc:
+        raise AppCfgValidationError(
+            f"Unable to resolve {config_path}={area_id}: {exc}"
+        ) from exc
+
+    if resolved is None or str(resolved).strip().lower() in {
+        "",
+        "none",
+        "unknown",
+        "unavailable",
+    }:
+        raise AppCfgValidationError(
+            f"Unknown Home Assistant area: {config_path}={area_id}"
+        )
+    return str(resolved).strip()
+
+
+def _resolve_area_names(runtime_cfg: Dict[str, Any], hass: Any) -> None:
+    """Attach current Home Assistant area names to location-aware components."""
+    components = runtime_cfg["user_config"]["safety_components"]
+    for component_name in (
+        TEMPERATURE_COMPONENT_NAME,
+        SAFETY_DOORS_COMPONENT_NAME,
+    ):
+        component_cfg = components.get(component_name)
+        if not isinstance(component_cfg, list):
+            continue
+        for entry in component_cfg:
+            if not isinstance(entry, dict):
+                continue
+            for item_name, item_cfg in entry.items():
+                if not isinstance(item_cfg, dict):
+                    continue
+                area_id = item_cfg.get("area_id")
+                if not isinstance(area_id, str):
+                    continue
+                config_path = (
+                    "user_config.safety_components."
+                    f"{component_name}.{item_name}.area_id"
+                )
+                item_cfg["area_name"] = _resolve_area_name(
+                    hass,
+                    area_id,
+                    config_path,
+                )
+
+
 def _to_runtime(
     cfg: AppCfg,
     *,
@@ -215,6 +275,14 @@ class AppCfgValidator:
                 )
         except (ValidationError, ValueError) as exc:
             raise AppCfgValidationError(str(exc))
+
+        if hass is not None:
+            _resolve_area_names(runtime_cfg, hass)
+        else:
+            _log_warning(
+                log,
+                "Home Assistant was not provided; skipping area existence checks.",
+            )
 
         if not strict_validation:
             log_extra_keys(cfg, log, "root")

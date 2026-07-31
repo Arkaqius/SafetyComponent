@@ -42,6 +42,8 @@ def _build_component(
     component._now = lambda: now  # type: ignore[method-assign]
     modules = {component.component_name: component}
     parameters: dict[str, object] = {
+        "area_id": "garage",
+        "area_name": "Garaż",
         "entity_id": "binary_sensor.garage_gate",
         "timeout_seconds": timeout_seconds,
     }
@@ -114,7 +116,10 @@ def test_open_door_becomes_active_after_configured_timeout() -> None:
     assert component.sm_safety_door_open_timeout(mechanism) is True
     assert component.symptom_states[mechanism.name] == FaultState.SET
     assert _published_states(hass_app)[-1] == "active"
-    assert events[-1]["additional_info"]["location"] == "GarageGate"
+    assert events[-1]["additional_info"]["location"] == "Garaż"
+    attributes = _published_attributes(hass_app)[-1]
+    assert attributes["area_id"] == "garage"
+    assert attributes["area_name"] == "Garaż"
 
 
 def test_open_door_stays_inactive_and_schedules_remaining_timeout() -> None:

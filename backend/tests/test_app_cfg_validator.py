@@ -22,6 +22,7 @@ def test_validate_app_cfg_normalizes_temperature_component(app_config_valid):
     assert {"Office", "Kitchen"} == {list(room.keys())[0] for room in temperature_cfg}
 
     office_cfg = next(room["Office"] for room in temperature_cfg if "Office" in room)
+    assert office_cfg["area_id"] == "office"
     assert office_cfg["CAL_LOW_TEMP_THRESHOLD"] == 18.0
     assert office_cfg["CAL_FORECAST_TIMESPAN"] == 2.0
 
@@ -57,9 +58,11 @@ def test_validate_app_cfg_normalizes_safety_doors_component(app_config_valid):
         "defaults": {"timeout_seconds": 120},
         "doors": {
             "GarageGate": {
+                "area_id": "garage",
                 "entity_id": "binary_sensor.garage_gate",
             },
             "EntranceDoor": {
+                "area_id": "entryway",
                 "entity_id": "binary_sensor.entrance_door",
                 "timeout_seconds": 30,
                 "condition": {
@@ -79,12 +82,14 @@ def test_validate_app_cfg_normalizes_safety_doors_component(app_config_valid):
     assert doors == [
         {
             "GarageGate": {
+                "area_id": "garage",
                 "entity_id": "binary_sensor.garage_gate",
                 "timeout_seconds": 120,
             }
         },
         {
             "EntranceDoor": {
+                "area_id": "entryway",
                 "entity_id": "binary_sensor.entrance_door",
                 "timeout_seconds": 30,
                 "condition": {
@@ -116,6 +121,7 @@ def test_validate_app_cfg_rejects_overlapping_door_condition_states(
     cfg["user_config"]["safety_components"][SAFETY_DOORS_COMPONENT_NAME] = {
         "doors": {
             "TerraceDoor": {
+                "area_id": "living_room",
                 "entity_id": "binary_sensor.terrace_door",
                 "condition": {
                     "entity_id": "sensor.home_occupancy",
@@ -127,6 +133,20 @@ def test_validate_app_cfg_rejects_overlapping_door_condition_states(
     }
 
     with pytest.raises(AppCfgValidationError, match="must be disjoint"):
+        AppCfgValidator.validate(cfg)
+
+
+def test_validate_app_cfg_requires_area_id_for_safety_door(app_config_valid):
+    cfg = copy.deepcopy(app_config_valid)
+    cfg["user_config"]["safety_components"][SAFETY_DOORS_COMPONENT_NAME] = {
+        "doors": {
+            "GarageGate": {
+                "entity_id": "binary_sensor.garage_gate",
+            }
+        }
+    }
+
+    with pytest.raises(AppCfgValidationError, match="area_id"):
         AppCfgValidator.validate(cfg)
 
 
@@ -171,6 +191,45 @@ def test_validate_app_cfg_rejects_non_cover_temperature_actuator(
 
     with pytest.raises(AppCfgValidationError, match="cover entity"):
         AppCfgValidator.validate(cfg)
+
+
+def test_validate_app_cfg_requires_area_id_for_temperature_room(app_config_valid):
+    cfg = copy.deepcopy(app_config_valid)
+    cfg["user_config"]["safety_components"]["TemperatureComponent"]["rooms"][
+        "Office"
+    ].pop("area_id")
+
+    with pytest.raises(AppCfgValidationError, match="area_id"):
+        AppCfgValidator.validate(cfg)
+
+
+def test_validate_app_cfg_resolves_current_home_assistant_area_names(
+    app_config_valid,
+):
+    class DummyHass:
+        def render_template(self, template):
+            return "Biuro" if '"office"' in template else "Kuchnia"
+
+    validated = AppCfgValidator.validate(app_config_valid, hass=DummyHass())
+    temperature_cfg = validated["user_config"]["safety_components"][
+        "TemperatureComponent"
+    ]
+
+    office_cfg = next(room["Office"] for room in temperature_cfg if "Office" in room)
+    kitchen_cfg = next(
+        room["Kitchen"] for room in temperature_cfg if "Kitchen" in room
+    )
+    assert office_cfg["area_name"] == "Biuro"
+    assert kitchen_cfg["area_name"] == "Kuchnia"
+
+
+def test_validate_app_cfg_rejects_unknown_home_assistant_area(app_config_valid):
+    class DummyHass:
+        def render_template(self, _template):
+            return None
+
+    with pytest.raises(AppCfgValidationError, match="Unknown Home Assistant area"):
+        AppCfgValidator.validate(app_config_valid, hass=DummyHass())
 
 
 def test_validate_app_cfg_rejects_removed_dashboard_notification_config(
@@ -244,6 +303,9 @@ def test_validate_app_cfg_rejects_missing_entities_when_enabled(app_config_valid
     cfg["app_config"]["validation"]["validate_entity_existence"] = True
 
     class DummyHass:
+        def render_template(self, template):
+            return "Office" if '"office"' in template else "Kitchen"
+
         def get_state(self, *_args, **_kwargs):
             return None
 
