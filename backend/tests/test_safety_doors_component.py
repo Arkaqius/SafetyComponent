@@ -4,11 +4,18 @@ import json
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
+import pytest
+
 from components.core.event_bus import EventBus
 from components.core.mqtt_entity_manager import MqttEntityManager
 from components.core.types_common import FaultState, SMState
 from components.safetycomponents.safety_doors.safety_doors_component import (
     SafetyDoorsComponent,
+)
+from components.safetycomponents.safety_doors.schema import (
+    SafetyDoorCondition,
+    SafetyDoorConfig,
+    validate_safety_doors_config,
 )
 
 
@@ -288,3 +295,214 @@ def test_unsupported_condition_state_does_not_start_new_fault() -> None:
     assert _published_attributes(hass_app)[-1]["condition_state"] == "guest"
     hass_app.run_in.assert_not_called()
     assert events == []
+
+
+def test_rejects_unknown_duplicate_and_incomplete_mechanisms() -> None:
+    now = datetime(2026, 7, 29, 12, 0, tzinfo=timezone.utc)
+    component, hass_app, _events = _build_component(
+        {"state": "closed", "last_changed": now.isoformat()},
+        now=now,
+    )
+    existing_name = "SafetyDoorOpenTimeoutGarageGate"
+
+    assert component.init_safety_mechanism("unknown", "Unknown", {}) is False
+    assert (
+        component.init_safety_mechanism(
+            "sm_safety_door_open_timeout", existing_name, {}
+        )
+        is False
+    )
+    assert (
+        component.init_safety_mechanism(
+            "sm_safety_door_open_timeout", "IncompleteDoor", {}
+        )
+        is False
+    )
+    assert hass_app.log.call_count >= 3
+
+
+def test_enable_rejects_unknown_name_and_invalid_state() -> None:
+    now = datetime(2026, 7, 29, 12, 0, tzinfo=timezone.utc)
+    component, _hass_app, _events = _build_component(
+        {"state": "closed", "last_changed": now.isoformat()},
+        now=now,
+    )
+    name = "SafetyDoorOpenTimeoutGarageGate"
+
+    assert component.enable_safety_mechanism("missing", SMState.ENABLED) is False
+    assert component.enable_safety_mechanism(name, "invalid") is False  # type: ignore[arg-type]
+
+
+def test_disabled_mechanism_does_not_evaluate_and_cancels_timer() -> None:
+    now = datetime(2026, 7, 29, 12, 0, tzinfo=timezone.utc)
+    component, hass_app, events = _build_component(
+        {"state": "open", "last_changed": now.isoformat()},
+        now=now,
+    )
+    name = "SafetyDoorOpenTimeoutGarageGate"
+    mechanism = component.safety_mechanisms[name]
+    component._door_runtime[name].timer_handle = "pending-timer"
+
+    assert component.enable_safety_mechanism(name, SMState.DISABLED) is True
+    assert component.sm_safety_door_open_timeout(mechanism) is False
+    hass_app.cancel_timer.assert_called_once_with("pending-timer")
+    assert events == []
+
+
+def test_timeout_callback_ignores_removed_mechanism_and_rechecks_known_one() -> None:
+    now = datetime(2026, 7, 29, 12, 0, tzinfo=timezone.utc)
+    component, _hass_app, _events = _build_component(
+        {
+            "state": "open",
+            "last_changed": (now - timedelta(seconds=61)).isoformat(),
+        },
+        now=now,
+    )
+    name = "SafetyDoorOpenTimeoutGarageGate"
+
+    component._timeout_reached(sm_name="missing")
+    component._door_runtime[name].timer_handle = "elapsed-timer"
+    component._timeout_reached(sm_name=name)
+
+    assert component._door_runtime[name].timer_handle is None
+    assert component.symptom_states[name] == FaultState.SET
+
+
+def test_timer_cancellation_failure_is_logged_and_runtime_is_cleared() -> None:
+    now = datetime(2026, 7, 29, 12, 0, tzinfo=timezone.utc)
+    component, hass_app, _events = _build_component(
+        {"state": "closed", "last_changed": now.isoformat()},
+        now=now,
+    )
+    name = "SafetyDoorOpenTimeoutGarageGate"
+    component._door_runtime[name].timer_handle = "bad-timer"
+    hass_app.cancel_timer.side_effect = RuntimeError("scheduler unavailable")
+
+    component._cancel_timer(name)
+
+    assert component._door_runtime[name].timer_handle is None
+    hass_app.log.assert_called_with(
+        f"Unable to cancel Safety Doors timer {name}: scheduler unavailable",
+        level="WARNING",
+    )
+
+
+def test_duplicate_symptom_state_is_not_published_twice() -> None:
+    now = datetime(2026, 7, 29, 12, 0, tzinfo=timezone.utc)
+    component, _hass_app, events = _build_component(
+        {"state": "closed", "last_changed": now.isoformat()},
+        now=now,
+    )
+    mechanism = component.safety_mechanisms["SafetyDoorOpenTimeoutGarageGate"]
+
+    component.sm_safety_door_open_timeout(mechanism)
+    component.sm_safety_door_open_timeout(mechanism)
+
+    assert len(events) == 1
+
+
+def test_condition_read_exception_and_scalar_door_state_are_safe() -> None:
+    now = datetime(2026, 7, 29, 12, 0, tzinfo=timezone.utc)
+    component, hass_app, _events = _build_component(
+        {"state": "closed", "last_changed": now.isoformat()},
+        now=now,
+        condition=_condition(),
+        condition_state={"state": "empty", "last_changed": now.isoformat()},
+    )
+    mechanism = component.safety_mechanisms["SafetyDoorOpenTimeoutGarageGate"]
+    hass_app.get_state.side_effect = RuntimeError("HA unavailable")
+
+    assert component._read_condition_state(mechanism) == (
+        "unavailable",
+        "unavailable",
+        None,
+    )
+
+    hass_app.get_state.side_effect = None
+    hass_app.get_state.return_value = "ajar"
+    assert component._read_door_state("binary_sensor.garage_gate") == (
+        "unavailable",
+        None,
+    )
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (None, None),
+        ("not-a-date", None),
+        (
+            "2026-07-29T12:00:00",
+            datetime(2026, 7, 29, 12, 0, tzinfo=timezone.utc),
+        ),
+    ],
+)
+def test_parse_datetime_handles_invalid_and_naive_values(value, expected) -> None:
+    assert SafetyDoorsComponent._parse_datetime(value) == expected
+
+
+@pytest.mark.parametrize(
+    "condition",
+    [
+        "invalid",
+        {"entity_id": 123, "pass_states": ["empty"], "blocked_states": ["occupied"]},
+        {"entity_id": "sensor.mode", "pass_states": "empty", "blocked_states": ["occupied"]},
+        {"entity_id": "", "pass_states": ["empty"], "blocked_states": ["occupied"]},
+        {"entity_id": "sensor.mode", "pass_states": [""], "blocked_states": ["occupied"]},
+        {"entity_id": "sensor.mode", "pass_states": ["empty"], "blocked_states": ["empty"]},
+    ],
+)
+def test_normalize_condition_rejects_invalid_runtime_data(condition) -> None:
+    with pytest.raises((KeyError, ValueError)):
+        SafetyDoorsComponent._normalize_condition(condition)
+
+
+@pytest.mark.parametrize(
+    "condition",
+    [
+        {"entity_id": "sensor.mode", "pass_states": [""], "blocked_states": ["occupied"]},
+        {"entity_id": "sensor.mode", "pass_states": ["empty", "EMPTY"], "blocked_states": ["occupied"]},
+        {"entity_id": "sensor.mode", "pass_states": ["empty"], "blocked_states": ["EMPTY"]},
+    ],
+)
+def test_condition_schema_rejects_empty_duplicate_and_overlapping_states(
+    condition,
+) -> None:
+    with pytest.raises(ValueError):
+        SafetyDoorCondition.model_validate(condition)
+
+
+def test_door_schema_rejects_empty_area_id() -> None:
+    with pytest.raises(ValueError, match="area_id"):
+        SafetyDoorConfig.model_validate(
+            {"area_id": " ", "entity_id": "binary_sensor.garage_gate"}
+        )
+
+
+def test_nonstrict_schema_logs_nested_extra_keys() -> None:
+    log = MagicMock()
+
+    runtime = validate_safety_doors_config(
+        {
+            "defaults": {"timeout_seconds": 120, "future_default": True},
+            "doors": {
+                "GarageGate": {
+                    "area_id": "garage",
+                    "entity_id": "binary_sensor.garage_gate",
+                    "future_door": True,
+                    "condition": {
+                        "entity_id": "sensor.home_monitor_occupancy",
+                        "pass_states": ["empty"],
+                        "blocked_states": ["occupied"],
+                        "future_condition": True,
+                    },
+                }
+            },
+            "future_component": True,
+        },
+        strict_validation=False,
+        log=log,
+    )
+
+    assert runtime[0]["GarageGate"]["timeout_seconds"] == 120
+    assert log.call_count >= 4

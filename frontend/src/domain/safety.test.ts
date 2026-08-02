@@ -9,6 +9,7 @@ import {
   getSafetySummary,
   normalizeState,
   recoveryNeedsAttention,
+  systemStatePresentation,
   type EntityMap,
 } from './safety.js';
 
@@ -152,11 +153,19 @@ test('discovers monitored temperature from SafetyComponent derivative pair', () 
     'sensor.office_climatesensor_temperature_rate': entity('-0.015', {
       unit_of_measurement: '°C/min',
       attribution: 'Data provided by SafetyFunction',
-      low_temperature_threshold: 18,
-      high_temperature_threshold: 28,
     }),
     'sensor.office_climatesensor_temperature_rateofrate': entity('0.001', {
       unit_of_measurement: '°C/min²',
+    }),
+    'sensor.office_climatesensor_temperature_low_threshold': entity('18', {
+      source_entity: 'sensor.office_climatesensor_temperature',
+      threshold_type: 'low',
+      unit_of_measurement: '°C',
+    }),
+    'sensor.office_climatesensor_temperature_high_threshold': entity('28', {
+      source_entity: 'sensor.office_climatesensor_temperature',
+      threshold_type: 'high',
+      unit_of_measurement: '°C',
     }),
   };
 
@@ -243,6 +252,7 @@ test('maps semantic system states while retaining numeric compatibility', () => 
 
   assert.equal(semanticSummary.effectiveLevel, 2);
   assert.equal(legacySummary.effectiveLevel, 2);
+  assert.equal(systemStatePresentation('no_faults').label, 'Brak aktywnych usterek');
 });
 
 test('never reports a missing system entity as safe', () => {

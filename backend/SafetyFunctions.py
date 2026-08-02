@@ -54,12 +54,11 @@ from components.faults_manager.fault_manager import FaultManager
 from components.notification_manager.notification_manager import NotificationManager
 from components.recovery_manager.recovery_manager import RecoveryManager
 from components.safetycomponents.core.safety_component import (
-    SafetyComponent,
     get_registered_components,
 )
-import components.safetycomponents.temperature.temperature_component  # side-effect registration
-import components.safetycomponents.safety_doors.safety_doors_component  # side-effect registration
-from components.core.types_common import Fault, Symptom, RecoveryAction
+import components.safetycomponents.temperature.temperature_component  # noqa: F401 - component registration
+import components.safetycomponents.safety_doors.safety_doors_component  # noqa: F401 - component registration
+from components.core.types_common import Symptom, RecoveryAction
 
 DEBUG = False
 
@@ -101,25 +100,25 @@ class SafetyFunctions(hass.Hass):
         if DEBUG:
             RemotePdb("172.30.33.4", 5050).set_trace()
 
-        # 10.1. Internal storage for safety components
+        # Prepare shared runtime state and event infrastructure.
         self.sm_modules: dict = {}
         self.symptoms: dict[str, Symptom] = {}
         self.recovery_actions: dict[str, RecoveryAction] = {}
         self.derivative_monitor = DerivativeMonitor(self, self.mqtt_entities)
         self.event_bus = EventBus()
 
-        # 10.2. Get configuration data
+        # Extract the validated configuration sections used at runtime.
         self.fault_dict: dict = self.args["app_config"]["faults"]
         self.safety_components_cfg: dict = self.args["user_config"]["safety_components"]
         self.notification_cfg: dict = self.args["user_config"]["notification"]
         self.common_entities_cfg: dict = self.args["user_config"]["common_entities"]
 
-        # 20. Initialize common entities
+        # Create access to installation-wide Home Assistant entities.
         self.common_entities: CommonEntities = CommonEntities(
             self, self.common_entities_cfg
         )
 
-        # 30. Initialize components and collect symptoms/recovery actions
+        # Instantiate configured components and collect their runtime contracts.
         for component_name, component_cls in get_registered_components().items():
             if component_name in self.safety_components_cfg:
                 component_instance = component_cls(
@@ -138,10 +137,10 @@ class SafetyFunctions(hass.Hass):
                 self.symptoms.update(symptoms_data)
                 self.recovery_actions.update(recovery_data)
 
-        # 40. Get faults data
+        # Build fault models from the validated fault configuration.
         self.faults = cfg_pr.get_faults(self.fault_dict)
 
-        # 50. Initialize fault manager
+        # Create the fault aggregation and lifecycle manager.
         self.fm: FaultManager = FaultManager(
             self,
             self.sm_modules,
@@ -151,12 +150,12 @@ class SafetyFunctions(hass.Hass):
             self.mqtt_entities,
         )
 
-        # 60. Initialize notification manager
+        # Create the localized user-notification manager.
         self.notify_man: NotificationManager = NotificationManager(
             self, self.notification_cfg, localizer=self.localizer
         )
 
-        # 70. Initialize recovery manager
+        # Create the recovery orchestration manager.
         self.reco_man: RecoveryManager = RecoveryManager(
             self,
             self.fm,
@@ -166,7 +165,7 @@ class SafetyFunctions(hass.Hass):
             self.mqtt_entities,
         )
 
-        # 80. Register callbacks for faults
+        # Wire symptom and fault events in deterministic priority order.
         self.event_bus.subscribe(
             "symptom", self.fm.handle_symptom_event, priority=0
         )
@@ -177,18 +176,16 @@ class SafetyFunctions(hass.Hass):
             "fault", self.reco_man.handle_fault_event, priority=1
         )
 
-        # 90. Event-driven flow means components publish to the bus instead.
-
-        # 100. Register entities for faults
+        # Publish system and fault entities before mechanisms begin evaluation.
         self.register_entities()
 
-        # 110. Initialize safety mechanisms
+        # Initialize state listeners and timers for every safety mechanism.
         self.fm.init_safety_mechanisms()
 
-        # 120. Enable all symptoms
+        # Enable configured symptoms after all managers and listeners exist.
         self.fm.enable_all_symptoms()
 
-        # 130 Emit config and set state to running
+        # Announce successful startup and begin MQTT heartbeat reporting.
         self._set_internal_entity("sensor.safety_app_health", "running")
         self._start_mqtt_reporting()
         self.log("Safety app started successfully", level="DEBUG")
@@ -304,7 +301,7 @@ class SafetyFunctions(hass.Hass):
         self.mqtt_entities.register_sensor(
             "sensor.safetysystem_state",
             "System State",
-            state="working",
+            state="no_faults",
             attributes={
                 "attribution": "Managed by SafetyFunction",
                 "description": "Overall safety system state based on fault conditions.",

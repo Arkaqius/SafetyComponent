@@ -1,4 +1,4 @@
-from unittest.mock import Mock, patch, ANY
+from unittest.mock import ANY, Mock
 import pytest
 from components.core.event_bus import EventBus
 from components.core.mqtt_entity_manager import MqttEntityManager
@@ -94,12 +94,12 @@ def test_system_state_uses_readable_code_for_most_severe_fault(fault_manager):
     )
 
 
-def test_system_state_is_working_without_active_faults(fault_manager):
+def test_system_state_reports_no_faults_without_active_faults(fault_manager):
     fault_manager.update_system_state_entity()
 
     fault_manager.mqtt_entities.publish_sensor_state.assert_called_with(
         "sensor.safetysystem_state",
-        "working",
+        "no_faults",
         attributes={"fault_count": 0, "highest_fault_level": 0},
     )
 

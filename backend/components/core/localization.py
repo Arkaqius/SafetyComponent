@@ -1,4 +1,9 @@
-"""Localized user-facing text for SafetyFunctions entities and notifications."""
+"""Localize presentation metadata while preserving stable runtime contracts.
+
+Internal entity IDs, MQTT states, fault names, and event payload codes stay in
+English. Only user-facing entity names, ``state_label`` attributes, recovery
+guidance, and notification text are translated.
+"""
 
 from __future__ import annotations
 
@@ -14,11 +19,13 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "entity.safety_app_health": "Safety app health",
         "entity.safety_system_state": "Safety system state",
         "entity.recovery_window": "Window recovery: {location}",
+        "entity.temperature_low_threshold": "Low temperature limit: {location}",
+        "entity.temperature_high_threshold": "High temperature limit: {location}",
         "state.health.init": "Starting",
         "state.health.running": "Running",
         "state.health.invalid_cfg": "Invalid configuration",
         "state.health.stopped": "Stopped",
-        "state.system.working": "Working",
+        "state.system.no_faults": "No active faults",
         "state.system.emergency": "Emergency",
         "state.system.hazard": "Hazard",
         "state.system.warning": "Warning",
@@ -44,11 +51,13 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "entity.safety_app_health": "Stan aplikacji bezpieczeństwa",
         "entity.safety_system_state": "Stan systemu bezpieczeństwa",
         "entity.recovery_window": "Działanie naprawcze: okna — {location}",
+        "entity.temperature_low_threshold": "Dolny próg temperatury — {location}",
+        "entity.temperature_high_threshold": "Górny próg temperatury — {location}",
         "state.health.init": "Uruchamianie",
         "state.health.running": "Działa",
         "state.health.invalid_cfg": "Błędna konfiguracja",
         "state.health.stopped": "Zatrzymana",
-        "state.system.working": "Działa prawidłowo",
+        "state.system.no_faults": "Brak aktywnych usterek",
         "state.system.emergency": "Alarm krytyczny",
         "state.system.hazard": "Zagrożenie",
         "state.system.warning": "Ostrzeżenie",
@@ -69,6 +78,38 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "detail.location": "Lokalizacja",
         "recovery.close_windows": "Zamknij okna w lokalizacji: {location}.",
         "recovery.open_windows": "Otwórz okna w lokalizacji: {location}.",
+    },
+    "de": {
+        "entity.safety_app_health": "Status der Sicherheitsanwendung",
+        "entity.safety_system_state": "Status des Sicherheitssystems",
+        "entity.recovery_window": "Fenstermaßnahme – {location}",
+        "entity.temperature_low_threshold": "Untere Temperaturgrenze – {location}",
+        "entity.temperature_high_threshold": "Obere Temperaturgrenze – {location}",
+        "state.health.init": "Wird gestartet",
+        "state.health.running": "Läuft",
+        "state.health.invalid_cfg": "Ungültige Konfiguration",
+        "state.health.stopped": "Angehalten",
+        "state.system.no_faults": "Keine aktiven Fehler",
+        "state.system.emergency": "Kritischer Alarm",
+        "state.system.hazard": "Gefahr",
+        "state.system.warning": "Warnung",
+        "state.system.information": "Information",
+        "state.system.stopped": "Angehalten",
+        "state.fault.set": "Aktiv",
+        "state.fault.shadowed": "Überlagert",
+        "state.fault.cleared": "Behoben",
+        "state.fault.not_tested": "Nicht getestet",
+        "state.recovery.to_perform": "Maßnahme erforderlich",
+        "state.recovery.do_not_perform": "Keine Maßnahme erforderlich",
+        "notification.title.1": "Sofortiges Handeln erforderlich",
+        "notification.title.2": "Sicherheitsproblem erkannt",
+        "notification.title.3": "Bitte prüfen Sie Ihr Zuhause",
+        "notification.active": "{fault} erfordert Ihre Aufmerksamkeit.",
+        "notification.cleared": "Gute Nachricht – {fault} ist nicht mehr aktiv.",
+        "notification.guidance": "Das können Sie tun:",
+        "detail.location": "Ort",
+        "recovery.close_windows": "Bitte schließen Sie die Fenster in {location}.",
+        "recovery.open_windows": "Bitte öffnen Sie die Fenster in {location}.",
     },
 }
 

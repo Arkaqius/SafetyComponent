@@ -157,11 +157,19 @@ for (const [entityId, friendlyName, value, rate, acceleration, lowThreshold, hig
   MOCK_ENTITIES[`${entityId}_rate`] = entity(String(rate), `${friendlyName} rate`, {
     attribution: 'Data provided by SafetyFunction',
     unit_of_measurement: '°C/min',
-    low_temperature_threshold: lowThreshold,
-    high_temperature_threshold: highThreshold,
   });
   MOCK_ENTITIES[`${entityId}_rateofrate`] = entity(String(acceleration), `${friendlyName} rate of rate`, {
     attribution: 'Data provided by SafetyFunction',
     unit_of_measurement: '°C/min²',
+  });
+  MOCK_ENTITIES[`${entityId}_low_threshold`] = entity(String(lowThreshold), `${friendlyName} low threshold`, {
+    source_entity: entityId,
+    threshold_type: 'low',
+    unit_of_measurement: '°C',
+  });
+  MOCK_ENTITIES[`${entityId}_high_threshold`] = entity(String(highThreshold), `${friendlyName} high threshold`, {
+    source_entity: entityId,
+    threshold_type: 'high',
+    unit_of_measurement: '°C',
   });
 }

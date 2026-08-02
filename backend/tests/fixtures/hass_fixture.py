@@ -7,7 +7,6 @@ import pytest
 
 from SafetyFunctions import SafetyFunctions
 from components.core.mqtt_entity_manager import MqttEntityManager
-from components.safetycomponents.temperature.temperature_component import TemperatureComponent
 
 
 @pytest.fixture
@@ -182,4 +181,8 @@ def mqtt_payloads(hass_app: Any, topic: str) -> list[str]:
 
 def mqtt_json_payloads(hass_app: Any, topic: str) -> list[dict[str, Any]]:
     """Return JSON MQTT payloads published to a topic."""
-    return [json.loads(payload) for payload in mqtt_payloads(hass_app, topic)]
+    return [
+        json.loads(payload)
+        for payload in mqtt_payloads(hass_app, topic)
+        if payload
+    ]

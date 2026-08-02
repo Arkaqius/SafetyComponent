@@ -35,8 +35,8 @@ export default function Temperature() {
           <span className='section-kicker'>Temperature Component</span>
           <h2>Odczyty monitorowane przez system</h2>
           <p>
-            Lista i progi bezpieczeństwa pochodzą z encji <code>_rate</code> publikowanych przez SafetyComponent. Linie na wykresach
-            pokazują dokładne dolne i górne progi skonfigurowane dla pomieszczeń.
+            Lista pochodzi z encji trendu <code>_rate</code>, a wartości graniczne z osobnych encji <code>_low_threshold</code> i{' '}
+            <code>_high_threshold</code> publikowanych przez SafetyComponent.
           </p>
         </div>
         <div className='page-introduction-stat'>

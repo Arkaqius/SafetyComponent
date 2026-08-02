@@ -93,9 +93,6 @@ class DerivativeMonitor:
         sample_time: int,
         low_saturation: float,
         high_saturation: float,
-        *,
-        low_temperature_threshold: float | None = None,
-        high_temperature_threshold: float | None = None,
     ) -> None:
         """
         Registers an entity to monitor with specified sampling time and saturation limits,
@@ -106,10 +103,6 @@ class DerivativeMonitor:
             sample_time (int): Sampling time in seconds for fetching and calculating derivatives.
             low_saturation (float): Lower saturation limit for derivative values.
             high_saturation (float): Upper saturation limit for derivative values.
-            low_temperature_threshold (float | None): Configured lower safety
-                threshold for the source temperature entity.
-            high_temperature_threshold (float | None): Configured upper safety
-                threshold for the source temperature entity.
         """
         self.hass_app.log(
             f"Registering entity {entity_id} for derivative monitoring.", level="DEBUG"
@@ -122,8 +115,6 @@ class DerivativeMonitor:
             "first_derivative": None,
             "second_derivative": None,
             "last_sample_time": None,
-            "low_temperature_threshold": low_temperature_threshold,
-            "high_temperature_threshold": high_temperature_threshold,
             "first_derivative_history": collections.deque(
                 maxlen=self.filter_window_size
             ),
@@ -133,14 +124,6 @@ class DerivativeMonitor:
         }
         self.entities[entity_id]["first_derivative_history"].append(0.00)
         self.entities[entity_id]["second_derivative_history"].append(0.00)
-        threshold_attributes = {
-            key: value
-            for key, value in {
-                "low_temperature_threshold": low_temperature_threshold,
-                "high_temperature_threshold": high_temperature_threshold,
-            }.items()
-            if value is not None
-        }
         self._register_derivative_entity(
             f"{entity_id}_rate",
             f"{entity_id} Rate",
@@ -150,7 +133,6 @@ class DerivativeMonitor:
                 "unit_of_measurement": "°C/min",
                 "attribution": "Data provided by SafetyFunction",
                 "icon": "mdi:chart-timeline-variant",
-                **threshold_attributes,
             },
         )
         self._register_derivative_entity(
@@ -162,7 +144,6 @@ class DerivativeMonitor:
                 "unit_of_measurement": "°C/min²",
                 "attribution": "Data provided by SafetyFunction",
                 "icon": "mdi:chart-timeline-variant",
-                **threshold_attributes,
             },
         )
         self.hass_app.log(

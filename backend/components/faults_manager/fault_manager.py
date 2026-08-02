@@ -34,7 +34,7 @@ from components.core.mqtt_entity_manager import MqttEntityManager
 
 
 SYSTEM_STATE_BY_FAULT_LEVEL = {
-    0: "working",
+    0: "no_faults",
     1: "emergency",
     2: "hazard",
     3: "warning",

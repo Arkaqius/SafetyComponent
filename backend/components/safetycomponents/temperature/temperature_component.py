@@ -96,11 +96,46 @@ class TemperatureComponent(SafetyComponent):
                 self.hass_app.log(
                     f"Processing symptoms for location: {location}, data: {data}"
                 )
+                self._register_temperature_threshold_entities(location, data)
                 self._process_symptoms_for_location(
                     sm_modules, location, data, ret_val_pr, ret_val_ra
                 )
 
         return (ret_val_pr, ret_val_ra)
+
+    def _register_temperature_threshold_entities(
+        self, location: str, data: dict[str, Any]
+    ) -> None:
+        """Expose configured room limits as dedicated diagnostic sensors."""
+        source_entity = str(data["temperature_sensor"])
+        display_location = str(data.get("area_name", location))
+        localizer = getattr(self.hass_app, "localizer", Localizer())
+        common_attributes = {
+            "source_entity": source_entity,
+            "area_id": str(data["area_id"]),
+            "area_name": display_location,
+            "attribution": "Managed by SafetyFunction",
+        }
+        for threshold_type, config_key in (
+            ("low", "CAL_LOW_TEMP_THRESHOLD"),
+            ("high", "CAL_HIGH_TEMP_THRESHOLD"),
+        ):
+            self.mqtt_entities.register_sensor(
+                f"{source_entity}_{threshold_type}_threshold",
+                localizer.text(
+                    f"entity.temperature_{threshold_type}_threshold",
+                    location=display_location,
+                ),
+                state=data[config_key],
+                attributes={
+                    **common_attributes,
+                    "threshold_type": threshold_type,
+                },
+                icon="mdi:thermometer-alert",
+                unit_of_measurement="°C",
+                state_class="measurement",
+                entity_category="diagnostic",
+            )
 
     def init_safety_mechanism(self, sm_name: str, name: str, parameters: dict) -> bool:
         """
@@ -641,12 +676,6 @@ class TemperatureComponent(SafetyComponent):
                     sampling_minutes * 60,
                     -2,
                     2,
-                    low_temperature_threshold=extracted_params.get(
-                        "CAL_LOW_TEMP_THRESHOLD"
-                    ),
-                    high_temperature_threshold=extracted_params.get(
-                        "CAL_HIGH_TEMP_THRESHOLD"
-                    ),
                 )
 
         return True

@@ -1,245 +1,211 @@
-Got it 👍 I’ll merge both documents into **one unified SSRD**, keeping the ASPICE/ISO style, eliminating redundancy, and making sections consistent. I’ll preserve all details: purpose, scope, context, requirements, architecture, design, testing, backlog, and traceability. Here’s the combined draft:
-
----
-
-# ASPICE SSRD — SafetyFunctions Application (v0.2.0, Consolidated)
-
-## 1. Introduction
-
-### 1.1 Purpose
-
-This Software Safety Requirements Document (SSRD) captures the current state of the **Home Automation SafetyFunctions** application. It consolidates requirements, architecture, and detailed design into a single ASPICE-aligned document. It ensures that the system concept from the SYS and HARA work products can be implemented, verified, and evolved in alignment with ASPICE SYS.2/SWE.1 expectations.
-
-### 1.2 Scope
-
-- **Item**: Home Automation Safety Monitoring & Recovery App (AppDaemon-based).
-- **Includes**: Safety runtime (SafetyFunctions), shared SafetyComponent framework, TemperatureComponent MVP, supporting managers (Fault, Notification, Recovery, DerivativeMonitor), configuration handling, and test harness.
-- **Excludes**: Frontend UI, non-safety automations, hardware certification, hazard analysis (covered in HARA), and deployment tooling.
-
-### 1.3 Intended Audience
-
-- Software architects & developers adding safety components or extending platform.
-- V\&V engineers planning unit, integration, and end-to-end drills.
-- Safety managers tracking ASPICE coverage against SYS/HARA.
-
-### 1.4 References
-
-- `docs/sys/SafetyConcept - HARA.md`
-- `docs/sys/SafetyConcept - SYS.md`
-- Backend source (`backend/`)
-- `backend/app_cfg.yaml` (YAML config)
-- SafetyFunctions orchestration & component code (`SafetyFunctions.py`, `safety_component.py`, `temperature_component.py`, `fault_manager.py`, `notification_manager.py`, `recovery_manager.py`, `derivative_monitor.py`)
-- Current pytest suites (`backend/tests/`)
-
-### 1.5 Definitions & Abbreviations
-
-- **SM** — Safety Mechanism
-- **FM** — Fault Manager
-- **NM** — Notification Manager
-- **RM** — Recovery Manager
-- **HA** — Home Assistant
-- **MVP** — Minimum Viable Product
-- **FTTI** — Fault Tolerant Time Interval
-
----
-
-## 2. System Context & Overview
-
-### 2.1 Operating Context
-
-- Runtime: AppDaemon inside Home Assistant.
-- Inputs: HA sensor entities (temperature, rate), derivative monitor outputs, configuration YAML.
-- Outputs: HA state entities, notifications, actuator commands, recovery prompts.
-- Dependencies: HA event loop, scheduler, notify services.
-
-### 2.2 Responsibilities
-
-1. Load configuration and instantiate safety components.
-2. Monitor hazards via SMs with debouncing.
-3. Aggregate prefaults into faults and manage lifecycle.
-4. Notify users or automation targets at graded urgency.
-5. Execute/suggest recovery actions.
-6. Provide health/state telemetry to HA entities.
-
----
-
-## 3. Requirements
-
-### 3.1 Functional Requirements (Implemented)
-
-| ID     | Requirement                                       | Status / Implementation                  |
-| ------ | ------------------------------------------------- | ---------------------------------------- |
-| FR-001 | Load component/fault configuration from YAML.     | ✅ (`SafetyFunctions.initialize`)        |
-| FR-002 | Register HA health/fault entities.                | ✅ (`register_entities`)                 |
-| FR-003 | Detect sustained under-temperature (threshold).   | ✅ (`sm_tc_1`)                           |
-| FR-004 | Forecast under-temperature using derivative data. | ✅ (`sm_tc_2`)                           |
-| FR-005 | Aggregate temperature prefaults into faults.      | ✅ (FM + TC symptom definitions)         |
-| FR-006 | Orchestrate recovery suggestions/actions.         | ⚠️ Partial (windows, notifications only) |
-| FR-007 | Send notifications with tagging/persistence.      | ✅ (NM)                                  |
-| FR-008 | Track active faults & expose highest severity.    | ✅ (`FM.update_system_state_entity`)     |
-| FR-009 | Enable/disable SMs programmatically.              | ✅ (FM)                                  |
-
-| FR-017 | Monitor configured safety doors and assert an MQTT/fault state after a continuous open timeout, subject to an optional configured state condition. | Implemented (`SafetyDoorsComponent`, SYS-SR-SEC-001/002). |
-
-### 3.2 Functional Requirements (Backlog / Gaps)
-
-| ID     | Requirement                                                   | Gap                     |
-| ------ | ------------------------------------------------------------- | ----------------------- |
-| FR-010 | Support all hazard domains (fire, gas, water, privacy, etc.). | ❌ Only TC implemented. |
-| FR-011 | Over-temperature detection + HVAC actuation.                  | ❌ Not yet in TC.       |
-| FR-012 | System modes (Normal, Sleep, Local-Only, Maintenance).        | ❌ Not implemented.     |
-| FR-013 | Self-diagnostics, heartbeat, watchdog statuses.               | ❌ Missing.             |
-| FR-014 | Record evidence logs per SYS §8.2.5.                          | ❌ Not implemented.     |
-| FR-015 | Timeout handling for async SM execution.                      | ❌ Not implemented.     |
-| FR-016 | Safe-state fallback (e.g., local-only).                       | ❌ Not implemented.     |
-
-### 3.3 Non-Functional Requirements
-
-| ID      | Requirement                              | Status                            |
-| ------- | ---------------------------------------- | --------------------------------- |
-| NFR-001 | Config-driven behaviour (no code edits). | ⚠️ Partial (hard-coded registry). |
-| NFR-002 | Modular architecture.                    | ⚠️ Partial; cross-coupled.        |
-| NFR-003 | Testability with pytest & mocks.         | ⚠️ Partial; heavy mocking.        |
-| NFR-004 | Central logging.                         | ⚠️ Basic only.                    |
-| NFR-005 | Deterministic tests (no scheduler deps). | ❌ Not met.                       |
-| NFR-006 | Resilience against config errors.        | ⚠️ Partial.                       |
-
----
-
-## 4. Architecture
-
-### 4.1 Logical Components
-
-- **SafetyFunctions (AppDaemon app)**: Orchestrator; loads config; instantiates components; wires FM/NM/RM; publishes MQTT-discovered health and status entities.
-- **SafetyComponent (abstract base)**: Provides SM lifecycle, debouncing, FM integration, decorator for enable/disable & retries.
-- **TemperatureComponent (MVP)**: Implements under-temperature & forecast SMs.
-- **FaultManager**: Owns Symptom/Fault models, aggregates, manages lifecycle.
-- **NotificationManager**: Maps fault lifecycle to HA notify service.
-- **RecoveryManager**: Orchestrates recovery actions, resolves conflicts.
-- **DerivativeMonitor**: Singleton calculating derivatives, publishing `_rate` entities.
-- **MqttEntityManager**: Owns MQTT discovery, internal entity state publishing, JSON attributes, retained cleanup, availability, and heartbeat refresh.
-- **CommonEntities**: Accessor for shared HA entities.
-
-### 4.2 Data Flow Summary
-
-1. YAML config → SafetyFunctions → component factory.
-2. Components register SMs; decorator handles debounce + FM.
-3. HA triggers SM; SafetyComponent → FM.
-4. FM updates Fault state → NM + RM.
-5. RM invokes an allow-listed native HA service and waits for the configured postcondition; NM sends notifications.
-6. DerivativeMonitor runs periodically; publishes MQTT `_rate` sensor states consumed by TC forecast SM.
-
-Internal SafetyFunctions entities are exposed through MQTT discovery and are updated through MQTT state and JSON attributes topics, not through AppDaemon `set_state`.
-
-### 4.3 Deployment
-
-- Runs in HA/AppDaemon container.
-- Interfaces: MQTT discovery/state/attribute/availability publishing via `call_service("mqtt/publish")`; allow-listed actuator services through `call_service`; plus `listen_state`, `run_in`, and `run_every` for external HA inputs, recovery confirmation, and scheduling.
-- Debugging: `remote_pdb` when enabled.
-
----
-
-## 5. Detailed Design
-
-### 5.1 SafetyFunctions
-
-- Initialization: Load YAML, instantiate components, wire FM/NM/RM, expose entities.
-- Issues: Hard-coded component dict; no shutdown hooks; no mode management.
-
-### 5.2 SafetyComponent Base
-
-- Responsibilities: Debounce logic, FM integration, SM decorator.
-- Issues: Tight HA scheduler coupling; no timeout; hidden dependency on DerivativeMonitor.
-
-### 5.3 TemperatureComponent
-
-- SMs: `sm_tc_1` (threshold), `sm_tc_2` (forecast).
-- Concerns: Intermixed config parsing; no high-temperature support; silent skips on missing config.
-
-### 5.4 FaultManager
-
-- Aggregates faults; enables/disables SMs; updates system state.
-- Concerns: Accesses component internals; lacks persistence/evidence logging.
-
-### 5.5 NotificationManager
-
-- Formats & sends HA notifications.
-- Concerns: Level 3/4 not handled; embedded notification structure; unstructured logging.
-
-### 5.6 RecoveryManager
-
-- Executes/validates recovery actions.
-- Concerns: Coupled to HA listeners; lacks state machine clarity; needs hazard awareness.
-
-### 5.7 DerivativeMonitor
-
-- Singleton; calculates derivatives.
-- Concerns: Retains state across reloads; no reset; test issues; no error handling.
-
-### 5.8 Config Handling
-
-- Parsed in SafetyFunctions; passed raw to components.
-- Concerns: No schema validation; hard-coded component mapping.
-
-### 5.9 Logging & Diagnostics
-
-- Basic `log` calls; no structured fields; no self-test/watchdog.
-
-### 5.10 Modes & Safe States
-
-- SYS defines modes; none implemented.
-
----
-
-## 6. Testing
-
-### 6.1 Current Coverage
-
-- Pytest covers TC, FM, NM, RM with mocks.
-- Relies on heavy HA mocking.
-
-### 6.2 Testability Concerns
-
-- Real listener registration; singleton state leakage; scheduler coupling.
-
-### 6.3 Future Strategy
-
-- Introduce adapter interfaces for HA services.
-- Reset hooks for singletons.
-- Extend tests for config errors, recovery conflicts, notification clearing.
-
----
-
-## 7. Improvement Backlog
-
-1. Dynamic component registration (no hard-coding).
-2. Config schema & validation layer.
-3. Mode management state machine.
-4. Timeout & watchdog for SMs.
-5. Structured logging + evidence persistence.
-6. Extend hazards (over-temp, fire, gas, water, etc.).
-7. RecoveryManager refactor (conflict handling, hazard-aware).
-8. DerivativeMonitor lifecycle reset.
-9. Complete notification levels 3/4.
-10. Self-diagnostics & health metrics.
-
----
-
-## 8. Traceability
-
-- Hazard ↔ Requirement linkage maintained in SYS/HARA.
-- Current implementation covers **Cold Exposure hazard (HARA §1.1)**.
-- Trace matrix to be expanded as new hazard components are added.
-
----
-
-## 9. Document Control
-
-- **Owner**: Safety Architecture / Development Team.
-- **Version**: 0.2.0 (merged SSRD + SafetyComponent doc).
-- **Status**: Working draft; baseline for multi-hazard expansion.
-
----
-
-✅ This combined doc unifies both sources. It keeps SSRD structure (purpose → context → requirements → architecture → design → testing → backlog → traceability).
-Do you want me to also **insert a proper traceability matrix table** (Hazard → SYS Req → SW Req → Test Case) at the end, like in your SYS doc?
+# Software Safety Requirements Document — SafetyComponent
+
+**Document ID:** SAF-SWR-SSRD
+
+**Version:** 0.3.0
+
+**Status:** Working baseline aligned with implementation
+
+**Last updated:** 2026-08-02
+
+## 1. Purpose and scope
+
+This Software Safety Requirements Document (SSRD) defines the implemented
+software behaviour of the AppDaemon-based SafetyComponent. It refines the
+system requirements and hazards described in:
+
+- `SafetyConcept - HARA.md`;
+- `SafetyConcept - SYS.md`;
+- the deployed configuration in `backend/app_cfg.yaml`.
+
+The software in scope includes configuration validation, component lifecycle,
+temperature and safety-door monitoring, fault aggregation, notification and
+recovery handling, MQTT discovery/state publication, localization metadata,
+and backend verification. The web frontend consumes the published contract but
+does not implement safety decisions.
+
+## 2. Operating context
+
+SafetyComponent runs as the `SafetyFunctions` AppDaemon application connected
+to Home Assistant. It reads Home Assistant entities, schedules evaluations,
+publishes internal entities over MQTT discovery, calls explicitly allow-listed
+Home Assistant services for recoveries, and sends user notifications.
+
+The implementation assumes:
+
+- Home Assistant, AppDaemon, and the MQTT broker are available;
+- configured entity IDs and area IDs identify the intended installation
+  objects;
+- severity level `1` is the highest severity and level `4` the lowest;
+- raw entity IDs and runtime state codes form a stable machine contract;
+- translated names and labels are presentation metadata, not control inputs.
+
+## 3. Software architecture
+
+| Element | Responsibility |
+| --- | --- |
+| `SafetyFunctions` | Validate configuration, create managers/components, wire events, start and stop MQTT reporting. |
+| `AppCfgValidator` | Validate the complete Pydantic configuration model, component schemas, entity syntax/existence, and Home Assistant areas. |
+| `SafetyComponent` | Common safety-mechanism lifecycle, listeners, reevaluation, and debounce handling. |
+| `TemperatureComponent` | Direct and forecast low/high temperature evaluation and window recovery proposals. |
+| `SafetyDoorsComponent` | Per-door open-duration monitoring with optional state gating. |
+| `DerivativeMonitor` | Calculate and publish first- and second-order temperature derivatives. |
+| `FaultManager` | Aggregate symptoms, preserve multi-symptom fault context, and publish fault/system state. |
+| `NotificationManager` | Maintain one notification per fault and refresh its human-readable content. |
+| `RecoveryManager` | Determine, execute, and confirm supported recovery actions. |
+| `MqttEntityManager` | MQTT discovery, state, attributes, availability, retained cleanup, and heartbeat. |
+| `Localizer` | Translate presentation text while retaining stable internal codes. |
+
+Event ordering is deterministic: the FaultManager processes symptom events;
+for fault events, NotificationManager runs before RecoveryManager.
+
+## 4. Software safety requirements
+
+### 4.1 Configuration and initialization
+
+| ID | Requirement | Implemented by |
+| --- | --- | --- |
+| SWR-CFG-001 | The application shall validate the complete configuration before enabling any safety mechanism. | `AppCfgValidator.validate` |
+| SWR-CFG-002 | An enabled component shall have a registered implementation and a valid component-specific configuration. | component registry and schemas |
+| SWR-CFG-003 | Strict mode shall reject unknown configuration fields; compatibility mode shall retain them and log their paths. | `StrictBaseModel`, `log_extra_keys` |
+| SWR-CFG-004 | Entity IDs shall be syntax-checked and, when configured, checked for existence in Home Assistant. | `AppCfgValidator` |
+| SWR-CFG-005 | Every configured temperature room and safety door shall provide an `area_id`. | temperature and Safety Doors schemas |
+| SWR-CFG-006 | At startup the application shall resolve every configured `area_id` with Home Assistant `area_name(...)`; an unknown area shall invalidate the configuration. | `AppCfgValidator._resolve_area_names` |
+| SWR-CFG-007 | A validation failure shall publish health state `invalid_cfg`, include `configuration_error`, keep MQTT reporting available for diagnosis, and shall not enable safety mechanisms. | `SafetyFunctions.initialize` |
+| SWR-CFG-008 | Successful initialization shall publish health state `running` only after managers, event subscriptions, entities, and mechanisms are initialized and enabled. | `SafetyFunctions.initialize` |
+
+### 4.2 Temperature monitoring
+
+| ID | Requirement | Implemented by |
+| --- | --- | --- |
+| SWR-TEMP-001 | Each configured room shall evaluate direct low temperature (`sm_tc_1`), forecast low temperature (`sm_tc_2`), direct high temperature (`sm_tc_3`), and forecast high temperature (`sm_tc_4`). | `TemperatureComponent` |
+| SWR-TEMP-002 | Direct mechanisms shall compare the current numeric sensor value with the configured low or high threshold. | `sm_tc_1`, `sm_tc_3` |
+| SWR-TEMP-003 | Forecast mechanisms shall calculate a forecast from the current temperature, first derivative, and configured forecast timespan. | `sm_tc_2`, `sm_tc_4` |
+| SWR-TEMP-004 | Missing, non-numeric, `unknown`, or `unavailable` input shall not create a new temperature fault from invalid data. | `_get_temperature_value` and mechanism callbacks |
+| SWR-TEMP-005 | Mechanism results shall use configured debounce and reevaluation timing before fault lifecycle changes are emitted. | `SafetyComponent`, temperature calibration |
+| SWR-TEMP-006 | The DerivativeMonitor shall publish only derivative measurements (`_rate` in °C/min and `_rateofrate` in °C/min²); it shall not own temperature safety limits. | `DerivativeMonitor` |
+| SWR-TEMP-007 | Each room shall expose its low and high configured limits as separate diagnostic MQTT sensors named `<source>_low_threshold` and `<source>_high_threshold`. | `TemperatureComponent._register_temperature_threshold_entities` |
+| SWR-TEMP-008 | Threshold sensors shall identify the source entity, threshold type, `area_id`, and current Home Assistant area name. | threshold sensor attributes |
+| SWR-TEMP-009 | Low-temperature symptoms shall provide a window recovery proposal when a window sensor or supported cover actuator is configured. | `RiskyTemperature_recovery` |
+
+### 4.3 Safety Doors monitoring
+
+| ID | Requirement | Implemented by |
+| --- | --- | --- |
+| SWR-DOOR-001 | Every configured door or gate shall have an independent `timeout_seconds` value, inherited from component defaults only when no per-door override is supplied. | Safety Doors schema |
+| SWR-DOOR-002 | A continuously open door shall set its symptom only after its own configured timeout expires. | `sm_safety_door_open_timeout` |
+| SWR-DOOR-003 | Closing a door shall cancel its pending timer and clear its symptom. | Safety Doors runtime |
+| SWR-DOOR-004 | An unavailable or unsupported door state shall publish diagnostic state `unavailable` and shall not create a new open-timeout fault. | `_read_door_state` and evaluation flow |
+| SWR-DOOR-005 | A configured condition shall monitor its entity alongside the door; pass states enable timing and blocked states suspend timing and clear the symptom. | `SafetyDoorCondition`, Safety Doors runtime |
+| SWR-DOOR-006 | An unavailable or unsupported condition state shall suspend timing and shall not create a new fault. | `_read_condition_state` |
+| SWR-DOOR-007 | Each Safety Door MQTT entity shall publish door state, elapsed and remaining time, source entity, timeout, condition diagnostics, `area_id`, and resolved area name. | `_publish_door_state` |
+| SWR-DOOR-008 | The current installation calibration shall use 180 s for `GarageGate`, 180 s for `ExternalGate`, 120 s for `LivingRoomTerraceDoor`, and 900 s for `GarageDoor`. | `backend/app_cfg.yaml` |
+| SWR-DOOR-009 | `LivingRoomTerraceDoor` monitoring shall pass only while `sensor.home_monitor_occupancy` is `empty` and shall be blocked while it is `occupied`. | `backend/app_cfg.yaml` |
+
+### 4.4 Fault aggregation and system state
+
+| ID | Requirement | Implemented by |
+| --- | --- | --- |
+| SWR-FLT-001 | A fault shall aggregate all related active symptoms rather than replace the previous contribution from the same fault. | `FaultManager` merged symptom context |
+| SWR-FLT-002 | When one symptom clears but another related symptom remains set, the fault shall remain set and its notification context shall be refreshed. | `FaultManager._clear_fault` |
+| SWR-FLT-003 | The highest active severity shall be the minimum numeric active fault level. | `get_system_fault_level` |
+| SWR-FLT-004 | With no active faults, system state shall be `no_faults` and `highest_fault_level` shall be `0`. This state describes fault absence, not application health. | `SYSTEM_STATE_BY_FAULT_LEVEL` |
+| SWR-FLT-005 | With active faults, system state shall be `emergency`, `hazard`, `warning`, or `information` for levels 1 through 4 respectively. | `SYSTEM_STATE_BY_FAULT_LEVEL` |
+| SWR-FLT-006 | Application health shall be represented independently by `sensor.safety_app_health`. | `SafetyFunctions` |
+| SWR-FLT-007 | Fault entities shall publish stable raw lifecycle states `Set`, `Shadowed`, `Cleared`, and `Not_tested`. | `FaultManager` |
+
+### 4.5 Notifications and recovery
+
+| ID | Requirement | Implemented by |
+| --- | --- | --- |
+| SWR-NOT-001 | Notifications shall use the configured fault friendly name and resolved user-facing location. | `FaultManager`, `NotificationManager` |
+| SWR-NOT-002 | A fault shall use one stable notification tag throughout its lifecycle. | fault tag generation and `active_notification` |
+| SWR-NOT-003 | A repeated SET for an active fault shall update the current base message instead of creating a second notification. | `NotificationManager.active_notification` |
+| SWR-NOT-004 | Distinct recovery guidance accumulated for the same active fault shall be retained and shown once under a localized guidance heading. | `_recovery_messages` |
+| SWR-NOT-005 | Clearing a fault shall publish a friendly cleared message using the same tag. | `cleared_notification` |
+| SWR-REC-001 | Recovery commands shall be limited to explicitly supported Home Assistant entity domains and services. | `RecoveryManager._resolve_entity_action` |
+| SWR-REC-002 | A recovery action shall verify the requested postcondition and shall report failure or timeout instead of assuming success. | RecoveryManager confirmation flow |
+| SWR-REC-003 | Recovery entities shall expose stable raw states `TO_PERFORM` and `DO_NOT_PERFORM` plus localized `state_label`. | RecoveryManager and Localizer |
+
+### 4.6 Localization contract
+
+| ID | Requirement | Implemented by |
+| --- | --- | --- |
+| SWR-LOC-001 | English (`en`), Polish (`pl`), and German (`de`) shall be supported installation languages. | `LocalizationSettings`, `_TRANSLATIONS` |
+| SWR-LOC-002 | Entity IDs, MQTT topic identifiers, fault identifiers, event codes, and raw lifecycle states shall remain language-independent. | backend runtime contract |
+| SWR-LOC-003 | Localization shall apply to MQTT discovery names, `state_label`, notification text, recovery guidance, and dynamic threshold/recovery entity names. | Localizer consumers |
+| SWR-LOC-004 | Home Assistant area names shall be used as returned by Home Assistant and shall not be translated or reconstructed from internal configuration keys. | area resolution flow |
+| SWR-LOC-005 | Missing translation keys shall fall back to English and then to the key itself without changing safety logic. | `Localizer.text`, `state_label` |
+
+### 4.7 MQTT lifecycle and diagnostics
+
+| ID | Requirement | Implemented by |
+| --- | --- | --- |
+| SWR-MQTT-001 | Internal entities shall use MQTT discovery with stable unique IDs and default entity IDs. | `MqttEntityManager` |
+| SWR-MQTT-002 | Discovery payloads may be retained; transient state and attribute payloads shall not be retained. | MQTT settings and publisher |
+| SWR-MQTT-003 | Startup shall clear configured legacy discovery topics and stale retained state before publishing current state. | MQTT startup flow |
+| SWR-MQTT-004 | Availability shall be `offline` during initialization and `online` after successful startup or diagnostic invalid-configuration startup. | `SafetyFunctions` |
+| SWR-MQTT-005 | The heartbeat period shall remain shorter than `expire_after` so unchanged entities do not become unavailable. | `heartbeat_seconds`, `expire_after` |
+| SWR-MQTT-006 | Application termination shall publish health and system state `stopped` before publishing availability `offline`. | `SafetyFunctions.terminate` |
+
+## 5. Non-functional requirements
+
+| ID | Requirement |
+| --- | --- |
+| SWR-NFR-001 | Public modules, classes, and functions shall use type hints and purpose-oriented docstrings. |
+| SWR-NFR-002 | Safety decisions shall be deterministic for identical validated configuration, entity states, and timestamps. |
+| SWR-NFR-003 | Failure to read optional diagnostics shall not crash AppDaemon or set a false safety condition. |
+| SWR-NFR-004 | Exceptions that prevent configuration or runtime actions shall be logged with enough context to identify the component and entity. |
+| SWR-NFR-005 | Backend application line coverage (`backend/components` and `backend/SafetyFunctions.py`) shall remain at least 90%. Generated test stubs, tests, templates, and deployment utilities are excluded from this metric. |
+| SWR-NFR-006 | Every defect fix that changes a safety contract shall include an automated regression test. |
+| SWR-NFR-007 | Production deployment shall stop AppDaemon, preserve a rollback backup, replace the complete backend application directory, verify file hashes, restart AppDaemon, and verify live health/log/entity behaviour. |
+
+## 6. Verification strategy
+
+The required local verification commands are:
+
+```text
+pytest backend/tests
+pytest backend/tests --cov=backend --cov-report=term-missing
+npm run test --prefix frontend
+npm run typecheck --prefix frontend
+npm run lint --prefix frontend
+npm run build --prefix frontend
+```
+
+Coverage shall be interpreted over application code only. Including tests,
+AppDaemon stubs, templates, or `backend/deploy.py` in the denominator is not a
+valid measure of safety-logic verification.
+
+## 7. Requirements traceability
+
+| Requirement group | Primary tests |
+| --- | --- |
+| SWR-CFG-* | `test_app_cfg_validator.py`, `test_component_schema_validation.py` |
+| SWR-TEMP-* | `test_temperatureComponent.py`, `test_derivative_monitor.py`, `test_safetyFunctions.py` |
+| SWR-DOOR-* | `test_safety_doors_component.py`, `test_app_cfg_validator.py` |
+| SWR-FLT-* | `test_fault_manager.py`, `test_system_notification_recovery.py` |
+| SWR-NOT-* | `test_notify_man.py`, `test_system_notification_recovery.py` |
+| SWR-REC-* | `test_recovery_man.py` |
+| SWR-LOC-* | `test_localization.py`, `test_mqtt_entity_manager.py`, frontend domain tests |
+| SWR-MQTT-* | `test_mqtt_entity_manager.py`, `test_safetyFunctions.py` |
+| SWR-NFR-005 | pytest-cov application-code report |
+
+## 8. Known gaps and planned extensions
+
+- Fire, smoke, gas, water-leak, privacy, and additional access-control hazard
+  components are not implemented.
+- Evidence persistence beyond Home Assistant history/logging is not
+  implemented.
+- System operating modes such as Sleep, Local-only, and Maintenance are not
+  implemented.
+- Hardware and communication paths are not certified safety channels; this
+  software provides monitoring and response assistance within the Home
+  Assistant installation.
+
+## 9. Change control
+
+Changes to raw state codes, entity-ID generation, fault severity mapping,
+timing semantics, notification correlation, recovery service allow-lists, or
+configuration validation are safety-contract changes. They require an SSRD
+update, regression tests, review, and controlled deployment verification.

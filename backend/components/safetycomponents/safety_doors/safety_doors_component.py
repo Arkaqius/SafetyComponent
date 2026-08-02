@@ -47,7 +47,6 @@ class SafetyDoorsComponent(SafetyComponent):
         mqtt_entities: MqttEntityManager,
     ) -> None:
         super().__init__(hass_app, common_entities, event_bus, mqtt_entities)
-        self.mqtt_entities = mqtt_entities
         self._door_runtime: dict[str, DoorRuntime] = {}
         self._mqtt_entity_ids: dict[str, str] = {}
 

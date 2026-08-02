@@ -100,6 +100,7 @@ export const LEVEL_PRESENTATION: Record<number, { label: string; shortLabel: str
 };
 
 const SYSTEM_LEVEL_BY_STATE: Record<string, number> = {
+  no_faults: 0,
   working: 0,
   emergency: 1,
   hazard: 2,
@@ -109,8 +110,8 @@ const SYSTEM_LEVEL_BY_STATE: Record<string, number> = {
 
 export function systemStatePresentation(state: unknown): { label: string; tone: StatusTone } {
   const normalized = normalizeState(state);
-  if (normalized === 'working' || normalized === 'safe' || normalized === '0') {
-    return { label: 'Działa prawidłowo', tone: 'safe' };
+  if (normalized === 'no_faults' || normalized === 'working' || normalized === 'safe' || normalized === '0') {
+    return { label: 'Brak aktywnych usterek', tone: 'safe' };
   }
   if (normalized === 'stopped') return { label: 'Zatrzymany', tone: 'critical' };
   const level = parseSystemLevel(normalized);
@@ -232,6 +233,8 @@ export function getMonitoredTemperatures(entities: EntityMap): TemperatureView[]
       const accelerationEntityId = `${entityId}_rateofrate`;
       const sourceEntity = entities[entityId];
       if (!sourceEntity) return [];
+      const lowThresholdEntity = entities[`${entityId}_low_threshold`];
+      const highThresholdEntity = entities[`${entityId}_high_threshold`];
 
       return [
         {
@@ -243,9 +246,18 @@ export function getMonitoredTemperatures(entities: EntityMap): TemperatureView[]
           rate: numericState(rateEntity.state),
           accelerationEntityId,
           acceleration: numericState(entities[accelerationEntityId]?.state),
-          lowThreshold: numericAttribute(rateEntity, 'low_temperature_threshold'),
-          highThreshold: numericAttribute(rateEntity, 'high_temperature_threshold'),
-          lastUpdated: latestTimestamp(sourceEntity.last_updated, rateEntity.last_updated),
+          lowThreshold:
+            numericState(lowThresholdEntity?.state) ??
+            numericAttribute(rateEntity, 'low_temperature_threshold'),
+          highThreshold:
+            numericState(highThresholdEntity?.state) ??
+            numericAttribute(rateEntity, 'high_temperature_threshold'),
+          lastUpdated: latestTimestamp(
+            sourceEntity.last_updated,
+            rateEntity.last_updated,
+            lowThresholdEntity?.last_updated,
+            highThresholdEntity?.last_updated
+          ),
         },
       ];
     })

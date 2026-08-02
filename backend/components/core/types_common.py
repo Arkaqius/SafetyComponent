@@ -19,7 +19,10 @@ facilitating easier maintenance and updates.
 """
 
 from enum import Enum
-from typing import Any, NamedTuple, Dict, List
+from typing import TYPE_CHECKING, Any, NamedTuple, Dict, List
+
+if TYPE_CHECKING:
+    from components.safetycomponents.core.safety_component import SafetyComponent
 
 
 class FaultState(Enum):

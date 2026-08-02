@@ -156,6 +156,7 @@ class SafetyComponent:
         self.hass_app: hass.Hass = hass_app
         self.common_entities: CommonEntities = common_entities
         self.event_bus: EventBus = event_bus
+        self.mqtt_entities: MqttEntityManager = mqtt_entities
         self.symptom_states: dict[str, FaultState] = {}
         self.init_common_data()
         self.derivative_monitor = DerivativeMonitor(hass_app, mqtt_entities)
