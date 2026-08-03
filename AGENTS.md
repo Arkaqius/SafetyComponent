@@ -14,6 +14,10 @@ SafetyComponent is a Home Assistant safety-monitoring system composed of:
 - safety analysis and requirements under `docs/sys/`;
 - feature architecture documents under `docs/features/`.
 
+Contributor setup, issue/PR flow, and review expectations are defined in
+`CONTRIBUTING.md`. Read it together with this file before changing the
+repository.
+
 Treat backend code, validated configuration, and automated tests as evidence of
 implemented behavior. Treat HARA, SYS, SSRD, and feature architecture documents
 as the normative description of required behavior.
@@ -37,6 +41,12 @@ For documentation work:
 6. Validate local links, Markdown tables, referenced paths, and commands after
    editing.
 7. Report validation performed, remaining gaps, and language-parity status.
+
+English is the source language for system, backend, requirements, architecture,
+and contributor documentation. The frontend operator README and UI use Polish.
+Maintain English/Polish/German parity for user-facing runtime translations.
+Stable identifiers, paths, commands, and raw state codes remain
+language-independent.
 
 Normative safety documentation states what the system shall do. Do not put
 development-phase commentary such as `Version 1`, `planned`, `not implemented`,

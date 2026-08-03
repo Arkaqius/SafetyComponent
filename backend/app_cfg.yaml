@@ -173,7 +173,7 @@ SafetyFunctions:
     safety_components:
       SafetyDoorsComponent:
         defaults:
-          # SYS-SR-SEC-001: maximum continuous open time before activation.
+          # SYS-SR-DOOR-001: maximum continuous open time before activation.
           timeout_seconds: 120
         doors:
           GarageGate:

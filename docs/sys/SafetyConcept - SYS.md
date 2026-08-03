@@ -1,4 +1,4 @@
-# Lean SYS + TSC — Safety Architecture & Requirements (v1.1.0)
+# Lean SYS + TSC — Safety Architecture & Requirements (v1.2.0)
 
 **Item:** Home Automation Safety Monitoring & Recovery (multi-hazard)
 
@@ -18,7 +18,7 @@
 
 **Intended readers:**
 
-- **Developers** — implement safety logic and interfaces (HA/AppDaemon or other runtimes later).
+- **Developers** — implement safety logic and interfaces across supported runtimes.
 - **Testers** — design and execute unit, integration, HIL, and household drills per the V\&V guidance.
 - **Contributors** — propose changes to thresholds/FTTI, add sensors/actuators, improve documentation.
 - **Maintainers** — govern releases, parameter changes, evidence retention, and issue triage.
@@ -27,13 +27,13 @@
 **Scope of this document:**
 
 - Covers the **safety‑critical logic** of the _Home Automation Safety App_ (currently running atop **Home Assistant + AppDaemon**), specifically: detection, decision, notification, and where explicitly permitted **actuation** for hazards identified in HARA (Fire/Smoke, Gas, CO, Water Leak, **Undercooling/Overheating**, Air Quality, System/Comms failure, HVAC degradation, Unauthorized Access/Privacy, weather ingress, frost, wind, outdoor pollution, and ionizing radiation).
-- Defines **safety goals, SYS‑level requirements (blended with FSR), TSRs, safe states, timing (FTTI), parameters, and V\&V** at the **system level**. Software architecture details of a specific implementation are **intentionally out of scope for now** and will be adapted later.
+- Defines **safety goals, SYS‑level requirements (blended with FSR), TSRs, safe states, timing (FTTI), parameters, and V\&V** at the **system level**. Software requirements and component designs refine this contract in the SSRD and feature architecture documents.
 
 **Out of scope (for clarity):**
 
 - General home‑automation conveniences (scenes, presence lighting, media, non‑safety automations).
 - Brand‑specific hardware design/certification and regulatory approvals (this is a best‑effort, non‑certified project).
-- Detailed software component design of your current app (to be integrated once concept is finalized).
+- Provider payload schemas and class-level software design, which are specified in the SSRD and feature architecture documents.
 
 ## 2 System Boundaries
 
@@ -182,39 +182,32 @@ This chapter defines **notification levels and vectors** used by the Safety Syst
 - Dashboard “Main Safety Card” shows **current level badge** (HAZARD/WARNING/INFO) and supports **acknowledge** for L1–L3. Acknowledgement does **not** clear hazards; it silences repeats.
 - Lights used for signaling should restore to previous state when the event clears.
 
-### 4.5 Configuration Hooks (safety.yaml)
+### 4.5 Configuration Hooks (`backend/app_cfg.yaml`)
+
+`backend/app_cfg.yaml` is the deployable configuration contract. It is rooted
+at the AppDaemon application name and separates application policy from
+installation bindings:
 
 ```yaml
-notify_deadlines_s:
-  L1: 10
-  L2: 30
-  L3: 30
-  L4: 0 # best-effort
-notifications:
-  l1_profile: high_priority_with_sound
-  l2_profile: high_priority
-  l3_profile: normal
-  dashboard_card: main_safety
-  light_entity_info: light.info
-  light_entity_alert: light.alert
-  repeat_s_l1: 60
-  retries:
-    n_retry: 2
-    cooldown_s: 45
-  dual_path:
-    enabled: true # enable WAN-loss fallback logic
-    local_vectors: # what to use when WAN is down
-      - light.info
-      - light.alert
-      - switch.siren
-    cellular:
-      enabled: false # set true if a local LTE/SMS path is available
-      gateway_service: notify.sms_gateway # HA notify service for SMS
-      max_retries: 3
-      cooldown_s: 60
+SafetyFunctions:
+  app_config:
+    faults:
+      ExampleFault:
+        name: "Human-readable fault name"
+        level: 3
+        related_sms:
+          - "sm_example"
+
+  user_config:
+    notification:
+      light_entity: "light.info"
+    localization:
+      language: "pl"
 ```
 
-_Binding to actual Home Assistant services/entities is implementation‑specific and will be defined when integrating with your current app._
+Every component section in §8 defines its exact `app_config` and `user_config`
+bindings. Configuration fields that are not represented by a validated schema
+shall not influence a safety decision.
 
 ### 4.6 WAN‑Loss Delivery Options (recommendations)
 
@@ -239,10 +232,13 @@ When **WAN is down** (see §3, M4 Local‑Only), prefer delivery vectors that do
 - On entering **M4 Local‑Only**, immediately execute local vectors; attempt **cellular/SMS** if configured. Queue regular mobile pushes and flush on WAN recovery.
 - Never block safety decisions on notification success.
 
-**Resulting requirement stubs (for later §SYS‑SR):**
+**WAN-loss notification requirements:**
 
-- _SYS‑SR‑N1:_ On WAN loss, the system **shall** deliver L1 locally (siren/light) and, if configured, via **cellular/SMS** within **T_notify ≤ 10 s**; queued IP notifications **shall** be sent on recovery.
-- _SYS‑SR‑N2:_ Cellular/SMS fallback **shall** be rate‑limited and logged with correlation IDs; failures **shall** trigger local repeats only.
+- **SYS-SR-NOT-001:** On WAN loss, the system **shall** deliver L1 locally
+  (siren/light) and, if configured, via **cellular/SMS** within
+  **T_notify ≤ 10 s**; queued IP notifications **shall** be sent on recovery.
+- **SYS-SR-NOT-002:** Cellular/SMS fallback **shall** be rate-limited and logged
+  with correlation IDs; failures **shall** trigger local repeats only.
 
 ## 5 Item Definition (lean)
 
@@ -268,9 +264,12 @@ When **WAN is down** (see §3, M4 Local‑Only), prefer delivery vectors that do
 
 ---
 
-## 6 Safety Goals (provisional ASIL & FTTI)
+## 6 Safety Goals and FTTI
 
-> Derived from HARA; ASIL/FTTI values are provisional and will be confirmed during HARA review. Safe states use shorthand (SS‑1…SS‑5, SS‑Alarm). Occupancy is an **input** to some goals but **does not drive modes** (see §3).
+> Classifications are derived from HARA for engineering prioritization; this
+> project makes no certification claim. Safe states use shorthand
+> (SS‑1…SS‑5, SS‑Alarm). Occupancy is an **input** to some goals but **does not
+> drive modes** (see §3).
 
 | ID         | Safety Goal                                                                                                              | Hazard(s) Ref                          | **ASIL**                    | **FTTI**          | Safe State                                             |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------ | -------------------------------------- | --------------------------- | ----------------- | ------------------------------------------------------ |
@@ -293,11 +292,9 @@ When **WAN is down** (see §3, M4 Local‑Only), prefer delivery vectors that do
 | **SG‑017** | Warn when an open window or external door exposes the home to **frost**.                                                | HZ‑EXT‑FROST‑01                        | **QM**                      | **10 min after usable input** | **SS‑5:** Prompt manual closure + L3          |
 | **SG‑018** | Warn when an open window or external door is exposed to damaging **wind/gusts**.                                       | HZ‑EXT‑WIND‑01                         | **QM**                      | **120 s after usable input** | **SS‑5:** Prompt manual closure + L2/L3        |
 | **SG‑019** | Warn when open external apertures may admit hazardous **outdoor air pollution** and inhibit conflicting advice.        | HZ‑EXT‑AQ‑01                           | **QM/ASIL A**               | **10 min after usable input** | **SS‑5:** Prompt manual closure + L3           |
-| **SG‑020** | Warn occupants about a confirmed **ionizing-radiation event** and present authoritative guidance without overstating protection. | HZ‑EXT‑RAD‑01                    | **ASIL A (provisional)**    | **5 min after authority publication** | **SS‑Notify:** L2 authority-guidance alert |
+| **SG‑020** | Warn occupants about a confirmed **ionizing-radiation event** and present authoritative guidance without overstating protection. | HZ‑EXT‑RAD‑01                    | **ASIL A**    | **5 min after authority publication** | **SS‑Notify:** L2 authority-guidance alert |
 
 > Life‑threatening hazards (Fire, Gas, CO, Electrical Shock, confirmed Ionizing Radiation Event) must not be reduced below **Level 2** post‑mitigation even if formulas suggest lower risk.
-
-**Note:** Requirements under your original “1.3 Safety goals” narrative (Unauthorized Access, Cybersecurity, Electrical Shock, Privacy, Loss of Heating/Cooling) are now covered explicitly by **SG‑012…SG‑016** and will be decomposed into **interface contracts (§7)** and **SYS‑SRs (§8)** next.
 
 ## 7 Interface Requirements (contracts)
 
@@ -510,113 +507,133 @@ _We model the system as **decoupled Safety Components**, each implementing one o
 
 ### 8.1 Component Model & Aggregation Rules
 
-- **Prefault (PR‑xxx):** Early warning for a specific subject (e.g., a room). Multiple prefaults may exist simultaneously.
-- **Fault (F‑xxx):** Aggregation of one or more related prefaults into a single user‑visible condition with **attributes** (e.g., list of affected rooms). UX shows **Faults**; Prefaults appear only in logs/evidence.
+- **Safety Mechanism (`sm_name`):** Stable logic-family identifier used by
+  `FaultManager.related_sms`. Each mechanism ID shall map to exactly one fault.
+- **Symptom (`Symptom.name`):** Stable per-subject runtime condition, such as a
+  room or door. Multiple symptoms may be active simultaneously.
+- **Fault:** Stable configured catalog key that aggregates all active symptoms
+  whose Safety Mechanism IDs occur in its `related_sms` list. The UX shows
+  faults; individual symptoms remain diagnostic context.
 - **Aggregation policy:**
 
-  - When ≥1 prefaults of the same family are active, raise one Fault with `attributes.subjects = {subjects of PR}`.
-  - Fault **clears** when no prefault in the family remains active for **T_clear** (hysteresis/suppression apply).
-  - Updates to the prefault set **patch** Fault attributes (add/remove subjects) without re‑notifying unless severity level changes.
+  - When at least one related symptom is active, set one fault and aggregate the
+    active subjects into its attributes.
+  - A fault clears only after every related symptom has cleared.
+  - Updates to the symptom set patch fault attributes and refresh the existing
+    notification tag without discarding still-active subjects.
+  - Fault catalog keys, Safety Mechanism IDs, symptom ID patterns, raw states,
+    and entity IDs are stable machine contracts.
 
 ---
 
 ### 8.2 Temperature Safety Component (C‑TEMP)
 
-**Scope:** SG‑001 (Undercooling), SG‑002 (Prediction), SG‑004 (Overheating), SG‑003 (Diagnostics linkage).
-**Safety Mechanisms:** **SM1 LowTemperatureMonitoring**, **SM2 LowTemperatureForecasting**, **SM3 HighTemperatureMonitoring**.
+**Scope:** SG‑001 (Undercooling), SG‑002 (Prediction), and SG‑004
+(Overheating).
+
+**Safety Mechanisms:** `sm_tc_1` direct low temperature, `sm_tc_2` forecast
+low temperature, `sm_tc_3` direct high temperature, and `sm_tc_4` forecast high
+temperature.
 
 #### 8.2.1 Inputs (from §7)
 
-- **IR‑006 Room Climate (Temp/Humidity)** per room.
-- **IR‑001 Window/Door Contacts** (for context, optional).
-- **IR‑020 Weather** (outside temperature & forecast) — optional for forecasting.
-- **IR‑008 Boiler/flow temp** (health heuristic, optional).
+- **IR‑006 Room Climate** numeric temperature per configured room.
+- `DerivativeMonitor` first derivative `<temperature_sensor>_rate` for forecast
+  mechanisms.
+- **IR‑001 Window Contacts** and a supported cover actuator for an optional
+  low-temperature recovery proposal.
+- A configured common outside-temperature entity for deciding whether the
+  recovery proposal is to open or close the window.
 
 #### 8.2.2 Outputs (to §7)
 
-- **OR‑006 HVAC Mode/Setpoint** (fallback heat/cool).
-- **OR‑020/021** Notifications (L2/L3 as per §4).
+- Symptom events for FaultManager aggregation.
+- **OR‑020/021** fault notifications and dashboard state.
+- Optional `ManipulateWindow<Room>` recovery proposals routed through
+  RecoveryManager. C‑TEMP does not command HVAC or climate services.
+- Diagnostic MQTT sensors for each room's low/high thresholds and derivative
+  measurements.
 
-#### 8.2.3 Parameters (from `safety.yaml`)
+#### 8.2.3 Parameters (from `backend/app_cfg.yaml`)
 
-- **T_min, T_max** — comfort/safety thresholds per room.
-- **T_det, T_det_hot** — detection windows.
-- **H, H_hot** — hysteresis bands.
-- **S, S_hot** — suppression windows (alert storm control).
-- **H_pred** — forecast horizon.
-- **C_min** — minimum forecast confidence.
-- **T_escalate** — prefault→fault escalation time.
-- **T_stable** — time to hold stable conditions before clearing.
-- **T_decision_max, T_notify** — per §7/§4.
-- **Rooms\[]** — mapping room→sensor entity IDs.
+- Per-room bindings: `area_id`, `temperature_sensor`, optional `window_sensor`,
+  and optional cover `actuator`.
+- Thresholds and forecast horizon: `CAL_LOW_TEMP_THRESHOLD`,
+  `CAL_HIGH_TEMP_THRESHOLD`, and `CAL_FORECAST_TIMESPAN`, inherited from
+  component defaults unless overridden for the room.
+- Direct-mechanism debounce:
+  `SM_TC_1_DEBOUNCE_LIMIT` and `SM_TC_1_REEVAL_DELAY_SECONDS`.
+- Forecast-mechanism debounce and derivative sampling:
+  `SM_TC_2_DEBOUNCE_LIMIT`, `SM_TC_2_REEVAL_DELAY_SECONDS`, and
+  `SM_TC_2_DERIVATIVE_SAMPLE_MINUTES`.
 
-#### 8.2.4 States & Events
+#### 8.2.4 Runtime identifier contract
 
-- **Prefaults:**
+| System mechanism | Runtime ID | Positive condition | Symptom ID | Fault ID |
+| --- | --- | --- | --- | --- |
+| Direct low temperature | `sm_tc_1` | current temperature `< CAL_LOW_TEMP_THRESHOLD` | `RiskyTemperature{Room}` | `RiskyTemperature` |
+| Forecast low temperature | `sm_tc_2` | projected temperature `< CAL_LOW_TEMP_THRESHOLD` | `RiskyTemperature{Room}ForeCast` | `RiskyTemperatureForecast` |
+| Direct high temperature | `sm_tc_3` | current temperature `> CAL_HIGH_TEMP_THRESHOLD` | `RiskyTemperatureHigh{Room}` | `RiskyTemperature` |
+| Forecast high temperature | `sm_tc_4` | projected temperature `> CAL_HIGH_TEMP_THRESHOLD` | `RiskyTemperatureHigh{Room}ForeCast` | `RiskyTemperatureForecast` |
 
-  - `PR_TEMP_UNDER[room]` — `T_room < T_min` sustained **T_det** (with **H**, **S**).
-  - `PR_TEMP_OVER[room]` — `T_room > T_max` sustained **T_det_hot** (with **H_hot**, **S_hot**).
-  - `PR_TEMP_UNDER_FORECAST[room]` — forecast breach within **H_pred** with `confidence ≥ C_min` and `ΔT ≥ ΔT_min`.
+`ForeCast` capitalization is retained as part of the existing runtime contract.
 
-- **Faults (aggregated):**
+| Fault ID | Level | `related_sms` | Shadowing |
+| --- | ---: | --- | --- |
+| `RiskyTemperature` | 2 | `sm_tc_1`, `sm_tc_3` | Shadows `RiskyTemperatureForecast` while active |
+| `RiskyTemperatureForecast` | 3 | `sm_tc_2`, `sm_tc_4` | None |
 
-  - `F_UNDERTEMP` — any `PR_TEMP_UNDER[*]` active; attributes: `{rooms:[...]}`.
-  - `F_OVERTEMP` — any `PR_TEMP_OVER[*]` active; attributes: `{rooms:[...]}`.
-  - `F_UNDERTEMP_RISK` — any `PR_TEMP_UNDER_FORECAST[*]` active; attributes: `{rooms:[...]}`.
+#### 8.2.5 Requirements (C-TEMP → SYS-SR-TEMP-xxx)
 
-#### 8.2.5 Requirements (C‑TEMP → SYS‑SR‑TEMP‑xxx)
-
-**Detection & Escalation**
-
-- **SYS‑SR‑TEMP‑001 (Under‑detect):** The component **shall** detect `T_room < T_min` sustained for **T_det** with hysteresis **H** and suppression **S**, and raise `PR_TEMP_UNDER[room]` within **T_decision_max**.
-- **SYS‑SR‑TEMP‑002 (Under‑escalate):** If `PR_TEMP_UNDER[room]` persists for **T_escalate**, the system **shall** assert `F_UNDERTEMP` (if not active) or update its attributes to include `room`.
-- **SYS‑SR‑TEMP‑003 (Over‑detect):** The component **shall** detect `T_room > T_max` sustained for **T_det_hot** with hysteresis **H_hot** and suppression **S_hot**, and raise `PR_TEMP_OVER[room]` within **T_decision_max**.
-- **SYS‑SR‑TEMP‑004 (Over‑escalate):** If `PR_TEMP_OVER[room]` persists for **T_escalate**, the system **shall** assert `F_OVERTEMP` (or update attributes).
-- **SYS‑SR‑TEMP‑005 (Forecast‑detect):** The component **shall** forecast room temperature **H_pred** ahead; when predicted `< T_min` with `confidence ≥ C_min` and `ΔT ≥ ΔT_min`, it **shall** raise `PR_TEMP_UNDER_FORECAST[room]`. Forecasting runs in **shadow** until precision ≥ **C_target**.
-- **SYS‑SR‑TEMP‑006 (Clear rules):** A prefault **shall clear** only after conditions are inside thresholds for **≥ T_stable**; faults clear when **no prefault** remains active for **≥ T_stable**.
-
-**Recovery & Control**
-
-- **SYS‑SR‑TEMP‑010 (Fallback heat):** On `F_UNDERTEMP`, the system **shall** command heating via **OR‑006** (idempotent, with `N_retry`/`T_cooldown`) and verify read‑back; failures escalate to **L3**.
-- **SYS‑SR‑TEMP‑011 (Emergency cool/vent):** On `F_OVERTEMP`, the system **shall** command cooling/ventilation via **OR‑006** and verify read‑back; failures escalate to **L3**.
-- **SYS‑SR‑TEMP‑012 (Advisories):** On `F_UNDERTEMP_RISK`, the system **shall** suggest mitigations (e.g., close windows, open doors to mix air) in the notification payload; no actuation unless **policy flag** enables pre‑heat.
-
-**Notifications**
-
-- **SYS‑SR‑TEMP‑020:** On `F_UNDERTEMP` and `F_OVERTEMP`, send **L2** within **T_notify**; include `{rooms, current_temp, thresholds}` in payload.
-- **SYS‑SR‑TEMP‑021:** On `F_UNDERTEMP_RISK`, send **L3** within **T_notify**; include forecast summary `{H_pred, confidence, ΔT}`.
-
-**Diagnostics & Evidence**
-
-- **SYS‑SR‑TEMP‑030:** Each decision **shall** emit an evidence record with `{room, rule_id, inputs(min/max/avg), thresholds, debounce/suppression, decision, latency_ms}`; evidence failures must not block the loop.
-- **SYS‑SR‑TEMP‑031:** Reject/stamp stale samples where `now − ts > T_stale` per **IR‑040**; record channel degradation events.
-
-**Performance & FTTI**
-
-- **SYS‑SR‑TEMP‑040:** Ensure `T_detection + T_decision + T_recovery + T_effect ≤ FTTI` for **SG‑001/004**.
-- **SYS‑SR‑TEMP‑041:** Decision path p95 **≤ T_decision_max** under peak sensor rate.
-
-**Aggregation/UX**
-
-- **SYS‑SR‑TEMP‑050:** The UI **shall** present a single `F_UNDERTEMP`/`F_OVERTEMP` card with an attribute list of affected rooms; per‑room prefaults are visible only in logs.
-
-**Dependencies & Conflicts**
-
-- **SYS‑SR‑TEMP‑060:** When in **M3 Sleep**, suppress non‑life‑safety noisy actions; temperature control commands remain allowed.
-- **SYS‑SR‑TEMP‑061:** When in **M4 Local‑Only**, continue local HVAC control; queue cloud notifications per §4.
+- **SYS-SR-TEMP-001:** For every configured room, C‑TEMP shall instantiate
+  `sm_tc_1`, `sm_tc_2`, `sm_tc_3`, and `sm_tc_4` using the stable symptom ID
+  patterns in §8.2.4.
+- **SYS-SR-TEMP-002:** Direct mechanisms shall compare the current numeric room
+  temperature with the configured low or high threshold using strict `<` and
+  `>` comparisons.
+- **SYS-SR-TEMP-003:** Forecast mechanisms shall calculate a projection from the
+  current temperature, `<temperature_sensor>_rate`, the configured forecast
+  timespan, and derivative sampling interval. No confidence input or confidence
+  gate is part of this mechanism contract.
+- **SYS-SR-TEMP-004:** Missing, non-numeric, non-finite, `unknown`,
+  `unavailable`, or otherwise invalid temperature or derivative input shall not
+  constitute positive evidence to set or clear an active temperature symptom.
+- **SYS-SR-TEMP-005:** Each mechanism shall apply its configured debounce limit
+  before changing symptom state and shall schedule reevaluation using its
+  configured delay while debouncing remains incomplete.
+- **SYS-SR-TEMP-006:** `DerivativeMonitor` shall publish first- and second-order
+  diagnostic derivatives. C‑TEMP shall consume only the first derivative for
+  forecast decisions and shall retain ownership of all temperature thresholds.
+- **SYS-SR-TEMP-007:** C‑TEMP shall expose separate diagnostic MQTT sensors for
+  each room's low and high thresholds as `<source>_low_threshold` and
+  `<source>_high_threshold`.
+- **SYS-SR-TEMP-008:** Threshold diagnostics shall expose source entity,
+  threshold type, `area_id`, and the resolved Home Assistant area name.
+- **SYS-SR-TEMP-009:** Low-temperature mechanisms may create a
+  `ManipulateWindow{Room}` recovery proposal using the configured window sensor
+  or cover actuator and the indoor/outdoor temperature relation. High-temperature
+  mechanisms shall create no recovery action. C‑TEMP shall not issue HVAC or
+  climate commands.
+- **SYS-SR-TEMP-010:** Direct low/high symptoms shall aggregate into
+  `RiskyTemperature`; forecast low/high symptoms shall aggregate into
+  `RiskyTemperatureForecast`; the direct fault shall shadow the forecast fault
+  while active. A fault shall remain active until every related symptom clears.
 
 #### 8.2.6 Mapping
 
-- **SG‑001:** SYS‑SR‑TEMP‑001/002/010/020/030/040/041/050/060/061
-- **SG‑002:** SYS‑SR‑TEMP‑005/012/021/030
-- **SG‑004:** SYS‑SR‑TEMP‑003/004/011/020/030/040/041/050/060/061
-- **SG‑003:** SYS‑SR‑TEMP‑031 (diagnostics linkage)
+- **SG‑001:** SYS-SR-TEMP-001/002/004/005/007/008/009/010
+- **SG‑002:** SYS-SR-TEMP-001/003/004/005/006/009/010
+- **SG‑004:** SYS-SR-TEMP-001/002/003/004/005/006/007/008/010
 
 #### 8.2.7 Verification
 
-- **Unit tests:** threshold/hysteresis/suppression logic; forecast shadow accuracy ≥ **C_target** before activation.
-- **Integration:** per‑room sensor playback; HVAC actuation with read‑back and retries.
-- **E2E drills:** scripted under/over‑temperature scenarios across multiple rooms; verify aggregation and notifications.
+- **Unit tests:** strict low/high comparisons, low/high forecasting, invalid and
+  non-finite inputs, debounce set/clear behavior, and stable symptom IDs.
+- **Integration:** per-room state playback, derivative publication, threshold
+  MQTT diagnostics, fault aggregation/shadowing, and low-temperature recovery
+  proposals.
+- **Negative control tests:** high-temperature paths create no recovery action,
+  and C‑TEMP makes no HVAC or climate service call.
 
 ---
 
@@ -708,29 +725,23 @@ SG-003 (Diagnostics linkage).
 - Opening state is `open`, `closed`, or `unavailable`. An unavailable contact
   shall not be treated as closed.
 
-**Prefaults:**
+**Runtime identifier contract:**
 
-- `PR_EXT_WEATHER[hazard, opening]` for rain, storm, frost, or wind policy met
-  while a relevant opening is open.
-- `PR_EXT_AQ[opening]` when outdoor AQ policy is met while a relevant opening
-  is open.
-- `PR_EXT_RAD_OFFICIAL[source]` for a confirmed official radiation warning,
-  independent of opening state.
-- `PR_EXT_RAD_UNCONFIRMED[station_set]` for an optional corroborated raw-data
-  anomaly; it shall retain `authority_confirmed=false`.
-- `PR_EXT_PROVIDER_UNAVAILABLE[capability]` only when every provider required
-  for an enabled capability is unusable beyond its stale timeout.
+| Fault ID | Safety Mechanism ID | Symptom ID contract | Level |
+| --- | --- | --- | ---: |
+| `ExternalWeatherExposure` | `sm_ext_weather_exposure` | `ExternalWeatherExposure{HazardId}{OpeningId}` | 2 |
+| `OutdoorAirQualityExposure` | `sm_ext_outdoor_air_quality_exposure` | `OutdoorAirQualityExposure{OpeningId}` | 3 |
+| `IonizingRadiationAlert` | `sm_ext_ionizing_radiation_alert` | `IonizingRadiationAlert{AuthorityId}` | 2 |
+| `RadiationDataAnomaly` | `sm_ext_radiation_data_anomaly` | `RadiationDataAnomaly{StationSetId}` | 3 |
+| `ExternalHazardDataUnavailable` | `sm_ext_provider_unavailable` | `ExternalHazardDataUnavailable{CapabilityId}` | 3 |
 
-**Faults:**
-
-- `F_EXTERNAL_WEATHER_EXPOSURE` aggregates affected hazards and openings.
-- `F_OUTDOOR_AQ_EXPOSURE` aggregates affected openings and pollutant/AQI
-  context.
-- `F_IONIZING_RADIATION_ALERT` represents an official authority warning only.
-- `F_RADIATION_DATA_ANOMALY` represents unconfirmed corroborated measurement
-  anomalies and shall use wording distinct from an official alert.
-- `F_EXTERNAL_DATA_UNAVAILABLE` aggregates unavailable enabled capabilities,
-  not every individual transient provider failure.
+Each Safety Mechanism ID occurs in exactly one fault's `related_sms` list.
+`ExternalWeatherExposure` aggregates affected hazards and openings;
+`OutdoorAirQualityExposure` aggregates affected openings and pollutant/AQI
+context; `IonizingRadiationAlert` represents an official authority warning;
+`RadiationDataAnomaly` remains explicitly unconfirmed; and
+`ExternalHazardDataUnavailable` aggregates capabilities for which every required
+provider is unusable beyond its stale timeout.
 
 #### 8.3.6 Requirements (C-EXT → SYS-SR-EXT-xxx)
 
@@ -755,7 +766,8 @@ SG-003 (Diagnostics linkage).
 
 - **SYS-SR-EXT-010:** When a configured frost, wind, rain, or storm policy is
   active and a relevant opening is open, C-EXT shall raise or update
-  `PR_EXT_WEATHER[hazard, opening]` within `T_ext_decision`.
+  `ExternalWeatherExposure{HazardId}{OpeningId}` through
+  `sm_ext_weather_exposure` within `T_ext_decision`.
 - **SYS-SR-EXT-011:** Official IMGW warnings shall be applicable only when at
   least one configured TERYT code is present in the warning region set and the
   current time is within its validity interval.
@@ -774,8 +786,10 @@ SG-003 (Diagnostics linkage).
   configured conservative policy shall determine exposure while the notification
   shows both sources; the API Components shall not resolve the conflict.
 - **SYS-SR-EXT-022:** When outdoor AQ policy is active and a relevant opening
-  is open, C-EXT shall raise/update `PR_EXT_AQ[opening]` and identify the
-  controlling AQI/pollutant input.
+  is open, C-EXT shall raise or update
+  `OutdoorAirQualityExposure{OpeningId}` through
+  `sm_ext_outdoor_air_quality_exposure` and identify the controlling
+  AQI/pollutant input.
 - **SYS-SR-EXT-023:** While outdoor AQ, damaging wind, storm, or a confirmed
   sheltering policy is active, C-EXT shall expose an advice inhibition for
   `open_external_opening`. C-EXT may filter manual advice but shall not
@@ -784,13 +798,16 @@ SG-003 (Diagnostics linkage).
 **Ionizing radiation**
 
 - **SYS-SR-EXT-030:** An official PAA radiological warning shall raise
-  `PR_EXT_RAD_OFFICIAL` and notify regardless of contact state. Open external
-  apertures shall be included as context, not as a radiation-shielding claim.
+  `IonizingRadiationAlert{AuthorityId}` through
+  `sm_ext_ionizing_radiation_alert` and notify regardless of contact state.
+  Open external apertures shall be included as context, not as a
+  radiation-shielding claim.
 - **SYS-SR-EXT-031:** A raw dose-rate measurement or threshold crossing shall
-  not raise `F_IONIZING_RADIATION_ALERT` without an official authority status.
+  not raise `IonizingRadiationAlert` without an official authority status.
 - **SYS-SR-EXT-032:** Optional raw-data anomaly detection shall use configured
   station baseline, persistence, and corroboration and shall raise only
-  `F_RADIATION_DATA_ANOMALY` with `authority_confirmed=false`.
+  `RadiationDataAnomaly{StationSetId}` through
+  `sm_ext_radiation_data_anomaly` with `authority_confirmed=false`.
 - **SYS-SR-EXT-033:** Radiation notifications shall present the source and
   publication time, distinguish confirmed and unconfirmed information, and
   direct users to current competent-authority instructions.
@@ -814,7 +831,10 @@ SG-003 (Diagnostics linkage).
 **Diagnostics and evidence**
 
 - **SYS-SR-EXT-050:** Each API Component shall expose provider health per
-  IR-027 through MQTT diagnostics.
+  IR-027 through MQTT diagnostics. When every provider required for an enabled
+  capability remains unusable beyond its stale timeout, C-EXT shall set
+  `ExternalHazardDataUnavailable{CapabilityId}` through
+  `sm_ext_provider_unavailable`.
 - **SYS-SR-EXT-051:** C-EXT shall emit evidence for each decision containing
   `{rule_id, provider, source_ts, retrieved_at, freshness, values, thresholds,
   opening_states, decision, authority_confirmed, latency_ms}`.
@@ -851,7 +871,106 @@ SG-003 (Diagnostics linkage).
 
 ---
 
-> **Next components to define (same pattern):** Fire/CO/Gas (C-ALARM), Water Leak (C-LEAK), Indoor Air Quality (C-AQ), HVAC Health (C-HVAC), Unauthorized Access (C-SEC), Privacy (C-PRIV), and Network/Platform Health (C-NET).
+### 8.4 Safety Doors Component (C-DOOR)
+
+**Scope:** C-DOOR contributes door/gate open-duration detection and warning to
+SG-015. It does not determine intrusion, unexpected entry, armed state, lock
+integrity, or security-company response; those responsibilities belong to
+C-SEC. Diagnostic handling of unavailable inputs supports SG-003.
+
+**Safety Mechanism:** `sm_safety_door_open_timeout`.
+
+#### 8.4.1 Inputs and outputs
+
+- **IR-001 Window/Door Contact** for every configured door or gate.
+- An optional Home Assistant condition entity whose configured pass and blocked
+  states gate monitoring independently for one door.
+- Symptom events for FaultManager aggregation and **OR-020/021** notification
+  and dashboard output.
+- One diagnostic MQTT sensor per door. C-DOOR registers no recovery action and
+  uses no lock, cover, gate, or other actuator output.
+
+#### 8.4.2 Parameters
+
+- Component default `timeout_seconds` and an optional positive per-door
+  override.
+- Per door: stable door key, `area_id`, contact `entity_id`, and optional
+  condition with `entity_id`, non-empty `pass_states`, and non-empty
+  `blocked_states`.
+- Pass and blocked states are normalized to lowercase and shall be disjoint.
+
+#### 8.4.3 Runtime identifier contract
+
+| Element | Stable ID |
+| --- | --- |
+| Component | `SafetyDoorsComponent` |
+| Safety Mechanism | `sm_safety_door_open_timeout` |
+| Per-door symptom | `SafetyDoorOpenTimeout{DoorName}` |
+| Aggregated fault | `SafetyDoorOpenTimeout` |
+| Fault level | 2 |
+| Diagnostic entity | `sensor.safety_door_<door_name>` |
+| Recovery actions | None |
+
+#### 8.4.4 Requirements (C-DOOR → SYS-SR-DOOR-xxx)
+
+- **SYS-SR-DOOR-001:** Every configured door or gate shall define `area_id`,
+  contact `entity_id`, and a positive `timeout_seconds`; the component default
+  shall apply only when the door has no override.
+- **SYS-SR-DOOR-002:** C-DOOR shall monitor each configured door independently
+  and shall start or resume timing only while the contact is open and the
+  optional condition is passing.
+- **SYS-SR-DOOR-003:** When a door remains continuously open for at least its
+  applicable timeout, C-DOOR shall set
+  `SafetyDoorOpenTimeout{DoorName}`.
+- **SYS-SR-DOOR-004:** Closing the door shall cancel its pending timer, reset
+  elapsed time, and clear its per-door symptom.
+- **SYS-SR-DOOR-005:** An optional condition shall contain one monitored entity
+  plus non-empty, normalized, disjoint `pass_states` and `blocked_states`. Pass
+  states enable monitoring; blocked states cancel timing, reset elapsed time,
+  and clear the symptom.
+- **SYS-SR-DOOR-006:** An unavailable or unsupported contact or condition state
+  shall publish diagnostic state `unavailable`, cancel pending timing, and
+  shall neither create a new fault nor clear an already active symptom.
+- **SYS-SR-DOOR-007:** When an already-open door becomes eligible for
+  monitoring, elapsed time shall start from the later of the door's open
+  transition and the condition's pass transition.
+- **SYS-SR-DOOR-008:** Each diagnostic entity shall publish `active`,
+  `inactive`, `blocked`, or `unavailable` plus door state, source entity,
+  timeout, elapsed/remaining time, opening timestamp, condition details,
+  `area_id`, and resolved area name.
+- **SYS-SR-DOOR-009:** All active per-door symptoms shall aggregate into the
+  single level-2 fault `SafetyDoorOpenTimeout`, which shall remain active until
+  every related door symptom clears.
+- **SYS-SR-DOOR-010:** C-DOOR shall register no recovery action and shall not
+  close, lock, unlock, or otherwise actuate a door or gate.
+- **SYS-SR-DOOR-011:** C-DOOR shall not infer unauthorized entry, lock
+  integrity, or intrusion state; those responsibilities belong to C-SEC.
+
+#### 8.4.5 Installation calibration
+
+| Door key | Area | Timeout | Condition |
+| --- | --- | ---: | --- |
+| `GarageGate` | `garage` | 180 s | None |
+| `ExternalGate` | `frontyard` | 180 s | None |
+| `LivingRoomTerraceDoor` | Configured living-room area | 120 s | `sensor.home_monitor_occupancy`: pass `empty`, blocked `occupied` |
+| `GarageDoor` | `garage` | 900 s | None |
+
+#### 8.4.6 Mapping and verification
+
+- **SG-015:** SYS-SR-DOOR-001/002/003/004/005/007/009/010/011.
+- **SG-003:** SYS-SR-DOOR-006/008.
+- **Unit tests:** independent timeouts, restart/reload timing, transition-based
+  elapsed time, pass/blocked conditions, unavailable inputs, timer cancellation,
+  and stable runtime IDs.
+- **Integration tests:** FaultManager aggregation, same-tag notification
+  refresh, resolved Home Assistant area names, MQTT diagnostic attributes, and
+  zero recovery/actuator calls.
+
+---
+
+**Other component allocations:** Fire/CO/Gas is owned by C-ALARM, Water Leak by
+C-LEAK, Indoor Air Quality by C-AQ, HVAC Health by C-HVAC, intrusion/lock
+security by C-SEC, Privacy by C-PRIV, and Network/Platform Health by C-NET.
 
 ## 9 Non‑Functional Requirements (NFR)
 
@@ -876,7 +995,11 @@ _Non‑functional constraints that apply across all components. IDs use `NFR‑x
 ### 9.3 Security (safety‑relevant)
 
 - **NFR‑020 AuthN/AuthZ:** Administrative actions require **strong auth**; runtime actuation restricted by **RBAC**; audit all privileged operations.
-- **NFR‑021 Config integrity:** `safety.yaml` changes must be **signed or checksum‑verified**; on failure → refuse load, remain in last known good with **L3** notice.
+- **NFR‑021 Config integrity:** `backend/app_cfg.yaml` shall pass complete schema,
+  component, entity, and area validation before safety mechanisms are enabled.
+  A deployment shall hash-verify transferred application and configuration files;
+  validation failure shall publish `invalid_cfg` and leave safety mechanisms
+  disabled while diagnostics remain available.
 - **NFR‑022 Secrets handling:** Credentials stored via platform secrets; never in evidence logs.
 - **NFR‑023 Network posture:** Prefer **local control paths** for life‑safety; cloud paths treated as best‑effort.
 
@@ -929,11 +1052,13 @@ _Non‑functional constraints that apply across all components. IDs use `NFR‑x
 
 ---
 
-## 11 Parameter Table (Proposed Defaults)
+## 11 System Parameter Reference
 
-> Defaults are **non‑binding** and exist to bootstrap configuration; tune per installation/HARA.
+> Reference values are non-binding system policy inputs. Exact validated keys
+> for C-TEMP, C-EXT, and C-DOOR are defined in §8.2.3, the C-EXT architecture,
+> and §8.4.2 respectively.
 
-| Name                     | Description                                  | Proposed Default |
+| Name                     | Description                                  | Reference Value |
 | ------------------------ | -------------------------------------------- | ---------------- |
 | **T_min**                | Minimum safe room temperature                | 17 °C (per room) |
 | **T_max**                | Maximum safe room temperature                | 29 °C (per room) |
@@ -990,4 +1115,7 @@ _Non‑functional constraints that apply across all components. IDs use `NFR‑x
 | **V_gust_watch**         | Configurable wind-gust watch threshold       | 15 m/s           |
 | **V_gust_warning**       | Configurable wind-gust warning threshold     | 20 m/s           |
 
-_All parameters live in `safety.yaml` (see §4.5 and §8.2.3). Per‑room overrides apply to temperature parameters; per‑zone overrides may be added for AQ._
+_All deployable parameter bindings live under `SafetyFunctions.app_config` or
+`SafetyFunctions.user_config` in `backend/app_cfg.yaml` (see §4.5). A parameter
+shall not affect runtime behavior until its owning component defines and
+validates the corresponding configuration key._

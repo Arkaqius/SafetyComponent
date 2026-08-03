@@ -208,8 +208,14 @@ _High:_ These hazards can be easily mitigated if residents are notified in time,
 - The system shall continuously monitor for indications of unauthorized access or unexpected movement when the home is declared unoccupied.
 - The system shall immediately issue alerts to the occupants upon detection of unauthorized access or unexpected movement.
 - The system shall communicate an alert signal to a pre-defined security company upon detection of unauthorized access or unexpected movement.
-- The system shall persistently monitor the status of external doors in relation to the home occupancy status.
-- The system shall ensure closure of external doors within a predefined timeout interval.
+- The system shall monitor configured doors and gates for continuous open
+  duration under an optional installation-defined condition such as household
+  occupancy.
+- The system shall warn occupants when a configured door or gate remains open
+  beyond its applicable timeout; this monitoring shall not automatically close
+  or lock the opening.
+- Open-duration monitoring alone shall not be treated as evidence of intrusion,
+  unexpected entry, or lock integrity.
 - The system shall ascertain the closure of critical windows in the absence of occupants or presence of minors.
 - The system shall ensure external doors are locked when the house is unoccupied or all occupants are asleep.
 - The system shall ensure critical windows are closed when the house is unoccupied or all occupants are asleep.

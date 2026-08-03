@@ -117,7 +117,7 @@ instead of provider-conditional code inside `PaaRadiationApiComponent`.
 
 ## 6. Code placement
 
-Target code structure:
+Code structure:
 
 ```text
 backend/components/external_apis/
@@ -162,7 +162,7 @@ payloads under `backend/tests/fixtures/external_apis/<provider>/`.
 
 ### 6.1 Integration changes to the current application core
 
-`SafetyFunctions` will retain the current Safety Component registry and add a
+`SafetyFunctions` retains the current Safety Component registry and adds a
 separate API Component registry:
 
 - `self.api_modules` stores API Component instances;
@@ -177,7 +177,7 @@ separate API Component registry:
 - `SafetyFunctions.terminate()` stops the external runtime before publishing
   application availability offline.
 
-`AppCfgValidator` will add schemas for `user_config.site`,
+`AppCfgValidator` validates schemas for `user_config.site`,
 `user_config.api_components`, and `ExternalHazardComponent`. Its entity and area
 collection will include every configured opening. Enabling C-EXT while a
 required API Component or site field is absent is a startup configuration error.
@@ -278,13 +278,13 @@ Selection policy:
 
 1. Prefer explicitly configured station IDs.
 2. Otherwise select the nearest station that supplies required pollutants.
-3. Expose distance and missing pollutants.
+3. Expose distance and unavailable pollutants.
 4. Never silently switch station without publishing the new station ID.
 
 ### 7.6 `OpenMeteoAirQualityApiComponent`
 
 This component returns CAMS model/forecast values separately from GIOŚ
-measurements. Initial fields:
+measurements. Required fields:
 
 - `european_aqi` and contributing sub-indices;
 - PM2.5, PM10, NO2, O3, and SO2;
@@ -326,7 +326,7 @@ It does not perform HTTP or parse provider payloads.
 
 ## 8. Normalized data model
 
-Provider output uses immutable typed objects. Suggested minimum model:
+Provider output uses immutable typed objects. The normalized model contains:
 
 ```python
 @dataclass(frozen=True)
@@ -405,15 +405,25 @@ evidence.
 
 ## 10. Fault and notification model
 
-Stable technical faults:
+The fault catalog, Safety Mechanism IDs, and per-condition symptom IDs form one
+stable runtime contract. `FaultManager.related_sms` contains Safety Mechanism
+IDs, not per-condition symptom IDs.
 
-| Fault ID | Default level | Trigger |
-| --- | --- | --- |
-| `ExternalWeatherExposure` | 2 or 3 by reviewed policy | One or more open apertures exposed to rain/storm/frost/wind |
-| `OutdoorAirQualityExposure` | 3 | One or more open apertures during unacceptable outdoor AQ |
-| `IonizingRadiationAlert` | 2 | Official PAA radiological warning/status |
-| `RadiationDataAnomaly` | 3 | Optional corroborated raw measurement anomaly, explicitly unconfirmed |
-| `ExternalHazardDataUnavailable` | 3 | All required providers for an enabled capability stale/unavailable |
+| Fault ID | `related_sms` mechanism ID | Symptom ID contract | Level | Trigger |
+| --- | --- | --- | ---: | --- |
+| `ExternalWeatherExposure` | `sm_ext_weather_exposure` | `ExternalWeatherExposure{HazardId}{OpeningId}` | 2 | One or more open apertures exposed to rain, storm, frost, or damaging wind |
+| `OutdoorAirQualityExposure` | `sm_ext_outdoor_air_quality_exposure` | `OutdoorAirQualityExposure{OpeningId}` | 3 | One or more open apertures during unacceptable outdoor AQ |
+| `IonizingRadiationAlert` | `sm_ext_ionizing_radiation_alert` | `IonizingRadiationAlert{AuthorityId}` | 2 | Official PAA radiological warning/status |
+| `RadiationDataAnomaly` | `sm_ext_radiation_data_anomaly` | `RadiationDataAnomaly{StationSetId}` | 3 | Corroborated raw measurement anomaly, explicitly unconfirmed |
+| `ExternalHazardDataUnavailable` | `sm_ext_provider_unavailable` | `ExternalHazardDataUnavailable{CapabilityId}` | 3 | Every provider required for an enabled capability is stale or unavailable |
+
+`HazardId`, `OpeningId`, `AuthorityId`, `StationSetId`, and `CapabilityId` are
+stable PascalCase identifiers derived from validated configuration keys or
+normalized provider identities. Human-readable hazard, opening, and area names
+are carried as localized attributes; they do not alter runtime IDs.
+The weather fault uses one static level because the current FaultManager schema
+assigns one level to each fault key. Level 2 covers the most urgent event in the
+aggregated rain/storm/frost/wind family.
 
 `FaultManager` aggregates all active symptoms. Same-tag notifications are
 refreshed as hazards or openings change. User-facing content uses Home Assistant
@@ -439,7 +449,7 @@ Temperature or indoor-AQ logic can recommend opening windows.
 That recommendation is unsafe during outdoor pollution, damaging wind, storm,
 or a radiological sheltering instruction.
 
-Implementation shall introduce a narrow `RecoveryPolicyEvaluator` interface.
+The recovery boundary uses a narrow `RecoveryPolicyEvaluator` interface.
 `ExternalHazardComponent` provides an evaluator snapshot such as:
 
 ```text
@@ -458,61 +468,139 @@ registers no executable recovery actions.
 Global policy and per-home binding remain separate.
 
 ```yaml
-app_config:
-  external_hazard_policy:
-    notification_only: true
-    weather:
-      frost_watch_c: 2.0
-      frost_warning_c: 0.0
-      gust_watch_m_s: 15.0
-      gust_warning_m_s: 20.0
-    outdoor_air_quality:
-      standard: european_aqi
-      warning_at: 60
-      conservative_source_policy: any_fresh_source
-    radiation:
-      official_alert_required_for_confirmed_fault: true
-      raw_anomaly_enabled: false
+SafetyFunctions:
+  app_config:
+    external_hazard_policy:
+      notification_only: true
+      decision_timeout_seconds: 1
+      clear_delay_seconds: 120
+      weather:
+        forecast_horizon_hours: 12
+        frost_watch_c: 2.0
+        frost_warning_c: 0.0
+        gust_watch_m_s: 15.0
+        gust_warning_m_s: 20.0
+        precipitation_warning_mm_h: 2.5
+        persistence_seconds: 120
+        hysteresis:
+          temperature_c: 0.5
+          gust_m_s: 1.0
+      outdoor_air_quality:
+        standard: european_aqi
+        warning_at: 60
+        conservative_source_policy: any_fresh_source
+      radiation:
+        official_alert_required_for_confirmed_fault: true
+        raw_anomaly_enabled: false
+      providers:
+        OpenMeteoWeatherApiComponent:
+          base_url: "https://api.open-meteo.com/v1/forecast"
+          poll_interval_seconds: 600
+          request_timeout_seconds: 10
+          max_retries: 2
+          stale_after_seconds: 1200
+        ImgwWarningsApiComponent:
+          base_url: "https://danepubliczne.imgw.pl/api/data/warningsmeteo"
+          poll_interval_seconds: 300
+          request_timeout_seconds: 10
+          max_retries: 2
+          stale_after_seconds: 900
+        GiosAirQualityApiComponent:
+          base_url: "https://api.gios.gov.pl/pjp-api/v1"
+          poll_interval_seconds: 900
+          request_timeout_seconds: 10
+          max_retries: 2
+          stale_after_seconds: 2700
+        OpenMeteoAirQualityApiComponent:
+          base_url: "https://air-quality-api.open-meteo.com/v1/air-quality"
+          poll_interval_seconds: 1800
+          request_timeout_seconds: 10
+          max_retries: 2
+          stale_after_seconds: 2700
+        PaaRadiationApiComponent:
+          base_url: "https://monitoring.paa.gov.pl/_api/maps"
+          radiation_message_path: "/RadiationMessage/{language}"
+          measurement_path: "/Measurement/{language}"
+          poll_interval_seconds: 300
+          request_timeout_seconds: 10
+          max_retries: 2
+          stale_after_seconds: 900
 
-user_config:
-  site:
-    latitude: 00.0000
-    longitude: 00.0000
-    timezone: Europe/Warsaw
-    teryt_codes:
-      - "0000"
+    faults:
+      ExternalWeatherExposure:
+        name: "Narażenie domu na zagrożenie pogodowe"
+        level: 2
+        related_sms:
+          - "sm_ext_weather_exposure"
+      OutdoorAirQualityExposure:
+        name: "Narażenie domu na zanieczyszczone powietrze"
+        level: 3
+        related_sms:
+          - "sm_ext_outdoor_air_quality_exposure"
+      IonizingRadiationAlert:
+        name: "Oficjalne ostrzeżenie radiologiczne"
+        level: 2
+        related_sms:
+          - "sm_ext_ionizing_radiation_alert"
+      RadiationDataAnomaly:
+        name: "Niepotwierdzona anomalia danych radiacyjnych"
+        level: 3
+        related_sms:
+          - "sm_ext_radiation_data_anomaly"
+      ExternalHazardDataUnavailable:
+        name: "Brak danych o zagrożeniach zewnętrznych"
+        level: 3
+        related_sms:
+          - "sm_ext_provider_unavailable"
 
-  api_components:
-    OpenMeteoWeatherApiComponent:
-      enabled: true
-      poll_interval_seconds: 600
-    ImgwWarningsApiComponent:
-      enabled: true
-      poll_interval_seconds: 300
-    GiosAirQualityApiComponent:
-      enabled: true
-      station_ids: []
-      poll_interval_seconds: 900
-    OpenMeteoAirQualityApiComponent:
-      enabled: true
-      poll_interval_seconds: 1800
-    PaaRadiationApiComponent:
-      enabled: true
-      poll_interval_seconds: 300
+  user_config:
+    components_enabled:
+      ExternalHazardComponent: true
 
-  safety_components:
-    ExternalHazardComponent:
-      openings:
-        OfficeWindow:
-          area_id: office
-          entity_id: binary_sensor.office_window_contact_contact
-          kind: window
-          hazards: [frost, wind, rain, storm, outdoor_air_pollution]
+    site:
+      latitude: 00.0000
+      longitude: 00.0000
+      timezone: Europe/Warsaw
+      country_code: PL
+      teryt_codes:
+        - "0000"
+
+    api_components:
+      OpenMeteoWeatherApiComponent:
+        enabled: true
+      ImgwWarningsApiComponent:
+        enabled: true
+      GiosAirQualityApiComponent:
+        enabled: true
+        station_ids: []
+      OpenMeteoAirQualityApiComponent:
+        enabled: true
+      PaaRadiationApiComponent:
+        enabled: true
+        language: pl
+        station_ids: []
+
+    safety_components:
+      ExternalHazardComponent:
+        openings:
+          OfficeWindow:
+            area_id: office
+            entity_id: binary_sensor.office_window_contact_contact
+            kind: window
+            hazards:
+              - frost
+              - wind
+              - rain
+              - storm
+              - outdoor_air_pollution
 ```
 
-Base URLs, request timeouts, retry ceilings, and stale defaults belong to global
-application policy unless an approved test environment overrides them. Entity
-IDs, location, TERYT codes, and selected stations are installation-specific.
+Provider network policy and the fault catalog belong to global application
+policy. Enablement, entity IDs, location, TERYT codes, selected stations, and
+language are installation-specific. A deployment shall merge the complete
+structure into `backend/app_cfg.yaml`; the configuration validator shall reject
+an enabled component, provider, or opening whose corresponding schema is absent
+or invalid.
 
 ## 13. Startup and shutdown sequence
 
@@ -590,22 +678,9 @@ Each API Component requires fixtures for:
 - Startup immediate polls occur only after manager/event wiring.
 - Shutdown leaves no active polling timer or worker submission.
 
-## 16. Implementation sequence
+## 16. Required project configuration
 
-1. Common immutable models, provider registry, runtime, and HTTP transport.
-2. `OpenMeteoWeatherApiComponent` plus contract tests.
-3. `ImgwWarningsApiComponent` plus TERYT tests.
-4. `GiosAirQualityApiComponent` plus station-selection tests.
-5. `OpenMeteoAirQualityApiComponent` plus forecast tests.
-6. `ExternalHazardComponent` weather/AQ decision logic and contact correlation.
-7. Faults, MQTT diagnostics, localized notification context, and advice guard.
-8. Full negative-actuation and failure-injection suite.
-9. `PaaRadiationApiComponent`, radiation policy, and radiation-specific contract
-   tests.
-
-## 17. Required project configuration
-
-The following values shall be defined for the target installation:
+The following values shall be defined for the installation:
 
 1. The windows and external doors belonging to the opening registry.
 2. Frost, gust, AQI, hysteresis, freshness, and stale thresholds.
