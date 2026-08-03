@@ -49,6 +49,8 @@ The implementation assumes:
 | `SafetyComponent` | Common safety-mechanism lifecycle, listeners, reevaluation, and debounce handling. |
 | `TemperatureComponent` | Direct and forecast low/high temperature evaluation and window recovery proposals. |
 | `SafetyDoorsComponent` | Per-door open-duration monitoring with optional state gating. |
+| `ExternalHazardComponent` *(planned)* | Correlate normalized external hazards with configured openings, create notification-only symptoms, and maintain advice-inhibition state. |
+| External API Components *(planned)* | One isolated component per remote API; validate and normalize provider data without creating faults or actions. |
 | `DerivativeMonitor` | Calculate and publish first- and second-order temperature derivatives. |
 | `FaultManager` | Aggregate symptoms, preserve multi-symptom fault context, and publish fault/system state. |
 | `NotificationManager` | Maintain one notification per fault and refresh its human-readable content. |
@@ -148,6 +150,28 @@ for fault events, NotificationManager runs before RecoveryManager.
 | SWR-MQTT-005 | The heartbeat period shall remain shorter than `expire_after` so unchanged entities do not become unavailable. | `heartbeat_seconds`, `expire_after` |
 | SWR-MQTT-006 | Application termination shall publish health and system state `stopped` before publishing availability `offline`. | `SafetyFunctions.terminate` |
 
+### 4.8 Planned External Hazard Monitoring — not implemented
+
+This subsection records the proposed implementation contract without claiming
+that the feature exists in the current software. The detailed design is in
+[`External Hazard Monitoring - Architecture.md`](../features/External%20Hazard%20Monitoring%20-%20Architecture.md).
+
+| ID | Planned requirement | Planned implementation |
+| --- | --- | --- |
+| SWR-EXT-001 | The feature shall use separate `OpenMeteoWeatherApiComponent`, `ImgwWarningsApiComponent`, `GiosAirQualityApiComponent`, `OpenMeteoAirQualityApiComponent`, and `PaaRadiationApiComponent` classes. | external API component registry |
+| SWR-EXT-002 | API Components shall have independent schemas, polling schedules, caches, failure counters, health, and contract tests. | `components/external_apis/*` |
+| SWR-EXT-003 | API Components shall not inherit from `SafetyComponent` and shall not create symptoms, faults, notifications, recovery actions, or actuator calls. | `ExternalApiComponent` protocol |
+| SWR-EXT-004 | Network work shall run outside the serialized safety-decision callback and results shall return through a bounded queue for ordered EventBus publication. | `ExternalApiRuntime` |
+| SWR-EXT-005 | `ExternalHazardComponent` shall be the only Safety Component in this feature and shall own household thresholds, freshness, cross-provider policy, opening correlation, aggregation, and notification context. | `ExternalHazardComponent` |
+| SWR-EXT-006 | Frost, wind/gust, rain/storm, and outdoor-pollution exposure symptoms shall require both applicable valid hazard evidence and an open configured aperture. | external hazard policy mechanisms |
+| SWR-EXT-007 | An official ionizing-radiation warning shall notify regardless of aperture state; open apertures shall be context only. | radiation authority mechanism |
+| SWR-EXT-008 | Raw radiation measurements shall not create the confirmed radiation-alert fault; any enabled anomaly warning shall be explicitly unconfirmed and corroborated by configured policy. | radiation anomaly mechanism |
+| SWR-EXT-009 | Provider timeout, stale data, or schema error shall not clear an active condition and shall publish provider degradation diagnostics. | provider health and clear policy |
+| SWR-EXT-010 | Version 1 shall be notification-only, shall register no executable recovery action, and shall make no Home Assistant actuator service call. | negative actuation boundary |
+| SWR-EXT-011 | Same-fault updates shall retain all active hazards/openings and refresh one notification tag using friendly names and localized area labels. | FaultManager and NotificationManager integration |
+| SWR-EXT-012 | External pollution, damaging wind, storm, or confirmed sheltering policy shall inhibit contradictory advice to open external apertures. | `RecoveryPolicyEvaluator` integration |
+| SWR-EXT-013 | PAA radiation integration shall remain disabled until a machine-readable contract and fixtures are explicitly reviewed. | `PaaRadiationApiComponent` feature gate |
+
 ## 5. Non-functional requirements
 
 | ID | Requirement |
@@ -189,12 +213,16 @@ valid measure of safety-logic verification.
 | SWR-REC-* | `test_recovery_man.py` |
 | SWR-LOC-* | `test_localization.py`, `test_mqtt_entity_manager.py`, frontend domain tests |
 | SWR-MQTT-* | `test_mqtt_entity_manager.py`, `test_safetyFunctions.py` |
+| SWR-EXT-* *(planned)* | provider contract tests, external hazard policy tests, EventBus/FaultManager/notification integration tests, negative-actuation tests |
 | SWR-NFR-005 | pytest-cov application-code report |
 
 ## 8. Known gaps and planned extensions
 
 - Fire, smoke, gas, water-leak, privacy, and additional access-control hazard
   components are not implemented.
+- External Hazard Monitoring and all five external API Components described in
+  §4.8 are not implemented. The PAA provider contract is an explicit blocker for
+  ionizing-radiation implementation.
 - Evidence persistence beyond Home Assistant history/logging is not
   implemented.
 - System operating modes such as Sleep, Local-only, and Maintenance are not

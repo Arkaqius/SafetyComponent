@@ -1,4 +1,4 @@
-# Lean SYS + TSC — Safety Architecture & Requirements (v1.0.0)
+# Lean SYS + TSC — Safety Architecture & Requirements (v1.1.0-draft)
 
 **Item:** Home Automation Safety Monitoring & Recovery (multi-hazard)
 
@@ -27,7 +27,7 @@
 
 **Scope of this document:**
 
-- Covers the **safety‑critical logic** of the _Home Automation Safety App_ (currently running atop **Home Assistant + AppDaemon**), specifically: detection, decision, and **actuation** for hazards identified in HARA (Fire/Smoke, Gas, CO, Water Leak, **Undercooling/Overheating**, Air Quality, System/Comms failure, HVAC degradation, Unauthorized Access/Privacy, Rain/Ingress).
+- Covers the **safety‑critical logic** of the _Home Automation Safety App_ (currently running atop **Home Assistant + AppDaemon**), specifically: detection, decision, notification, and where explicitly permitted **actuation** for hazards identified in HARA (Fire/Smoke, Gas, CO, Water Leak, **Undercooling/Overheating**, Air Quality, System/Comms failure, HVAC degradation, Unauthorized Access/Privacy, weather ingress, frost, wind, outdoor pollution, and ionizing radiation).
 - Defines **safety goals, SYS‑level requirements (blended with FSR), TSRs, safe states, timing (FTTI), parameters, and V\&V** at the **system level**. Software architecture details of a specific implementation are **intentionally out of scope for now** and will be adapted later.
 
 **Out of scope (for clarity):**
@@ -68,6 +68,7 @@ _Note: the data **providers** are external; the **interfaces** and how we use th
 - Weather hazard alerts: storm, blizzard, wind, rain, heatwave, tornado
 - Occupancy status (cloud or presence service)
 - Outdoor air pollution
+- Official radiological status/messages and public radiation-monitoring data
 - System health & update info (platform feeds)
 - Ethernet port status; link status (router, WAN)
 - Network performance: system latency, packet loss
@@ -106,7 +107,8 @@ Elements **outside** the boundary that we rely on and for which we define assump
 
 - Sensors/actuators meet their vendor specs and expose timely state to the system.
 - Network connectivity is _usually_ available; loss triggers local‑only fallbacks.
-- Weather/air‑quality feeds and alerting services are reasonably accurate within their stated SLAs.
+- Weather/air‑quality feeds and alerting services are reasonably accurate within their stated contracts; free feeds may provide no availability SLA and shall be diagnosed accordingly.
+- A public radiation dose-rate reading is not equivalent to an official radiological emergency declaration. Authority messages and raw measurements retain distinct semantics.
 - Users maintain devices (battery/power) and respond to L1/L2 notifications per household policy.
 
 ## 3 System Modes
@@ -245,9 +247,9 @@ When **WAN is down** (see §3, M4 Local‑Only), prefer delivery vectors that do
 
 ## 5 Item Definition (lean)
 
-**Item:** Safety Monitoring & Recovery for temperature‑controlled rooms (multi‑hazard).
+**Item:** Safety Monitoring, Notification & Recovery for the home (multi‑hazard).
 
-**Primary Purpose:** Detect, forecast, and mitigate environmental hazards (undercooling/overheating, indoor air quality, fire/gas/CO, water leaks) and system/comms failures to maintain safe operation and inform occupants.
+**Primary Purpose:** Detect, forecast, and mitigate environmental hazards (undercooling/overheating, indoor and outdoor air quality, fire/gas/CO, water leaks, severe weather, frost, wind, and ionizing radiation) and system/comms failures to maintain safe operation and inform occupants.
 
 **Operating Modes:** per §3 — Startup (M1), Normal (M2), Sleep/Quiet (M3), Local‑Only/WAN‑Lost (M4), Maintenance/Debug (M5), Shutdown (M6).
 
@@ -262,6 +264,8 @@ When **WAN is down** (see §3, M4 Local‑Only), prefer delivery vectors that do
 - **A3.** Operator response to **L2/L3** notifications within **T_op_resp** minutes (household policy).
 - **A4.** Actuation available within **T_act** seconds to effect temperature/AQ changes or shutoff valves.
 - **A5.** Occupancy is **an input to some safety goals** but **does not control system modes** (see §3).
+- **A6.** External cloud data is advisory and non-certified. Version 1 of External Hazard Monitoring is notification-only and shall not command an actuator.
+- **A7.** For ionizing radiation, occupants follow current PAA or other competent-authority instructions; the application does not provide dosimetry, medical advice, or radiation shielding.
 
 ---
 
@@ -281,14 +285,18 @@ When **WAN is down** (see §3, M4 Local‑Only), prefer delivery vectors that do
 | **SG‑008** | Detect **CO** accumulation; alert and ventilate; escalate alarms.                                                        | HZ‑CO‑01                               | **ASIL C**                  | **10 s**          | **SS‑Alarm:** Ventilate + L1                           |
 | **SG‑009** | Detect **water leak/flood**; alert and shut off supply if available.                                                     | HZ‑WATER‑01                            | **QM/ASIL A**               | **60 s**          | **SS‑3:** Close valve + L2                             |
 | **SG‑010** | Detect **HVAC failures** affecting temperature control; prompt maintenance before exposure.                              | HZ‑HVAC‑01                             | **QM/ASIL A**               | **30 min**        | **SS‑4:** Degraded mode + L3                           |
-| **SG‑011** | Prevent **weather ingress** via open windows/doors during rain/storm.                                                    | HZ‑WEATHER‑01                          | **QM**                      | **120 s**         | **SS‑5:** Prompt secure closure + L2                   |
+| **SG‑011** | Warn about **weather ingress** via open windows/doors during rain/storm.                                                | HZ‑WEATHER‑01                          | **QM**                      | **120 s after usable input** | **SS‑5:** Prompt manual secure closure + L2      |
 | **SG‑012** | Mitigate **loss of heating/cooling** to maintain safe temperatures; alert and apply failover/backup strategies.          | HZ‑HVAC‑LOSS‑01                        | **QM/ASIL A**               | **30 min**        | **SS‑4:** Degraded mode + L3                           |
 | **SG‑013** | Reduce **electrical shock** risk via RCD self‑test/reminders and wet‑zone interlocks.                                    | HZ‑ELECT‑01                            | **ASIL A**                  | **24 h**          | **SS‑4:** Degraded mode + L2/L3                        |
 | **SG‑014** | Prevent **privacy invasion** by enforcing AV device quiet hours/masking and alerting on unexpected access.               | HZ‑PRIV‑01                             | **QM**                      | **60 s**          | **SS‑5:** Mask/disable AV + L2                         |
 | **SG‑015** | Deter and respond to **unauthorized access** (unexpected movement/entry) when home declared unoccupied or during Sleep.  | HZ‑UNAUTH‑01                           | **QM/ASIL A**               | **30 s**          | **SS‑5:** Secure posture (lock/close) + L1/L2          |
 | **SG‑016** | Maintain **cybersecurity posture** sufficient to protect safety functions (auth, RBAC, signed config, audit, integrity). | HZ‑CYBER‑SPOOF‑01 / HZ‑CYBER‑DENIAL‑01 | **ASIL‑influencing (QM/A)** | **Policy‑driven** | **SS‑2/SS‑5:** Isolate channel / restrict control + L3 |
+| **SG‑017** | Warn when an open window or external door exposes the home to **frost**.                                                | HZ‑EXT‑FROST‑01                        | **QM**                      | **10 min after usable input** | **SS‑5:** Prompt manual closure + L3          |
+| **SG‑018** | Warn when an open window or external door is exposed to damaging **wind/gusts**.                                       | HZ‑EXT‑WIND‑01                         | **QM**                      | **120 s after usable input** | **SS‑5:** Prompt manual closure + L2/L3        |
+| **SG‑019** | Warn when open external apertures may admit hazardous **outdoor air pollution** and inhibit conflicting advice.        | HZ‑EXT‑AQ‑01                           | **QM/ASIL A**               | **10 min after usable input** | **SS‑5:** Prompt manual closure + L3           |
+| **SG‑020** | Warn occupants about a confirmed **ionizing-radiation event** and present authoritative guidance without overstating protection. | HZ‑EXT‑RAD‑01                    | **ASIL A (provisional)**    | **5 min after authority publication** | **SS‑Notify:** L2 authority-guidance alert |
 
-> Life‑threatening hazards (Fire, Gas, CO, Electrical Shock) must not be reduced below **Level 2** post‑mitigation even if formulas suggest lower risk.
+> Life‑threatening hazards (Fire, Gas, CO, Electrical Shock, confirmed Ionizing Radiation Event) must not be reduced below **Level 2** post‑mitigation even if formulas suggest lower risk.
 
 **Note:** Requirements under your original “1.3 Safety goals” narrative (Unauthorized Access, Cybersecurity, Electrical Shock, Privacy, Loss of Heating/Cooling) are now covered explicitly by **SG‑012…SG‑016** and will be decomposed into **interface contracts (§7)** and **SYS‑SRs (§8)** next.
 
@@ -346,9 +354,13 @@ _Interfaces turn §2 elements into **testable contracts**: freshness, latency, a
 
 **IR-020 Weather (Current & Forecast)**
 
-- Provide temperature, pressure, wind speed, clouds; **forecast horizon ≥ 12 h**.
-- **Freshness:** current `age ≤ 10 min`; forecast updated **≥ 2 h**.
-- **Hazard flags:** storm, blizzard, wind, rain, heatwave, tornado as booleans with start/end times.
+- Provide temperature, apparent temperature, pressure, wind speed, wind gust,
+  precipitation/rain, weather code, and clouds; **forecast horizon ≥ 12 h**.
+- Include provider name, requested and resolved coordinates, source timestamp,
+  retrieval timestamp, units, and forecast validity timestamps.
+- **Freshness:** retrieval `age ≤ 10 min`; forecast source update interval and
+  model age shall be exposed separately and shall not be represented as a local
+  real-time observation.
 
 **IR-021 Occupancy Status**
 
@@ -357,7 +369,13 @@ _Interfaces turn §2 elements into **testable contracts**: freshness, latency, a
 
 **IR-022 Outdoor Air Quality**
 
-- Provide PM2.5/CO₂ or AQI; **Freshness:** `age ≤ 30 min`.
+- Provide at least PM2.5, PM10, NO₂, O₃, SO₂, and a named AQI standard when
+  available. CO₂ shall not be used as the primary outdoor-pollution indicator.
+- Each sample shall identify whether it is a station measurement or model
+  forecast and shall include station/grid identity, units, source timestamp,
+  retrieval timestamp, and validity time.
+- **Freshness:** measured/retrieved data `age ≤ 30 min`; forecast horizon
+  **≥ 12 h** and model update age exposed separately.
 
 **IR-023 System Health & Updates**
 
@@ -367,6 +385,42 @@ _Interfaces turn §2 elements into **testable contracts**: freshness, latency, a
 
 - Ethernet port status, router link, WAN link, latency ms, packet loss %.
 - **Freshness:** metrics every **≥ 60 s**; **Thresholds:** configurable alert limits.
+
+**IR-025 Official Weather Warnings**
+
+- Provide stable warning ID, event name, authority severity/degree,
+  probability, publication time, valid-from, valid-to, authoritative text,
+  source, and affected administrative region codes.
+- Warnings shall be filtered by configured TERYT codes before entering the
+  hazard-decision path.
+- A warning update with the same stable ID shall patch the existing condition;
+  expiry or explicit withdrawal shall clear it.
+- **Freshness:** poll interval `≤ 5 min`; late retrieval shall preserve the
+  authority validity interval and expose provider degradation.
+
+**IR-026 Ionizing Radiation Status**
+
+- Preserve two distinct input classes: `official_message` and
+  `dose_rate_measurement`.
+- Official messages shall include authority, message ID, publication/validity
+  timestamps, status/severity, text, and source reference.
+- Dose-rate measurements shall include station ID/location, value, unit
+  (`nSv/h` or `µSv/h`), sample timestamp, and retrieval timestamp.
+- Units shall be normalized without losing the original value/unit. A raw
+  measurement shall never be relabeled as an official emergency declaration.
+- A universal absolute threshold shall not be assumed safe for every station;
+  optional anomaly logic shall retain station baseline, corroboration count,
+  rainfall context when available, and an `unconfirmed` marker.
+- **Freshness:** source-specific and explicitly configured. Stale or
+  schema-invalid data shall become `unavailable`, not `clear`.
+
+**IR-027 External API Provider Health**
+
+- Every external API component shall publish `ok`, `stale`, `unavailable`, or
+  `schema_error` together with last attempt, last success, HTTP/status summary,
+  schema version/fingerprint, and consecutive failure count.
+- Provider health shall be independent: failure of one API shall not stop or
+  overwrite the state of another API.
 
 ### 7.3 Output — Hardware Actuators
 
@@ -567,7 +621,241 @@ _We model the system as **decoupled Safety Components**, each implementing one o
 
 ---
 
-> **Next components to define (same pattern):** Fire/CO/Gas (C‑ALARM), Water Leak (C‑LEAK), Air Quality (C‑AQ), HVAC Health (C‑HVAC), Unauthorized Access (C‑SEC), Privacy (C‑PRIV), Network/Platform Health (C‑NET), Weather Ingress (C‑WX). Say which one you want next and I’ll add it.
+### 8.3 External Hazard Monitoring Component (C-EXT)
+
+**Status:** Proposed for review. Version 1 is notification-only.
+
+**Scope:** SG-011 (Rain/Storm Ingress), SG-017 (Frost), SG-018
+(Wind), SG-019 (Outdoor Pollution), SG-020 (Ionizing Radiation), and
+SG-003 (Diagnostics linkage).
+
+**Safety Mechanisms:** **SM-EXT-1 WeatherExposureMonitoring**,
+**SM-EXT-2 OutdoorPollutionExposureMonitoring**,
+**SM-EXT-3 RadiationAuthorityMonitoring**, and
+**SM-EXT-4 ExternalProviderDiagnostics**.
+
+#### 8.3.1 Component boundaries
+
+- `ExternalHazardComponent` is the only Safety Component in this feature. It
+  owns household policy, contact correlation, symptom lifecycle, aggregation,
+  notification context, and advice-inhibition state.
+- Each remote API has a separate API Component. API Components perform
+  transport, provider-schema validation, provider-specific unit mapping, and
+  publication of normalized observations. They do not create symptoms, faults,
+  notifications, or recovery actions.
+- Version 1 API Components are:
+  `OpenMeteoWeatherApiComponent`, `ImgwWarningsApiComponent`,
+  `GiosAirQualityApiComponent`, `OpenMeteoAirQualityApiComponent`, and
+  `PaaRadiationApiComponent`.
+- API Components may share an injected HTTP transport and common immutable data
+  types, but shall not share polling schedules, failure counters, cached
+  payloads, or provider health.
+- `PaaRadiationApiComponent` shall remain disabled until the exact
+  machine-readable contract, usage conditions, freshness, and schema fixtures
+  are reviewed. An undocumented map-backend endpoint is not treated as a stable
+  safety contract merely because the public portal currently calls it.
+
+#### 8.3.2 Inputs (from §7)
+
+- **IR-001 Window/Door Contacts** for configured external apertures.
+- **IR-020 Weather (Current & Forecast)** from the dedicated Open-Meteo weather
+  API component.
+- **IR-022 Outdoor Air Quality** from independent GIOŚ measurement and
+  Open-Meteo forecast API components.
+- **IR-025 Official Weather Warnings** from the dedicated IMGW warning API
+  component.
+- **IR-026 Ionizing Radiation Status** from the dedicated PAA radiation API
+  component.
+- **IR-027 External API Provider Health** from every API component.
+
+#### 8.3.3 Outputs (to §7)
+
+- **OR-020/021** notification and dashboard outputs only.
+- Diagnostic MQTT entities for normalized hazard state and per-provider health.
+- A non-actuating advice policy that can inhibit contradictory recommendations
+  such as opening windows during external pollution, damaging wind, storm, or a
+  confirmed radiological sheltering instruction.
+- Version 1 shall not use **OR-003**, **OR-006**, **OR-007**, locks, gates, or
+  any other actuator output.
+
+#### 8.3.4 Parameters
+
+- Site identity: latitude, longitude, timezone, country, configured TERYT
+  codes, and optional provider station IDs.
+- Opening registry: stable opening name, `entity_id`, `area_id`, opening kind,
+  and applicable hazard types.
+- Weather policy: frost watch/warning temperature, wind/gust thresholds,
+  rain/precipitation policy, forecast horizon, hysteresis, persistence, and
+  clear delay.
+- Outdoor AQ policy: named AQI standard and thresholds, pollutant overrides,
+  measurement/forecast preference, and agreement policy.
+- Radiation policy: official-message mapping, optional unconfirmed anomaly
+  policy, station baseline window, corroboration count, and clear policy.
+- Per-provider base URL, poll interval, request timeout, retry count, stale
+  timeout, and enablement. Provider defaults belong to application policy;
+  location and station selection belong to installation configuration.
+
+#### 8.3.5 Normalized events and states
+
+- API Components publish `external_observation` with a typed observation:
+  `{provider, observation_id, hazard_type, provider_level, measured_values,
+  observed_at, valid_from, valid_to, retrieved_at, region_codes, confidence,
+  authority_confirmed, source_reference}`.
+- API Components publish `external_provider_health` independently of data
+  observations.
+- `ExternalHazardComponent` maintains a latest-valid observation set keyed by
+  provider and observation ID. Repeated retrieval of unchanged input is
+  idempotent.
+- Normalized hazard state is `clear`, `watch`, `warning`, `severe`, or
+  `unavailable`. Provider levels are inputs to policy and are not automatically
+  equal to Safety System notification levels.
+- Opening state is `open`, `closed`, or `unavailable`. An unavailable contact
+  shall not be treated as closed.
+
+**Prefaults:**
+
+- `PR_EXT_WEATHER[hazard, opening]` for rain, storm, frost, or wind policy met
+  while a relevant opening is open.
+- `PR_EXT_AQ[opening]` when outdoor AQ policy is met while a relevant opening
+  is open.
+- `PR_EXT_RAD_OFFICIAL[source]` for a confirmed official radiation warning,
+  independent of opening state.
+- `PR_EXT_RAD_UNCONFIRMED[station_set]` for an optional corroborated raw-data
+  anomaly; it shall retain `authority_confirmed=false`.
+- `PR_EXT_PROVIDER_UNAVAILABLE[capability]` only when every provider required
+  for an enabled capability is unusable beyond its stale timeout.
+
+**Faults:**
+
+- `F_EXTERNAL_WEATHER_EXPOSURE` aggregates affected hazards and openings.
+- `F_OUTDOOR_AQ_EXPOSURE` aggregates affected openings and pollutant/AQI
+  context.
+- `F_IONIZING_RADIATION_ALERT` represents an official authority warning only.
+- `F_RADIATION_DATA_ANOMALY` represents unconfirmed corroborated measurement
+  anomalies and shall use wording distinct from an official alert.
+- `F_EXTERNAL_DATA_UNAVAILABLE` aggregates unavailable enabled capabilities,
+  not every individual transient provider failure.
+
+#### 8.3.6 Requirements (C-EXT → SYS-SR-EXT-xxx)
+
+**API isolation and normalization**
+
+- **SYS-SR-EXT-001:** Each external API shall be implemented by a separate API
+  Component with an independent configuration schema, polling lifecycle,
+  cache, diagnostics, and contract tests.
+- **SYS-SR-EXT-002:** API Components shall not inherit from `SafetyComponent`
+  and shall not publish `symptom` or `fault` events. They shall publish only
+  normalized observations and provider-health events.
+- **SYS-SR-EXT-003:** Remote polling shall not start in constructors. It shall
+  start only after configuration validation, EventBus subscriptions, FaultManager,
+  NotificationManager, and MQTT diagnostics are ready.
+- **SYS-SR-EXT-004:** Provider payload validation shall be fail-closed for the
+  affected capability: unknown enum values, missing timestamps/units, or schema
+  changes produce `schema_error` and shall not be interpreted as `clear`.
+- **SYS-SR-EXT-005:** One provider failure shall not delay another provider's
+  schedule or replace another provider's last valid observation.
+
+**Weather and opening correlation**
+
+- **SYS-SR-EXT-010:** When a configured frost, wind, rain, or storm policy is
+  active and a relevant opening is open, C-EXT shall raise or update
+  `PR_EXT_WEATHER[hazard, opening]` within `T_ext_decision`.
+- **SYS-SR-EXT-011:** Official IMGW warnings shall be applicable only when at
+  least one configured TERYT code is present in the warning region set and the
+  current time is within its validity interval.
+- **SYS-SR-EXT-012:** Forecast-only weather evidence shall be labeled as a
+  forecast. It shall not be represented as a local real-time measurement.
+- **SYS-SR-EXT-013:** Closing an opening shall clear only that opening's
+  prefault after `T_ext_clear`; other affected openings and the underlying
+  external hazard state shall remain visible.
+
+**Outdoor air quality**
+
+- **SYS-SR-EXT-020:** GIOŚ measurements and Open-Meteo AQ forecasts shall
+  remain distinct observations and retain their own timestamp, grid/station,
+  units, and quality semantics.
+- **SYS-SR-EXT-021:** If current measurement and forecast disagree, the
+  configured conservative policy shall determine exposure while the notification
+  shows both sources; the API Components shall not resolve the conflict.
+- **SYS-SR-EXT-022:** When outdoor AQ policy is active and a relevant opening
+  is open, C-EXT shall raise/update `PR_EXT_AQ[opening]` and identify the
+  controlling AQI/pollutant input.
+- **SYS-SR-EXT-023:** While outdoor AQ, damaging wind, storm, or a confirmed
+  sheltering policy is active, C-EXT shall expose an advice inhibition for
+  `open_external_opening`. Version 1 may filter manual advice but shall not
+  command an actuator.
+
+**Ionizing radiation**
+
+- **SYS-SR-EXT-030:** An official PAA radiological warning shall raise
+  `PR_EXT_RAD_OFFICIAL` and notify regardless of contact state. Open external
+  apertures shall be included as context, not as a radiation-shielding claim.
+- **SYS-SR-EXT-031:** A raw dose-rate measurement or threshold crossing shall
+  not raise `F_IONIZING_RADIATION_ALERT` without an official authority status.
+- **SYS-SR-EXT-032:** Optional raw-data anomaly detection shall use configured
+  station baseline, persistence, and corroboration and shall raise only
+  `F_RADIATION_DATA_ANOMALY` with `authority_confirmed=false`.
+- **SYS-SR-EXT-033:** Radiation notifications shall present the source and
+  publication time, distinguish confirmed and unconfirmed information, and
+  direct users to current competent-authority instructions.
+- **SYS-SR-EXT-034:** Version 1 shall not state or imply that closing windows
+  or doors shields occupants from ionizing radiation.
+
+**Notification-only control boundary**
+
+- **SYS-SR-EXT-040:** Version 1 shall not register or execute actuator recovery
+  actions and shall not call Home Assistant actuator services.
+- **SYS-SR-EXT-041:** Every warning shall include hazard type, human-readable
+  opening/area names when applicable, observed or forecast value, threshold or
+  authority level, validity, source, freshness, and recommended manual action.
+- **SYS-SR-EXT-042:** Repeated observations for the same active fault shall
+  refresh the existing notification and aggregate newly affected hazards or
+  openings without creating duplicate notification tags.
+- **SYS-SR-EXT-043:** Clearing shall require positive valid evidence or expiry
+  according to provider semantics. Network failure, stale data, or parse error
+  shall not clear an active condition.
+
+**Diagnostics and evidence**
+
+- **SYS-SR-EXT-050:** Each API Component shall expose provider health per
+  IR-027 through MQTT diagnostics.
+- **SYS-SR-EXT-051:** C-EXT shall emit evidence for each decision containing
+  `{rule_id, provider, source_ts, retrieved_at, freshness, values, thresholds,
+  opening_states, decision, authority_confirmed, latency_ms}`.
+- **SYS-SR-EXT-052:** C-EXT shall publish one normalized external-hazard entity
+  containing active hazards, affected openings, provider health summary, and
+  the most recent successful evaluation time.
+
+#### 8.3.7 Mapping
+
+- **SG-011:** SYS-SR-EXT-001/010/011/012/013/040/041/042/043/051
+- **SG-017:** SYS-SR-EXT-010/012/013/040/041/042/043/051
+- **SG-018:** SYS-SR-EXT-010/011/012/013/040/041/042/043/051
+- **SG-019:** SYS-SR-EXT-020/021/022/023/040/041/042/043/051
+- **SG-020:** SYS-SR-EXT-030/031/032/033/034/040/041/042/043/051
+- **SG-003:** SYS-SR-EXT-004/005/043/050/052
+
+#### 8.3.8 Verification
+
+- **Contract tests:** stored sanitized payload fixtures for every API, including
+  valid, empty, changed-schema, missing-unit, stale, withdrawn, and malformed
+  responses.
+- **Unit tests:** threshold/hysteresis/expiry, TERYT filtering, station/grid
+  selection, contact correlation, multi-opening aggregation, confirmed versus
+  unconfirmed radiation semantics, and advice inhibition.
+- **Integration tests:** independent polling schedules, timeout/retry isolation,
+  EventBus ordering, FaultManager aggregation, same-tag notification refresh,
+  MQTT provider diagnostics, and restart followed by immediate provider refresh
+  without an intermediate false-clear transition.
+- **Negative-actuation tests:** assert no cover, lock, switch, fan, climate, or
+  other actuator service is called by Version 1 paths.
+- **Failure injection:** WAN loss, HTTP timeout, partial provider outage,
+  rate-limit response, clock skew, duplicate warning ID, provider withdrawal,
+  and stale data that must not clear an active fault.
+
+---
+
+> **Next components to define (same pattern):** Fire/CO/Gas (C-ALARM), Water Leak (C-LEAK), Indoor Air Quality (C-AQ), HVAC Health (C-HVAC), Unauthorized Access (C-SEC), Privacy (C-PRIV), and Network/Platform Health (C-NET).
 
 ## 9 Non‑Functional Requirements (NFR)
 
@@ -586,6 +874,8 @@ _Non‑functional constraints that apply across all components. IDs use `NFR‑x
 - **NFR‑011 Data integrity:** Inputs lacking `ts/src` or failing CRC/format checks **shall** be rejected and logged as **Degraded**.
 - **NFR‑012 Persistence:** Evidence and config **shall** survive process restarts and power cycles (durable writes or journal).
 - **NFR‑013 UPS posture:** On power failure detection, prefer local safe states (e.g., close valve, unlock door for fire) when feasible.
+- **NFR‑014 External isolation:** External API calls shall use bounded timeouts and independent schedules; no external call may block the AppDaemon decision path or another provider beyond `T_api_block_max`.
+- **NFR‑015 Last-known semantics:** Provider loss shall preserve the last observation with explicit age until its policy expiry; it shall never convert stale data into a false `clear` state.
 
 ### 9.3 Security (safety‑relevant)
 
@@ -599,6 +889,7 @@ _Non‑functional constraints that apply across all components. IDs use `NFR‑x
 - **NFR‑030 Component isolation:** Safety components (C‑TEMP, C‑ALARM, …) **shall** expose clear inputs/outputs and not share mutable state (except via evidence/metrics).
 - **NFR‑031 Freedom from interference:** Non‑safety automations **shall not** preempt or delay safety decisions/actuations beyond **T_fi_max**.
 - **NFR‑032 Feature flags:** New mechanisms (e.g., forecasting) start in **shadow mode** and only activate when **C_target** is met.
+- **NFR‑033 Provider isolation:** Each external API Component shall be replaceable and testable without importing provider-specific schemas into C-EXT or other API Components.
 
 ### 9.5 Observability & Evidence
 
@@ -686,5 +977,21 @@ _Non‑functional constraints that apply across all components. IDs use `NFR‑x
 | **SMS_enabled**          | Enable SMS/cellular fallback                 | false            |
 | **SMS_max_retries**      | Max SMS send retries                         | 3                |
 | **SMS_cooldown_s**       | Cooldown between SMS retries                 | 60 s             |
+| **T_ext_decision**       | External observation/contact decision budget | ≤ 1 s            |
+| **T_ext_clear**          | Stable positive evidence before exposure clear | 2–10 min       |
+| **T_api_block_max**      | Maximum blocking time of one provider call   | ≤ 10 s           |
+| **T_poll_weather**       | Open-Meteo weather poll interval             | 10 min           |
+| **T_poll_imgw**          | IMGW warnings poll interval                  | 5 min            |
+| **T_poll_gios**          | GIOŚ measurement poll interval               | 15 min           |
+| **T_poll_aq_forecast**   | Open-Meteo AQ forecast poll interval         | 30 min           |
+| **T_poll_paa**           | PAA status poll interval after contract approval | 5 min        |
+| **T_stale_weather**      | Weather capability stale timeout             | 20 min           |
+| **T_stale_warning**      | Official weather warning provider stale timeout | 15 min        |
+| **T_stale_aq**           | Outdoor AQ capability stale timeout          | 45 min           |
+| **T_stale_radiation**    | Radiation capability stale timeout           | source contract  |
+| **T_frost_watch**        | Configurable external frost watch threshold  | 2 °C (draft)     |
+| **T_frost_warning**      | Configurable external frost warning threshold | 0 °C (draft)    |
+| **V_gust_watch**         | Configurable wind-gust watch threshold       | 15 m/s (draft)   |
+| **V_gust_warning**       | Configurable wind-gust warning threshold     | 20 m/s (draft)   |
 
 _All parameters live in `safety.yaml` (see §4.5 and §8.2.3). Per‑room overrides apply to temperature parameters; per‑zone overrides may be added for AQ._
