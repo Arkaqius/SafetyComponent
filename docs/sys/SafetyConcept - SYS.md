@@ -1,10 +1,9 @@
-# Lean SYS + TSC — Safety Architecture & Requirements (v1.1.0-draft)
+# Lean SYS + TSC — Safety Architecture & Requirements (v1.1.0)
 
 **Item:** Home Automation Safety Monitoring & Recovery (multi-hazard)
 
 **Date:** 2025-09-18
 **Owner:** System/Safety (SYS)
-**Status:** Working Draft → for SYS review
 **Scope:** Blend **ASPICE SYS.x** with **ISO 26262-3/4/6** work products; align with provided **HARA** and **SYS v0.2** inputs.
 
 ---
@@ -264,7 +263,7 @@ When **WAN is down** (see §3, M4 Local‑Only), prefer delivery vectors that do
 - **A3.** Operator response to **L2/L3** notifications within **T_op_resp** minutes (household policy).
 - **A4.** Actuation available within **T_act** seconds to effect temperature/AQ changes or shutoff valves.
 - **A5.** Occupancy is **an input to some safety goals** but **does not control system modes** (see §3).
-- **A6.** External cloud data is advisory and non-certified. Version 1 of External Hazard Monitoring is notification-only and shall not command an actuator.
+- **A6.** External cloud data is advisory and non-certified. External Hazard Monitoring is notification-only and shall not command an actuator.
 - **A7.** For ionizing radiation, occupants follow current PAA or other competent-authority instructions; the application does not provide dosimetry, medical advice, or radiation shielding.
 
 ---
@@ -623,8 +622,6 @@ _We model the system as **decoupled Safety Components**, each implementing one o
 
 ### 8.3 External Hazard Monitoring Component (C-EXT)
 
-**Status:** Proposed for review. Version 1 is notification-only.
-
 **Scope:** SG-011 (Rain/Storm Ingress), SG-017 (Frost), SG-018
 (Wind), SG-019 (Outdoor Pollution), SG-020 (Ionizing Radiation), and
 SG-003 (Diagnostics linkage).
@@ -643,17 +640,16 @@ SG-003 (Diagnostics linkage).
   transport, provider-schema validation, provider-specific unit mapping, and
   publication of normalized observations. They do not create symptoms, faults,
   notifications, or recovery actions.
-- Version 1 API Components are:
+- The API Components are:
   `OpenMeteoWeatherApiComponent`, `ImgwWarningsApiComponent`,
   `GiosAirQualityApiComponent`, `OpenMeteoAirQualityApiComponent`, and
   `PaaRadiationApiComponent`.
 - API Components may share an injected HTTP transport and common immutable data
   types, but shall not share polling schedules, failure counters, cached
   payloads, or provider health.
-- `PaaRadiationApiComponent` shall remain disabled until the exact
-  machine-readable contract, usage conditions, freshness, and schema fixtures
-  are reviewed. An undocumented map-backend endpoint is not treated as a stable
-  safety contract merely because the public portal currently calls it.
+- `PaaRadiationApiComponent` shall consume official PAA radiological messages
+  and station dose-rate measurements while preserving their distinct semantics,
+  timestamps, validity, units, and source identity.
 
 #### 8.3.2 Inputs (from §7)
 
@@ -675,7 +671,7 @@ SG-003 (Diagnostics linkage).
 - A non-actuating advice policy that can inhibit contradictory recommendations
   such as opening windows during external pollution, damaging wind, storm, or a
   confirmed radiological sheltering instruction.
-- Version 1 shall not use **OR-003**, **OR-006**, **OR-007**, locks, gates, or
+- C-EXT shall not use **OR-003**, **OR-006**, **OR-007**, locks, gates, or
   any other actuator output.
 
 #### 8.3.4 Parameters
@@ -782,7 +778,7 @@ SG-003 (Diagnostics linkage).
   controlling AQI/pollutant input.
 - **SYS-SR-EXT-023:** While outdoor AQ, damaging wind, storm, or a confirmed
   sheltering policy is active, C-EXT shall expose an advice inhibition for
-  `open_external_opening`. Version 1 may filter manual advice but shall not
+  `open_external_opening`. C-EXT may filter manual advice but shall not
   command an actuator.
 
 **Ionizing radiation**
@@ -798,12 +794,12 @@ SG-003 (Diagnostics linkage).
 - **SYS-SR-EXT-033:** Radiation notifications shall present the source and
   publication time, distinguish confirmed and unconfirmed information, and
   direct users to current competent-authority instructions.
-- **SYS-SR-EXT-034:** Version 1 shall not state or imply that closing windows
+- **SYS-SR-EXT-034:** C-EXT shall not state or imply that closing windows
   or doors shields occupants from ionizing radiation.
 
 **Notification-only control boundary**
 
-- **SYS-SR-EXT-040:** Version 1 shall not register or execute actuator recovery
+- **SYS-SR-EXT-040:** C-EXT shall not register or execute actuator recovery
   actions and shall not call Home Assistant actuator services.
 - **SYS-SR-EXT-041:** Every warning shall include hazard type, human-readable
   opening/area names when applicable, observed or forecast value, threshold or
@@ -848,7 +844,7 @@ SG-003 (Diagnostics linkage).
   MQTT provider diagnostics, and restart followed by immediate provider refresh
   without an intermediate false-clear transition.
 - **Negative-actuation tests:** assert no cover, lock, switch, fan, climate, or
-  other actuator service is called by Version 1 paths.
+  other actuator service is called by C-EXT paths.
 - **Failure injection:** WAN loss, HTTP timeout, partial provider outage,
   rate-limit response, clock skew, duplicate warning ID, provider withdrawal,
   and stale data that must not clear an active fault.
@@ -984,14 +980,14 @@ _Non‑functional constraints that apply across all components. IDs use `NFR‑x
 | **T_poll_imgw**          | IMGW warnings poll interval                  | 5 min            |
 | **T_poll_gios**          | GIOŚ measurement poll interval               | 15 min           |
 | **T_poll_aq_forecast**   | Open-Meteo AQ forecast poll interval         | 30 min           |
-| **T_poll_paa**           | PAA status poll interval after contract approval | 5 min        |
+| **T_poll_paa**           | PAA status poll interval                       | 5 min            |
 | **T_stale_weather**      | Weather capability stale timeout             | 20 min           |
 | **T_stale_warning**      | Official weather warning provider stale timeout | 15 min        |
 | **T_stale_aq**           | Outdoor AQ capability stale timeout          | 45 min           |
-| **T_stale_radiation**    | Radiation capability stale timeout           | source contract  |
-| **T_frost_watch**        | Configurable external frost watch threshold  | 2 °C (draft)     |
-| **T_frost_warning**      | Configurable external frost warning threshold | 0 °C (draft)    |
-| **V_gust_watch**         | Configurable wind-gust watch threshold       | 15 m/s (draft)   |
-| **V_gust_warning**       | Configurable wind-gust warning threshold     | 20 m/s (draft)   |
+| **T_stale_radiation**    | Radiation capability stale timeout           | provider-defined |
+| **T_frost_watch**        | Configurable external frost watch threshold  | 2 °C             |
+| **T_frost_warning**      | Configurable external frost warning threshold | 0 °C            |
+| **V_gust_watch**         | Configurable wind-gust watch threshold       | 15 m/s           |
+| **V_gust_warning**       | Configurable wind-gust warning threshold     | 20 m/s           |
 
 _All parameters live in `safety.yaml` (see §4.5 and §8.2.3). Per‑room overrides apply to temperature parameters; per‑zone overrides may be added for AQ._

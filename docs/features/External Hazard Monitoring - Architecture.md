@@ -1,11 +1,5 @@
 # External Hazard Monitoring - Feature Architecture
 
-**Status:** Draft for user review
-
-**Implementation status:** Not implemented
-
-**Version scope:** Version 1, notification-only
-
 **Safety component:** `ExternalHazardComponent`
 
 **System component ID:** `C-EXT`
@@ -16,7 +10,7 @@ The following decisions are requirements, not open design options:
 
 1. The monitored radiation type is **ionizing radiation**, not UV or solar
    irradiance.
-2. Version 1 only monitors, diagnoses, and warns. It shall not close a window or
+2. The feature monitors, diagnoses, and warns. It shall not close a window or
    door, operate a gate, lock anything, change HVAC, or control ventilation.
 3. Every external API has a separate API Component with its own configuration,
    schema validation, polling lifecycle, cache, health, and tests.
@@ -27,7 +21,7 @@ The following decisions are requirements, not open design options:
 
 ## 2. Goals
 
-Version 1 shall:
+The system shall:
 
 - monitor frost, wind/gusts, rain/storm, outdoor air pollution, and ionizing
   radiation from external data sources;
@@ -43,7 +37,7 @@ Version 1 shall:
   conditions make that advice unsafe;
 - provide deterministic evidence suitable for unit and integration tests.
 
-## 3. Explicit non-goals for Version 1
+## 3. Out of scope
 
 - Automatic closure or locking.
 - Ventilation, HVAC, blind, purifier, siren, or gate control.
@@ -57,15 +51,15 @@ Version 1 shall:
 
 ## 4. Source strategy
 
-| API Component | Provider/API | Purpose | Initial interval | Authority |
+| API Component | Provider/API | Purpose | Polling interval | Authority |
 | --- | --- | --- | --- | --- |
 | `OpenMeteoWeatherApiComponent` | Open-Meteo `/v1/forecast` | Current/model temperature, frost forecast, precipitation, weather code, wind and gusts | 10 min | Forecast/model input |
 | `ImgwWarningsApiComponent` | IMGW `/api/data/warningsmeteo` | Official Polish weather warnings filtered by TERYT | 5 min | Authoritative weather warning |
 | `GiosAirQualityApiComponent` | GIOŚ PJP API v1 | Nearest/configured station measurements and Polish AQ information | 15 min | Authoritative measurement source |
 | `OpenMeteoAirQualityApiComponent` | Open-Meteo `/v1/air-quality` | CAMS forecast, European AQI and pollutant forecast | 30 min | Forecast/model input |
-| `PaaRadiationApiComponent` | PAA machine-readable source, contract to be approved | Official status/message and, if supported, station dose-rate data | 5 min draft | Authoritative only for official PAA status/messages |
+| `PaaRadiationApiComponent` | Official PAA radiation monitoring API | Official status/messages and station dose-rate data | 5 min | Authoritative only for official PAA status/messages |
 
-Provider references reviewed for this draft:
+Provider references:
 
 - Open-Meteo weather: <https://open-meteo.com/en/docs>
 - Open-Meteo air quality: <https://open-meteo.com/en/docs/air-quality-api>
@@ -78,25 +72,16 @@ Provider references reviewed for this draft:
 - PAA official radiation map information:
   <https://www.gov.pl/web/paa/nowa-mapa-radiacyjna-polski-panstwowej-agencji-atomistyki>
 
-### 4.1 PAA integration gate
+### 4.1 PAA radiation data contract
 
-The public PAA map frontend currently references an internal map backend under
-`https://monitoring.paa.gov.pl/_api/maps/`, but this draft found no published,
-stable machine-client contract for it. Direct verification also timed out during
-the architecture review. Therefore:
+`PaaRadiationApiComponent` shall consume the official PAA machine-readable
+radiation source. The provider contract shall identify endpoint ownership,
+payload schema, timestamps, update cadence, units, message validity and
+withdrawal semantics. The component shall preserve official authority messages
+and station dose-rate measurements as distinct result types.
 
-- the `PaaRadiationApiComponent` boundary is part of the architecture;
-- its code shall not be implemented until endpoint ownership, payload schema,
-  usage permission, timestamps, update cadence, units, and withdrawal semantics
-  are captured and reviewed;
-- until then, the radiation capability shall report `unavailable`, never
-  `clear`;
-- a supported PAA feed is preferred over EURDEP or a third-party mirror;
-- adding EURDEP later would create a separate `EurdepRadiationApiComponent`, not
-  conditional code inside the PAA component.
-
-This is the only intentionally unresolved provider contract in the Version 1
-design.
+If another radiation provider is added, it shall use a separate API Component
+instead of provider-conditional code inside `PaaRadiationApiComponent`.
 
 ## 5. Logical architecture
 
@@ -127,12 +112,12 @@ design.
                    |
                    +--> MQTT fault/system state and evidence
 
- Version 1 has no edge from C-EXT to RecoveryManager actuator execution.
+ C-EXT has no edge to RecoveryManager actuator execution.
 ```
 
 ## 6. Code placement
 
-Proposed files for implementation:
+Target code structure:
 
 ```text
 backend/components/external_apis/
@@ -310,7 +295,7 @@ The component does not decide whether forecast or station measurement wins.
 
 ### 7.7 `PaaRadiationApiComponent`
 
-Once its contract is approved, the component shall preserve two result types:
+The component shall preserve two result types:
 
 - `official_message`: authority status/message with publication and validity;
 - `dose_rate_measurement`: station value, station ID/location, timestamp, and
@@ -378,14 +363,14 @@ retained only in diagnostic/evidence context.
 The Safety Component evaluates external hazard state separately from household
 exposure.
 
-Cloud timing is measured from receipt of a usable, source-dated input. Version 1
-does not claim that a 5- or 10-minute polling service detects a physical event
+Cloud timing is measured from receipt of a usable, source-dated input. The
+system does not claim that a 5- or 10-minute polling service detects a physical event
 within 120 seconds of its occurrence. The 120-second decision goal begins when
 the applicable normalized observation is delivered to C-EXT. Achieving a true
 physical-event FTTI of 120 seconds would require a reviewed local rain/wind or
 other direct sensor path.
 
-| Hazard | Hazard evidence | Exposure condition | Version 1 result |
+| Hazard | Hazard evidence | Exposure condition | System response |
 | --- | --- | --- | --- |
 | Frost | Current or forecast external temperature crosses configured policy | Relevant opening is open | Warn with opening and temperature/forecast context |
 | Wind | Gust threshold or applicable IMGW warning | Relevant opening is open | Warn with opening, gust or warning degree |
@@ -420,7 +405,7 @@ evidence.
 
 ## 10. Fault and notification model
 
-Proposed stable technical faults:
+Stable technical faults:
 
 | Fault ID | Default level | Trigger |
 | --- | --- | --- |
@@ -446,11 +431,11 @@ Required notification context:
 - manual recommendation;
 - authoritative link/reference for radiation.
 
-No Version 1 notification action button may call an actuator service.
+No notification action button may call an actuator service.
 
 ## 11. Advice conflict handling
 
-Existing temperature or future indoor-AQ logic can recommend opening windows.
+Temperature or indoor-AQ logic can recommend opening windows.
 That recommendation is unsafe during outdoor pollution, damaging wind, storm,
 or a radiological sheltering instruction.
 
@@ -465,8 +450,8 @@ source: GIOS/OpenMeteoAirQuality
 ```
 
 `RecoveryManager` consults registered evaluators before showing manual advice
-or executing a future action. In Version 1 this filters contradictory advice
-only; C-EXT itself registers no executable recovery actions.
+or executing an action. This filters contradictory advice; C-EXT itself
+registers no executable recovery actions.
 
 ## 12. Configuration architecture
 
@@ -512,7 +497,8 @@ user_config:
       enabled: true
       poll_interval_seconds: 1800
     PaaRadiationApiComponent:
-      enabled: false  # blocked until API contract review
+      enabled: true
+      poll_interval_seconds: 300
 
   safety_components:
     ExternalHazardComponent:
@@ -554,7 +540,7 @@ No provider may perform a request during schema validation or construction.
 - Remote text is data: it is sanitized and never evaluated as HTML, Jinja, YAML,
   Python, or a Home Assistant service name.
 - HTTP 429/5xx uses bounded backoff without changing hazard state to clear.
-- Credentials, if a future provider needs them, use platform secrets and are
+- Provider credentials use platform secrets and are
   excluded from logs/evidence.
 - Every provider has one in-flight call maximum.
 - A slow provider cannot exhaust all workers.
@@ -591,12 +577,12 @@ Each API Component requires fixtures for:
 - Raw radiation anomaly -> never `IonizingRadiationAlert`.
 - Provider timeout while fault active -> fault is not cleared.
 - External pollution -> open-window advice inhibited.
-- Every Version 1 scenario -> zero actuator service calls.
+- Every external-hazard scenario -> zero actuator service calls.
 
 ### 15.3 Integration tests
 
 - API Components schedule independently.
-- A blocked provider does not block another provider or HA state listeners.
+- A stalled provider does not block another provider or HA state listeners.
 - Results are dispatched serially through EventBus.
 - Fault aggregation and same-tag notification refresh preserve all active
   hazards/openings.
@@ -604,7 +590,7 @@ Each API Component requires fixtures for:
 - Startup immediate polls occur only after manager/event wiring.
 - Shutdown leaves no active polling timer or worker submission.
 
-## 16. Planned implementation order after approval
+## 16. Implementation sequence
 
 1. Common immutable models, provider registry, runtime, and HTTP transport.
 2. `OpenMeteoWeatherApiComponent` plus contract tests.
@@ -614,20 +600,16 @@ Each API Component requires fixtures for:
 6. `ExternalHazardComponent` weather/AQ decision logic and contact correlation.
 7. Faults, MQTT diagnostics, localized notification context, and advice guard.
 8. Full negative-actuation and failure-injection suite.
-9. PAA contract investigation and explicit review checkpoint.
-10. `PaaRadiationApiComponent`, radiation policy, and radiation-specific tests
-    only after that checkpoint is approved.
+9. `PaaRadiationApiComponent`, radiation policy, and radiation-specific contract
+   tests.
 
-## 17. Review points
+## 17. Required project configuration
 
-The following require user approval before implementation:
+The following values shall be defined for the target installation:
 
-1. Accept `C-EXT`/`ExternalHazardComponent` and the five API Component names.
-2. Accept the proposed fault split and default notification levels.
-3. Confirm which windows/external doors belong to the opening registry.
-4. Approve frost, gust, AQI, hysteresis, and stale defaults or mark them as
-   installation-specific placeholders.
-5. Approve conservative AQ disagreement policy.
-6. Approve the `RecoveryPolicyEvaluator` addition for advice inhibition.
-7. Resolve and approve the PAA machine-readable contract before radiation code.
-8. Confirm that Version 1 has no actuator calls under any condition.
+1. The windows and external doors belonging to the opening registry.
+2. Frost, gust, AQI, hysteresis, freshness, and stale thresholds.
+3. The air-quality disagreement policy.
+4. Default fault notification levels.
+5. Provider station identifiers and regional codes where required.
+6. The notification-only boundary: no actuator calls under any condition.

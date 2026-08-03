@@ -1,9 +1,5 @@
 # ISO 26262 Inspired Safety Strategy for Home Automation Systems
 
-> **Draft extension for review:** External Hazard Monitoring requirements are
-> proposed in this revision. Version 1 is notification-only and performs no
-> automatic window, door, ventilation, or HVAC actuation.
-
 ## 1. Hazard analysis and risk assessment
 
 ### 1.1 Hazard identification
@@ -74,7 +70,7 @@ Similarly, a room's temperature could rise above the safe threshold for the situ
 
 **Rain Entering Window:**
 
-This hazard arises when rain enters through an open window, potentially causing water damage to the home's interior and electrical systems. Version 1 helps by monitoring weather and warning residents; any future automatic closure requires a separate actuation review.
+This hazard arises when rain enters through an open window, potentially causing water damage to the home's interior and electrical systems. The system monitors weather and warns residents; automatic closure is outside the scope of External Hazard Monitoring.
 
 **Frost Exposure Through Openings:**
 
@@ -299,8 +295,7 @@ _High:_ These hazards can be easily mitigated if residents are notified in time,
 
 - The system shall monitor weather data and predict potential rain events.
 - The system shall alert occupants when windows or external doors are left open during rain, a storm, or an applicable official warning.
-- Version 1 shall not automatically close motorized windows or doors.
-- Automatic closure may be introduced only by a later, separately reviewed version with actuator read-back and conflict handling.
+- External Hazard Monitoring shall not automatically close motorized windows or doors.
 - The system shall log open/close events for audit and maintenance purposes.
 
 #### 1.3.15 Frost Exposure Through Openings
@@ -310,7 +305,7 @@ _High:_ These hazards can be easily mitigated if residents are notified in time,
   open while the frost warning policy is met.
 - The alert shall identify the affected openings, current/forecast temperature,
   source, source timestamp, and recommended manual action.
-- Version 1 shall not actuate windows, doors, heating, or ventilation.
+- External Hazard Monitoring shall not actuate windows, doors, heating, or ventilation.
 
 #### 1.3.16 Wind Damage to Openings
 
@@ -320,7 +315,7 @@ _High:_ These hazards can be easily mitigated if residents are notified in time,
   open while the wind warning policy is met.
 - The alert shall identify the affected openings, gust value or warning level,
   validity interval, source, and recommended manual action.
-- Version 1 shall not actuate windows, doors, blinds, or gates.
+- External Hazard Monitoring shall not actuate windows, doors, blinds, or gates.
 
 #### 1.3.17 Outdoor Air Pollution Ingress
 
@@ -329,7 +324,7 @@ _High:_ These hazards can be easily mitigated if residents are notified in time,
 - The system shall alert occupants when a configured window or external door is
   open while outdoor air quality exceeds the configured policy threshold.
 - Outdoor pollution shall inhibit conflicting manual advice to open windows;
-  version 1 shall not control ventilation or air purifiers.
+  External Hazard Monitoring shall not control ventilation or air purifiers.
 - The system shall report whether the decision is based on a measurement, a
   forecast, or both.
 
@@ -346,7 +341,7 @@ _High:_ These hazards can be easily mitigated if residents are notified in time,
   user to follow official guidance.
 - Notifications shall not claim that closing windows or doors provides radiation
   shielding.
-- Version 1 shall not actuate windows, doors, ventilation, HVAC, sirens, or other
+- External Hazard Monitoring shall not actuate windows, doors, ventilation, HVAC, sirens, or other
   equipment in response to radiological data.
 
 ---
