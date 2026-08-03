@@ -12,6 +12,7 @@ from .fixtures.hass_fixture import (
 )  # Import utilities from conftest.py
 
 from components.notification_manager.notification_manager import NotificationManager
+from components.core.localization import Localizer
 
 @pytest.mark.parametrize(
     "test_size,temperature, expected_symptom_state, expected_fault_state, prefault_title, prefault_message",
@@ -29,16 +30,16 @@ from components.notification_manager.notification_manager import NotificationMan
             ["5", "6", "7", "8", "9"],
             FaultState.SET,
             FaultState.SET,
-            "Hazard!",
-            'Fault: RiskyTemperature\nlocation: Office\n',
+            "Safety issue detected",
+            "Unsafe temperature needs your attention.\nLocation: Office",
         ),
         (
             6,
             ["5", "6", "7", "8", "9", "34", "34", "34", "34", "34", "34", "34"],
             FaultState.CLEARED,
             FaultState.CLEARED,
-            "Hazard!",
-            'Fault: RiskyTemperature\nlocation: Office\n has been cleared.',
+            "Safety issue detected",
+            "Good news - Unsafe temperature is no longer active.\nLocation: Office",
         ),
     ],
 )
@@ -130,10 +131,10 @@ def test_temp_comp_overtemp_notification(mocked_hass_app_with_temp_component):
         for call in app_instance.call_service.call_args_list
         if "notify" in call.args[0]
     ]
-    assert notify_call[-1].kwargs["title"] == "Hazard!"
+    assert notify_call[-1].kwargs["title"] == "Safety issue detected"
     assert (
         notify_call[-1].kwargs["message"]
-        == "Fault: RiskyTemperature\nlocation: Office\n"
+        == "Unsafe temperature needs your attention.\nLocation: Office"
     )
 
 
@@ -171,10 +172,10 @@ def test_temp_comp_overtemp_forecast_notification(
         for call in app_instance.call_service.call_args_list
         if "notify" in call.args[0]
     ]
-    assert notify_call[-1].kwargs["title"] == "Warning!"
+    assert notify_call[-1].kwargs["title"] == "Please check your home"
     assert (
         notify_call[-1].kwargs["message"]
-        == "Fault: RiskyTemperatureForecast\nlocation: Office\n"
+        == "Unsafe temperature forecast needs your attention.\nLocation: Office"
     )
         
 def test_notify_fault_set(mocked_hass_app_with_temp_component):
@@ -426,3 +427,74 @@ def test_recovery_action_appends_and_sends_notification():
 
     assert "do it" in notification_manager.active_notification["tag2"]["message"]
     hass_app.call_service.assert_called()
+
+
+def test_active_fault_update_keeps_existing_recovery_guidance():
+    """Updating one active fault keeps its accumulated user guidance."""
+    hass_app = Mock()
+    hass_app.call_service = Mock()
+    hass_app.log = Mock()
+    notification_manager = NotificationManager(hass_app, {})
+
+    notification_manager.notify(
+        "RiskyTemperature",
+        2,
+        FaultState.SET,
+        {"location": "Office"},
+        "same-tag",
+        friendly_name="Unsafe temperature",
+    )
+    notification_manager._add_recovery_action("Close the office window.", "same-tag")
+
+    notification_manager.notify(
+        "RiskyTemperature",
+        2,
+        FaultState.SET,
+        {"location": "Office, Kitchen"},
+        "same-tag",
+        friendly_name="Unsafe temperature",
+    )
+    notification_manager._add_recovery_action("Check the kitchen window.", "same-tag")
+
+    assert list(notification_manager.active_notification) == ["same-tag"]
+    message = notification_manager.active_notification["same-tag"]["message"]
+    assert message == (
+        "Unsafe temperature needs your attention.\n"
+        "Location: Office, Kitchen\n\n"
+        "What you can do:\n"
+        "- Close the office window.\n"
+        "- Check the kitchen window."
+    )
+    assert hass_app.call_service.call_args.kwargs["data"]["tag"] == "same-tag"
+
+
+def test_polish_notification_copy_and_labels_are_localized():
+    hass_app = Mock()
+    hass_app.call_service = Mock()
+    hass_app.log = Mock()
+    notification_manager = NotificationManager(
+        hass_app,
+        {},
+        localizer=Localizer({"language": "pl"}),
+    )
+
+    notification_manager.notify(
+        "RiskyTemperature",
+        2,
+        FaultState.SET,
+        {"location": "Biuro"},
+        "tag-pl",
+        friendly_name="Niebezpieczna temperatura",
+    )
+    notification_manager._add_recovery_action(
+        "Zamknij okno w biurze.", "tag-pl"
+    )
+
+    notification = notification_manager.active_notification["tag-pl"]
+    assert notification["title"] == "Wykryto zagrożenie w domu"
+    assert notification["message"] == (
+        "Wymaga uwagi: Niebezpieczna temperatura.\n"
+        "Lokalizacja: Biuro\n\n"
+        "Co możesz zrobić:\n"
+        "- Zamknij okno w biurze."
+    )

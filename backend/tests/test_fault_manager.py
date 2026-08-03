@@ -1,4 +1,4 @@
-from unittest.mock import Mock, patch, ANY
+from unittest.mock import ANY, Mock
 import pytest
 from components.core.event_bus import EventBus
 from components.core.mqtt_entity_manager import MqttEntityManager
@@ -76,6 +76,32 @@ def test_fault_manager_initialization(fault_manager, fault, symptom):
     """
     assert fault_manager.faults["RiskyTemperature"] == fault
     assert fault_manager.symptoms["RiskyTemperatureOffice"] == symptom
+
+
+def test_system_state_uses_readable_code_for_most_severe_fault(fault_manager):
+    emergency = Fault("Emergency", ["sm_tc_1"], level=1)
+    warning = Fault("Warning", ["sm_tc_1"], level=3)
+    emergency.state = FaultState.SET
+    warning.state = FaultState.SET
+    fault_manager.faults = {"Emergency": emergency, "Warning": warning}
+
+    fault_manager.update_system_state_entity()
+
+    fault_manager.mqtt_entities.publish_sensor_state.assert_called_with(
+        "sensor.safetysystem_state",
+        "emergency",
+        attributes={"fault_count": 2, "highest_fault_level": 1},
+    )
+
+
+def test_system_state_reports_no_faults_without_active_faults(fault_manager):
+    fault_manager.update_system_state_entity()
+
+    fault_manager.mqtt_entities.publish_sensor_state.assert_called_with(
+        "sensor.safetysystem_state",
+        "no_faults",
+        attributes={"fault_count": 0, "highest_fault_level": 0},
+    )
 
 def test_fault_manager_requires_event_bus_and_mqtt(fault_manager):
     """Verify manager-to-manager events and entity output have explicit dependencies."""

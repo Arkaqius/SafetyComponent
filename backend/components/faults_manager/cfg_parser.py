@@ -31,5 +31,6 @@ def get_faults(faults_dict: dict) -> dict[str, Fault]:
             fault_data["related_sms"],
             fault_data["level"],
             fault_data.get("shadows", []),
+            friendly_name=fault_data.get("name", fault_name),
         )
     return ret_val

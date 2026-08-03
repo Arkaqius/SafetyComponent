@@ -58,7 +58,60 @@ def test_register_sensor_publishes_discovery_state_and_attributes():
             -1
         ].kwargs["payload"]
     )
-    assert attributes_payload == {"mode": "test"}
+    assert attributes_payload == {"mode": "test", "state_label": "Running"}
+
+
+def test_localization_keeps_state_code_and_localizes_display_metadata():
+    hass_app = Mock()
+    mqtt_entities = MqttEntityManager(
+        hass_app,
+        localization={
+            "language": "pl",
+            "entity_names": {
+                "sensor.safety_app_health": "Kondycja systemu",
+            },
+        },
+    )
+
+    mqtt_entities.register_sensor(
+        "sensor.safety_app_health",
+        "Safety App Health",
+        state="running",
+    )
+
+    discovery_payload = json.loads(
+        _mqtt_calls(
+            hass_app,
+            "homeassistant/sensor/safety_component_safety_app_health/config",
+        )[-1].kwargs["payload"]
+    )
+    attributes_payload = json.loads(
+        _mqtt_calls(
+            hass_app,
+            "safety_component/attributes/safety_app_health",
+        )[-1].kwargs["payload"]
+    )
+    state_payload = _mqtt_calls(
+        hass_app,
+        "safety_component/state/safety_app_health",
+    )[-1].kwargs["payload"]
+
+    assert discovery_payload["name"] == "Kondycja systemu"
+    assert state_payload == "running"
+    assert attributes_payload["state_label"] == "Działa"
+
+    mqtt_entities.publish_sensor_state(
+        "sensor.safety_app_health",
+        "stopped",
+    )
+
+    updated_attributes_payload = json.loads(
+        _mqtt_calls(
+            hass_app,
+            "safety_component/attributes/safety_app_health",
+        )[-1].kwargs["payload"]
+    )
+    assert updated_attributes_payload["state_label"] == "Zatrzymana"
 
 
 def test_availability_cleanup_and_remove_sensor():

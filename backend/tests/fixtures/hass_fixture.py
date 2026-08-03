@@ -7,7 +7,6 @@ import pytest
 
 from SafetyFunctions import SafetyFunctions
 from components.core.mqtt_entity_manager import MqttEntityManager
-from components.safetycomponents.temperature.temperature_component import TemperatureComponent
 
 
 @pytest.fixture
@@ -22,6 +21,13 @@ def mocked_hass() -> Generator[Any, Any, None]:
         mock_hass.run_in = MagicMock()
         mock_hass.run_every = MagicMock()
         mock_hass.listen_state = MagicMock()
+        mock_hass.render_template = MagicMock(
+            side_effect=lambda template, **_kwargs: (
+                "Office" if '"office"' in template else "Kitchen"
+                if '"kitchen"' in template
+                else None
+            )
+        )
         yield mock_hass
 
 
@@ -175,4 +181,8 @@ def mqtt_payloads(hass_app: Any, topic: str) -> list[str]:
 
 def mqtt_json_payloads(hass_app: Any, topic: str) -> list[dict[str, Any]]:
     """Return JSON MQTT payloads published to a topic."""
-    return [json.loads(payload) for payload in mqtt_payloads(hass_app, topic)]
+    return [
+        json.loads(payload)
+        for payload in mqtt_payloads(hass_app, topic)
+        if payload
+    ]

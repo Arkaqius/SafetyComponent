@@ -26,6 +26,7 @@ from typing import Dict, Any, Callable, Optional
 import appdaemon.plugins.hass.hassapi as hass  # type: ignore
 
 from components.core.common_entities import CommonEntities
+from components.core.localization import Localizer
 from components.core.mqtt_entity_manager import MqttEntityManager
 from components.safetycomponents.core.safety_component import (
     SafetyComponent,
@@ -95,11 +96,46 @@ class TemperatureComponent(SafetyComponent):
                 self.hass_app.log(
                     f"Processing symptoms for location: {location}, data: {data}"
                 )
+                self._register_temperature_threshold_entities(location, data)
                 self._process_symptoms_for_location(
                     sm_modules, location, data, ret_val_pr, ret_val_ra
                 )
 
         return (ret_val_pr, ret_val_ra)
+
+    def _register_temperature_threshold_entities(
+        self, location: str, data: dict[str, Any]
+    ) -> None:
+        """Expose configured room limits as dedicated diagnostic sensors."""
+        source_entity = str(data["temperature_sensor"])
+        display_location = str(data.get("area_name", location))
+        localizer = getattr(self.hass_app, "localizer", Localizer())
+        common_attributes = {
+            "source_entity": source_entity,
+            "area_id": str(data["area_id"]),
+            "area_name": display_location,
+            "attribution": "Managed by SafetyFunction",
+        }
+        for threshold_type, config_key in (
+            ("low", "CAL_LOW_TEMP_THRESHOLD"),
+            ("high", "CAL_HIGH_TEMP_THRESHOLD"),
+        ):
+            self.mqtt_entities.register_sensor(
+                f"{source_entity}_{threshold_type}_threshold",
+                localizer.text(
+                    f"entity.temperature_{threshold_type}_threshold",
+                    location=display_location,
+                ),
+                state=data[config_key],
+                attributes={
+                    **common_attributes,
+                    "threshold_type": threshold_type,
+                },
+                icon="mdi:thermometer-alert",
+                unit_of_measurement="°C",
+                state_class="measurement",
+                entity_category="diagnostic",
+            )
 
     def init_safety_mechanism(self, sm_name: str, name: str, parameters: dict) -> bool:
         """
@@ -483,7 +519,7 @@ class TemperatureComponent(SafetyComponent):
             symptom: The created symptom object.
         """
         symptom_params = data.copy()
-        symptom_params["location"] = location
+        symptom_params["location"] = str(data.get("area_name", location))
 
         return Symptom(
             module=modules[self.__class__.__name__],
@@ -508,8 +544,15 @@ class TemperatureComponent(SafetyComponent):
             RecoveryAction: The created RecoveryAction object.
         """
         name: str = f"{default_name}{location}"
+        display_location = str(data.get("area_name", location))
+        localizer = getattr(self.hass_app, "localizer", Localizer())
         params = {
-            "location": location,
+            "location": display_location,
+            "area_id": data["area_id"],
+            "friendly_name": localizer.text(
+                "entity.recovery_window",
+                location=display_location,
+            ),
             "actuator": data.get("actuator"),
             "window_sensor": data.get("window_sensor"),
         }
@@ -652,6 +695,12 @@ class TemperatureComponent(SafetyComponent):
         try:
             for key in required_keys:
                 extracted_params[key] = parameters[key]
+            for key in (
+                "CAL_LOW_TEMP_THRESHOLD",
+                "CAL_HIGH_TEMP_THRESHOLD",
+            ):
+                if key in parameters:
+                    extracted_params[key] = parameters[key]
             extracted_params["actuator"] = parameters.get("actuator")
         except KeyError as e:
             self.hass_app.log(f"Key not found in sm_cfg: {e}", level="ERROR")
@@ -782,11 +831,17 @@ class TemperatureComponent(SafetyComponent):
         if outside_temp < meas_room_temp:
             window_sensors_state = "off"
             actuator_sensors_state = "off"
-            notification: str = f"Please close windows in {location} as recovery action"
+            localizer = getattr(hass_app, "localizer", Localizer())
+            notification = localizer.text(
+                "recovery.close_windows", location=location
+            )
         else:
             window_sensors_state = "on"
             actuator_sensors_state = "on"
-            notification: str = f"Please open windows in {location} as recovery action"
+            localizer = getattr(hass_app, "localizer", Localizer())
+            notification = localizer.text(
+                "recovery.open_windows", location=location
+            )
 
         # Close windows if outside temperature is lower
         if window_sensors:

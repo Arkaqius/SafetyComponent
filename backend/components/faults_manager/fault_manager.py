@@ -33,6 +33,15 @@ from components.core.event_bus import EventBus
 from components.core.mqtt_entity_manager import MqttEntityManager
 
 
+SYSTEM_STATE_BY_FAULT_LEVEL = {
+    0: "no_faults",
+    1: "emergency",
+    2: "hazard",
+    3: "warning",
+    4: "information",
+}
+
+
 class FaultManager:
     """
     Manages the fault and symptom conditions within the safety management system.
@@ -267,6 +276,7 @@ class FaultManager:
             self.event_bus.publish(
                 "fault",
                 fault_name=fault.name,
+                fault_friendly_name=fault.friendly_name,
                 level=fault.level,
                 fault_state=FaultState.SET,
                 additional_info=self._notification_info_from_merged(
@@ -429,6 +439,7 @@ class FaultManager:
         self.event_bus.publish(
             "fault",
             fault_name=fault.name,
+            fault_friendly_name=fault.friendly_name,
             level=fault.level,
             fault_state=FaultState.SHADOWED,
             additional_info=additional_info,
@@ -489,6 +500,7 @@ class FaultManager:
             self.event_bus.publish(
                 "fault",
                 fault_name=fault.name,
+                fault_friendly_name=fault.friendly_name,
                 level=fault.level,
                 fault_state=FaultState.SET,
                 additional_info=self._notification_info_from_merged(
@@ -523,6 +535,7 @@ class FaultManager:
             self.event_bus.publish(
                 "fault",
                 fault_name=fault.name,
+                fault_friendly_name=fault.friendly_name,
                 level=fault.level,
                 fault_state=FaultState.CLEARED,
                 additional_info=additional_info,
@@ -703,11 +716,12 @@ class FaultManager:
         Returns:
             int: The highest severity level of active faults, or 0 if no faults are active.
         """
-        highest_level = 0
-        for fault in self.faults.values():
-            if fault.state == FaultState.SET:
-                highest_level = max(highest_level, fault.level)
-        return highest_level
+        active_levels = [
+            fault.level
+            for fault in self.faults.values()
+            if fault.state == FaultState.SET
+        ]
+        return min(active_levels, default=0)
     
     def update_system_state_entity(self) -> None:
         """
@@ -716,6 +730,9 @@ class FaultManager:
         The state reflects the highest severity level of active faults.
         """
         highest_fault_level = self.get_system_fault_level()
+        system_state = SYSTEM_STATE_BY_FAULT_LEVEL.get(
+            highest_fault_level, "warning"
+        )
         attributes = {
             "fault_count": len(
                 [fault for fault in self.faults.values() if fault.state == FaultState.SET]
@@ -724,7 +741,7 @@ class FaultManager:
         }
         self._set_internal_entity(
             "sensor.safetysystem_state",
-            str(highest_fault_level),
+            system_state,
             attributes,
         )
 

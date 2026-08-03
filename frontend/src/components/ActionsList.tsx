@@ -77,8 +77,8 @@ function RecoveryCard({ recovery }: { recovery: RecoveryView }) {
         <Icon name='recovery' size={20} />
       </span>
       <div className='recovery-card-copy'>
-        <strong>{recovery.name}</strong>
-        <p>{recovery.description || recovery.entityId}</p>
+        <strong title={recovery.entityId}>{recovery.name}</strong>
+        <p>{recovery.description || 'Brak dodatkowego opisu.'}</p>
         <small>Zmiana {formatRelativeTime(recovery.lastChanged)}</small>
       </div>
       <StatusBadge tone={presentation.tone}>{presentation.label}</StatusBadge>

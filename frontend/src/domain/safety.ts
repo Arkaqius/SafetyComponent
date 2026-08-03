@@ -46,21 +46,30 @@ export interface TemperatureView {
   rate: number | null;
   accelerationEntityId: string;
   acceleration: number | null;
+  lowThreshold: number | null;
+  highThreshold: number | null;
   lastUpdated?: string;
 }
 
-export type SafetyDoorStatus = 'active' | 'inactive' | 'unavailable' | 'unknown';
+export type SafetyDoorStatus = 'active' | 'blocked' | 'inactive' | 'unavailable' | 'unknown';
+
+export type SafetyDoorConditionResult = 'pass' | 'blocked' | 'unavailable' | 'not_configured' | 'unknown';
 
 export interface SafetyDoorView {
   entityId: string;
   name: string;
   sourceEntityId: string;
+  sourceEntityName: string;
   state: string;
   status: SafetyDoorStatus;
   doorState: 'open' | 'closed' | 'unavailable';
   timeoutSeconds: number | null;
   openDurationSeconds: number;
   remainingSeconds: number;
+  conditionEntityId: string;
+  conditionEntityName: string;
+  conditionState: string;
+  conditionResult: SafetyDoorConditionResult;
   openedAt?: string;
   lastUpdated?: string;
 }
@@ -89,6 +98,28 @@ export const LEVEL_PRESENTATION: Record<number, { label: string; shortLabel: str
   3: { label: 'Ostrzeżenie', shortLabel: 'L3', tone: 'warning' },
   4: { label: 'Informacja', shortLabel: 'L4', tone: 'info' },
 };
+
+const SYSTEM_LEVEL_BY_STATE: Record<string, number> = {
+  no_faults: 0,
+  working: 0,
+  emergency: 1,
+  hazard: 2,
+  warning: 3,
+  information: 4,
+};
+
+export function systemStatePresentation(state: unknown): { label: string; tone: StatusTone } {
+  const normalized = normalizeState(state);
+  if (normalized === 'no_faults' || normalized === 'working' || normalized === 'safe' || normalized === '0') {
+    return { label: 'Brak aktywnych usterek', tone: 'safe' };
+  }
+  if (normalized === 'stopped') return { label: 'Zatrzymany', tone: 'critical' };
+  const level = parseSystemLevel(normalized);
+  const presentation = level === null ? undefined : LEVEL_PRESENTATION[level];
+  return presentation
+    ? { label: presentation.label, tone: presentation.tone }
+    : { label: String(state ?? 'Stan nieznany'), tone: 'muted' };
+}
 
 const UNAVAILABLE_STATES = new Set(['unavailable', 'unknown', 'none', '']);
 
@@ -202,6 +233,8 @@ export function getMonitoredTemperatures(entities: EntityMap): TemperatureView[]
       const accelerationEntityId = `${entityId}_rateofrate`;
       const sourceEntity = entities[entityId];
       if (!sourceEntity) return [];
+      const lowThresholdEntity = entities[`${entityId}_low_threshold`];
+      const highThresholdEntity = entities[`${entityId}_high_threshold`];
 
       return [
         {
@@ -213,7 +246,18 @@ export function getMonitoredTemperatures(entities: EntityMap): TemperatureView[]
           rate: numericState(rateEntity.state),
           accelerationEntityId,
           acceleration: numericState(entities[accelerationEntityId]?.state),
-          lastUpdated: latestTimestamp(sourceEntity.last_updated, rateEntity.last_updated),
+          lowThreshold:
+            numericState(lowThresholdEntity?.state) ??
+            numericAttribute(rateEntity, 'low_temperature_threshold'),
+          highThreshold:
+            numericState(highThresholdEntity?.state) ??
+            numericAttribute(rateEntity, 'high_temperature_threshold'),
+          lastUpdated: latestTimestamp(
+            sourceEntity.last_updated,
+            rateEntity.last_updated,
+            lowThresholdEntity?.last_updated,
+            highThresholdEntity?.last_updated
+          ),
         },
       ];
     })
@@ -223,9 +267,10 @@ export function getMonitoredTemperatures(entities: EntityMap): TemperatureView[]
 export function getSafetyDoors(entities: EntityMap): SafetyDoorView[] {
   const statusPriority: Record<SafetyDoorStatus, number> = {
     active: 0,
-    unavailable: 1,
-    unknown: 2,
-    inactive: 3,
+    blocked: 1,
+    unavailable: 2,
+    unknown: 3,
+    inactive: 4,
   };
 
   return Object.entries(entities)
@@ -238,6 +283,8 @@ export function getSafetyDoors(entities: EntityMap): SafetyDoorView[] {
       const status: SafetyDoorStatus =
         normalizedState === 'active'
           ? 'active'
+          : normalizedState === 'blocked'
+            ? 'blocked'
           : normalizedState === 'inactive'
             ? 'inactive'
             : UNAVAILABLE_STATES.has(normalizedState)
@@ -250,20 +297,40 @@ export function getSafetyDoors(entities: EntityMap): SafetyDoorView[] {
           ? Math.max(reportedOpenDuration, elapsedSeconds(openedAt))
           : reportedOpenDuration;
       const timeoutSeconds = numericAttribute(entity, 'timeout_seconds');
+      const rawConditionResult = normalizeState(entity.attributes.condition_result);
+      const conditionResult: SafetyDoorConditionResult =
+        rawConditionResult === 'pass' ||
+        rawConditionResult === 'blocked' ||
+        rawConditionResult === 'unavailable' ||
+        rawConditionResult === 'not_configured'
+          ? rawConditionResult
+          : 'unknown';
+      const reportedRemainingSeconds = numericAttribute(entity, 'remaining_seconds') ?? 0;
+      const sourceEntityId = stringAttribute(entity, 'source_entity');
+      const conditionEntityId = stringAttribute(entity, 'condition_entity');
 
       return {
         entityId,
         name: friendlyEntityName(entityId, entity),
-        sourceEntityId: stringAttribute(entity, 'source_entity'),
+        sourceEntityId,
+        sourceEntityName: sourceEntityId
+          ? friendlyEntityName(sourceEntityId, entities[sourceEntityId])
+          : friendlyEntityName(entityId, entity),
         state: entity.state,
         status,
         doorState,
         timeoutSeconds,
         openDurationSeconds: liveOpenDuration,
         remainingSeconds:
-          timeoutSeconds === null
-            ? numericAttribute(entity, 'remaining_seconds') ?? 0
+          status === 'blocked' || timeoutSeconds === null
+            ? reportedRemainingSeconds
             : Math.max(0, timeoutSeconds - liveOpenDuration),
+        conditionEntityId,
+        conditionEntityName: conditionEntityId
+          ? friendlyEntityName(conditionEntityId, entities[conditionEntityId])
+          : '',
+        conditionState: stringAttribute(entity, 'condition_state'),
+        conditionResult,
         openedAt,
         lastUpdated: entity.last_updated ?? entity.last_changed,
       };
@@ -513,6 +580,7 @@ function activityCategory(entityId: string): ActivityItem['category'] {
 function parseSystemLevel(value: unknown): number | null {
   const normalized = normalizeState(value);
   if (normalized === 'safe') return 0;
+  if (normalized in SYSTEM_LEVEL_BY_STATE) return SYSTEM_LEVEL_BY_STATE[normalized];
   const level = Number(normalized.replace(/^level_/, ''));
   return Number.isInteger(level) && level >= 0 && level <= 4 ? level : null;
 }

@@ -1386,8 +1386,10 @@ details summary:focus-visible {
   white-space: nowrap;
 }
 
-.temperature-card-header code {
+.temperature-card-header .entity-friendly-name {
+  color: var(--text-muted);
   display: block;
+  font-size: 0.68rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1438,6 +1440,58 @@ details summary:focus-visible {
   stroke: rgba(158, 180, 194, 0.12);
   stroke-dasharray: 3 5;
   vector-effect: non-scaling-stroke;
+}
+
+.connection-message {
+  align-items: center;
+  background: var(--background);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 24px;
+  text-align: center;
+}
+
+.connection-message span {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.sparkline-threshold line {
+  stroke-dasharray: 6 4;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.sparkline-threshold text {
+  font-size: 8px;
+  font-weight: 700;
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 3px;
+}
+
+.sparkline-threshold-low {
+  color: var(--info);
+}
+
+.sparkline-threshold-high {
+  color: var(--danger);
+}
+
+.sparkline-threshold-low line,
+.sparkline-threshold-low text,
+.sparkline-threshold-high line,
+.sparkline-threshold-high text {
+  fill: currentColor;
+  stroke: currentColor;
+}
+
+.sparkline-threshold text {
+  stroke: var(--surface);
 }
 
 .sparkline > span {
@@ -1544,8 +1598,10 @@ details summary:focus-visible {
   white-space: nowrap;
 }
 
-.safety-door-card-header code {
+.safety-door-card-header .entity-friendly-name {
+  color: var(--text-muted);
   display: block;
+  font-size: 0.68rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1610,6 +1666,12 @@ details summary:focus-visible {
   margin: 0;
 }
 
+.safety-door-details code {
+  display: block;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
 .page-empty-state {
   min-height: 300px;
 }
@@ -1651,8 +1713,10 @@ details summary:focus-visible {
   white-space: nowrap;
 }
 
-.history-card-header code {
+.history-card-header .entity-friendly-name {
+  color: var(--text-muted);
   display: block;
+  font-size: 0.68rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

@@ -19,7 +19,10 @@ facilitating easier maintenance and updates.
 """
 
 from enum import Enum
-from typing import Any, NamedTuple, Dict, List
+from typing import TYPE_CHECKING, Any, NamedTuple, Dict, List
+
+if TYPE_CHECKING:
+    from components.safetycomponents.core.safety_component import SafetyComponent
 
 
 class FaultState(Enum):
@@ -140,6 +143,7 @@ class Fault:
 
     Attributes:
         name (str): The name of the fault.
+        friendly_name (str): Human-readable fault name used in user interfaces.
         state (FaultState): The current state of the fault.
         related_symptoms (list): A list of symptoms related to this fault.
         level (int): The severity level of the fault for notification purposes.
@@ -150,6 +154,7 @@ class Fault:
         related_symptoms (list): List of names of safety mechanism that can trigger this fault.
         level (int): The severity level assigned to this fault for notification purposes.
         shadows (list[str] | None): Faults to shadow when this fault is active.
+        friendly_name (str | None): Human-readable name shown to users.
     """
 
     def __init__(
@@ -158,8 +163,10 @@ class Fault:
         related_symptoms: list,
         level: int,
         shadows: list[str] | None = None,
+        friendly_name: str | None = None,
     ):
         self.name: str = name
+        self.friendly_name: str = friendly_name or name
         self.state: FaultState = FaultState.NOT_TESTED
         self.previous_val = FaultState.NOT_TESTED
         self.related_symptoms: list = related_symptoms

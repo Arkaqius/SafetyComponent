@@ -276,9 +276,11 @@ class RecoveryManager:
         sensor_value: str = str(recovery.current_status.name)
         self.mqtt_entities.register_sensor(
             sensor_name,
-            f"Recovery {recovery.name}",
+            str(recovery.params.get("friendly_name", f"Recovery {recovery.name}")),
             attributes={
                 "description": f"Recovery status for {recovery.name}.",
+                "area_id": recovery.params.get("area_id"),
+                "area_name": recovery.params.get("location"),
             },
             icon="mdi:lifebuoy",
             entity_category="diagnostic",

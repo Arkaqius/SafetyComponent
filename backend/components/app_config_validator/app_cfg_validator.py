@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Any, Callable, Dict
 
@@ -11,6 +12,10 @@ from components.app_config_validator.schema import AppCfg
 from components.core.pydantic_utils import log_extra_keys
 from components.faults_manager.schema import validate_faults_config
 from components.notification_manager.schema import validate_notification_config
+from components.safetycomponents.safety_doors.schema import (
+    COMPONENT_NAME as SAFETY_DOORS_COMPONENT_NAME,
+    validate_safety_doors_config,
+)
 from components.safetycomponents.temperature.schema import (
     COMPONENT_NAME as TEMPERATURE_COMPONENT_NAME,
     validate_temperature_config,
@@ -72,6 +77,37 @@ def _collect_entity_ids(runtime_cfg: Dict[str, Any]) -> list[tuple[str, str]]:
                             )
                         )
 
+    safety_doors_cfg = components_cfg.get(SAFETY_DOORS_COMPONENT_NAME)
+    if isinstance(safety_doors_cfg, list):
+        for door in safety_doors_cfg:
+            if not isinstance(door, dict):
+                continue
+            for door_name, door_cfg in door.items():
+                if not isinstance(door_cfg, dict):
+                    continue
+                entity_id = door_cfg.get("entity_id")
+                if isinstance(entity_id, str):
+                    entity_ids.append(
+                        (
+                            "user_config.safety_components."
+                            f"{SAFETY_DOORS_COMPONENT_NAME}."
+                            f"{door_name}.entity_id",
+                            entity_id,
+                        )
+                    )
+                condition = door_cfg.get("condition")
+                if isinstance(condition, dict):
+                    condition_entity_id = condition.get("entity_id")
+                    if isinstance(condition_entity_id, str):
+                        entity_ids.append(
+                            (
+                                "user_config.safety_components."
+                                f"{SAFETY_DOORS_COMPONENT_NAME}."
+                                f"{door_name}.condition.entity_id",
+                                condition_entity_id,
+                            )
+                        )
+
     return entity_ids
 
 
@@ -98,6 +134,65 @@ def _validate_entity_existence(
     return missing
 
 
+def _resolve_area_name(hass: Any, area_id: str, config_path: str) -> str:
+    """Resolve and validate a Home Assistant area reference."""
+    render_template = getattr(hass, "render_template", None)
+    if not callable(render_template):
+        raise AppCfgValidationError(
+            "Home Assistant area resolution is unavailable; "
+            f"cannot validate {config_path}={area_id}"
+        )
+
+    template = f"{{{{ area_name({json.dumps(area_id)}) }}}}"
+    try:
+        resolved = render_template(template)
+    except Exception as exc:
+        raise AppCfgValidationError(
+            f"Unable to resolve {config_path}={area_id}: {exc}"
+        ) from exc
+
+    if resolved is None or str(resolved).strip().lower() in {
+        "",
+        "none",
+        "unknown",
+        "unavailable",
+    }:
+        raise AppCfgValidationError(
+            f"Unknown Home Assistant area: {config_path}={area_id}"
+        )
+    return str(resolved).strip()
+
+
+def _resolve_area_names(runtime_cfg: Dict[str, Any], hass: Any) -> None:
+    """Attach current Home Assistant area names to location-aware components."""
+    components = runtime_cfg["user_config"]["safety_components"]
+    for component_name in (
+        TEMPERATURE_COMPONENT_NAME,
+        SAFETY_DOORS_COMPONENT_NAME,
+    ):
+        component_cfg = components.get(component_name)
+        if not isinstance(component_cfg, list):
+            continue
+        for entry in component_cfg:
+            if not isinstance(entry, dict):
+                continue
+            for item_name, item_cfg in entry.items():
+                if not isinstance(item_cfg, dict):
+                    continue
+                area_id = item_cfg.get("area_id")
+                if not isinstance(area_id, str):
+                    continue
+                config_path = (
+                    "user_config.safety_components."
+                    f"{component_name}.{item_name}.area_id"
+                )
+                item_cfg["area_name"] = _resolve_area_name(
+                    hass,
+                    area_id,
+                    config_path,
+                )
+
+
 def _to_runtime(
     cfg: AppCfg,
     *,
@@ -116,6 +211,12 @@ def _to_runtime(
                 strict_validation=strict_validation,
                 log=log,
                 calibration=cfg.app_config.calibration.temperature.model_dump(),
+            )
+        elif name == SAFETY_DOORS_COMPONENT_NAME:
+            runtime_components[name] = validate_safety_doors_config(
+                component_cfg,
+                strict_validation=strict_validation,
+                log=log,
             )
         else:
             runtime_components[name] = component_cfg
@@ -174,6 +275,14 @@ class AppCfgValidator:
                 )
         except (ValidationError, ValueError) as exc:
             raise AppCfgValidationError(str(exc))
+
+        if hass is not None:
+            _resolve_area_names(runtime_cfg, hass)
+        else:
+            _log_warning(
+                log,
+                "Home Assistant was not provided; skipping area existence checks.",
+            )
 
         if not strict_validation:
             log_extra_keys(cfg, log, "root")

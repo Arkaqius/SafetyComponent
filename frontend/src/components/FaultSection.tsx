@@ -115,8 +115,8 @@ function FaultCard({ fault }: { fault: FaultView }) {
           <Icon name='alert' size={20} />
         </span>
         <span className='fault-card-title'>
-          <strong>{fault.name}</strong>
-          <small>{fault.locations.length > 0 ? fault.locations.join(' · ') : fault.entityId}</small>
+          <strong title={fault.entityId}>{fault.name}</strong>
+          <small>{fault.locations.length > 0 ? fault.locations.join(' · ') : 'Brak przypisanej lokalizacji'}</small>
         </span>
         {level && <span className={`level-chip status-${level.tone}`}>{level.shortLabel}</span>}
         <StatusBadge tone={status.tone}>{status.label}</StatusBadge>

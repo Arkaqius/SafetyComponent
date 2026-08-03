@@ -10,6 +10,7 @@ import {
   getFaultStatus,
   getRecoveryStatus,
   normalizeState,
+  systemStatePresentation,
   type EntitySnapshot,
   type StatusTone,
 } from '../domain/safety';
@@ -128,8 +129,8 @@ function HistoryCard({ item, hours }: { item: HistoryEntity; hours: HistoryHours
           <Icon name={icon} size={20} />
         </span>
         <div>
-          <h3>{friendlyEntityName(item.entityId, item.entity)}</h3>
-          <code>{item.entityId}</code>
+          <h3 title={item.entityId}>{friendlyEntityName(item.entityId, item.entity)}</h3>
+          <small className='entity-friendly-name'>{historyCategoryLabel(item.category)}</small>
         </div>
         <StatusBadge tone={presentation.tone}>{presentation.label}</StatusBadge>
       </div>
@@ -180,6 +181,12 @@ function entityCategory(entityId: string): HistoryEntity['category'] {
   return 'system';
 }
 
+function historyCategoryLabel(category: HistoryEntity['category']): string {
+  if (category === 'fault') return 'Usterka';
+  if (category === 'recovery') return 'Działanie naprawcze';
+  return 'Stan systemu';
+}
+
 function statePresentation(item: HistoryEntity): { label: string; tone: StatusTone } {
   if (item.category === 'fault') {
     const state = getFaultStatus(item.entity.state);
@@ -202,7 +209,5 @@ function statePresentation(item: HistoryEntity): { label: string; tone: StatusTo
     if (state === 'init') return { label: 'Uruchamianie', tone: 'warning' };
     return { label: item.entity.state, tone: 'critical' };
   }
-  return state === '0' || state === 'safe'
-    ? { label: 'Bezpieczny', tone: 'safe' }
-    : { label: `Poziom ${item.entity.state}`, tone: 'warning' };
+  return systemStatePresentation(state);
 }

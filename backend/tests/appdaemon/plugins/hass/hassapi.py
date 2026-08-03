@@ -1,6 +1,7 @@
 """Minimal stub of appdaemon Hass API for tests."""
 from __future__ import annotations
 
+import re
 from typing import Any, Callable, Dict, Optional
 
 
@@ -48,6 +49,7 @@ class Hass:
         self.run_in = getattr(ad, "run_in", self.run_in)  # type: ignore
         self.run_every = getattr(ad, "run_every", self.run_every)  # type: ignore
         self.listen_state = getattr(ad, "listen_state", self.listen_state)  # type: ignore
+        self.render_template = getattr(ad, "render_template", self.render_template)  # type: ignore
 
     def log(self, msg: str, *args: Any, **kwargs: Any) -> None:
         if hasattr(self.logger, "info"):
@@ -65,6 +67,16 @@ class Hass:
 
     def call_service(self, service: str, **kwargs: Any) -> None:
         return None
+
+    def render_template(self, template: str, **kwargs: Any) -> Any:
+        """Resolve the small area-name template subset used by tests."""
+        match = re.search(r'area_name\("([^\"]+)"\)', template)
+        if match is None:
+            return None
+        return {
+            "office": "Office",
+            "kitchen": "Kitchen",
+        }.get(match.group(1))
 
     def stop_app(self, name: Optional[str]) -> None:
         self._stopped = name

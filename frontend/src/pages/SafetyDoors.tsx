@@ -71,8 +71,10 @@ function SafetyDoorCard({ door }: { door: SafetyDoorView }) {
           <Icon name='door' size={22} />
         </span>
         <div>
-          <h3>{door.name}</h3>
-          <code>{door.sourceEntityId || door.entityId}</code>
+          <h3 title={door.entityId}>{door.name}</h3>
+          <small className='entity-friendly-name' title={door.sourceEntityId || door.entityId}>
+            {door.sourceEntityName}
+          </small>
         </div>
         <StatusBadge pulse={door.status === 'active'} tone={presentation.tone}>
           {presentation.label}
@@ -86,7 +88,7 @@ function SafetyDoorCard({ door }: { door: SafetyDoorView }) {
 
       <dl className='safety-door-details'>
         <div>
-          <dt>Timeout</dt>
+          <dt>Timeout otwarcia</dt>
           <dd>{formatDuration(door.timeoutSeconds)}</dd>
         </div>
         <div>
@@ -95,8 +97,20 @@ function SafetyDoorCard({ door }: { door: SafetyDoorView }) {
         </div>
         <div>
           <dt>Pozostało</dt>
-          <dd>{door.doorState === 'open' && door.status !== 'active' ? formatDuration(door.remainingSeconds) : '—'}</dd>
+          <dd>{door.doorState === 'open' && door.status === 'inactive' ? formatDuration(door.remainingSeconds) : '—'}</dd>
         </div>
+        {door.conditionEntityId ? (
+          <>
+            <div>
+              <dt>Warunek monitorowania</dt>
+              <dd title={door.conditionEntityId}>{door.conditionEntityName}</dd>
+            </div>
+            <div>
+              <dt>Stan warunku</dt>
+              <dd>{door.conditionState || 'Brak danych'}</dd>
+            </div>
+          </>
+        ) : null}
       </dl>
 
       <span className='card-updated'>Aktualizacja {formatRelativeTime(door.lastUpdated)}</span>
@@ -116,6 +130,18 @@ function doorPresentation(door: SafetyDoorView): {
       headline: 'Timeout przekroczony',
       detail: 'Drzwi lub brama nadal pozostają otwarte.',
       tone: 'danger',
+    };
+  }
+  if (door.status === 'blocked') {
+    const conditionDetail =
+      door.conditionEntityId && door.conditionState
+        ? `Warunek „${door.conditionEntityName}” ma stan „${door.conditionState}”.`
+        : 'Skonfigurowany warunek blokuje monitorowanie.';
+    return {
+      label: 'Wstrzymane',
+      headline: 'Monitoring zablokowany',
+      detail: `${conditionDetail} Timeout nie jest liczony.`,
+      tone: 'muted',
     };
   }
   if (door.status === 'unavailable' || door.status === 'unknown') {

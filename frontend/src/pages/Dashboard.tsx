@@ -86,8 +86,8 @@ export default function Dashboard() {
                       <Icon name='temperature' size={18} />
                     </span>
                     <span className='temperature-preview-name'>
-                      <strong>{temperature.name}</strong>
-                      <small>{temperature.entityId}</small>
+                      <strong title={temperature.entityId}>{temperature.name}</strong>
+                      <small>Aktualizacja {formatRelativeTime(temperature.lastUpdated)}</small>
                     </span>
                     <strong className='temperature-preview-value'>
                       {formatNumeric(temperature.state, 1)} {temperature.unit}

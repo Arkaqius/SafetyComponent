@@ -19,6 +19,7 @@ def _base_faults():
 def _temperature_component_rooms():
     return {
         "Office": {
+            "area_id": "office",
             "CAL_LOW_TEMP_THRESHOLD": 18.0,
             "CAL_HIGH_TEMP_THRESHOLD": 28.0,
             "CAL_FORECAST_TIMESPAN": 2.0,
@@ -26,6 +27,7 @@ def _temperature_component_rooms():
             "window_sensor": "sensor.office_window_contact_contact",
         },
         "Kitchen": {
+            "area_id": "kitchen",
             "CAL_LOW_TEMP_THRESHOLD": 18.0,
             "CAL_HIGH_TEMP_THRESHOLD": 28.0,
             "CAL_FORECAST_TIMESPAN": 2.0,

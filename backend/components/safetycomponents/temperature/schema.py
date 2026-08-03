@@ -26,12 +26,21 @@ class TemperatureRoom(StrictBaseModel):
 
     model_config = ConfigDict(extra="allow")
 
+    area_id: str
     temperature_sensor: str
     window_sensor: Optional[str] = None
     actuator: Optional[str] = None
     CAL_LOW_TEMP_THRESHOLD: Optional[float] = None
     CAL_HIGH_TEMP_THRESHOLD: Optional[float] = None
     CAL_FORECAST_TIMESPAN: Optional[float] = None
+
+    @field_validator("area_id")
+    @classmethod
+    def _validate_area_id(cls, value: str) -> str:
+        area_id = value.strip()
+        if not area_id:
+            raise ValueError("TemperatureComponent area_id must not be empty")
+        return area_id
 
     @field_validator("actuator")
     @classmethod
@@ -63,6 +72,7 @@ class TemperatureRoom(StrictBaseModel):
 
     def with_defaults(self, defaults: TemperatureDefaults) -> Dict[str, Any]:
         merged: Dict[str, Any] = {
+            "area_id": self.area_id,
             "temperature_sensor": self.temperature_sensor,
             "window_sensor": self.window_sensor,
             "actuator": self.actuator,

@@ -1,17 +1,12 @@
-from typing import Iterator, List
-import pytest
-from components.core.types_common import FaultState, SMState
-from components.safetycomponents.temperature.temperature_component import TemperatureComponent
-import SafetyFunctions
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
+
+from components.core.types_common import FaultState
+
 from .fixtures.hass_fixture import (
-    mock_get_state,
-    MockBehavior,
+    mqtt_json_payloads,
     mqtt_payloads,
     mqtt_topic_for,
-    update_mocked_get_state,
-)  # Import utilities from conftest.py
-from unittest.mock import ANY
+)
 
 def test_safety_functions_initialization(mocked_hass_app_with_temp_component) -> None:
 
@@ -53,7 +48,24 @@ def test_safety_functions_initialization(mocked_hass_app_with_temp_component) ->
         "sensor.fault_riskytemperature",
         "sensor.fault_riskytemperatureforecast",
         "sensor.recovery_manipulatewindowoffice",
+        "sensor.office_temperature_low_threshold",
+        "sensor.office_temperature_high_threshold",
     }.issubset(app_instance.mqtt_entities.discovered_entities)
+    assert mqtt_payloads(
+        mocked_hass,
+        mqtt_topic_for("sensor.office_temperature_low_threshold"),
+    )[-1] == "18.0"
+    threshold_attributes = mqtt_json_payloads(
+        mocked_hass,
+        mqtt_topic_for("sensor.office_temperature_low_threshold", "attributes"),
+    )[-1]
+    assert threshold_attributes == {
+        "area_id": "office",
+        "area_name": "Office",
+        "attribution": "Managed by SafetyFunction",
+        "source_entity": "sensor.office_temperature",
+        "threshold_type": "low",
+    }
 
 
 def test_mqtt_heartbeat_accepts_appdaemon_dictionary_unpacking_callback(
@@ -100,7 +112,6 @@ def test_fault_and_symptom_registration(mocked_hass_app_with_temp_component):
 
     # Assert that all symptoms are registered
     for symptom_name in app_instance.symptoms:
-        symptom = app_instance.symptoms[symptom_name]
         assert app_instance.fm.check_symptom(symptom_name) == FaultState.NOT_TESTED
 
     # Assert that all faults are registered
@@ -159,6 +170,10 @@ def test_terminate_publishes_offline(mocked_hass_app_with_temp_component):
 
     app_instance.terminate()
 
+    health_topic = mqtt_topic_for("sensor.safety_app_health")
+    system_topic = mqtt_topic_for("sensor.safetysystem_state")
+    assert mqtt_payloads(mocked_hass, health_topic)[-1] == "stopped"
+    assert mqtt_payloads(mocked_hass, system_topic)[-1] == "stopped"
     assert mqtt_payloads(mocked_hass, "safety_component/status")[-1] == "offline"
 
 

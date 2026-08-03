@@ -66,7 +66,7 @@ function createMockTimeline(entityId: string, currentState: string, hoursToShow:
     return [point('DO_NOT_PERFORM', 0.8), point('TO_PERFORM', 0.18)];
   }
   if (entityId === 'sensor.safetysystem_state') {
-    return [point('0', 0.9), point('2', 0.17)];
+    return [point('no_faults', 0.9), point('hazard', 0.17)];
   }
 
   return [point(currentState, 0.5)];
