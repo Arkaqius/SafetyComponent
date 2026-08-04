@@ -33,6 +33,47 @@ export const MOCK_ENTITIES: EntityMap = {
     },
     3
   ),
+  'sensor.external_hazard_state': entity(
+    'warning',
+    'Zagrożenia zewnętrzne',
+    {
+      active_hazards: ['niebezpieczny wiatr'],
+      affected_openings: ['Brama garażowa'],
+      providers: {
+        OpenMeteoWeatherApiComponent: 'ok',
+        ImgwWarningsApiComponent: 'ok',
+        GiosAirQualityApiComponent: 'ok',
+        OpenMeteoAirQualityApiComponent: 'ok',
+        PaaRadiationApiComponent: 'unavailable',
+      },
+      advice_inhibition: [
+        {
+          reason: 'wind',
+          source: 'OpenMeteoWeatherApiComponent',
+          valid_until: timestamp(-120),
+        },
+      ],
+      last_evaluated_at: timestamp(0),
+      notification_only: true,
+      active_symptom_count: 1,
+    },
+    0
+  ),
+  'sensor.external_provider_open_meteo_weather': entity('ok', 'Dane pogodowe Open-Meteo', {
+    provider: 'OpenMeteoWeatherApiComponent', last_attempt_at: timestamp(0), last_success_at: timestamp(0), consecutive_failures: 0, detail_code: null, observation_count: 4,
+  }),
+  'sensor.external_provider_imgw_warnings': entity('ok', 'Ostrzeżenia IMGW', {
+    provider: 'ImgwWarningsApiComponent', last_attempt_at: timestamp(1), last_success_at: timestamp(1), consecutive_failures: 0, detail_code: null, observation_count: 1,
+  }),
+  'sensor.external_provider_gios_air_quality': entity('ok', 'Jakość powietrza GIOŚ', {
+    provider: 'GiosAirQualityApiComponent', last_attempt_at: timestamp(3), last_success_at: timestamp(3), consecutive_failures: 0, detail_code: null, observation_count: 1,
+  }),
+  'sensor.external_provider_open_meteo_air_quality': entity('ok', 'Prognoza jakości powietrza Open-Meteo', {
+    provider: 'OpenMeteoAirQualityApiComponent', last_attempt_at: timestamp(4), last_success_at: timestamp(4), consecutive_failures: 0, detail_code: null, observation_count: 1,
+  }),
+  'sensor.external_provider_paa_radiation': entity('unavailable', 'Monitoring radiacyjny PAA', {
+    provider: 'PaaRadiationApiComponent', last_attempt_at: timestamp(1), last_success_at: null, consecutive_failures: 1, detail_code: 'http_500', observation_count: 0,
+  }),
   'sensor.fault_riskytemperature': entity(
     'Set',
     'Fault: Risky temperature',

@@ -27,11 +27,21 @@ from .safety_doors.schema import (
     validate_safety_doors_config,
 )
 from .safety_doors.safety_doors_component import SafetyDoorsComponent
+from .external_hazard import (
+    ExternalHazardComponent,
+    ExternalHazardComponentConfig,
+    ExternalHazardPolicy,
+    SiteConfig,
+    validate_external_hazard_config,
+)
 
 __all__ = [
     "DebounceAction",
     "DebounceResult",
     "DebounceState",
+    "ExternalHazardComponent",
+    "ExternalHazardComponentConfig",
+    "ExternalHazardPolicy",
     "SafetyComponent",
     "SafetyMechanism",
     "SafetyMechanismResult",
@@ -39,6 +49,7 @@ __all__ = [
     "SafetyDoorDefaults",
     "SafetyDoorsComponent",
     "SafetyDoorsComponentConfig",
+    "SiteConfig",
     "clear_registered_components",
     "get_registered_components",
     "register_safety_component",
@@ -48,5 +59,6 @@ __all__ = [
     "TemperatureRoom",
     "safety_mechanism_decorator",
     "validate_safety_doors_config",
+    "validate_external_hazard_config",
     "validate_temperature_config",
 ]

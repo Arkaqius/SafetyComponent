@@ -5,6 +5,7 @@ export type IconName =
   | 'close'
   | 'dashboard'
   | 'door'
+  | 'environment'
   | 'history'
   | 'menu'
   | 'recovery'
@@ -46,6 +47,14 @@ const paths: Record<IconName, React.ReactNode> = {
       <path d='M5 21h14' />
       <path d='M7 21V4.8A1.8 1.8 0 0 1 8.8 3H17v18' />
       <path d='M10 12h.01' />
+    </>
+  ),
+  environment: (
+    <>
+      <path d='M4 15.5a4.5 4.5 0 0 1 4.5-4.5h.7A5.5 5.5 0 0 1 20 12.5a3.5 3.5 0 0 1-3.5 3.5H8.5' />
+      <path d='M4 19h10' />
+      <path d='M6 7h7' />
+      <path d='M4 4h4' />
     </>
   ),
   history: (

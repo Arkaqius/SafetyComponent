@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useHass } from '@hakit/core';
 import {
   getFaults,
+  getExternalHazardMonitoring,
   getMonitoredTemperatures,
   getRecentActivity,
   getRecoveries,
@@ -25,6 +26,7 @@ export function useSafetyEntities() {
     const recoveries = getRecoveries(entities);
     const temperatures = getMonitoredTemperatures(entities);
     const safetyDoors = getSafetyDoors(entities);
+    const externalHazards = getExternalHazardMonitoring(entities);
     const healthEntity = entities[HEALTH_ENTITY_ID];
     const systemEntity = entities[SYSTEM_STATE_ENTITY_ID];
 
@@ -36,6 +38,7 @@ export function useSafetyEntities() {
       recoveries,
       temperatures,
       safetyDoors,
+      externalHazards,
       recentActivity: getRecentActivity(entities),
       summary: getSafetySummary(healthEntity, systemEntity, faults, recoveries),
       connection: {

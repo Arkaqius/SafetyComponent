@@ -3,6 +3,7 @@ import test from 'node:test';
 import { requestExternalAuthToken, type ExternalAuthHost } from '../auth/externalAuth.js';
 import {
   getFaults,
+  getExternalHazardMonitoring,
   getMonitoredTemperatures,
   getRecoveries,
   getSafetyDoors,
@@ -239,6 +240,47 @@ test('maps level 1 as the most severe active fault', () => {
   assert.equal(summary.effectiveLevel, 1);
   assert.equal(summary.label, 'Alarm krytyczny');
   assert.equal(summary.tone, 'critical');
+});
+
+test('normalizes external hazard aggregate and independent provider diagnostics', () => {
+  const external = getExternalHazardMonitoring({
+    'sensor.external_hazard_state': entity('warning', {
+      active_hazards: ['niebezpieczny wiatr'],
+      affected_openings: ['Okno biura'],
+      advice_inhibition: [
+        {
+          reason: 'wind',
+          source: 'OpenMeteoWeatherApiComponent',
+          valid_until: '2026-07-29T10:00:00Z',
+        },
+      ],
+      active_symptom_count: 1,
+      notification_only: true,
+      last_evaluated_at: timestamp,
+    }),
+    'sensor.external_provider_open_meteo_weather': entity('ok', {
+      friendly_name: 'Dane pogodowe Open-Meteo',
+      provider: 'OpenMeteoWeatherApiComponent',
+      last_success_at: timestamp,
+      consecutive_failures: 0,
+      observation_count: 4,
+    }),
+    'sensor.external_provider_paa_radiation': entity('unavailable', {
+      friendly_name: 'Monitoring radiacyjny PAA',
+      provider: 'PaaRadiationApiComponent',
+      consecutive_failures: 2,
+      detail_code: 'http_500',
+      observation_count: 0,
+    }),
+  });
+
+  assert.equal(external.status, 'warning');
+  assert.deepEqual(external.activeHazards, ['niebezpieczny wiatr']);
+  assert.deepEqual(external.affectedOpenings, ['Okno biura']);
+  assert.equal(external.adviceInhibition[0].reason, 'wind');
+  assert.equal(external.providers[0].status, 'unavailable');
+  assert.equal(external.providers[0].detailCode, 'http_500');
+  assert.equal(external.providers[1].status, 'ok');
 });
 
 test('maps semantic system states while retaining numeric compatibility', () => {

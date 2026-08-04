@@ -3,6 +3,8 @@ export const SYSTEM_STATE_ENTITY_ID = 'sensor.safetysystem_state';
 export const FAULT_PREFIX = 'sensor.fault_';
 export const RECOVERY_PREFIX = 'sensor.recovery_';
 export const SAFETY_DOOR_PREFIX = 'sensor.safety_door_';
+export const EXTERNAL_HAZARD_ENTITY_ID = 'sensor.external_hazard_state';
+export const EXTERNAL_PROVIDER_PREFIX = 'sensor.external_provider_';
 
 export interface EntitySnapshot {
   state: string;
@@ -119,6 +121,43 @@ export function systemStatePresentation(state: unknown): { label: string; tone: 
   return presentation
     ? { label: presentation.label, tone: presentation.tone }
     : { label: String(state ?? 'Stan nieznany'), tone: 'muted' };
+}
+
+export type ExternalHazardStatus = 'clear' | 'watch' | 'warning' | 'severe' | 'unavailable' | 'unknown';
+export type ExternalProviderStatus = 'ok' | 'stale' | 'unavailable' | 'schema_error' | 'unknown';
+
+export interface ExternalProviderView {
+  entityId: string;
+  name: string;
+  provider: string;
+  status: ExternalProviderStatus;
+  state: string;
+  lastAttemptAt?: string;
+  lastSuccessAt?: string;
+  consecutiveFailures: number;
+  detailCode: string;
+  observationCount: number;
+  lastUpdated?: string;
+}
+
+export interface AdviceInhibitionView {
+  reason: string;
+  source: string;
+  validUntil?: string;
+}
+
+export interface ExternalHazardView {
+  entityId: string;
+  status: ExternalHazardStatus;
+  state: string;
+  activeHazards: string[];
+  affectedOpenings: string[];
+  adviceInhibition: AdviceInhibitionView[];
+  activeSymptomCount: number;
+  notificationOnly: boolean;
+  lastEvaluatedAt?: string;
+  lastUpdated?: string;
+  providers: ExternalProviderView[];
 }
 
 const UNAVAILABLE_STATES = new Set(['unavailable', 'unknown', 'none', '']);
@@ -343,6 +382,64 @@ export function getSafetyDoors(entities: EntityMap): SafetyDoorView[] {
     );
 }
 
+export function getExternalHazardMonitoring(entities: EntityMap): ExternalHazardView {
+  const aggregate = entities[EXTERNAL_HAZARD_ENTITY_ID];
+  const normalizedState = normalizeState(aggregate?.state);
+  const status: ExternalHazardStatus =
+    normalizedState === 'clear' ||
+    normalizedState === 'watch' ||
+    normalizedState === 'warning' ||
+    normalizedState === 'severe' ||
+    normalizedState === 'unavailable'
+      ? normalizedState
+      : normalizedState
+        ? 'unknown'
+        : 'unavailable';
+  const providers = Object.entries(entities)
+    .filter(([entityId]) => entityId.startsWith(EXTERNAL_PROVIDER_PREFIX))
+    .map(([entityId, entity]) => {
+      const providerState = normalizeState(entity.state);
+      const providerStatus: ExternalProviderStatus =
+        providerState === 'ok' ||
+        providerState === 'stale' ||
+        providerState === 'unavailable' ||
+        providerState === 'schema_error'
+          ? providerState
+          : 'unknown';
+      return {
+        entityId,
+        name: friendlyEntityName(entityId, entity),
+        provider: stringAttribute(entity, 'provider'),
+        status: providerStatus,
+        state: entity.state,
+        lastAttemptAt: optionalStringAttribute(entity, 'last_attempt_at'),
+        lastSuccessAt: optionalStringAttribute(entity, 'last_success_at'),
+        consecutiveFailures: numericAttribute(entity, 'consecutive_failures') ?? 0,
+        detailCode: stringAttribute(entity, 'detail_code'),
+        observationCount: numericAttribute(entity, 'observation_count') ?? 0,
+        lastUpdated: entity.last_updated ?? entity.last_changed,
+      };
+    })
+    .sort(
+      (left, right) =>
+        Number(left.status === 'ok') - Number(right.status === 'ok') || left.name.localeCompare(right.name, 'pl')
+    );
+
+  return {
+    entityId: EXTERNAL_HAZARD_ENTITY_ID,
+    status,
+    state: aggregate?.state ?? 'unavailable',
+    activeHazards: stringArrayAttribute(aggregate, 'active_hazards'),
+    affectedOpenings: stringArrayAttribute(aggregate, 'affected_openings'),
+    adviceInhibition: adviceInhibitionAttribute(aggregate),
+    activeSymptomCount: numericAttribute(aggregate, 'active_symptom_count') ?? 0,
+    notificationOnly: aggregate?.attributes.notification_only === true,
+    lastEvaluatedAt: optionalStringAttribute(aggregate, 'last_evaluated_at'),
+    lastUpdated: aggregate?.last_updated ?? aggregate?.last_changed,
+    providers,
+  };
+}
+
 export function getRecentActivity(entities: EntityMap, limit = 8): ActivityItem[] {
   return Object.entries(entities)
     .filter(
@@ -517,6 +614,25 @@ function optionalStringAttribute(entity: EntitySnapshot | undefined, key: string
 
 function numericAttribute(entity: EntitySnapshot | undefined, key: string): number | null {
   return numericState(entity?.attributes[key]);
+}
+
+function stringArrayAttribute(entity: EntitySnapshot | undefined, key: string): string[] {
+  const value = entity?.attributes[key];
+  if (!Array.isArray(value)) return [];
+  return value.map(String).map(item => item.trim()).filter(Boolean);
+}
+
+function adviceInhibitionAttribute(entity: EntitySnapshot | undefined): AdviceInhibitionView[] {
+  const value = entity?.attributes.advice_inhibition;
+  if (!Array.isArray(value)) return [];
+  return value.flatMap(item => {
+    if (!item || typeof item !== 'object') return [];
+    const record = item as Record<string, unknown>;
+    const reason = typeof record.reason === 'string' ? record.reason : '';
+    const source = typeof record.source === 'string' ? record.source : '';
+    const validUntil = typeof record.valid_until === 'string' ? record.valid_until : undefined;
+    return reason && source ? [{ reason, source, validUntil }] : [];
+  });
 }
 
 function splitLocations(value: unknown): string[] {

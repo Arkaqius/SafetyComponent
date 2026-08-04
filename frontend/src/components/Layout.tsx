@@ -24,6 +24,12 @@ const menuItems: Array<{ title: string; path: string; icon: IconName; descriptio
     description: 'Timeouty drzwi i bram',
   },
   {
+    title: 'Zagrożenia zewnętrzne',
+    path: '/external-hazards',
+    icon: 'environment',
+    description: 'Pogoda, powietrze i promieniowanie',
+  },
+  {
     title: 'Historia',
     path: '/history',
     icon: 'history',

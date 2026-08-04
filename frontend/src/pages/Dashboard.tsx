@@ -7,7 +7,7 @@ import { formatNumeric, formatRelativeTime, normalizeState, trendPresentation, t
 import { useSafetyEntities } from '../hooks/useSafetyEntities';
 
 export default function Dashboard() {
-  const { faults, healthEntity, recentActivity, recoveries, summary, systemEntity, temperatures } = useSafetyEntities();
+  const { externalHazards, faults, healthEntity, recentActivity, recoveries, summary, systemEntity, temperatures } = useSafetyEntities();
   const healthState = normalizeState(healthEntity?.state);
   const unavailableTemperatures = temperatures.filter(temperature => temperature.state === null).length;
 
@@ -57,6 +57,23 @@ export default function Dashboard() {
           label='Monitorowane temperatury'
           tone={unavailableTemperatures > 0 ? 'warning' : 'info'}
           value={temperatures.length}
+        />
+        <SummaryCard
+          detail={`${externalHazards.providers.filter(provider => provider.status === 'ok').length}/${externalHazards.providers.length} źródeł dostępnych`}
+          icon='environment'
+          label='Zagrożenia zewnętrzne'
+          tone={
+            externalHazards.status === 'clear'
+              ? 'safe'
+              : externalHazards.status === 'watch'
+                ? 'warning'
+                : externalHazards.status === 'warning'
+                  ? 'danger'
+                  : externalHazards.status === 'severe'
+                    ? 'critical'
+                    : 'muted'
+          }
+          value={externalHazards.activeHazards.length}
         />
       </section>
 

@@ -48,6 +48,65 @@ SafetyFunctions:
         # Sampling interval (minutes) used to register derivative monitoring for sm_tc_2.
         SM_TC_2_DERIVATIVE_SAMPLE_MINUTES: 15
 
+    external_hazard_policy:
+      notification_only: true
+      decision_timeout_seconds: 1
+      clear_delay_seconds: 120
+      weather:
+        forecast_horizon_hours: 12
+        frost_watch_c: 2.0
+        frost_warning_c: 0.0
+        gust_watch_m_s: 15.0
+        gust_warning_m_s: 20.0
+        precipitation_warning_mm_h: 2.5
+        persistence_seconds: 120
+        hysteresis:
+          temperature_c: 0.5
+          gust_m_s: 1.0
+      outdoor_air_quality:
+        standard: european_aqi
+        warning_at: 60
+        gios_warning_level: 3
+        conservative_source_policy: any_fresh_source
+      radiation:
+        official_alert_required_for_confirmed_fault: true
+        raw_anomaly_enabled: false
+        raw_anomaly_usv_h: 0.3
+        raw_anomaly_min_stations: 2
+      providers:
+        OpenMeteoWeatherApiComponent:
+          base_url: "https://api.open-meteo.com/v1/forecast"
+          poll_interval_seconds: 600
+          request_timeout_seconds: 10
+          max_retries: 2
+          stale_after_seconds: 1200
+        ImgwWarningsApiComponent:
+          base_url: "https://danepubliczne.imgw.pl/api/data/warningsmeteo"
+          poll_interval_seconds: 300
+          request_timeout_seconds: 10
+          max_retries: 2
+          stale_after_seconds: 900
+        GiosAirQualityApiComponent:
+          base_url: "https://api.gios.gov.pl/pjp-api"
+          poll_interval_seconds: 900
+          request_timeout_seconds: 10
+          max_retries: 2
+          stale_after_seconds: 2700
+        OpenMeteoAirQualityApiComponent:
+          base_url: "https://air-quality-api.open-meteo.com/v1/air-quality"
+          poll_interval_seconds: 1800
+          request_timeout_seconds: 10
+          max_retries: 2
+          stale_after_seconds: 2700
+        PaaRadiationApiComponent:
+          base_url: "https://monitoring.paa.gov.pl/_api/maps"
+          radiation_message_path: "/RadiationMessage/{language}"
+          measurement_path: "/Measurement/{language}"
+          poll_interval_seconds: 300
+          request_timeout_seconds: 10
+          max_retries: 2
+          stale_after_seconds: 900
+
     # Global fault catalog (shared policy).
     #
     # IMPORTANT:
@@ -79,6 +138,31 @@ SafetyFunctions:
         level: 2
         related_sms:
           - "sm_safety_door_open_timeout"
+      ExternalWeatherExposure:
+        name: "Narażenie domu na zagrożenie pogodowe"
+        level: 2
+        related_sms:
+          - "sm_ext_weather_exposure"
+      OutdoorAirQualityExposure:
+        name: "Narażenie domu na zanieczyszczone powietrze"
+        level: 3
+        related_sms:
+          - "sm_ext_outdoor_air_quality_exposure"
+      IonizingRadiationAlert:
+        name: "Oficjalne ostrzeżenie radiologiczne"
+        level: 2
+        related_sms:
+          - "sm_ext_ionizing_radiation_alert"
+      RadiationDataAnomaly:
+        name: "Niepotwierdzona anomalia danych radiacyjnych"
+        level: 3
+        related_sms:
+          - "sm_ext_radiation_data_anomaly"
+      ExternalHazardDataUnavailable:
+        name: "Brak danych o zagrożeniach zewnętrznych"
+        level: 3
+        related_sms:
+          - "sm_ext_provider_unavailable"
 
   # ---------------------------------------------------------------------------
   # House/installation specific configuration (entities, thresholds, enablement).
@@ -99,6 +183,7 @@ SafetyFunctions:
     components_enabled:
       TemperatureComponent: true
       SafetyDoorsComponent: true
+      ExternalHazardComponent: true
       # WaterLeakComponent: false
       # SmokeComponent: false
 
@@ -131,6 +216,17 @@ SafetyFunctions:
         sensor.fault_riskytemperature: "Niebezpieczna temperatura"
         sensor.fault_riskytemperatureforecast: "Prognoza niebezpiecznej temperatury"
         sensor.fault_safetydooropentimeout: "Zbyt długo otwarte drzwi lub brama"
+        sensor.fault_externalweatherexposure: "Narażenie domu na zagrożenie pogodowe"
+        sensor.fault_outdoorairqualityexposure: "Narażenie domu na zanieczyszczone powietrze"
+        sensor.fault_ionizingradiationalert: "Oficjalne ostrzeżenie radiologiczne"
+        sensor.fault_radiationdataanomaly: "Niepotwierdzona anomalia danych radiacyjnych"
+        sensor.fault_externalhazarddataunavailable: "Brak danych o zagrożeniach zewnętrznych"
+        sensor.external_hazard_state: "Zagrożenia zewnętrzne"
+        sensor.external_provider_open_meteo_weather: "Dane pogodowe Open-Meteo"
+        sensor.external_provider_imgw_warnings: "Ostrzeżenia IMGW"
+        sensor.external_provider_gios_air_quality: "Jakość powietrza GIOŚ"
+        sensor.external_provider_open_meteo_air_quality: "Prognoza jakości powietrza Open-Meteo"
+        sensor.external_provider_paa_radiation: "Monitoring radiacyjny PAA"
         sensor.safety_door_garagegate: "Brama garażowa"
         sensor.safety_door_externalgate: "Brama zewnętrzna"
         sensor.safety_door_livingroomterracedoor: "Drzwi tarasowe w salonie"
@@ -146,6 +242,31 @@ SafetyFunctions:
     # - energy price, humidity baseline, occupancy, etc.
     common_entities:
       outside_temp: "sensor.dom_temperature"
+
+    site:
+      latitude: 50.01253611215521
+      longitude: 20.116336941719055
+      timezone: Europe/Warsaw
+      country_code: PL
+      teryt_codes:
+        - "1219"
+
+    api_components:
+      OpenMeteoWeatherApiComponent:
+        enabled: true
+      ImgwWarningsApiComponent:
+        enabled: true
+      GiosAirQualityApiComponent:
+        enabled: true
+        station_ids:
+          - 402
+          - 401
+      OpenMeteoAirQualityApiComponent:
+        enabled: true
+      PaaRadiationApiComponent:
+        enabled: true
+        language: pl
+        station_ids: []
 
     # MQTT entity publishing.
     #
@@ -171,6 +292,75 @@ SafetyFunctions:
     # Each component has its own schema. If a component is enabled above, its
     # config must exist here and must be valid.
     safety_components:
+      ExternalHazardComponent:
+        openings:
+          BathroomWindow:
+            area_id: "bathroom"
+            entity_id: "binary_sensor.bathroom_window_contact_contact"
+            friendly_name: "Okno łazienki"
+            kind: window
+            hazards: [frost, wind, rain, storm, outdoor_air_pollution]
+          BedroomLeftWindow:
+            area_id: "45dba350035011ebb7723b97d0dd3541"
+            entity_id: "binary_sensor.bedroom_windowleft_sensor_contact"
+            friendly_name: "Lewe okno sypialni"
+            kind: window
+            hazards: [frost, wind, rain, storm, outdoor_air_pollution]
+          BedroomRightWindow:
+            area_id: "45dba350035011ebb7723b97d0dd3541"
+            entity_id: "binary_sensor.bedroom_windowright_sensor_contact_contact"
+            friendly_name: "Prawe okno sypialni"
+            kind: window
+            hazards: [frost, wind, rain, storm, outdoor_air_pollution]
+          KidsRoomWindow:
+            area_id: "kids_room"
+            entity_id: "binary_sensor.kidsroom_window_contact_contact"
+            friendly_name: "Okno pokoju dzieci"
+            kind: window
+            hazards: [frost, wind, rain, storm, outdoor_air_pollution]
+          KitchenWindow:
+            area_id: "45db9126035011ebb67629f8118eef32"
+            entity_id: "binary_sensor.kitchen_window_contact_contact"
+            friendly_name: "Okno kuchni"
+            kind: window
+            hazards: [frost, wind, rain, storm, outdoor_air_pollution]
+          LivingRoomTerraceDoor:
+            area_id: "45db77f4035011eb9a3115c8afedaa08"
+            entity_id: "binary_sensor.livingroom_door_contact_contact"
+            friendly_name: "Drzwi tarasowe salonu"
+            kind: door
+            hazards: [frost, wind, rain, storm, outdoor_air_pollution]
+          LivingRoomWindow:
+            area_id: "45db77f4035011eb9a3115c8afedaa08"
+            entity_id: "binary_sensor.livingroom_window_contact_contact"
+            friendly_name: "Okno salonu"
+            kind: window
+            hazards: [frost, wind, rain, storm, outdoor_air_pollution]
+          OfficeWindow:
+            area_id: "office"
+            entity_id: "binary_sensor.office_window_contact_contact"
+            friendly_name: "Okno biura"
+            kind: window
+            hazards: [frost, wind, rain, storm, outdoor_air_pollution]
+          EntranceDoor:
+            area_id: "entryway"
+            entity_id: "binary_sensor.entrance_door_contact_contact"
+            friendly_name: "Drzwi wejściowe"
+            kind: door
+            hazards: [frost, wind, rain, storm, outdoor_air_pollution]
+          GarageGate:
+            area_id: "garage"
+            entity_id: "binary_sensor.garage_gatedoorlow_contact_contact"
+            friendly_name: "Brama garażowa"
+            kind: garage_door
+            hazards: [frost, wind, rain, storm, outdoor_air_pollution]
+          UpperBathroomWindow:
+            area_id: "upper_bathroom"
+            entity_id: "binary_sensor.upperbathroom_window_contact_contact"
+            friendly_name: "Okno górnej łazienki"
+            kind: window
+            hazards: [frost, wind, rain, storm, outdoor_air_pollution]
+
       SafetyDoorsComponent:
         defaults:
           # SYS-SR-DOOR-001: maximum continuous open time before activation.

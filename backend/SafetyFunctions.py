@@ -36,6 +36,7 @@ Note:
 """
 
 from typing import Any, Dict, Mapping
+from urllib.parse import urlparse
 
 import appdaemon.plugins.hass.hassapi as hass
 from pydantic import ValidationError
@@ -49,6 +50,11 @@ from components.core.event_bus import EventBus
 from components.core.derivative_monitor import DerivativeMonitor
 from components.core.localization import LocalizationSettings
 from components.core.mqtt_entity_manager import MqttEntityManager
+from components.external_apis import (
+    ExternalApiRuntime,
+    HttpJsonClient,
+    get_registered_api_components,
+)
 from components.faults_manager import cfg_parser as cfg_pr
 from components.faults_manager.fault_manager import FaultManager
 from components.notification_manager.notification_manager import NotificationManager
@@ -102,6 +108,7 @@ class SafetyFunctions(hass.Hass):
 
         # Prepare shared runtime state and event infrastructure.
         self.sm_modules: dict = {}
+        self.api_modules: dict = {}
         self.symptoms: dict[str, Symptom] = {}
         self.recovery_actions: dict[str, RecoveryAction] = {}
         self.derivative_monitor = DerivativeMonitor(self, self.mqtt_entities)
@@ -112,11 +119,29 @@ class SafetyFunctions(hass.Hass):
         self.safety_components_cfg: dict = self.args["user_config"]["safety_components"]
         self.notification_cfg: dict = self.args["user_config"]["notification"]
         self.common_entities_cfg: dict = self.args["user_config"]["common_entities"]
+        self.api_components_cfg: dict = self.args["user_config"].get(
+            "api_components", {}
+        )
+        self.site_cfg: dict = self.args["user_config"].get("site", {})
 
         # Create access to installation-wide Home Assistant entities.
         self.common_entities: CommonEntities = CommonEntities(
             self, self.common_entities_cfg
         )
+
+        # Instantiate provider adapters without starting network activity.
+        for component_name, component_cls in get_registered_api_components().items():
+            provider_cfg = self.api_components_cfg.get(component_name)
+            if not isinstance(provider_cfg, dict):
+                continue
+            provider_host = urlparse(str(provider_cfg["base_url"])).hostname
+            if not provider_host:
+                raise ValueError(f"Invalid provider base URL for {component_name}")
+            self.api_modules[component_name] = component_cls(
+                provider_config=provider_cfg,
+                site_config=self.site_cfg,
+                http_client=HttpJsonClient(allowed_hosts={provider_host}),
+            )
 
         # Instantiate configured components and collect their runtime contracts.
         for component_name, component_cls in get_registered_components().items():
@@ -164,6 +189,9 @@ class SafetyFunctions(hass.Hass):
             self.notify_man,
             self.mqtt_entities,
         )
+        for component in self.sm_modules.values():
+            if callable(getattr(component, "evaluate_recovery_policy", None)):
+                self.reco_man.register_policy_evaluator(component)
 
         # Wire symptom and fault events in deterministic priority order.
         self.event_bus.subscribe(
@@ -184,6 +212,16 @@ class SafetyFunctions(hass.Hass):
 
         # Enable configured symptoms after all managers and listeners exist.
         self.fm.enable_all_symptoms()
+
+        # Remote polling starts only after managers, listeners and entities exist.
+        if self.api_modules:
+            runtime_cls = getattr(self, "_external_api_runtime_cls", ExternalApiRuntime)
+            self.external_api_runtime = runtime_cls(
+                self,
+                self.event_bus,
+                self.api_modules,
+            )
+            self.external_api_runtime.start()
 
         # Announce successful startup and begin MQTT heartbeat reporting.
         self._set_internal_entity("sensor.safety_app_health", "running")
@@ -248,6 +286,22 @@ class SafetyFunctions(hass.Hass):
 
     def terminate(self) -> None:
         """Publish offline availability during a clean AppDaemon shutdown."""
+        external_runtime = getattr(self, "external_api_runtime", None)
+        if external_runtime is not None:
+            try:
+                external_runtime.stop()
+            except Exception as exc:
+                self.log(f"Unable to stop external API runtime: {exc}", level="ERROR")
+        for component in getattr(self, "sm_modules", {}).values():
+            stop = getattr(component, "stop", None)
+            if callable(stop):
+                try:
+                    stop()
+                except Exception as exc:
+                    self.log(
+                        f"Unable to stop safety component {component.component_name}: {exc}",
+                        level="ERROR",
+                    )
         mqtt_entities = getattr(self, "mqtt_entities", None)
         if mqtt_entities is None:
             return

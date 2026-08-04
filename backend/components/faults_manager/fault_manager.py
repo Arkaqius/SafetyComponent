@@ -84,6 +84,7 @@ class FaultManager:
         self.hass: hass.Hass = hass
         self.event_bus = event_bus
         self.mqtt_entities = mqtt_entities
+        self._symptom_contexts: dict[str, dict[str, str]] = {}
 
     def handle_symptom_event(
         self,
@@ -156,6 +157,10 @@ class FaultManager:
         """
         # Update symptom registry
         self.symptoms[symptom_id].state = FaultState.SET
+        if additional_info:
+            self._symptom_contexts[symptom_id] = {
+                str(key): str(value) for key, value in additional_info.items()
+            }
 
         # Call Related Fault
         self._set_fault(symptom_id, additional_info)
@@ -181,6 +186,7 @@ class FaultManager:
         """
         # Update symptom registry
         self.symptoms[symptom_id].state = FaultState.CLEARED
+        self._symptom_contexts.pop(symptom_id, None)
 
         # Call Related Fault
         self._clear_fault(symptom_id, additional_info)
@@ -191,6 +197,7 @@ class FaultManager:
         """
         # Update symptom registry
         self.symptoms[symptom_id].state = FaultState.NOT_TESTED
+        self._symptom_contexts.pop(symptom_id, None)
 
         # Call Related Fault
         self._clear_fault(symptom_id, additional_info)
@@ -261,9 +268,15 @@ class FaultManager:
             self.hass.log(f"Fault {fault.name} was set", level="DEBUG")
 
             # Determinate additional info
-            info_to_send: dict | None = self._determinate_info(
-                "sensor.fault_" + fault.name, additional_info, FaultState.SET
-            )
+            info_to_send: dict | None
+            if sm_name.startswith("sm_ext_"):
+                info_to_send = self._aggregate_active_fault_info(fault)
+            else:
+                info_to_send = self._determinate_info(
+                    "sensor.fault_" + fault.name,
+                    additional_info,
+                    FaultState.SET,
+                )
 
             # Prepare the attributes for the state update
             attributes: dict = info_to_send if info_to_send else {}
@@ -288,6 +301,20 @@ class FaultManager:
             )
 
             self._apply_shadowing(fault, self.symptoms[symptom_id], additional_info)
+
+    def _aggregate_active_fault_info(self, fault: Fault) -> dict[str, str]:
+        """Rebuild external-fault context from current active symptoms only."""
+
+        values_by_key: dict[str, list[str]] = {}
+        related_sms = set(fault.related_symptoms)
+        for symptom_id, symptom in self.symptoms.items():
+            if symptom.state != FaultState.SET or symptom.sm_name not in related_sms:
+                continue
+            for key, value in self._symptom_contexts.get(symptom_id, {}).items():
+                values = values_by_key.setdefault(key, [])
+                if value not in values:
+                    values.append(value)
+        return {key: ", ".join(values) for key, values in values_by_key.items()}
 
     def _determinate_info(
             self, entity_id: str, additional_info: Optional[dict], fault_state: FaultState
@@ -490,9 +517,12 @@ class FaultManager:
         )
 
         if has_active_related_symptoms:
-            info_to_send = self._determinate_info(
-                entity_id, additional_info, FaultState.CLEARED
-            )
+            if sm_name.startswith("sm_ext_"):
+                info_to_send = self._aggregate_active_fault_info(fault)
+            else:
+                info_to_send = self._determinate_info(
+                    entity_id, additional_info, FaultState.CLEARED
+                )
             attributes = info_to_send if info_to_send else {}
 
             self._set_internal_entity(entity_id, "Set", attributes)

@@ -1672,6 +1672,196 @@ details summary:focus-visible {
   white-space: normal;
 }
 
+.external-introduction {
+  position: relative;
+  overflow: hidden;
+}
+
+.external-introduction::after {
+  background: radial-gradient(circle, rgba(72, 199, 178, 0.14), transparent 68%);
+  content: '';
+  height: 220px;
+  pointer-events: none;
+  position: absolute;
+  right: -70px;
+  top: -100px;
+  width: 220px;
+}
+
+.external-danger {
+  border-color: rgba(255, 131, 95, 0.4);
+}
+
+.external-critical {
+  border-color: rgba(255, 87, 87, 0.55);
+}
+
+.external-current-state {
+  align-items: flex-end;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 180px;
+  position: relative;
+  z-index: 1;
+}
+
+.external-current-state small {
+  color: var(--text-muted);
+  font-size: 0.68rem;
+}
+
+.external-clear-panel {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+}
+
+.external-clear-panel p {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  margin: 5px 0 0;
+}
+
+.external-clear-icon,
+.external-provider-icon {
+  align-items: center;
+  background: var(--accent-soft);
+  border-radius: 12px;
+  color: var(--accent);
+  display: flex;
+  flex: 0 0 auto;
+  height: 44px;
+  justify-content: center;
+  width: 44px;
+}
+
+.external-active-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.external-active-grid > div {
+  background: rgba(158, 180, 194, 0.06);
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  display: grid;
+  gap: 6px;
+  padding: 16px;
+}
+
+.external-active-grid span,
+.external-provider-card dt {
+  color: var(--text-muted);
+  font-size: 0.64rem;
+  text-transform: uppercase;
+}
+
+.external-active-grid strong {
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.advice-panel ul {
+  display: grid;
+  gap: 9px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.advice-panel li {
+  align-items: center;
+  background: var(--warning-soft);
+  border: 1px solid rgba(243, 201, 105, 0.25);
+  border-radius: 12px;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 13px 15px;
+}
+
+.advice-panel li strong {
+  font-size: 0.74rem;
+}
+
+.advice-panel li span {
+  color: var(--text-muted);
+  font-size: 0.66rem;
+  text-align: right;
+}
+
+.external-provider-heading {
+  margin-bottom: 13px;
+}
+
+.external-provider-grid {
+  display: grid;
+  gap: 17px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.external-provider-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 17px;
+  min-width: 0;
+  padding: 18px;
+}
+
+.external-provider-card.provider-danger {
+  border-color: rgba(255, 131, 95, 0.38);
+}
+
+.external-provider-card.provider-warning {
+  border-color: rgba(243, 201, 105, 0.3);
+}
+
+.external-provider-card header {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.external-provider-card h3 {
+  font-size: 0.78rem;
+  margin: 0 0 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.external-provider-card header small {
+  color: var(--text-muted);
+  display: block;
+  font-size: 0.58rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.external-provider-card dl {
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 9px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 16px 0 0;
+  padding-top: 14px;
+}
+
+.external-provider-card dd {
+  color: var(--text-soft);
+  font-size: 0.7rem;
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.external-provider-card code {
+  color: var(--warning);
+}
+
 .page-empty-state {
   min-height: 300px;
 }
@@ -1836,7 +2026,8 @@ details summary:focus-visible {
   }
 
   .temperature-grid,
-  .safety-door-grid {
+  .safety-door-grid,
+  .external-provider-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -1929,7 +2120,8 @@ details summary:focus-visible {
 
   .summary-grid,
   .temperature-grid,
-  .safety-door-grid {
+  .safety-door-grid,
+  .external-provider-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1999,6 +2191,24 @@ details summary:focus-visible {
     border-top: 1px solid var(--border);
     padding: 16px 0 0;
     width: 100%;
+  }
+
+  .external-current-state {
+    align-items: flex-start;
+    min-width: 0;
+  }
+
+  .external-active-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .advice-panel li {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .advice-panel li span {
+    text-align: left;
   }
 
   .metric-strip {

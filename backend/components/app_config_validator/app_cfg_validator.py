@@ -12,6 +12,30 @@ from components.app_config_validator.schema import AppCfg
 from components.core.pydantic_utils import log_extra_keys
 from components.faults_manager.schema import validate_faults_config
 from components.notification_manager.schema import validate_notification_config
+from components.external_apis.gios_air_quality.schema import (
+    COMPONENT_NAME as GIOS_COMPONENT_NAME,
+    GiosAirQualityConfig,
+)
+from components.external_apis.imgw_warnings.schema import (
+    COMPONENT_NAME as IMGW_COMPONENT_NAME,
+    ImgwWarningsConfig,
+)
+from components.external_apis.open_meteo_air_quality.schema import (
+    COMPONENT_NAME as OPEN_METEO_AQ_COMPONENT_NAME,
+    OpenMeteoAirQualityConfig,
+)
+from components.external_apis.open_meteo_weather.schema import (
+    COMPONENT_NAME as OPEN_METEO_WEATHER_COMPONENT_NAME,
+    OpenMeteoWeatherConfig,
+)
+from components.external_apis.paa_radiation.schema import (
+    COMPONENT_NAME as PAA_COMPONENT_NAME,
+    PaaRadiationConfig,
+)
+from components.safetycomponents.external_hazard.schema import (
+    COMPONENT_NAME as EXTERNAL_HAZARD_COMPONENT_NAME,
+    validate_external_hazard_config,
+)
 from components.safetycomponents.safety_doors.schema import (
     COMPONENT_NAME as SAFETY_DOORS_COMPONENT_NAME,
     validate_safety_doors_config,
@@ -27,6 +51,13 @@ class AppCfgValidationError(Exception):
 
 SUPPORTED_CONFIG_VERSION = 1
 ENTITY_ID_PATTERN = re.compile(r"^[a-z0-9_]+\.[a-z0-9_]+$")
+REQUIRED_EXTERNAL_API_COMPONENTS = (
+    OPEN_METEO_WEATHER_COMPONENT_NAME,
+    IMGW_COMPONENT_NAME,
+    GIOS_COMPONENT_NAME,
+    OPEN_METEO_AQ_COMPONENT_NAME,
+    PAA_COMPONENT_NAME,
+)
 
 
 def _log_warning(log: Callable[..., None] | None, message: str) -> None:
@@ -107,6 +138,24 @@ def _collect_entity_ids(runtime_cfg: Dict[str, Any]) -> list[tuple[str, str]]:
                                 condition_entity_id,
                             )
                         )
+
+    external_hazard_cfg = components_cfg.get(EXTERNAL_HAZARD_COMPONENT_NAME)
+    if isinstance(external_hazard_cfg, dict):
+        openings = external_hazard_cfg.get("openings", {})
+        if isinstance(openings, dict):
+            for opening_name, opening_cfg in openings.items():
+                if not isinstance(opening_cfg, dict):
+                    continue
+                entity_id = opening_cfg.get("entity_id")
+                if isinstance(entity_id, str):
+                    entity_ids.append(
+                        (
+                            "user_config.safety_components."
+                            f"{EXTERNAL_HAZARD_COMPONENT_NAME}."
+                            f"openings.{opening_name}.entity_id",
+                            entity_id,
+                        )
+                    )
 
     return entity_ids
 
@@ -192,6 +241,75 @@ def _resolve_area_names(runtime_cfg: Dict[str, Any], hass: Any) -> None:
                     config_path,
                 )
 
+    external_cfg = components.get(EXTERNAL_HAZARD_COMPONENT_NAME)
+    if isinstance(external_cfg, dict):
+        openings = external_cfg.get("openings", {})
+        if isinstance(openings, dict):
+            for opening_name, opening_cfg in openings.items():
+                if not isinstance(opening_cfg, dict):
+                    continue
+                area_id = opening_cfg.get("area_id")
+                if not isinstance(area_id, str):
+                    continue
+                config_path = (
+                    "user_config.safety_components."
+                    f"{EXTERNAL_HAZARD_COMPONENT_NAME}."
+                    f"openings.{opening_name}.area_id"
+                )
+                opening_cfg["area_name"] = _resolve_area_name(
+                    hass, area_id, config_path
+                )
+
+
+def _validate_api_components(
+    cfg: AppCfg,
+    *,
+    strict_validation: bool,
+) -> Dict[str, Any]:
+    """Merge provider policy and installation binding, then validate each adapter."""
+
+    policy = cfg.app_config.external_hazard_policy
+    if policy is None:
+        return {}
+    raw_api_components = cfg.user_config.api_components
+    validators = {
+        OPEN_METEO_WEATHER_COMPONENT_NAME: OpenMeteoWeatherConfig,
+        IMGW_COMPONENT_NAME: ImgwWarningsConfig,
+        GIOS_COMPONENT_NAME: GiosAirQualityConfig,
+        OPEN_METEO_AQ_COMPONENT_NAME: OpenMeteoAirQualityConfig,
+        PAA_COMPONENT_NAME: PaaRadiationConfig,
+    }
+    normalized: Dict[str, Any] = {}
+    for name, schema in validators.items():
+        user_binding = raw_api_components.get(name)
+        if not isinstance(user_binding, dict):
+            raise ValueError(f"Missing user_config.api_components.{name}")
+        provider_policy = policy.providers.get(name)
+        if not isinstance(provider_policy, dict):
+            raise ValueError(f"Missing app_config.external_hazard_policy.providers.{name}")
+        merged = {**provider_policy, **user_binding}
+        if name in {
+            OPEN_METEO_WEATHER_COMPONENT_NAME,
+            OPEN_METEO_AQ_COMPONENT_NAME,
+        }:
+            merged["forecast_horizon_hours"] = policy.weather.forecast_horizon_hours
+        validated = schema.model_validate(
+            merged, context={"strict_validation": strict_validation}
+        )
+        if not validated.enabled:
+            raise ValueError(f"Required API component {name} must be enabled")
+        normalized[name] = validated.model_dump()
+    unknown_policy = sorted(set(policy.providers) - set(validators))
+    if strict_validation and unknown_policy:
+        raise ValueError(
+            "Unknown external hazard provider policies: "
+            + ", ".join(unknown_policy)
+        )
+    unknown = sorted(set(raw_api_components) - set(validators))
+    if strict_validation and unknown:
+        raise ValueError(f"Unknown API components: {', '.join(unknown)}")
+    return normalized
+
 
 def _to_runtime(
     cfg: AppCfg,
@@ -203,6 +321,18 @@ def _to_runtime(
     runtime_user_cfg = runtime.get("user_config", {})
 
     enabled_components = cfg.user_config.enabled_components()
+    external_enabled = EXTERNAL_HAZARD_COMPONENT_NAME in enabled_components
+    if external_enabled:
+        if cfg.app_config.external_hazard_policy is None:
+            raise ValueError("ExternalHazardComponent requires external_hazard_policy")
+        if cfg.user_config.site is None:
+            raise ValueError("ExternalHazardComponent requires user_config.site")
+        runtime_user_cfg["site"] = cfg.user_config.site.model_dump()
+        runtime_user_cfg["api_components"] = _validate_api_components(
+            cfg, strict_validation=strict_validation
+        )
+    else:
+        runtime_user_cfg["api_components"] = {}
     runtime_components: Dict[str, Any] = {}
     for name, component_cfg in enabled_components.items():
         if name == TEMPERATURE_COMPONENT_NAME:
@@ -217,6 +347,14 @@ def _to_runtime(
                 component_cfg,
                 strict_validation=strict_validation,
                 log=log,
+            )
+        elif name == EXTERNAL_HAZARD_COMPONENT_NAME:
+            if cfg.app_config.external_hazard_policy is None:
+                raise ValueError("ExternalHazardComponent policy is missing")
+            runtime_components[name] = validate_external_hazard_config(
+                component_cfg,
+                policy=cfg.app_config.external_hazard_policy,
+                strict_validation=strict_validation,
             )
         else:
             runtime_components[name] = component_cfg
