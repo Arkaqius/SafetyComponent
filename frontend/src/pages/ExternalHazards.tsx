@@ -1,6 +1,6 @@
 import Icon from '../components/Icon';
 import StatusBadge from '../components/StatusBadge';
-import { formatRelativeTime, type ExternalHazardStatus, type ExternalProviderView } from '../domain/safety';
+import { formatRelativeTime, type ExternalHazardStatus, type ExternalProviderView, type ImgwWarningView } from '../domain/safety';
 import { useSafetyEntities } from '../hooks/useSafetyEntities';
 
 export default function ExternalHazards() {
@@ -15,8 +15,8 @@ export default function ExternalHazards() {
           <span className='section-kicker'>External Hazard Monitoring</span>
           <h2>Ochrona domu przed warunkami zewnętrznymi</h2>
           <p>
-            System łączy dane pogodowe, jakość powietrza i komunikaty o promieniowaniu jonizującym ze stanem skonfigurowanych okien i drzwi.
-            Ten moduł wyłącznie ostrzega — nie steruje żadnym urządzeniem.
+            System łączy dane pogodowe, bieżącą jakość powietrza i oficjalne ostrzeżenia IMGW ze stanem skonfigurowanych okien i drzwi. Ten
+            moduł wyłącznie ostrzega — nie steruje żadnym urządzeniem.
           </p>
         </div>
         <div className='external-current-state'>
@@ -95,6 +95,26 @@ export default function ExternalHazards() {
         </section>
       )}
 
+      <section className='panel imgw-warnings-panel'>
+        <div className='panel-header'>
+          <div>
+            <span className='section-kicker'>Oficjalne komunikaty</span>
+            <h2>Ostrzeżenia IMGW</h2>
+            <p>Aktualne ostrzeżenia IMGW dotyczące lokalizacji domu.</p>
+          </div>
+          <strong className='imgw-warning-count'>{externalHazards.imgwWarnings.length}</strong>
+        </div>
+        {externalHazards.imgwWarnings.length > 0 ? (
+          <div className='imgw-warning-list'>
+            {externalHazards.imgwWarnings.map(warning => (
+              <ImgwWarning key={warning.id} warning={warning} />
+            ))}
+          </div>
+        ) : (
+          <p className='imgw-warning-empty'>IMGW nie zwrócił aktualnych ostrzeżeń.</p>
+        )}
+      </section>
+
       <section>
         <div className='section-heading external-provider-heading'>
           <div>
@@ -110,6 +130,48 @@ export default function ExternalHazards() {
       </section>
     </div>
   );
+}
+
+function ImgwWarning({ warning }: { warning: ImgwWarningView }) {
+  return (
+    <article className={`imgw-warning-card${warning.locallyApplicable ? ' imgw-warning-local' : ''}`}>
+      <header>
+        <div>
+          <h3>{warning.eventName}</h3>
+          <small>{warning.office || 'IMGW-PIB'}</small>
+        </div>
+        <div className='imgw-warning-badges'>
+          {warning.locallyApplicable && <span className='imgw-local-badge'>Dotyczy domu</span>}
+          {warning.degree && <span className='imgw-degree-badge'>Stopień {warning.degree}</span>}
+        </div>
+      </header>
+      <p>{warning.content || 'Brak opisu ostrzeżenia.'}</p>
+      {warning.comment && <p className='imgw-warning-comment'>{warning.comment}</p>}
+      <dl>
+        <div>
+          <dt>Obowiązuje</dt>
+          <dd>{formatPeriod(warning.validFrom, warning.validTo)}</dd>
+        </div>
+        <div>
+          <dt>Prawdopodobieństwo</dt>
+          <dd>{warning.probability ? `${warning.probability}%` : 'brak danych'}</dd>
+        </div>
+        <div>
+          <dt>Lokalizacja</dt>
+          <dd>Dotyczy lokalizacji domu</dd>
+        </div>
+      </dl>
+    </article>
+  );
+}
+
+function formatPeriod(from?: string, to?: string): string {
+  const format = (value?: string) => {
+    if (!value) return 'brak danych';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? 'brak danych' : date.toLocaleString('pl-PL');
+  };
+  return `${format(from)} – ${format(to)}`;
 }
 
 function Metric({ label, value, detail }: { label: string; value: number | string; detail: string }) {
@@ -180,8 +242,7 @@ function hazardPresentation(status: ExternalHazardStatus): {
 } {
   if (status === 'clear')
     return { label: 'Bezpiecznie', detail: 'Świeże dane nie wskazują aktywnego zagrożenia dla otwartych okien lub drzwi.', tone: 'safe' };
-  if (status === 'watch')
-    return { label: 'Obserwacja', detail: 'Prognoza wskazuje warunki, które mogą wymagać zabezpieczenia domu.', tone: 'warning' };
+  if (status === 'watch') return { label: 'Obserwacja', detail: 'Warunki wskazują, że dom może wymagać zabezpieczenia.', tone: 'warning' };
   if (status === 'warning')
     return { label: 'Ostrzeżenie', detail: 'Co najmniej jeden otwór jest narażony na aktywne warunki zewnętrzne.', tone: 'danger' };
   if (status === 'severe')

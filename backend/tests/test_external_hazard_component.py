@@ -268,7 +268,6 @@ def test_active_external_hazard_inhibits_only_opening_recovery_proposals() -> No
         HazardType.OUTDOOR_AIR_POLLUTION,
         {
             "current_european_aqi": Measurement(75.0, "EAQI"),
-            "forecast_max_european_aqi": Measurement(80.0, "EAQI"),
         },
     )
     component.handle_external_api_result(
@@ -297,6 +296,31 @@ def test_active_external_hazard_inhibits_only_opening_recovery_proposals() -> No
     assert opening.allowed is False
     assert "outdoor_air_pollution" in str(opening.reason)
     assert closing.allowed is True
+
+
+def test_imgw_provider_diagnostic_publishes_local_warning_evidence() -> None:
+    component, _, mqtt, _ = _component()
+    warnings = [
+        {
+            "id": "imgw-local",
+            "event_name": "Burze",
+            "regions": ["1219"],
+            "locally_applicable": True,
+        },
+    ]
+
+    component.handle_external_api_result(
+        result=ApiResult(
+            provider="ImgwWarningsApiComponent",
+            observations=(),
+            health=_health("ImgwWarningsApiComponent"),
+            evidence={"warnings": warnings, "warning_count": 1},
+        )
+    )
+
+    attributes = mqtt.states["sensor.external_provider_imgw_warnings"][1]
+    assert attributes["warning_count"] == 1
+    assert attributes["warnings"] == warnings
 
 
 def test_fault_context_refresh_replaces_old_observation_and_keeps_other_openings() -> None:

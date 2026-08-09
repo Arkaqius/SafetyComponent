@@ -60,6 +60,11 @@ class ExternalApiComponent(ABC):
                         if self.last_valid_result
                         else ()
                     )
+                    cached_evidence = (
+                        dict(self.last_valid_result.evidence)
+                        if self.last_valid_result
+                        else {}
+                    )
                     return ApiResult(
                         provider=self.component_name,
                         observations=cached,
@@ -67,7 +72,7 @@ class ExternalApiComponent(ABC):
                             ProviderHealthState.STALE,
                             detail_code="stale_source_time",
                         ),
-                        evidence={"cache_preserved": bool(cached)},
+                        evidence={**cached_evidence, "cache_preserved": bool(cached)},
                     )
                 self.last_success_at = utc_now()
                 self.consecutive_failures = 0
@@ -75,7 +80,7 @@ class ExternalApiComponent(ABC):
                     provider=self.component_name,
                     observations=observations,
                     health=self._health(ProviderHealthState.OK),
-                    evidence={"observation_count": len(observations)},
+                    evidence=self.build_evidence(payload, observations),
                 )
                 self.last_valid_result = result
                 return result
@@ -101,12 +106,22 @@ class ExternalApiComponent(ABC):
             else ProviderHealthState.UNAVAILABLE
         )
         cached = self.last_valid_result.observations if self.last_valid_result else ()
+        cached_evidence = dict(self.last_valid_result.evidence) if self.last_valid_result else {}
         return ApiResult(
             provider=self.component_name,
             observations=cached,
             health=self._health(state, detail_code=detail_code),
-            evidence={"cache_preserved": bool(cached)},
+            evidence={**cached_evidence, "cache_preserved": bool(cached)},
         )
+
+    def build_evidence(
+        self,
+        payload: Any,
+        observations: tuple[ExternalObservation, ...],
+    ) -> Mapping[str, Any]:
+        """Build bounded provider evidence exposed with the health snapshot."""
+
+        return {"observation_count": len(observations)}
 
     def _health(
         self,

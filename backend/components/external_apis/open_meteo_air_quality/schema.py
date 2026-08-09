@@ -1,4 +1,4 @@
-"""Configuration schema for Open-Meteo air-quality forecasts."""
+"""Configuration schema for current Open-Meteo air quality."""
 
 from urllib.parse import urlparse
 
@@ -18,8 +18,6 @@ class OpenMeteoAirQualityConfig(StrictBaseModel):
     request_timeout_seconds: float = Field(gt=0, le=30)
     max_retries: int = Field(default=2, ge=0, le=5)
     stale_after_seconds: int = Field(ge=60)
-    forecast_horizon_hours: int = Field(default=12, ge=1, le=72)
-
     @field_validator("base_url")
     @classmethod
     def _validate_base_url(cls, value: str) -> str:

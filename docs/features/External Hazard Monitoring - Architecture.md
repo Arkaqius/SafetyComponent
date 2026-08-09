@@ -54,9 +54,9 @@ The system shall:
 | API Component | Provider/API | Purpose | Polling interval | Authority |
 | --- | --- | --- | --- | --- |
 | `OpenMeteoWeatherApiComponent` | Open-Meteo `/v1/forecast` | Current/model temperature, frost forecast, precipitation, weather code, wind and gusts | 10 min | Forecast/model input |
-| `ImgwWarningsApiComponent` | IMGW `/api/data/warningsmeteo` | Official Polish weather warnings filtered by TERYT | 5 min | Authoritative weather warning |
+| `ImgwWarningsApiComponent` | IMGW `/api/data/warningsmeteo` | Current official weather warnings matching configured TERYT codes | 5 min | Authoritative weather warning |
 | `GiosAirQualityApiComponent` | GIOŚ PJP API v1 | Nearest/configured station measurements and Polish AQ information | 15 min | Authoritative measurement source |
-| `OpenMeteoAirQualityApiComponent` | Open-Meteo `/v1/air-quality` | CAMS forecast, European AQI and pollutant forecast | 30 min | Forecast/model input |
+| `OpenMeteoAirQualityApiComponent` | Open-Meteo `/v1/air-quality` | Current CAMS-model European AQI and pollutant values | 30 min | Current model input |
 | `PaaRadiationApiComponent` | Official PAA radiation monitoring API | Official status/messages and station dose-rate data | 5 min | Authoritative only for official PAA status/messages |
 
 Provider references:
@@ -264,7 +264,10 @@ The IMGW component maps:
 - `teryt` -> applicable configured administrative areas;
 - `tresc`, `komentarz`, `biuro` -> sanitized authority context.
 
-Warnings not matching configured TERYT codes are discarded before dispatch.
+Every current warning matching at least one configured TERYT code is sanitized,
+marked as locally applicable, and published in the IMGW provider diagnostic
+entity for operator presentation. Locally applicable warnings with recognized
+household hazard types are dispatched as safety observations.
 An updated warning with the same ID replaces the previous provider observation.
 
 ### 7.5 `GiosAirQualityApiComponent`
@@ -283,15 +286,16 @@ Selection policy:
 
 ### 7.6 `OpenMeteoAirQualityApiComponent`
 
-This component returns CAMS model/forecast values separately from GIOŚ
+This component returns current CAMS model values separately from GIOŚ
 measurements. Required fields:
 
 - `european_aqi` and contributing sub-indices;
 - PM2.5, PM10, NO2, O3, and SO2;
-- current/model value plus at least 12 hours of forecast;
+- current/model values;
 - grid coordinates, model/source time, validity, and retrieval time.
 
-The component does not decide whether forecast or station measurement wins.
+The component does not decide whether the current model value or station
+measurement wins.
 
 ### 7.7 `PaaRadiationApiComponent`
 
@@ -384,7 +388,7 @@ other direct sensor path.
 - IMGW warning validity is authoritative for the warning itself.
 - Open-Meteo weather supplies point-model detail and forecast but does not
   replace an IMGW warning.
-- GIOŚ station measurement and Open-Meteo AQ forecast are shown separately.
+- GIOŚ station measurement and Open-Meteo current AQ model values are shown separately.
 - Conservative AQ policy may warn if either a fresh current measurement or a
   configured high-confidence forecast exceeds policy.
 - Disagreement is evidence, not a parser error; both inputs remain visible.
@@ -657,9 +661,11 @@ Each API Component requires fixtures for:
 - Hazard active + opening open -> symptom set.
 - Hazard active + opening closed -> no exposure symptom.
 - One of several openings closes -> fault remains with reduced context.
-- Forecast is labeled forecast.
+- Weather forecast is labeled forecast.
 - IMGW warning outside configured TERYT -> ignored.
-- GIOŚ measurement/Open-Meteo forecast disagreement -> configured policy and
+- Current IMGW warnings matching configured TERYT codes -> published for
+  operator presentation and marked as locally applicable.
+- GIOŚ measurement/Open-Meteo current-model disagreement -> configured policy and
   both sources visible.
 - Official radiation message -> confirmed L2 warning regardless of contacts.
 - Raw radiation anomaly -> never `IonizingRadiationAlert`.

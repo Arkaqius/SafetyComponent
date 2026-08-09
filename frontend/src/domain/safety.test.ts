@@ -246,6 +246,7 @@ test('normalizes external hazard aggregate and independent provider diagnostics'
   const external = getExternalHazardMonitoring({
     'sensor.external_hazard_state': entity('warning', {
       active_hazards: ['niebezpieczny wiatr'],
+      enabled_providers: ['OpenMeteoWeatherApiComponent', 'ImgwWarningsApiComponent'],
       affected_openings: ['Okno biura'],
       advice_inhibition: [
         {
@@ -265,12 +266,30 @@ test('normalizes external hazard aggregate and independent provider diagnostics'
       consecutive_failures: 0,
       observation_count: 4,
     }),
-    'sensor.external_provider_paa_radiation': entity('unavailable', {
-      friendly_name: 'Monitoring radiacyjny PAA',
-      provider: 'PaaRadiationApiComponent',
-      consecutive_failures: 2,
-      detail_code: 'http_500',
-      observation_count: 0,
+    'sensor.external_provider_imgw_warnings': entity('ok', {
+      friendly_name: 'Ostrzeżenia IMGW',
+      provider: 'ImgwWarningsApiComponent',
+      consecutive_failures: 0,
+      observation_count: 1,
+      warnings: [
+        {
+          id: 'imgw-1',
+          event_name: 'Burze',
+          degree: '2',
+          probability: '80',
+          valid_from: timestamp,
+          valid_to: timestamp,
+          regions: ['1219'],
+          content: 'Prognozowane są burze.',
+          locally_applicable: true,
+        },
+        {
+          id: 'imgw-outside-home',
+          event_name: 'Silny wiatr',
+          regions: ['1465'],
+          locally_applicable: false,
+        },
+      ],
     }),
   });
 
@@ -278,18 +297,18 @@ test('normalizes external hazard aggregate and independent provider diagnostics'
   assert.deepEqual(external.activeHazards, ['niebezpieczny wiatr']);
   assert.deepEqual(external.affectedOpenings, ['Okno biura']);
   assert.equal(external.adviceInhibition[0].reason, 'wind');
-  assert.equal(external.providers[0].status, 'unavailable');
-  assert.equal(external.providers[0].detailCode, 'http_500');
-  assert.equal(external.providers[1].status, 'ok');
+  assert.equal(external.providers.length, 2);
+  assert.equal(external.imgwWarnings.length, 1);
+  assert.equal(external.imgwWarnings[0].eventName, 'Burze');
+  assert.equal(external.imgwWarnings[0].locallyApplicable, true);
+  assert.equal(
+    external.imgwWarnings.some(warning => warning.id === 'imgw-outside-home'),
+    false
+  );
 });
 
 test('maps semantic system states while retaining numeric compatibility', () => {
-  const semanticSummary = getSafetySummary(
-    entity('running'),
-    entity('hazard'),
-    [],
-    []
-  );
+  const semanticSummary = getSafetySummary(entity('running'), entity('hazard'), [], []);
   const legacySummary = getSafetySummary(entity('running'), entity('2'), [], []);
 
   assert.equal(semanticSummary.effectiveLevel, 2);

@@ -77,10 +77,8 @@ def evaluate_observation(
             threshold = int(aq_policy.get("gios_warning_level", 3))
             return HazardAssessment(level >= threshold, "warning", f"GIOŚ: {_measurement(values, 'polish_index_name', str(level))}", f"GIOŚ level ≥ {threshold}", "station_measurement", level >= threshold)
         current = _number(values, "current_european_aqi")
-        forecast = _number(values, "forecast_max_european_aqi")
-        measured = max(current, forecast)
         threshold = float(aq_policy["warning_at"])
-        return HazardAssessment(measured >= threshold, "warning", f"EAQI {measured:.0f}", f"EAQI ≥ {threshold:.0f}", _evidence_kind(current, forecast, measured), measured >= threshold)
+        return HazardAssessment(current >= threshold, "warning", f"EAQI {current:.0f}", f"EAQI ≥ {threshold:.0f}", "current", current >= threshold)
     if observation.hazard_type == HazardType.IONIZING_RADIATION:
         active = observation.authority_confirmed
         return HazardAssessment(active, "severe", _measurement(values, "status", "official alert"), "official PAA message", "official_warning", active)

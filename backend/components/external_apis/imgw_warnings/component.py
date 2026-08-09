@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Mapping
 
 from components.external_apis.core.api_component import ExternalApiComponent
 from components.external_apis.core.models import ExternalObservation, HazardType, Measurement, parse_datetime
@@ -23,44 +23,32 @@ class ImgwWarningsApiComponent(ExternalApiComponent):
         )
 
     def normalize(self, payload: Any, retrieved_at: datetime) -> tuple[ExternalObservation, ...]:
-        if not isinstance(payload, list):
-            raise ValueError("IMGW warnings payload must be a list")
         configured_teryt = {str(code) for code in self.site_config.get("teryt_codes", [])}
         observations: list[ExternalObservation] = []
-        for warning in payload:
-            if not isinstance(warning, dict):
-                raise ValueError("IMGW warning must be a mapping")
-            regions = tuple(str(code) for code in warning.get("teryt", []) if code is not None)
+        for warning in self._current_warnings(payload, retrieved_at):
+            regions = tuple(warning["regions"])
             if configured_teryt and not configured_teryt.intersection(regions):
                 continue
-            event_name = self._text(warning.get("nazwa_zdarzenia"), limit=200)
+            event_name = str(warning["event_name"])
             hazard_type = self._hazard_type(event_name)
             if hazard_type is None:
                 continue
-            warning_id = self._text(warning.get("id"), limit=200)
-            if not warning_id:
-                raise ValueError("IMGW warning id is required")
-            valid_from = parse_datetime(warning.get("obowiazuje_od"), default=retrieved_at)
-            valid_to = parse_datetime(warning.get("obowiazuje_do"), default=retrieved_at)
-            if valid_to < retrieved_at:
-                continue
-            published_at = parse_datetime(warning.get("opublikowano"), default=retrieved_at)
             observations.append(
                 ExternalObservation(
                     provider=self.component_name,
-                    observation_id=warning_id,
+                    observation_id=str(warning["id"]),
                     hazard_type=hazard_type,
-                    provider_level=self._text(warning.get("stopien"), limit=50) or None,
+                    provider_level=str(warning["degree"]) or None,
                     values={
                         "event_name": Measurement(event_name),
-                        "probability": Measurement(self._text(warning.get("prawdopodobienstwo"), limit=50), "%"),
-                        "content": Measurement(self._text(warning.get("tresc"), limit=3000)),
-                        "comment": Measurement(self._text(warning.get("komentarz"), limit=1000)),
-                        "office": Measurement(self._text(warning.get("biuro"), limit=200)),
+                        "probability": Measurement(str(warning["probability"]), "%"),
+                        "content": Measurement(str(warning["content"])),
+                        "comment": Measurement(str(warning["comment"])),
+                        "office": Measurement(str(warning["office"])),
                     },
-                    observed_at=published_at,
-                    valid_from=valid_from,
-                    valid_to=valid_to,
+                    observed_at=parse_datetime(warning["published_at"]),
+                    valid_from=parse_datetime(warning["valid_from"]),
+                    valid_to=parse_datetime(warning["valid_to"]),
                     retrieved_at=retrieved_at,
                     region_codes=regions,
                     authority_confirmed=True,
@@ -68,6 +56,63 @@ class ImgwWarningsApiComponent(ExternalApiComponent):
                 )
             )
         return tuple(observations)
+
+    def build_evidence(
+        self,
+        payload: Any,
+        observations: tuple[ExternalObservation, ...],
+    ) -> Mapping[str, Any]:
+        """Expose current IMGW warnings applicable to the configured home area."""
+
+        retrieved_at = self.last_attempt_at
+        if retrieved_at is None:
+            raise ValueError("IMGW retrieval timestamp is missing")
+        configured_teryt = {str(code) for code in self.site_config.get("teryt_codes", [])}
+        warnings = [
+            {**warning, "locally_applicable": True}
+            for warning in self._current_warnings(payload, retrieved_at)
+            if configured_teryt.intersection(warning["regions"])
+        ]
+        return {
+            "observation_count": len(observations),
+            "warning_count": len(warnings),
+            "warnings": warnings,
+        }
+
+    def _current_warnings(
+        self,
+        payload: Any,
+        retrieved_at: datetime,
+    ) -> list[dict[str, Any]]:
+        if not isinstance(payload, list):
+            raise ValueError("IMGW warnings payload must be a list")
+        warnings: list[dict[str, Any]] = []
+        for raw_warning in payload:
+            if not isinstance(raw_warning, dict):
+                raise ValueError("IMGW warning must be a mapping")
+            warning_id = self._text(raw_warning.get("id"), limit=200)
+            if not warning_id:
+                raise ValueError("IMGW warning id is required")
+            valid_from = parse_datetime(raw_warning.get("obowiazuje_od"), default=retrieved_at)
+            valid_to = parse_datetime(raw_warning.get("obowiazuje_do"), default=retrieved_at)
+            if valid_to < retrieved_at:
+                continue
+            warnings.append(
+                {
+                    "id": warning_id,
+                    "event_name": self._text(raw_warning.get("nazwa_zdarzenia"), limit=200),
+                    "degree": self._text(raw_warning.get("stopien"), limit=50),
+                    "probability": self._text(raw_warning.get("prawdopodobienstwo"), limit=50),
+                    "valid_from": valid_from.isoformat(),
+                    "valid_to": valid_to.isoformat(),
+                    "published_at": parse_datetime(raw_warning.get("opublikowano"), default=retrieved_at).isoformat(),
+                    "regions": [str(code) for code in raw_warning.get("teryt", []) if code is not None],
+                    "content": self._text(raw_warning.get("tresc"), limit=3000),
+                    "comment": self._text(raw_warning.get("komentarz"), limit=1000),
+                    "office": self._text(raw_warning.get("biuro"), limit=200),
+                }
+            )
+        return warnings
 
     @staticmethod
     def _hazard_type(name: str) -> HazardType | None:

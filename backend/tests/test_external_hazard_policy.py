@@ -149,8 +149,7 @@ def test_air_quality_sources_keep_their_distinct_index_semantics() -> None:
         _observation(
             HazardType.OUTDOOR_AIR_POLLUTION,
             {
-                "current_european_aqi": Measurement(35),
-                "forecast_max_european_aqi": Measurement(61),
+                "current_european_aqi": Measurement(61),
             },
             provider="OpenMeteoAirQualityApiComponent",
         ),
@@ -161,7 +160,7 @@ def test_air_quality_sources_keep_their_distinct_index_semantics() -> None:
     assert gios.active is True
     assert "GIO" in gios.observed_value
     assert model.active is True
-    assert model.evidence_kind == "forecast"
+    assert model.evidence_kind == "current"
 
 
 def test_only_authority_confirmed_radiation_message_is_severe() -> None:

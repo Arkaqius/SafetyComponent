@@ -81,6 +81,12 @@ def test_imgw_filters_warnings_by_configured_teryt_and_preserves_authority() -> 
     assert observations[0].authority_confirmed is True
     assert observations[0].region_codes == ("1219",)
 
+    component.last_attempt_at = RETRIEVED_AT
+    evidence = component.build_evidence(_payload("imgw_warnings"), observations)
+    assert evidence["warning_count"] == 1
+    assert [warning["id"] for warning in evidence["warnings"]] == ["imgw-1219-storm"]
+    assert evidence["warnings"][0]["locally_applicable"] is True
+
 
 def test_gios_keeps_polish_index_and_station_measurement_distinct() -> None:
     component = _component(GiosAirQualityApiComponent, station_ids=[402])
@@ -93,12 +99,12 @@ def test_gios_keeps_polish_index_and_station_measurement_distinct() -> None:
 
 
 def test_open_meteo_air_quality_keeps_european_aqi_model_identity() -> None:
-    component = _component(OpenMeteoAirQualityApiComponent, forecast_horizon_hours=12)
+    component = _component(OpenMeteoAirQualityApiComponent)
     observation = component.normalize(_payload("open_meteo_air_quality"), RETRIEVED_AT)[0]
 
     assert observation.provider == "OpenMeteoAirQualityApiComponent"
     assert observation.values["current_european_aqi"].value == 65.0
-    assert observation.values["forecast_max_european_aqi"].value == 70.0
+    assert not any(name.startswith("forecast_") for name in observation.values)
     assert observation.values["current_european_aqi"].unit == "EAQI"
 
 

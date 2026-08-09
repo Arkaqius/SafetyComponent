@@ -44,8 +44,13 @@ export const MOCK_ENTITIES: EntityMap = {
         ImgwWarningsApiComponent: 'ok',
         GiosAirQualityApiComponent: 'ok',
         OpenMeteoAirQualityApiComponent: 'ok',
-        PaaRadiationApiComponent: 'unavailable',
       },
+      enabled_providers: [
+        'OpenMeteoWeatherApiComponent',
+        'ImgwWarningsApiComponent',
+        'GiosAirQualityApiComponent',
+        'OpenMeteoAirQualityApiComponent',
+      ],
       advice_inhibition: [
         {
           reason: 'wind',
@@ -60,19 +65,53 @@ export const MOCK_ENTITIES: EntityMap = {
     0
   ),
   'sensor.external_provider_open_meteo_weather': entity('ok', 'Dane pogodowe Open-Meteo', {
-    provider: 'OpenMeteoWeatherApiComponent', last_attempt_at: timestamp(0), last_success_at: timestamp(0), consecutive_failures: 0, detail_code: null, observation_count: 4,
+    provider: 'OpenMeteoWeatherApiComponent',
+    last_attempt_at: timestamp(0),
+    last_success_at: timestamp(0),
+    consecutive_failures: 0,
+    detail_code: null,
+    observation_count: 4,
   }),
   'sensor.external_provider_imgw_warnings': entity('ok', 'Ostrzeżenia IMGW', {
-    provider: 'ImgwWarningsApiComponent', last_attempt_at: timestamp(1), last_success_at: timestamp(1), consecutive_failures: 0, detail_code: null, observation_count: 1,
+    provider: 'ImgwWarningsApiComponent',
+    last_attempt_at: timestamp(1),
+    last_success_at: timestamp(1),
+    consecutive_failures: 0,
+    detail_code: null,
+    observation_count: 1,
+    warning_count: 1,
+    warnings: [
+      {
+        id: 'imgw-local-storm',
+        event_name: 'Burze',
+        degree: '2',
+        probability: '80',
+        valid_from: timestamp(30),
+        valid_to: timestamp(-180),
+        published_at: timestamp(10),
+        regions: ['1219'],
+        content: 'Prognozowane są burze, którym miejscami będą towarzyszyć silne opady deszczu.',
+        comment: '',
+        office: 'IMGW-PIB',
+        locally_applicable: true,
+      },
+    ],
   }),
   'sensor.external_provider_gios_air_quality': entity('ok', 'Jakość powietrza GIOŚ', {
-    provider: 'GiosAirQualityApiComponent', last_attempt_at: timestamp(3), last_success_at: timestamp(3), consecutive_failures: 0, detail_code: null, observation_count: 1,
+    provider: 'GiosAirQualityApiComponent',
+    last_attempt_at: timestamp(3),
+    last_success_at: timestamp(3),
+    consecutive_failures: 0,
+    detail_code: null,
+    observation_count: 1,
   }),
-  'sensor.external_provider_open_meteo_air_quality': entity('ok', 'Prognoza jakości powietrza Open-Meteo', {
-    provider: 'OpenMeteoAirQualityApiComponent', last_attempt_at: timestamp(4), last_success_at: timestamp(4), consecutive_failures: 0, detail_code: null, observation_count: 1,
-  }),
-  'sensor.external_provider_paa_radiation': entity('unavailable', 'Monitoring radiacyjny PAA', {
-    provider: 'PaaRadiationApiComponent', last_attempt_at: timestamp(1), last_success_at: null, consecutive_failures: 1, detail_code: 'http_500', observation_count: 0,
+  'sensor.external_provider_open_meteo_air_quality': entity('ok', 'Jakość powietrza Open-Meteo', {
+    provider: 'OpenMeteoAirQualityApiComponent',
+    last_attempt_at: timestamp(4),
+    last_success_at: timestamp(4),
+    consecutive_failures: 0,
+    detail_code: null,
+    observation_count: 1,
   }),
   'sensor.fault_riskytemperature': entity(
     'Set',

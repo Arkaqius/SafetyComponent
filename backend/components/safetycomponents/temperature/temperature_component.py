@@ -435,7 +435,6 @@ class TemperatureComponent(SafetyComponent):
         entities_changes: dict = kwargs["entities_changes"]
 
         # Call SM
-        print(f'self:{self} sm:{sm} entities_changes"{entities_changes}')
         sm_to_call(sm, entities_changes)
 
     # endregion

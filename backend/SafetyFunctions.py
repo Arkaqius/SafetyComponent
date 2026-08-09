@@ -132,7 +132,7 @@ class SafetyFunctions(hass.Hass):
         # Instantiate provider adapters without starting network activity.
         for component_name, component_cls in get_registered_api_components().items():
             provider_cfg = self.api_components_cfg.get(component_name)
-            if not isinstance(provider_cfg, dict):
+            if not isinstance(provider_cfg, dict) or not provider_cfg.get("enabled", True):
                 continue
             provider_host = urlparse(str(provider_cfg["base_url"])).hostname
             if not provider_host:

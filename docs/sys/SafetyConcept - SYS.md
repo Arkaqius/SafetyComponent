@@ -673,8 +673,8 @@ SG-003 (Diagnostics linkage).
 - **IR-001 Window/Door Contacts** for configured external apertures.
 - **IR-020 Weather (Current & Forecast)** from the dedicated Open-Meteo weather
   API component.
-- **IR-022 Outdoor Air Quality** from independent GIOŚ measurement and
-  Open-Meteo forecast API components.
+- **IR-022 Outdoor Air Quality** from independent current GIOŚ measurement and
+  current Open-Meteo model API components.
 - **IR-025 Official Weather Warnings** from the dedicated IMGW warning API
   component.
 - **IR-026 Ionizing Radiation Status** from the dedicated PAA radiation API
@@ -701,7 +701,7 @@ SG-003 (Diagnostics linkage).
   rain/precipitation policy, forecast horizon, hysteresis, persistence, and
   clear delay.
 - Outdoor AQ policy: named AQI standard and thresholds, pollutant overrides,
-  measurement/forecast preference, and agreement policy.
+  current-source preference, and agreement policy.
 - Radiation policy: official-message mapping, optional unconfirmed anomaly
   policy, station baseline window, corroboration count, and clear policy.
 - Per-provider base URL, poll interval, request timeout, retry count, stale
@@ -776,13 +776,17 @@ provider is unusable beyond its stale timeout.
 - **SYS-SR-EXT-013:** Closing an opening shall clear only that opening's
   prefault after `T_ext_clear`; other affected openings and the underlying
   external hazard state shall remain visible.
+- **SYS-SR-EXT-014:** The IMGW provider diagnostic output shall expose every
+  current warning returned by the provider with sanitized authority context,
+  validity, region codes, and a local-applicability flag. Household safety
+  policy shall continue to consume only warnings satisfying SYS-SR-EXT-011.
 
 **Outdoor air quality**
 
-- **SYS-SR-EXT-020:** GIOŚ measurements and Open-Meteo AQ forecasts shall
+- **SYS-SR-EXT-020:** Current GIOŚ measurements and current Open-Meteo AQ model values shall
   remain distinct observations and retain their own timestamp, grid/station,
   units, and quality semantics.
-- **SYS-SR-EXT-021:** If current measurement and forecast disagree, the
+- **SYS-SR-EXT-021:** If current station measurement and current model value disagree, the
   configured conservative policy shall determine exposure while the notification
   shows both sources; the API Components shall not resolve the conflict.
 - **SYS-SR-EXT-022:** When outdoor AQ policy is active and a relevant opening
@@ -1073,8 +1077,6 @@ _Non‑functional constraints that apply across all components. IDs use `NFR‑x
 | **H_pred**               | Temperature forecast horizon                 | 5–15 min         |
 | **C_min**                | Min forecast confidence (temp)               | 0.7–0.8          |
 | **ΔT_min**               | Min forecast delta                           | 0.5–1.0 °C       |
-| **H_pred_aq**            | AQ forecast horizon                          | 10–30 min        |
-| **C_min_aq**             | Min forecast confidence (AQ)                 | 0.7–0.8          |
 | **T_timeout**            | Sensor/comm timeout (general)                | 30–60 s          |
 | **dT/dt_max**            | Max allowed temp ROC                         | 2–5 °C/min       |
 | **Δt_max**               | Max timebase error                           | 20–100 ms        |
@@ -1104,7 +1106,7 @@ _Non‑functional constraints that apply across all components. IDs use `NFR‑x
 | **T_poll_weather**       | Open-Meteo weather poll interval             | 10 min           |
 | **T_poll_imgw**          | IMGW warnings poll interval                  | 5 min            |
 | **T_poll_gios**          | GIOŚ measurement poll interval               | 15 min           |
-| **T_poll_aq_forecast**   | Open-Meteo AQ forecast poll interval         | 30 min           |
+| **T_poll_aq_model**      | Open-Meteo current AQ model poll interval    | 30 min           |
 | **T_poll_paa**           | PAA status poll interval                       | 5 min            |
 | **T_stale_weather**      | Weather capability stale timeout             | 20 min           |
 | **T_stale_warning**      | Official weather warning provider stale timeout | 15 min        |

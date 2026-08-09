@@ -325,14 +325,14 @@ _High:_ These hazards can be easily mitigated if residents are notified in time,
 
 #### 1.3.17 Outdoor Air Pollution Ingress
 
-- The system shall monitor measured and forecast outdoor air quality using
+- The system shall monitor current outdoor air quality using
   independent provider inputs.
 - The system shall alert occupants when a configured window or external door is
   open while outdoor air quality exceeds the configured policy threshold.
 - Outdoor pollution shall inhibit conflicting manual advice to open windows;
   External Hazard Monitoring shall not control ventilation or air purifiers.
-- The system shall report whether the decision is based on a measurement, a
-  forecast, or both.
+- The system shall report the current measurement or model input controlling
+  the decision and preserve its provider semantics.
 
 #### 1.3.18 Ionizing Radiation Event
 

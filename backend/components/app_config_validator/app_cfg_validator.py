@@ -288,16 +288,11 @@ def _validate_api_components(
         if not isinstance(provider_policy, dict):
             raise ValueError(f"Missing app_config.external_hazard_policy.providers.{name}")
         merged = {**provider_policy, **user_binding}
-        if name in {
-            OPEN_METEO_WEATHER_COMPONENT_NAME,
-            OPEN_METEO_AQ_COMPONENT_NAME,
-        }:
+        if name == OPEN_METEO_WEATHER_COMPONENT_NAME:
             merged["forecast_horizon_hours"] = policy.weather.forecast_horizon_hours
         validated = schema.model_validate(
             merged, context={"strict_validation": strict_validation}
         )
-        if not validated.enabled:
-            raise ValueError(f"Required API component {name} must be enabled")
         normalized[name] = validated.model_dump()
     unknown_policy = sorted(set(policy.providers) - set(validators))
     if strict_validation and unknown_policy:
@@ -355,6 +350,13 @@ def _to_runtime(
                 component_cfg,
                 policy=cfg.app_config.external_hazard_policy,
                 strict_validation=strict_validation,
+            )
+            runtime_components[name]["enabled_providers"] = sorted(
+                provider_name
+                for provider_name, provider_cfg in runtime_user_cfg[
+                    "api_components"
+                ].items()
+                if provider_cfg.get("enabled", True)
             )
         else:
             runtime_components[name] = component_cfg

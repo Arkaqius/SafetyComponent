@@ -118,9 +118,7 @@ export function systemStatePresentation(state: unknown): { label: string; tone: 
   if (normalized === 'stopped') return { label: 'Zatrzymany', tone: 'critical' };
   const level = parseSystemLevel(normalized);
   const presentation = level === null ? undefined : LEVEL_PRESENTATION[level];
-  return presentation
-    ? { label: presentation.label, tone: presentation.tone }
-    : { label: String(state ?? 'Stan nieznany'), tone: 'muted' };
+  return presentation ? { label: presentation.label, tone: presentation.tone } : { label: String(state ?? 'Stan nieznany'), tone: 'muted' };
 }
 
 export type ExternalHazardStatus = 'clear' | 'watch' | 'warning' | 'severe' | 'unavailable' | 'unknown';
@@ -137,7 +135,23 @@ export interface ExternalProviderView {
   consecutiveFailures: number;
   detailCode: string;
   observationCount: number;
+  warnings: ImgwWarningView[];
   lastUpdated?: string;
+}
+
+export interface ImgwWarningView {
+  id: string;
+  eventName: string;
+  degree: string;
+  probability: string;
+  validFrom?: string;
+  validTo?: string;
+  publishedAt?: string;
+  regions: string[];
+  content: string;
+  comment: string;
+  office: string;
+  locallyApplicable: boolean;
 }
 
 export interface AdviceInhibitionView {
@@ -158,6 +172,7 @@ export interface ExternalHazardView {
   lastEvaluatedAt?: string;
   lastUpdated?: string;
   providers: ExternalProviderView[];
+  imgwWarnings: ImgwWarningView[];
 }
 
 const UNAVAILABLE_STATES = new Set(['unavailable', 'unknown', 'none', '']);
@@ -285,12 +300,8 @@ export function getMonitoredTemperatures(entities: EntityMap): TemperatureView[]
           rate: numericState(rateEntity.state),
           accelerationEntityId,
           acceleration: numericState(entities[accelerationEntityId]?.state),
-          lowThreshold:
-            numericState(lowThresholdEntity?.state) ??
-            numericAttribute(rateEntity, 'low_temperature_threshold'),
-          highThreshold:
-            numericState(highThresholdEntity?.state) ??
-            numericAttribute(rateEntity, 'high_temperature_threshold'),
+          lowThreshold: numericState(lowThresholdEntity?.state) ?? numericAttribute(rateEntity, 'low_temperature_threshold'),
+          highThreshold: numericState(highThresholdEntity?.state) ?? numericAttribute(rateEntity, 'high_temperature_threshold'),
           lastUpdated: latestTimestamp(
             sourceEntity.last_updated,
             rateEntity.last_updated,
@@ -317,24 +328,21 @@ export function getSafetyDoors(entities: EntityMap): SafetyDoorView[] {
     .map(([entityId, entity]) => {
       const normalizedState = normalizeState(entity.state);
       const rawDoorState = normalizeState(entity.attributes.door_state);
-      const doorState: SafetyDoorView['doorState'] =
-        rawDoorState === 'open' || rawDoorState === 'closed' ? rawDoorState : 'unavailable';
+      const doorState: SafetyDoorView['doorState'] = rawDoorState === 'open' || rawDoorState === 'closed' ? rawDoorState : 'unavailable';
       const status: SafetyDoorStatus =
         normalizedState === 'active'
           ? 'active'
           : normalizedState === 'blocked'
             ? 'blocked'
-          : normalizedState === 'inactive'
-            ? 'inactive'
-            : UNAVAILABLE_STATES.has(normalizedState)
-              ? 'unavailable'
-              : 'unknown';
+            : normalizedState === 'inactive'
+              ? 'inactive'
+              : UNAVAILABLE_STATES.has(normalizedState)
+                ? 'unavailable'
+                : 'unknown';
       const openedAt = optionalStringAttribute(entity, 'opened_at');
       const reportedOpenDuration = numericAttribute(entity, 'open_duration_seconds') ?? 0;
       const liveOpenDuration =
-        doorState === 'open' && openedAt
-          ? Math.max(reportedOpenDuration, elapsedSeconds(openedAt))
-          : reportedOpenDuration;
+        doorState === 'open' && openedAt ? Math.max(reportedOpenDuration, elapsedSeconds(openedAt)) : reportedOpenDuration;
       const timeoutSeconds = numericAttribute(entity, 'timeout_seconds');
       const rawConditionResult = normalizeState(entity.attributes.condition_result);
       const conditionResult: SafetyDoorConditionResult =
@@ -361,13 +369,9 @@ export function getSafetyDoors(entities: EntityMap): SafetyDoorView[] {
         timeoutSeconds,
         openDurationSeconds: liveOpenDuration,
         remainingSeconds:
-          status === 'blocked' || timeoutSeconds === null
-            ? reportedRemainingSeconds
-            : Math.max(0, timeoutSeconds - liveOpenDuration),
+          status === 'blocked' || timeoutSeconds === null ? reportedRemainingSeconds : Math.max(0, timeoutSeconds - liveOpenDuration),
         conditionEntityId,
-        conditionEntityName: conditionEntityId
-          ? friendlyEntityName(conditionEntityId, entities[conditionEntityId])
-          : '',
+        conditionEntityName: conditionEntityId ? friendlyEntityName(conditionEntityId, entities[conditionEntityId]) : '',
         conditionState: stringAttribute(entity, 'condition_state'),
         conditionResult,
         openedAt,
@@ -395,15 +399,17 @@ export function getExternalHazardMonitoring(entities: EntityMap): ExternalHazard
       : normalizedState
         ? 'unknown'
         : 'unavailable';
+  const enabledProviders = new Set(stringArrayAttribute(aggregate, 'enabled_providers'));
   const providers = Object.entries(entities)
-    .filter(([entityId]) => entityId.startsWith(EXTERNAL_PROVIDER_PREFIX))
+    .filter(
+      ([entityId, entity]) =>
+        entityId.startsWith(EXTERNAL_PROVIDER_PREFIX) &&
+        (enabledProviders.size === 0 || enabledProviders.has(stringAttribute(entity, 'provider')))
+    )
     .map(([entityId, entity]) => {
       const providerState = normalizeState(entity.state);
       const providerStatus: ExternalProviderStatus =
-        providerState === 'ok' ||
-        providerState === 'stale' ||
-        providerState === 'unavailable' ||
-        providerState === 'schema_error'
+        providerState === 'ok' || providerState === 'stale' || providerState === 'unavailable' || providerState === 'schema_error'
           ? providerState
           : 'unknown';
       return {
@@ -417,13 +423,13 @@ export function getExternalHazardMonitoring(entities: EntityMap): ExternalHazard
         consecutiveFailures: numericAttribute(entity, 'consecutive_failures') ?? 0,
         detailCode: stringAttribute(entity, 'detail_code'),
         observationCount: numericAttribute(entity, 'observation_count') ?? 0,
+        warnings: imgwWarningsAttribute(entity),
         lastUpdated: entity.last_updated ?? entity.last_changed,
       };
     })
-    .sort(
-      (left, right) =>
-        Number(left.status === 'ok') - Number(right.status === 'ok') || left.name.localeCompare(right.name, 'pl')
-    );
+    .sort((left, right) => Number(left.status === 'ok') - Number(right.status === 'ok') || left.name.localeCompare(right.name, 'pl'));
+
+  const imgwWarnings = providers.flatMap(provider => provider.warnings).filter(warning => warning.locallyApplicable);
 
   return {
     entityId: EXTERNAL_HAZARD_ENTITY_ID,
@@ -437,6 +443,7 @@ export function getExternalHazardMonitoring(entities: EntityMap): ExternalHazard
     lastEvaluatedAt: optionalStringAttribute(aggregate, 'last_evaluated_at'),
     lastUpdated: aggregate?.last_updated ?? aggregate?.last_changed,
     providers,
+    imgwWarnings,
   };
 }
 
@@ -619,7 +626,10 @@ function numericAttribute(entity: EntitySnapshot | undefined, key: string): numb
 function stringArrayAttribute(entity: EntitySnapshot | undefined, key: string): string[] {
   const value = entity?.attributes[key];
   if (!Array.isArray(value)) return [];
-  return value.map(String).map(item => item.trim()).filter(Boolean);
+  return value
+    .map(String)
+    .map(item => item.trim())
+    .filter(Boolean);
 }
 
 function adviceInhibitionAttribute(entity: EntitySnapshot | undefined): AdviceInhibitionView[] {
@@ -632,6 +642,34 @@ function adviceInhibitionAttribute(entity: EntitySnapshot | undefined): AdviceIn
     const source = typeof record.source === 'string' ? record.source : '';
     const validUntil = typeof record.valid_until === 'string' ? record.valid_until : undefined;
     return reason && source ? [{ reason, source, validUntil }] : [];
+  });
+}
+
+function imgwWarningsAttribute(entity: EntitySnapshot | undefined): ImgwWarningView[] {
+  const value = entity?.attributes.warnings;
+  if (!Array.isArray(value)) return [];
+  return value.flatMap(item => {
+    if (!item || typeof item !== 'object') return [];
+    const record = item as Record<string, unknown>;
+    const id = typeof record.id === 'string' ? record.id.trim() : '';
+    const eventName = typeof record.event_name === 'string' ? record.event_name.trim() : '';
+    if (!id || !eventName) return [];
+    return [
+      {
+        id,
+        eventName,
+        degree: String(record.degree ?? '').trim(),
+        probability: String(record.probability ?? '').trim(),
+        validFrom: typeof record.valid_from === 'string' ? record.valid_from : undefined,
+        validTo: typeof record.valid_to === 'string' ? record.valid_to : undefined,
+        publishedAt: typeof record.published_at === 'string' ? record.published_at : undefined,
+        regions: Array.isArray(record.regions) ? record.regions.map(String) : [],
+        content: typeof record.content === 'string' ? record.content : '',
+        comment: typeof record.comment === 'string' ? record.comment : '',
+        office: typeof record.office === 'string' ? record.office : '',
+        locallyApplicable: record.locally_applicable === true,
+      },
+    ];
   });
 }
 

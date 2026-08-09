@@ -52,8 +52,9 @@ def test_production_external_hazard_startup_is_wired_before_polling() -> None:
         "ImgwWarningsApiComponent",
         "OpenMeteoAirQualityApiComponent",
         "OpenMeteoWeatherApiComponent",
-        "PaaRadiationApiComponent",
     ]
+    assert "IonizingRadiationAlertPaa" not in app.symptoms
+    assert "RadiationDataAnomalyPaaStations" not in app.symptoms
     assert "ExternalHazardComponent" in app.sm_modules
     assert app.external_api_runtime.started is True
     assert not any(service != "mqtt/publish" for service in service_calls)

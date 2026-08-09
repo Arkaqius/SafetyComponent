@@ -1792,6 +1792,121 @@ details summary:focus-visible {
   text-align: right;
 }
 
+.imgw-warnings-panel .panel-header {
+  align-items: flex-start;
+}
+
+.imgw-warnings-panel .panel-header p,
+.imgw-warning-empty {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  line-height: 1.5;
+  margin: 6px 0 0;
+}
+
+.imgw-warning-count {
+  align-items: center;
+  background: var(--accent-soft);
+  border-radius: 999px;
+  color: var(--accent);
+  display: flex;
+  flex: 0 0 auto;
+  height: 36px;
+  justify-content: center;
+  min-width: 36px;
+  padding: 0 10px;
+}
+
+.imgw-warning-list {
+  display: grid;
+  gap: 13px;
+}
+
+.imgw-warning-card {
+  background: rgba(158, 180, 194, 0.05);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+}
+
+.imgw-warning-card.imgw-warning-local {
+  border-color: rgba(243, 201, 105, 0.4);
+}
+
+.imgw-warning-card header {
+  align-items: flex-start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.imgw-warning-card h3 {
+  font-size: 0.82rem;
+  margin: 0 0 4px;
+}
+
+.imgw-warning-card header small,
+.imgw-warning-card > p,
+.imgw-warning-card dd {
+  color: var(--text-muted);
+  font-size: 0.68rem;
+}
+
+.imgw-warning-card > p {
+  line-height: 1.55;
+  margin: 13px 0;
+}
+
+.imgw-warning-card .imgw-warning-comment {
+  color: var(--text-soft);
+  font-style: italic;
+}
+
+.imgw-warning-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  justify-content: flex-end;
+}
+
+.imgw-local-badge,
+.imgw-degree-badge {
+  border-radius: 999px;
+  font-size: 0.59rem;
+  padding: 5px 8px;
+  white-space: nowrap;
+}
+
+.imgw-local-badge {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.imgw-degree-badge {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.imgw-warning-card dl {
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 14px 0 0;
+  padding-top: 13px;
+}
+
+.imgw-warning-card dt {
+  color: var(--text-muted);
+  font-size: 0.59rem;
+  text-transform: uppercase;
+}
+
+.imgw-warning-card dd {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+}
+
 .external-provider-heading {
   margin-bottom: 13px;
 }
@@ -2209,6 +2324,18 @@ details summary:focus-visible {
 
   .advice-panel li span {
     text-align: left;
+  }
+
+  .imgw-warning-card header {
+    flex-direction: column;
+  }
+
+  .imgw-warning-badges {
+    justify-content: flex-start;
+  }
+
+  .imgw-warning-card dl {
+    grid-template-columns: 1fr;
   }
 
   .metric-strip {

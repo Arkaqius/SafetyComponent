@@ -34,6 +34,13 @@ def test_external_hazard_config_normalizes_all_five_independent_providers() -> N
         "ExternalHazardComponent"
     ]
     assert external["policy"]["notification_only"] is True
+    assert external["enabled_providers"] == [
+        "GiosAirQualityApiComponent",
+        "ImgwWarningsApiComponent",
+        "OpenMeteoAirQualityApiComponent",
+        "OpenMeteoWeatherApiComponent",
+    ]
+    assert runtime["user_config"]["api_components"]["PaaRadiationApiComponent"]["enabled"] is False
     assert len(external["openings"]) == 11
 
 
