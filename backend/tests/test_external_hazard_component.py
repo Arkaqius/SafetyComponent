@@ -175,7 +175,67 @@ def test_active_wind_and_open_window_sets_exposure_and_never_calls_actuator() ->
     assert component.symptom_states[symptom_id] == FaultState.SET
     assert any(event["symptom_id"] == symptom_id and event["state"] == FaultState.SET for event in events)
     assert mqtt.states["sensor.external_hazard_state"][0] == "warning"
+    provider_attributes = mqtt.states["sensor.external_provider_open_meteo_weather"][1]
+    assert provider_attributes["observations"] == [
+        {
+            "id": "OpenMeteoWeatherApiComponent-wind",
+            "hazard_type": "wind",
+            "provider_level": None,
+            "observed_at": wind.observed_at.isoformat(),
+            "valid_to": wind.valid_to.isoformat(),
+            "display_value": None,
+            "display_unit": None,
+        }
+    ]
     assert hass.service_calls == []
+
+
+def test_air_quality_observation_summary_exposes_current_operator_value() -> None:
+    component, _, mqtt, _ = _component()
+    air_quality = _observation(
+        "GiosAirQualityApiComponent",
+        HazardType.OUTDOOR_AIR_POLLUTION,
+        {
+            "polish_index_name": Measurement("Dobry"),
+            "polish_index_level": Measurement(1),
+        },
+    )
+
+    component.handle_external_api_result(
+        result=ApiResult(
+            provider=air_quality.provider,
+            observations=(air_quality,),
+            health=_health(air_quality.provider),
+        )
+    )
+
+    summary = mqtt.states["sensor.external_provider_gios_air_quality"][1][
+        "observations"
+    ][0]
+    assert summary["hazard_type"] == "outdoor_air_pollution"
+    assert summary["display_value"] == "Dobry"
+    assert summary["display_unit"] is None
+
+
+def test_provider_diagnostic_observation_summaries_are_bounded() -> None:
+    component, _, mqtt, _ = _component()
+    observation = _observation(
+        "GiosAirQualityApiComponent",
+        HazardType.OUTDOOR_AIR_POLLUTION,
+        {"polish_index_name": Measurement("Dobry")},
+    )
+
+    component.handle_external_api_result(
+        result=ApiResult(
+            provider=observation.provider,
+            observations=(observation,) * 65,
+            health=_health(observation.provider),
+        )
+    )
+
+    attributes = mqtt.states["sensor.external_provider_gios_air_quality"][1]
+    assert attributes["observation_count"] == 65
+    assert len(attributes["observations"]) == 64
 
 
 def test_aggregate_remains_unavailable_until_every_provider_is_healthy() -> None:

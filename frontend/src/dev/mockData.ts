@@ -71,6 +71,12 @@ export const MOCK_ENTITIES: EntityMap = {
     consecutive_failures: 0,
     detail_code: null,
     observation_count: 4,
+    observations: [
+      { id: 'weather-frost', hazard_type: 'frost', provider_level: 'safe', observed_at: timestamp(0), valid_to: timestamp(-60) },
+      { id: 'weather-wind', hazard_type: 'wind', provider_level: 'warning', observed_at: timestamp(0), valid_to: timestamp(-60) },
+      { id: 'weather-rain', hazard_type: 'rain', provider_level: 'safe', observed_at: timestamp(0), valid_to: timestamp(-60) },
+      { id: 'weather-storm', hazard_type: 'storm', provider_level: 'safe', observed_at: timestamp(0), valid_to: timestamp(-60) },
+    ],
   }),
   'sensor.external_provider_imgw_warnings': entity('ok', 'Ostrzeżenia IMGW', {
     provider: 'ImgwWarningsApiComponent',
@@ -79,6 +85,15 @@ export const MOCK_ENTITIES: EntityMap = {
     consecutive_failures: 0,
     detail_code: null,
     observation_count: 1,
+    observations: [
+      {
+        id: 'imgw-local-storm',
+        hazard_type: 'official_warning',
+        provider_level: '2',
+        observed_at: timestamp(1),
+        valid_to: timestamp(-180),
+      },
+    ],
     warning_count: 1,
     warnings: [
       {
@@ -104,6 +119,17 @@ export const MOCK_ENTITIES: EntityMap = {
     consecutive_failures: 0,
     detail_code: null,
     observation_count: 1,
+    observations: [
+      {
+        id: 'gios-air-quality',
+        hazard_type: 'outdoor_air_pollution',
+        provider_level: 'very_good',
+        observed_at: timestamp(3),
+        valid_to: timestamp(-60),
+        display_value: 'Bardzo dobry',
+        display_unit: '',
+      },
+    ],
   }),
   'sensor.external_provider_open_meteo_air_quality': entity('ok', 'Jakość powietrza Open-Meteo', {
     provider: 'OpenMeteoAirQualityApiComponent',
@@ -112,6 +138,17 @@ export const MOCK_ENTITIES: EntityMap = {
     consecutive_failures: 0,
     detail_code: null,
     observation_count: 1,
+    observations: [
+      {
+        id: 'open-meteo-air-quality',
+        hazard_type: 'outdoor_air_pollution',
+        provider_level: 'safe',
+        observed_at: timestamp(4),
+        valid_to: timestamp(-60),
+        display_value: '31',
+        display_unit: '',
+      },
+    ],
   }),
   'sensor.fault_riskytemperature': entity(
     'Set',

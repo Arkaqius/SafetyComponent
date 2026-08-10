@@ -9,6 +9,7 @@ import {
   friendlyEntityName,
   getFaultStatus,
   getRecoveryStatus,
+  localizedEntityState,
   normalizeState,
   systemStatePresentation,
   type EntitySnapshot,
@@ -30,7 +31,7 @@ const categoryLabels: Record<HistoryCategory, string> = {
   all: 'Wszystkie',
   system: 'System',
   fault: 'Usterki',
-  recovery: 'Recovery',
+  recovery: 'Działania',
 };
 
 export default function LogPage() {
@@ -56,7 +57,7 @@ export default function LogPage() {
     <div className='page-stack'>
       <section className='page-introduction'>
         <div>
-          <span className='section-kicker'>Home Assistant history</span>
+          <span className='section-kicker'>Historia systemu</span>
           <h2>Historia stanów SafetyComponent</h2>
           <p>Widok korzysta z historii encji Home Assistanta. Pokazuje rzeczywiste przejścia stanów zamiast przykładowych logów.</p>
         </div>
@@ -146,7 +147,7 @@ function HistoryCard({ item, hours }: { item: HistoryEntity; hours: HistoryHours
             <li key={`${transition.last_changed}-${transition.state}`}>
               <span className='timeline-dot' />
               <div>
-                <strong>{transition.state}</strong>
+                <strong>{localizedEntityState(item.entityId, transition.state)}</strong>
                 <time dateTime={new Date(transition.last_changed).toISOString()}>
                   {new Date(transition.last_changed).toLocaleString('pl-PL', {
                     day: '2-digit',
@@ -193,21 +194,21 @@ function statePresentation(item: HistoryEntity): { label: string; tone: StatusTo
     if (state === 'set') return { label: 'Aktywna', tone: 'danger' };
     if (state === 'shadowed') return { label: 'Przesłonięta', tone: 'warning' };
     if (state === 'cleared') return { label: 'Usunięta', tone: 'safe' };
-    return { label: item.entity.state, tone: 'muted' };
+    return { label: localizedEntityState(item.entityId, item.entity.state), tone: 'muted' };
   }
 
   if (item.category === 'recovery') {
     const state = getRecoveryStatus(item.entity.state);
     if (state === 'to_perform') return { label: 'Do wykonania', tone: 'warning' };
     if (state === 'do_not_perform') return { label: 'Brak potrzeby', tone: 'safe' };
-    return { label: item.entity.state, tone: 'muted' };
+    return { label: localizedEntityState(item.entityId, item.entity.state), tone: 'muted' };
   }
 
   const state = normalizeState(item.entity.state);
   if (item.entityId === HEALTH_ENTITY_ID) {
     if (state === 'running') return { label: 'Działa', tone: 'safe' };
     if (state === 'init') return { label: 'Uruchamianie', tone: 'warning' };
-    return { label: item.entity.state, tone: 'critical' };
+    return { label: localizedEntityState(item.entityId, item.entity.state), tone: 'critical' };
   }
   return systemStatePresentation(state);
 }

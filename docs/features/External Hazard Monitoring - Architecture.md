@@ -606,6 +606,26 @@ structure into `backend/app_cfg.yaml`; the configuration validator shall reject
 an enabled component, provider, or opening whose corresponding schema is absent
 or invalid.
 
+### 12.1 Provider diagnostics and operator presentation
+
+Each `sensor.external_provider_<provider>` diagnostic entity publishes provider
+health together with `observation_count` and an `observations` list bounded to
+64 summaries. Each observation summary contains:
+
+- `id`: stable normalized observation ID;
+- `hazard_type`: stable hazard code;
+- `provider_level`: provider-specific normalized level;
+- `observed_at` and `valid_to`: ISO 8601 timestamps when available;
+- `display_value` and `display_unit`: an optional bounded value suitable for
+  operator presentation.
+
+The summary does not replace the immutable normalized provider result used by
+the safety policy and does not expose raw provider payloads. User interfaces
+translate stable hazard codes into localized names. Current air-quality
+presentation uses the GIOŚ station index as the primary operator value and
+shows the Open-Meteo point model independently as context or fallback. Provider
+disagreement remains visible and does not constitute a parser failure.
+
 ## 13. Startup and shutdown sequence
 
 1. Validate global policy, site, every API Component schema, and every opening.

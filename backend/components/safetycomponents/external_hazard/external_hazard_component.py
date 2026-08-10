@@ -27,6 +27,7 @@ SM_PROVIDER_UNAVAILABLE = "sm_ext_provider_unavailable"
 
 OPEN_STATES = frozenset({"on", "open", "opening", "true", "1"})
 CLOSED_STATES = frozenset({"off", "closed", "false", "0"})
+MAX_DIAGNOSTIC_OBSERVATIONS = 64
 
 _HAZARD_PROVIDER_GROUPS: dict[HazardType, tuple[str, ...]] = {
     HazardType.FROST: ("OpenMeteoWeatherApiComponent", "ImgwWarningsApiComponent"),
@@ -628,6 +629,12 @@ class ExternalHazardComponent(SafetyComponent):
             "detail_code": health.detail_code,
             "stale_after_seconds": health.stale_after_seconds,
             "observation_count": len(result.observations),
+            "observations": [
+                self._observation_summary(observation)
+                for observation in result.observations[
+                    :MAX_DIAGNOSTIC_OBSERVATIONS
+                ]
+            ],
         }
         if provider == "ImgwWarningsApiComponent":
             warnings = result.evidence.get("warnings", [])
@@ -638,6 +645,32 @@ class ExternalHazardComponent(SafetyComponent):
             health.state.value,
             attributes=attributes,
         )
+
+    @staticmethod
+    def _observation_summary(observation: ExternalObservation) -> dict[str, Any]:
+        """Return bounded provider evidence suitable for operator presentation."""
+
+        display_value: float | int | str | bool | None = None
+        display_unit: str | None = None
+        for key in ("polish_index_name", "current_european_aqi"):
+            measurement = observation.values.get(key)
+            if measurement is not None:
+                display_value = measurement.value
+                display_unit = measurement.unit
+                break
+        return {
+            "id": observation.observation_id,
+            "hazard_type": observation.hazard_type.value,
+            "provider_level": observation.provider_level,
+            "observed_at": (
+                observation.observed_at.isoformat()
+                if observation.observed_at is not None
+                else None
+            ),
+            "valid_to": observation.valid_to.isoformat(),
+            "display_value": display_value,
+            "display_unit": display_unit,
+        }
 
     def _ensure_aggregate_entity(self) -> None:
         if self._aggregate_entity_id is not None:

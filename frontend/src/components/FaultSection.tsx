@@ -1,5 +1,12 @@
 import { useMemo, useState } from 'react';
-import { LEVEL_PRESENTATION, formatRelativeTime, type FaultStatus, type FaultView, type StatusTone } from '../domain/safety';
+import {
+  LEVEL_PRESENTATION,
+  formatRelativeTime,
+  localizedEntityState,
+  type FaultStatus,
+  type FaultView,
+  type StatusTone,
+} from '../domain/safety';
 import Icon from './Icon';
 import StatusBadge from './StatusBadge';
 
@@ -50,7 +57,7 @@ export default function FaultSection({ faults, compact = false }: FaultSectionPr
     <section className='panel fault-panel'>
       <div className='panel-header'>
         <div>
-          <span className='section-kicker'>Fault Manager</span>
+          <span className='section-kicker'>Usterki</span>
           <h2>Usterki systemu</h2>
         </div>
         <span className={`count-badge${activeCount > 0 ? ' count-badge-alert' : ''}`}>{activeCount} aktywnych</span>
@@ -130,8 +137,8 @@ function FaultCard({ fault }: { fault: FaultView }) {
             <dd>{level?.label ?? 'Nie podano'}</dd>
           </div>
           <div>
-            <dt>Stan HA</dt>
-            <dd>{fault.state}</dd>
+            <dt>Stan</dt>
+            <dd>{localizedEntityState(fault.entityId, fault.state)}</dd>
           </div>
           <div>
             <dt>Ostatnia zmiana</dt>

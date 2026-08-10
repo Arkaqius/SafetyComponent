@@ -32,7 +32,7 @@ export default function ActionsList({ recoveries }: ActionsListProps) {
     <section className='panel recovery-panel'>
       <div className='panel-header'>
         <div>
-          <span className='section-kicker'>Recovery Manager</span>
+          <span className='section-kicker'>Działania naprawcze</span>
           <h2>Działania naprawcze</h2>
         </div>
         <span className={`count-badge${requiringAttention.length > 0 ? ' count-badge-warning' : ''}`}>{countLabel}</span>

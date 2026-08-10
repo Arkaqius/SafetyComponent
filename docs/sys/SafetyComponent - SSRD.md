@@ -201,6 +201,7 @@ feature architecture §12.
 | SWR-EXT-012 | External pollution, damaging wind, storm, or confirmed sheltering policy shall inhibit contradictory advice to open external apertures. | `RecoveryPolicyEvaluator` integration |
 | SWR-EXT-013 | `PaaRadiationApiComponent` shall consume official PAA radiological messages and station dose-rate measurements while preserving their distinct semantics, timestamps, validity, units, and source identity. | `PaaRadiationApiComponent` |
 | SWR-EXT-014 | `ImgwWarningsApiComponent` shall expose only current sanitized warnings matching at least one configured TERYT code, mark them as locally applicable, and dispatch locally applicable recognized hazards into household safety policy. | `ImgwWarningsApiComponent` and provider diagnostic MQTT entity |
+| SWR-EXT-015 | Each provider diagnostic MQTT entity shall expose an `observations` list of at most 64 summaries containing the stable observation ID, hazard type, provider level, observation and validity timestamps, and an optional operator-display value and unit. The list shall contain normalized current observations only and shall not expose unbounded provider payloads. | `ExternalHazardComponent._publish_provider_health` |
 
 ## 5. Non-functional requirements
 

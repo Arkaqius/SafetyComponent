@@ -1,6 +1,12 @@
 import Icon from '../components/Icon';
 import StatusBadge from '../components/StatusBadge';
-import { formatRelativeTime, type ExternalHazardStatus, type ExternalProviderView, type ImgwWarningView } from '../domain/safety';
+import {
+  formatRelativeTime,
+  observationDisplayName,
+  type ExternalHazardStatus,
+  type ExternalProviderView,
+  type ImgwWarningView,
+} from '../domain/safety';
 import { useSafetyEntities } from '../hooks/useSafetyEntities';
 
 export default function ExternalHazards() {
@@ -12,7 +18,7 @@ export default function ExternalHazards() {
     <div className='page-stack'>
       <section className={`page-introduction external-introduction external-${presentation.tone}`}>
         <div>
-          <span className='section-kicker'>External Hazard Monitoring</span>
+          <span className='section-kicker'>Warunki zewnętrzne</span>
           <h2>Ochrona domu przed warunkami zewnętrznymi</h2>
           <p>
             System łączy dane pogodowe, bieżącą jakość powietrza i oficjalne ostrzeżenia IMGW ze stanem skonfigurowanych okien i drzwi. Ten
@@ -33,11 +39,11 @@ export default function ExternalHazards() {
           value={externalHazards.activeHazards.length}
           detail={`${externalHazards.activeSymptomCount} aktywnych warunków`}
         />
-        <Metric label='Narażone otwory' value={externalHazards.affectedOpenings.length} detail='okna, drzwi lub brama' />
+        <Metric label='Narażone wejścia' value={externalHazards.affectedOpenings.length} detail='okna, drzwi lub brama' />
         <Metric
           label='Źródła dostępne'
           value={`${healthyProviders}/${externalHazards.providers.length}`}
-          detail='niezależne adaptery API'
+          detail='niezależne źródła danych'
         />
         <Metric label='Blokady porad' value={externalHazards.adviceInhibition.length} detail='sprzeczne porady otwarcia' />
       </section>
@@ -56,7 +62,7 @@ export default function ExternalHazards() {
               <strong>{externalHazards.activeHazards.join(', ')}</strong>
             </div>
             <div>
-              <span>Dotknięte otwory</span>
+              <span>Dotknięte wejścia</span>
               <strong>{externalHazards.affectedOpenings.join(', ') || 'Brak'}</strong>
             </div>
           </div>
@@ -86,7 +92,7 @@ export default function ExternalHazards() {
               <li key={`${item.reason}-${item.source}`}>
                 <strong>{humanizeReason(item.reason)}</strong>
                 <span>
-                  Źródło: {item.source}
+                  Źródło: {providerDisplayName(item.source)}
                   {item.validUntil ? ` · ważne do ${new Date(item.validUntil).toLocaleString('pl-PL')}` : ''}
                 </span>
               </li>
@@ -205,7 +211,7 @@ function ProviderCard({ provider }: { provider: ExternalProviderView }) {
         </span>
         <div>
           <h3>{provider.name}</h3>
-          <small>{provider.provider}</small>
+          <small>{providerDescription(provider.provider)}</small>
         </div>
         <StatusBadge tone={tone}>{label}</StatusBadge>
       </header>
@@ -216,7 +222,19 @@ function ProviderCard({ provider }: { provider: ExternalProviderView }) {
         </div>
         <div>
           <dt>Obserwacje</dt>
-          <dd>{provider.observationCount}</dd>
+          <dd>
+            <span className='provider-observation-count' tabIndex={provider.observations.length > 0 ? 0 : undefined}>
+              {provider.observationCount}
+              {provider.observations.length > 0 ? (
+                <span className='provider-observation-tooltip' role='tooltip'>
+                  <strong>Monitorowane dane</strong>
+                  {provider.observations.map(observation => (
+                    <span key={observation.id}>{observationDisplayName(observation, provider.provider)}</span>
+                  ))}
+                </span>
+              ) : null}
+            </span>
+          </dd>
         </div>
         <div>
           <dt>Kolejne błędy</dt>
@@ -244,10 +262,30 @@ function hazardPresentation(status: ExternalHazardStatus): {
     return { label: 'Bezpiecznie', detail: 'Świeże dane nie wskazują aktywnego zagrożenia dla otwartych okien lub drzwi.', tone: 'safe' };
   if (status === 'watch') return { label: 'Obserwacja', detail: 'Warunki wskazują, że dom może wymagać zabezpieczenia.', tone: 'warning' };
   if (status === 'warning')
-    return { label: 'Ostrzeżenie', detail: 'Co najmniej jeden otwór jest narażony na aktywne warunki zewnętrzne.', tone: 'danger' };
+    return { label: 'Ostrzeżenie', detail: 'Co najmniej jedno wejście jest narażone na aktywne warunki zewnętrzne.', tone: 'danger' };
   if (status === 'severe')
     return { label: 'Pilne ostrzeżenie', detail: 'Aktywny jest urzędowy komunikat wymagający pilnej uwagi.', tone: 'critical' };
   return { label: 'Dane niepełne', detail: 'Nie można potwierdzić pełnej oceny wszystkich skonfigurowanych źródeł.', tone: 'muted' };
+}
+
+function providerDisplayName(provider: string): string {
+  const names: Record<string, string> = {
+    OpenMeteoWeatherApiComponent: 'Dane pogodowe Open-Meteo',
+    ImgwWarningsApiComponent: 'Ostrzeżenia IMGW',
+    GiosAirQualityApiComponent: 'Jakość powietrza GIOŚ',
+    OpenMeteoAirQualityApiComponent: 'Jakość powietrza Open-Meteo',
+  };
+  return names[provider] ?? provider;
+}
+
+function providerDescription(provider: string): string {
+  const descriptions: Record<string, string> = {
+    OpenMeteoWeatherApiComponent: 'temperatura, wiatr, opady i burze',
+    ImgwWarningsApiComponent: 'oficjalne komunikaty dla lokalizacji domu',
+    GiosAirQualityApiComponent: 'bieżące pomiary z najbliższej stacji',
+    OpenMeteoAirQualityApiComponent: 'model dla współrzędnych domu',
+  };
+  return descriptions[provider] ?? 'zewnętrzne źródło danych';
 }
 
 function humanizeReason(reason: string): string {

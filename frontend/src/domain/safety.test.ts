@@ -4,11 +4,14 @@ import { requestExternalAuthToken, type ExternalAuthHost } from '../auth/externa
 import {
   getFaults,
   getExternalHazardMonitoring,
+  getAirQualityPresentation,
   getMonitoredTemperatures,
   getRecoveries,
   getSafetyDoors,
   getSafetySummary,
   normalizeState,
+  localizedEntityState,
+  observationDisplayName,
   recoveryNeedsAttention,
   systemStatePresentation,
   type EntityMap,
@@ -117,7 +120,7 @@ test('discovers faults from MQTT entity IDs and orders active faults first', () 
   assert.equal(faults.length, 2);
   assert.equal(faults[0].entityId, 'sensor.fault_hazard');
   assert.equal(faults[0].level, 2);
-  assert.deepEqual(faults[0].locations, ['Office', 'Bedroom']);
+  assert.deepEqual(faults[0].locations, ['Biuro', 'Sypialnia']);
 });
 
 test('only TO_PERFORM recovery states are actionable', () => {
@@ -131,7 +134,7 @@ test('only TO_PERFORM recovery states are actionable', () => {
   });
 
   assert.equal(recoveries[0].status, 'to_perform');
-  assert.equal(recoveries[0].name, 'Office');
+  assert.equal(recoveries[0].name, 'Biuro');
   assert.equal(recoveries[1].status, 'do_not_perform');
 });
 
@@ -159,6 +162,7 @@ test('discovers monitored temperature from SafetyComponent derivative pair', () 
       unit_of_measurement: '°C/min²',
     }),
     'sensor.office_climatesensor_temperature_low_threshold': entity('18', {
+      friendly_name: 'Dolny próg temperatury — Biuro',
       source_entity: 'sensor.office_climatesensor_temperature',
       threshold_type: 'low',
       unit_of_measurement: '°C',
@@ -173,6 +177,7 @@ test('discovers monitored temperature from SafetyComponent derivative pair', () 
   const temperatures = getMonitoredTemperatures(entities);
   assert.equal(temperatures.length, 1);
   assert.equal(temperatures[0].state, 23.25);
+  assert.equal(temperatures[0].roomName, 'Biuro');
   assert.equal(temperatures[0].rate, -0.015);
   assert.equal(temperatures[0].acceleration, 0.001);
   assert.equal(temperatures[0].lowThreshold, 18);
@@ -265,6 +270,15 @@ test('normalizes external hazard aggregate and independent provider diagnostics'
       last_success_at: timestamp,
       consecutive_failures: 0,
       observation_count: 4,
+      observations: [
+        {
+          id: 'weather-wind',
+          hazard_type: 'wind',
+          provider_level: 'warning',
+          observed_at: timestamp,
+          valid_to: timestamp,
+        },
+      ],
     }),
     'sensor.external_provider_imgw_warnings': entity('ok', {
       friendly_name: 'Ostrzeżenia IMGW',
@@ -298,6 +312,10 @@ test('normalizes external hazard aggregate and independent provider diagnostics'
   assert.deepEqual(external.affectedOpenings, ['Okno biura']);
   assert.equal(external.adviceInhibition[0].reason, 'wind');
   assert.equal(external.providers.length, 2);
+  assert.equal(
+    external.providers.find(provider => provider.provider === 'OpenMeteoWeatherApiComponent')?.observations[0].hazardType,
+    'wind'
+  );
   assert.equal(external.imgwWarnings.length, 1);
   assert.equal(external.imgwWarnings[0].eventName, 'Burze');
   assert.equal(external.imgwWarnings[0].locallyApplicable, true);
@@ -305,6 +323,52 @@ test('normalizes external hazard aggregate and independent provider diagnostics'
     external.imgwWarnings.some(warning => warning.id === 'imgw-outside-home'),
     false
   );
+});
+
+test('presents GIOŚ as primary current air quality and Open-Meteo as point-model context', () => {
+  const external = getExternalHazardMonitoring({
+    'sensor.external_hazard_state': entity('clear'),
+    'sensor.external_provider_gios_air_quality': entity('ok', {
+      provider: 'GiosAirQualityApiComponent',
+      observations: [
+        {
+          id: 'gios-current',
+          hazard_type: 'outdoor_air_pollution',
+          provider_level: 'good',
+          display_value: 'Dobry',
+        },
+      ],
+    }),
+    'sensor.external_provider_open_meteo_air_quality': entity('ok', {
+      provider: 'OpenMeteoAirQualityApiComponent',
+      observations: [
+        {
+          id: 'model-current',
+          hazard_type: 'outdoor_air_pollution',
+          provider_level: 'safe',
+          display_value: '31',
+        },
+      ],
+    }),
+  });
+
+  assert.deepEqual(getAirQualityPresentation(external), {
+    label: 'Dobry',
+    detail: 'Model dla domu: EAQI 31',
+    tone: 'safe',
+    sourceName: 'GIOŚ',
+  });
+  assert.equal(
+    observationDisplayName(external.providers[0].observations[0], external.providers[0].provider),
+    'Jakość powietrza z najbliższej stacji GIOŚ'
+  );
+});
+
+test('localizes raw history states for operators', () => {
+  assert.equal(localizedEntityState('sensor.fault_riskytemperature', 'Set'), 'Aktywna');
+  assert.equal(localizedEntityState('sensor.recovery_manipulatewindowoffice', 'DO_NOT_PERFORM'), 'Brak potrzeby działania');
+  assert.equal(localizedEntityState('sensor.safetysystem_state', 'no_faults'), 'Brak aktywnych usterek');
+  assert.equal(localizedEntityState('sensor.safety_app_health', 'running'), 'Działa');
 });
 
 test('maps semantic system states while retaining numeric compatibility', () => {
