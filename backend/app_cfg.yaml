@@ -355,11 +355,11 @@ SafetyFunctions:
           GarageGate:
             area_id: "garage"
             entity_id: "binary_sensor.garage_gatedoorlow_contact_contact"
-            timeout_seconds: 180
+            timeout_seconds: 300
           ExternalGate:
             area_id: "frontyard"
             entity_id: "binary_sensor.frontyard_externalgate_contact_contact"
-            timeout_seconds: 180
+            timeout_seconds: 300
           LivingRoomTerraceDoor:
             area_id: "45db77f4035011eb9a3115c8afedaa08"
             entity_id: "binary_sensor.livingroom_door_contact_contact"
