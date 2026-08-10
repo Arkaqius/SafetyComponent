@@ -22,7 +22,7 @@ POLICY = {
         "gust_warning_m_s": 20.0,
         "precipitation_warning_mm_h": 2.5,
     },
-    "outdoor_air_quality": {"warning_at": 60, "gios_warning_level": 3},
+    "outdoor_air_quality": {"warning_at": 60},
 }
 
 
@@ -132,19 +132,7 @@ def test_official_imgw_warning_overrides_numeric_weather_thresholds() -> None:
     assert assessment.inhibits_opening_advice is True
 
 
-def test_air_quality_sources_keep_their_distinct_index_semantics() -> None:
-    gios = evaluate_observation(
-        _observation(
-            HazardType.OUTDOOR_AIR_POLLUTION,
-            {
-                "polish_index_level": Measurement(3),
-                "polish_index_name": Measurement("Dostateczny"),
-            },
-            provider="GiosAirQualityApiComponent",
-        ),
-        POLICY,
-        NOW,
-    )
+def test_open_meteo_air_quality_uses_current_european_aqi() -> None:
     model = evaluate_observation(
         _observation(
             HazardType.OUTDOOR_AIR_POLLUTION,
@@ -157,9 +145,8 @@ def test_air_quality_sources_keep_their_distinct_index_semantics() -> None:
         NOW,
     )
 
-    assert gios.active is True
-    assert "GIO" in gios.observed_value
     assert model.active is True
+    assert model.observed_value == "EAQI 61"
     assert model.evidence_kind == "current"
 
 

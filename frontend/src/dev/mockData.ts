@@ -42,13 +42,11 @@ export const MOCK_ENTITIES: EntityMap = {
       providers: {
         OpenMeteoWeatherApiComponent: 'ok',
         ImgwWarningsApiComponent: 'ok',
-        GiosAirQualityApiComponent: 'ok',
         OpenMeteoAirQualityApiComponent: 'ok',
       },
       enabled_providers: [
         'OpenMeteoWeatherApiComponent',
         'ImgwWarningsApiComponent',
-        'GiosAirQualityApiComponent',
         'OpenMeteoAirQualityApiComponent',
       ],
       advice_inhibition: [
@@ -109,25 +107,6 @@ export const MOCK_ENTITIES: EntityMap = {
         comment: '',
         office: 'IMGW-PIB',
         locally_applicable: true,
-      },
-    ],
-  }),
-  'sensor.external_provider_gios_air_quality': entity('ok', 'Jakość powietrza GIOŚ', {
-    provider: 'GiosAirQualityApiComponent',
-    last_attempt_at: timestamp(3),
-    last_success_at: timestamp(3),
-    consecutive_failures: 0,
-    detail_code: null,
-    observation_count: 1,
-    observations: [
-      {
-        id: 'gios-air-quality',
-        hazard_type: 'outdoor_air_pollution',
-        provider_level: 'very_good',
-        observed_at: timestamp(3),
-        valid_to: timestamp(-60),
-        display_value: 'Bardzo dobry',
-        display_unit: '',
       },
     ],
   }),

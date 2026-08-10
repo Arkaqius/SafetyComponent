@@ -12,10 +12,6 @@ from components.app_config_validator.schema import AppCfg
 from components.core.pydantic_utils import log_extra_keys
 from components.faults_manager.schema import validate_faults_config
 from components.notification_manager.schema import validate_notification_config
-from components.external_apis.gios_air_quality.schema import (
-    COMPONENT_NAME as GIOS_COMPONENT_NAME,
-    GiosAirQualityConfig,
-)
 from components.external_apis.imgw_warnings.schema import (
     COMPONENT_NAME as IMGW_COMPONENT_NAME,
     ImgwWarningsConfig,
@@ -54,7 +50,6 @@ ENTITY_ID_PATTERN = re.compile(r"^[a-z0-9_]+\.[a-z0-9_]+$")
 REQUIRED_EXTERNAL_API_COMPONENTS = (
     OPEN_METEO_WEATHER_COMPONENT_NAME,
     IMGW_COMPONENT_NAME,
-    GIOS_COMPONENT_NAME,
     OPEN_METEO_AQ_COMPONENT_NAME,
     PAA_COMPONENT_NAME,
 )
@@ -275,7 +270,6 @@ def _validate_api_components(
     validators = {
         OPEN_METEO_WEATHER_COMPONENT_NAME: OpenMeteoWeatherConfig,
         IMGW_COMPONENT_NAME: ImgwWarningsConfig,
-        GIOS_COMPONENT_NAME: GiosAirQualityConfig,
         OPEN_METEO_AQ_COMPONENT_NAME: OpenMeteoAirQualityConfig,
         PAA_COMPONENT_NAME: PaaRadiationConfig,
     }

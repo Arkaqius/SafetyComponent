@@ -48,7 +48,6 @@ def test_production_external_hazard_startup_is_wired_before_polling() -> None:
     app.initialize()
 
     assert sorted(app.api_modules) == [
-        "GiosAirQualityApiComponent",
         "ImgwWarningsApiComponent",
         "OpenMeteoAirQualityApiComponent",
         "OpenMeteoWeatherApiComponent",

@@ -469,39 +469,16 @@ export function getExternalHazardMonitoring(entities: EntityMap): ExternalHazard
 }
 
 export function getAirQualityPresentation(external: ExternalHazardView): AirQualityPresentation {
-  const gios = external.providers.find(provider => provider.provider === 'GiosAirQualityApiComponent');
   const openMeteo = external.providers.find(provider => provider.provider === 'OpenMeteoAirQualityApiComponent');
-  const giosObservation = gios?.observations.find(observation => observation.hazardType === 'outdoor_air_pollution');
   const openMeteoObservation = openMeteo?.observations.find(observation => observation.hazardType === 'outdoor_air_pollution');
-  const secondary = openMeteoObservation?.displayValue ? `Model dla domu: ${europeanAqiLabel(openMeteoObservation)}` : '';
-  const normalizedGiosValue = normalizeState(giosObservation?.displayValue);
-  const hasGiosIndex =
-    Boolean(giosObservation?.displayValue) && !['brak_indeksu', 'brak_danych', 'unknown', 'unavailable'].includes(normalizedGiosValue);
-
-  if (gios && ['ok', 'stale'].includes(gios.status) && giosObservation && hasGiosIndex) {
-    const tone: StatusTone =
-      normalizedGiosValue.includes('bardzo_dobr') || normalizedGiosValue === 'dobry'
-        ? 'safe'
-        : normalizedGiosValue.includes('umiarkowan')
-          ? 'warning'
-          : normalizedGiosValue.includes('zly') || normalizedGiosValue.includes('zły') || normalizedGiosValue.includes('bardzo_z')
-            ? 'danger'
-            : 'info';
-    return {
-      label: giosObservation.displayValue,
-      detail: secondary || 'Bieżący indeks z najbliższej stacji pomiarowej.',
-      tone,
-      sourceName: 'GIOŚ',
-    };
-  }
 
   if (openMeteo && ['ok', 'stale'].includes(openMeteo.status) && openMeteoObservation?.displayValue) {
+    const value = Number(openMeteoObservation.displayValue);
+    const tone: StatusTone = Number.isFinite(value) ? (value <= 40 ? 'safe' : value <= 60 ? 'warning' : 'danger') : 'info';
     return {
       label: europeanAqiLabel(openMeteoObservation),
-      detail: hasGiosIndex
-        ? 'Model jakości powietrza dla współrzędnych domu.'
-        : 'Model jakości powietrza dla współrzędnych domu; stacja GIOŚ nie publikuje obecnie indeksu.',
-      tone: 'info',
+      detail: 'Bieżący model jakości powietrza dla współrzędnych domu.',
+      tone,
       sourceName: 'Open-Meteo',
     };
   }
@@ -519,7 +496,7 @@ function europeanAqiLabel(observation: ExternalObservationView): string {
   return unit.toUpperCase() === 'EAQI' ? `EAQI ${observation.displayValue}` : `EAQI ${observation.displayValue}${unit ? ` ${unit}` : ''}`;
 }
 
-export function observationDisplayName(observation: ExternalObservationView, provider: string): string {
+export function observationDisplayName(observation: ExternalObservationView): string {
   const labels: Record<string, string> = {
     frost: 'Mróz i temperatura zewnętrzna',
     wind: 'Wiatr i porywy',
@@ -529,9 +506,7 @@ export function observationDisplayName(observation: ExternalObservationView, pro
     ionizing_radiation: 'Promieniowanie jonizujące',
   };
   if (observation.hazardType === 'outdoor_air_pollution') {
-    return provider === 'GiosAirQualityApiComponent'
-      ? 'Jakość powietrza z najbliższej stacji GIOŚ'
-      : 'Jakość powietrza dla współrzędnych domu';
+    return 'Jakość powietrza dla współrzędnych domu';
   }
   return labels[observation.hazardType] ?? humanize(observation.hazardType);
 }

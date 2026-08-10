@@ -66,8 +66,6 @@ SafetyFunctions:
       outdoor_air_quality:
         standard: european_aqi
         warning_at: 60
-        gios_warning_level: 3
-        conservative_source_policy: any_fresh_source
       radiation:
         official_alert_required_for_confirmed_fault: true
         raw_anomaly_enabled: false
@@ -86,12 +84,6 @@ SafetyFunctions:
           request_timeout_seconds: 10
           max_retries: 2
           stale_after_seconds: 900
-        GiosAirQualityApiComponent:
-          base_url: "https://api.gios.gov.pl/pjp-api"
-          poll_interval_seconds: 900
-          request_timeout_seconds: 10
-          max_retries: 2
-          stale_after_seconds: 2700
         OpenMeteoAirQualityApiComponent:
           base_url: "https://air-quality-api.open-meteo.com/v1/air-quality"
           poll_interval_seconds: 1800
@@ -224,7 +216,6 @@ SafetyFunctions:
         sensor.external_hazard_state: "Zagrożenia zewnętrzne"
         sensor.external_provider_open_meteo_weather: "Dane pogodowe Open-Meteo"
         sensor.external_provider_imgw_warnings: "Ostrzeżenia IMGW"
-        sensor.external_provider_gios_air_quality: "Jakość powietrza GIOŚ"
         sensor.external_provider_open_meteo_air_quality: "Jakość powietrza Open-Meteo"
         sensor.external_provider_paa_radiation: "Monitoring radiacyjny PAA"
         sensor.safety_door_garagegate: "Brama garażowa"
@@ -256,11 +247,6 @@ SafetyFunctions:
         enabled: true
       ImgwWarningsApiComponent:
         enabled: true
-      GiosAirQualityApiComponent:
-        enabled: true
-        station_ids:
-          - 402
-          - 401
       OpenMeteoAirQualityApiComponent:
         enabled: true
       PaaRadiationApiComponent:
@@ -369,11 +355,11 @@ SafetyFunctions:
           GarageGate:
             area_id: "garage"
             entity_id: "binary_sensor.garage_gatedoorlow_contact_contact"
-            timeout_seconds: 180
+            timeout_seconds: 300
           ExternalGate:
             area_id: "frontyard"
             entity_id: "binary_sensor.frontyard_externalgate_contact_contact"
-            timeout_seconds: 180
+            timeout_seconds: 300
           LivingRoomTerraceDoor:
             area_id: "45db77f4035011eb9a3115c8afedaa08"
             entity_id: "binary_sensor.livingroom_door_contact_contact"

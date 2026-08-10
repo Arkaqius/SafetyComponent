@@ -325,20 +325,9 @@ test('normalizes external hazard aggregate and independent provider diagnostics'
   );
 });
 
-test('presents GIOŚ as primary current air quality and Open-Meteo as point-model context', () => {
+test('presents current Open-Meteo air quality for the home coordinates', () => {
   const external = getExternalHazardMonitoring({
     'sensor.external_hazard_state': entity('clear'),
-    'sensor.external_provider_gios_air_quality': entity('ok', {
-      provider: 'GiosAirQualityApiComponent',
-      observations: [
-        {
-          id: 'gios-current',
-          hazard_type: 'outdoor_air_pollution',
-          provider_level: 'good',
-          display_value: 'Dobry',
-        },
-      ],
-    }),
     'sensor.external_provider_open_meteo_air_quality': entity('ok', {
       provider: 'OpenMeteoAirQualityApiComponent',
       observations: [
@@ -346,44 +335,6 @@ test('presents GIOŚ as primary current air quality and Open-Meteo as point-mode
           id: 'model-current',
           hazard_type: 'outdoor_air_pollution',
           provider_level: 'safe',
-          display_value: '31',
-        },
-      ],
-    }),
-  });
-
-  assert.deepEqual(getAirQualityPresentation(external), {
-    label: 'Dobry',
-    detail: 'Model dla domu: EAQI 31',
-    tone: 'safe',
-    sourceName: 'GIOŚ',
-  });
-  assert.equal(
-    observationDisplayName(external.providers[0].observations[0], external.providers[0].provider),
-    'Jakość powietrza z najbliższej stacji GIOŚ'
-  );
-});
-
-test('falls back to the Open-Meteo model when GIOŚ publishes no index', () => {
-  const external = getExternalHazardMonitoring({
-    'sensor.external_hazard_state': entity('clear'),
-    'sensor.external_provider_gios_air_quality': entity('ok', {
-      provider: 'GiosAirQualityApiComponent',
-      observations: [
-        {
-          id: 'gios-current',
-          hazard_type: 'outdoor_air_pollution',
-          provider_level: 'Brak indeksu',
-          display_value: 'Brak indeksu',
-        },
-      ],
-    }),
-    'sensor.external_provider_open_meteo_air_quality': entity('ok', {
-      provider: 'OpenMeteoAirQualityApiComponent',
-      observations: [
-        {
-          id: 'model-current',
-          hazard_type: 'outdoor_air_pollution',
           display_value: '24',
           display_unit: 'EAQI',
         },
@@ -393,10 +344,14 @@ test('falls back to the Open-Meteo model when GIOŚ publishes no index', () => {
 
   assert.deepEqual(getAirQualityPresentation(external), {
     label: 'EAQI 24',
-    detail: 'Model jakości powietrza dla współrzędnych domu; stacja GIOŚ nie publikuje obecnie indeksu.',
-    tone: 'info',
+    detail: 'Bieżący model jakości powietrza dla współrzędnych domu.',
+    tone: 'safe',
     sourceName: 'Open-Meteo',
   });
+  assert.equal(
+    observationDisplayName(external.providers[0].observations[0]),
+    'Jakość powietrza dla współrzędnych domu'
+  );
 });
 
 test('localizes raw history states for operators', () => {

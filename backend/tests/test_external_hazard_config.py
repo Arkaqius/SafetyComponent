@@ -20,13 +20,12 @@ def _production_config() -> dict:
     )["SafetyFunctions"]
 
 
-def test_external_hazard_config_normalizes_all_five_independent_providers() -> None:
+def test_external_hazard_config_normalizes_all_four_independent_providers() -> None:
     runtime = AppCfgValidator.validate(_production_config())
 
     assert set(runtime["user_config"]["api_components"]) == {
         "OpenMeteoWeatherApiComponent",
         "ImgwWarningsApiComponent",
-        "GiosAirQualityApiComponent",
         "OpenMeteoAirQualityApiComponent",
         "PaaRadiationApiComponent",
     }
@@ -35,7 +34,6 @@ def test_external_hazard_config_normalizes_all_five_independent_providers() -> N
     ]
     assert external["policy"]["notification_only"] is True
     assert external["enabled_providers"] == [
-        "GiosAirQualityApiComponent",
         "ImgwWarningsApiComponent",
         "OpenMeteoAirQualityApiComponent",
         "OpenMeteoWeatherApiComponent",

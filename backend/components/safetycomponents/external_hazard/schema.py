@@ -74,12 +74,10 @@ class WeatherPolicy(StrictBaseModel):
 
 
 class AirQualityPolicy(StrictBaseModel):
-    """Conservative outdoor air-quality decision policy."""
+    """Open-Meteo European Air Quality Index decision policy."""
 
     standard: Literal["european_aqi"] = "european_aqi"
     warning_at: float = Field(gt=0)
-    gios_warning_level: int = Field(default=3, ge=0, le=5)
-    conservative_source_policy: Literal["any_fresh_source"] = "any_fresh_source"
 
 
 class RadiationPolicy(StrictBaseModel):

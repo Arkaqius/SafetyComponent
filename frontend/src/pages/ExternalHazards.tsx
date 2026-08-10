@@ -229,7 +229,7 @@ function ProviderCard({ provider }: { provider: ExternalProviderView }) {
                 <span className='provider-observation-tooltip' role='tooltip'>
                   <strong>Monitorowane dane</strong>
                   {provider.observations.map(observation => (
-                    <span key={observation.id}>{observationDisplayName(observation, provider.provider)}</span>
+                    <span key={observation.id}>{observationDisplayName(observation)}</span>
                   ))}
                 </span>
               ) : null}
@@ -272,7 +272,6 @@ function providerDisplayName(provider: string): string {
   const names: Record<string, string> = {
     OpenMeteoWeatherApiComponent: 'Dane pogodowe Open-Meteo',
     ImgwWarningsApiComponent: 'Ostrzeżenia IMGW',
-    GiosAirQualityApiComponent: 'Jakość powietrza GIOŚ',
     OpenMeteoAirQualityApiComponent: 'Jakość powietrza Open-Meteo',
   };
   return names[provider] ?? provider;
@@ -282,7 +281,6 @@ function providerDescription(provider: string): string {
   const descriptions: Record<string, string> = {
     OpenMeteoWeatherApiComponent: 'temperatura, wiatr, opady i burze',
     ImgwWarningsApiComponent: 'oficjalne komunikaty dla lokalizacji domu',
-    GiosAirQualityApiComponent: 'bieżące pomiary z najbliższej stacji',
     OpenMeteoAirQualityApiComponent: 'model dla współrzędnych domu',
   };
   return descriptions[provider] ?? 'zewnętrzne źródło danych';

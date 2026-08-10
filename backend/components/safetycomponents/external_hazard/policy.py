@@ -72,10 +72,6 @@ def evaluate_observation(
         return HazardAssessment(active, "warning", f"WMO {current_code if kind == 'current' else sorted(forecast_codes)}", "WMO 95/96/99", kind, active)
     if observation.hazard_type == HazardType.OUTDOOR_AIR_POLLUTION:
         aq_policy = policy["outdoor_air_quality"]
-        if observation.provider == "GiosAirQualityApiComponent":
-            level = int(_number(values, "polish_index_level"))
-            threshold = int(aq_policy.get("gios_warning_level", 3))
-            return HazardAssessment(level >= threshold, "warning", f"GIOŚ: {_measurement(values, 'polish_index_name', str(level))}", f"GIOŚ level ≥ {threshold}", "station_measurement", level >= threshold)
         current = _number(values, "current_european_aqi")
         threshold = float(aq_policy["warning_at"])
         return HazardAssessment(current >= threshold, "warning", f"EAQI {current:.0f}", f"EAQI ≥ {threshold:.0f}", "current", current >= threshold)

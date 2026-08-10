@@ -187,7 +187,7 @@ feature architecture §12.
 
 | ID | Requirement | Responsible element |
 | --- | --- | --- |
-| SWR-EXT-001 | The feature shall use separate `OpenMeteoWeatherApiComponent`, `ImgwWarningsApiComponent`, `GiosAirQualityApiComponent`, `OpenMeteoAirQualityApiComponent`, and `PaaRadiationApiComponent` classes. | external API component registry |
+| SWR-EXT-001 | The feature shall use separate `OpenMeteoWeatherApiComponent`, `ImgwWarningsApiComponent`, `OpenMeteoAirQualityApiComponent`, and `PaaRadiationApiComponent` classes. | external API component registry |
 | SWR-EXT-002 | API Components shall have independent schemas, polling schedules, caches, failure counters, health, and contract tests. | `components/external_apis/*` |
 | SWR-EXT-003 | API Components shall not inherit from `SafetyComponent` and shall not create symptoms, faults, notifications, recovery actions, or actuator calls. | `ExternalApiComponent` protocol |
 | SWR-EXT-004 | Network work shall run outside the serialized safety-decision callback and results shall return through a bounded queue for ordered EventBus publication. | `ExternalApiRuntime` |

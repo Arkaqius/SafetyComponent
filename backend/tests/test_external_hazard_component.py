@@ -75,7 +75,6 @@ POLICY = {
     },
     "outdoor_air_quality": {
         "warning_at": 60,
-        "gios_warning_level": 3,
     },
     "radiation": {
         "raw_anomaly_enabled": False,
@@ -193,11 +192,10 @@ def test_active_wind_and_open_window_sets_exposure_and_never_calls_actuator() ->
 def test_air_quality_observation_summary_exposes_current_operator_value() -> None:
     component, _, mqtt, _ = _component()
     air_quality = _observation(
-        "GiosAirQualityApiComponent",
+        "OpenMeteoAirQualityApiComponent",
         HazardType.OUTDOOR_AIR_POLLUTION,
         {
-            "polish_index_name": Measurement("Dobry"),
-            "polish_index_level": Measurement(1),
+            "current_european_aqi": Measurement(24, "EAQI"),
         },
     )
 
@@ -209,20 +207,20 @@ def test_air_quality_observation_summary_exposes_current_operator_value() -> Non
         )
     )
 
-    summary = mqtt.states["sensor.external_provider_gios_air_quality"][1][
+    summary = mqtt.states["sensor.external_provider_open_meteo_air_quality"][1][
         "observations"
     ][0]
     assert summary["hazard_type"] == "outdoor_air_pollution"
-    assert summary["display_value"] == "Dobry"
-    assert summary["display_unit"] is None
+    assert summary["display_value"] == 24
+    assert summary["display_unit"] == "EAQI"
 
 
 def test_provider_diagnostic_observation_summaries_are_bounded() -> None:
     component, _, mqtt, _ = _component()
     observation = _observation(
-        "GiosAirQualityApiComponent",
+        "OpenMeteoAirQualityApiComponent",
         HazardType.OUTDOOR_AIR_POLLUTION,
-        {"polish_index_name": Measurement("Dobry")},
+        {"current_european_aqi": Measurement(24, "EAQI")},
     )
 
     component.handle_external_api_result(
@@ -233,7 +231,7 @@ def test_provider_diagnostic_observation_summaries_are_bounded() -> None:
         )
     )
 
-    attributes = mqtt.states["sensor.external_provider_gios_air_quality"][1]
+    attributes = mqtt.states["sensor.external_provider_open_meteo_air_quality"][1]
     assert attributes["observation_count"] == 65
     assert len(attributes["observations"]) == 64
 

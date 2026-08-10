@@ -34,7 +34,7 @@ _HAZARD_PROVIDER_GROUPS: dict[HazardType, tuple[str, ...]] = {
     HazardType.WIND: ("OpenMeteoWeatherApiComponent", "ImgwWarningsApiComponent"),
     HazardType.RAIN: ("OpenMeteoWeatherApiComponent", "ImgwWarningsApiComponent"),
     HazardType.STORM: ("OpenMeteoWeatherApiComponent", "ImgwWarningsApiComponent"),
-    HazardType.OUTDOOR_AIR_POLLUTION: ("GiosAirQualityApiComponent", "OpenMeteoAirQualityApiComponent"),
+    HazardType.OUTDOOR_AIR_POLLUTION: ("OpenMeteoAirQualityApiComponent",),
     HazardType.IONIZING_RADIATION: ("PaaRadiationApiComponent",),
     HazardType.RADIATION_ANOMALY: ("PaaRadiationApiComponent",),
 }
@@ -42,7 +42,7 @@ _HAZARD_PROVIDER_GROUPS: dict[HazardType, tuple[str, ...]] = {
 _CAPABILITIES: dict[str, tuple[str, ...]] = {
     "WeatherPointModel": ("OpenMeteoWeatherApiComponent",),
     "OfficialWeatherWarnings": ("ImgwWarningsApiComponent",),
-    "OutdoorAirQuality": ("GiosAirQualityApiComponent", "OpenMeteoAirQualityApiComponent"),
+    "OutdoorAirQuality": ("OpenMeteoAirQualityApiComponent",),
     "IonizingRadiation": ("PaaRadiationApiComponent",),
 }
 

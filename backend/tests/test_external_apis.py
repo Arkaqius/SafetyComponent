@@ -16,7 +16,6 @@ from components.external_apis.core.models import (
     Measurement,
     ProviderHealthState,
 )
-from components.external_apis.gios_air_quality.component import GiosAirQualityApiComponent
 from components.external_apis.imgw_warnings.component import ImgwWarningsApiComponent
 from components.external_apis.open_meteo_air_quality.component import OpenMeteoAirQualityApiComponent
 from components.external_apis.open_meteo_weather.component import OpenMeteoWeatherApiComponent
@@ -86,16 +85,6 @@ def test_imgw_filters_warnings_by_configured_teryt_and_preserves_authority() -> 
     assert evidence["warning_count"] == 1
     assert [warning["id"] for warning in evidence["warnings"]] == ["imgw-1219-storm"]
     assert evidence["warnings"][0]["locally_applicable"] is True
-
-
-def test_gios_keeps_polish_index_and_station_measurement_distinct() -> None:
-    component = _component(GiosAirQualityApiComponent, station_ids=[402])
-    observation = component.normalize(_payload("gios_air_quality"), RETRIEVED_AT)[0]
-
-    assert observation.values["polish_index_name"].value == "Dostateczny"
-    assert observation.values["polish_index_level"].value == 3
-    assert observation.values["measurement_pm10"].value == 58.2
-    assert observation.values["measurement_pm10"].unit == "µg/m³"
 
 
 def test_open_meteo_air_quality_keeps_european_aqi_model_identity() -> None:
@@ -209,63 +198,6 @@ def test_unexpected_provider_exception_becomes_schema_health_result() -> None:
     assert result.health.state == ProviderHealthState.SCHEMA_ERROR
     assert result.health.detail_code == "schema_error"
     assert result.observations == ()
-
-
-def test_gios_fetch_falls_back_between_stations_and_skips_failed_sensors() -> None:
-    class GiosClient:
-        def get_json(self, url: str, **_: object) -> object:
-            if "getIndex/401" in url:
-                raise TimeoutError("primary station unavailable")
-            if "getIndex/402" in url:
-                return {"stIndexStatus": "Dobry", "stIndexLevel": 1}
-            if "sensors/402" in url:
-                return {
-                    "items": [
-                        {"id": 10, "paramCode": "PM10"},
-                        {"id": 11},
-                        {"id": 12, "paramCode": "NO2"},
-                    ]
-                }
-            if "getData/10" in url:
-                return [{"date": "2026-08-04T12:00:00Z", "value": 18.5}]
-            if "getData/12" in url:
-                raise TimeoutError("one sensor unavailable")
-            raise AssertionError(url)
-
-    component = GiosAirQualityApiComponent(
-        provider_config=_config(station_ids=[401, 402]),
-        site_config=SITE,
-        http_client=GiosClient(),
-    )
-
-    payload = component.fetch_payload()
-
-    assert payload["station_id"] == 402
-    assert payload["measurements"] == [
-        {
-            "sensor_id": 10,
-            "parameter": "PM10",
-            "data": [{"date": "2026-08-04T12:00:00Z", "value": 18.5}],
-        }
-    ]
-
-
-def test_gios_helpers_reject_malformed_payloads_and_map_named_levels() -> None:
-    component = _component(GiosAirQualityApiComponent, station_ids=[])
-
-    with pytest.raises(ValueError, match="No GIO"):
-        component.fetch_payload()
-    with pytest.raises(ValueError, match="composite"):
-        component.normalize([], RETRIEVED_AT)
-    with pytest.raises(ValueError, match="item list"):
-        component._items({"unexpected": "value"})
-
-    assert component._items([{"id": 1}, "ignored"]) == [{"id": 1}]
-    assert component._index_level({"indexLevelName": "Bardzo dobry"}, None) == 0
-    assert component._index_level("not-a-level", "Nieznany") == -1
-    assert component._latest_measurement(
-        {"values": [{"date": "invalid", "value": "invalid"}]}
-    ) is None
 
 
 def test_paa_fetch_uses_separate_official_and_measurement_endpoints() -> None:

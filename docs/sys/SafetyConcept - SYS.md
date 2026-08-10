@@ -659,7 +659,7 @@ SG-003 (Diagnostics linkage).
   notifications, or recovery actions.
 - The API Components are:
   `OpenMeteoWeatherApiComponent`, `ImgwWarningsApiComponent`,
-  `GiosAirQualityApiComponent`, `OpenMeteoAirQualityApiComponent`, and
+  `OpenMeteoAirQualityApiComponent`, and
   `PaaRadiationApiComponent`.
 - API Components may share an injected HTTP transport and common immutable data
   types, but shall not share polling schedules, failure counters, cached
@@ -673,8 +673,8 @@ SG-003 (Diagnostics linkage).
 - **IR-001 Window/Door Contacts** for configured external apertures.
 - **IR-020 Weather (Current & Forecast)** from the dedicated Open-Meteo weather
   API component.
-- **IR-022 Outdoor Air Quality** from independent current GIOŚ measurement and
-  current Open-Meteo model API components.
+- **IR-022 Outdoor Air Quality** from the current Open-Meteo model API
+  component for the configured home coordinates.
 - **IR-025 Official Weather Warnings** from the dedicated IMGW warning API
   component.
 - **IR-026 Ionizing Radiation Status** from the dedicated PAA radiation API
@@ -694,14 +694,13 @@ SG-003 (Diagnostics linkage).
 #### 8.3.4 Parameters
 
 - Site identity: latitude, longitude, timezone, country, configured TERYT
-  codes, and optional provider station IDs.
+  codes, and optional radiation station IDs.
 - Opening registry: stable opening name, `entity_id`, `area_id`, opening kind,
   and applicable hazard types.
 - Weather policy: frost watch/warning temperature, wind/gust thresholds,
   rain/precipitation policy, forecast horizon, hysteresis, persistence, and
   clear delay.
-- Outdoor AQ policy: named AQI standard and thresholds, pollutant overrides,
-  current-source preference, and agreement policy.
+- Outdoor AQ policy: European AQI standard and warning threshold.
 - Radiation policy: official-message mapping, optional unconfirmed anomaly
   policy, station baseline window, corroboration count, and clear policy.
 - Per-provider base URL, poll interval, request timeout, retry count, stale
@@ -783,12 +782,12 @@ provider is unusable beyond its stale timeout.
 
 **Outdoor air quality**
 
-- **SYS-SR-EXT-020:** Current GIOŚ measurements and current Open-Meteo AQ model values shall
-  remain distinct observations and retain their own timestamp, grid/station,
-  units, and quality semantics.
-- **SYS-SR-EXT-021:** If current station measurement and current model value disagree, the
-  configured conservative policy shall determine exposure while the notification
-  shows both sources; the API Components shall not resolve the conflict.
+- **SYS-SR-EXT-020:** The Open-Meteo AQ component shall retain the current
+  European AQI value, model timestamp, grid coordinates, units, validity, and
+  retrieval time for the configured home coordinates.
+- **SYS-SR-EXT-021:** Open-Meteo shall be the sole outdoor-air-quality input to
+  household exposure policy. Unavailable, malformed, or stale provider data
+  shall not be interpreted as positive clear evidence.
 - **SYS-SR-EXT-022:** When outdoor AQ policy is active and a relevant opening
   is open, C-EXT shall raise or update
   `OutdoorAirQualityExposure{OpeningId}` through
@@ -1105,7 +1104,6 @@ _Non‑functional constraints that apply across all components. IDs use `NFR‑x
 | **T_api_block_max**      | Maximum blocking time of one provider call   | ≤ 10 s           |
 | **T_poll_weather**       | Open-Meteo weather poll interval             | 10 min           |
 | **T_poll_imgw**          | IMGW warnings poll interval                  | 5 min            |
-| **T_poll_gios**          | GIOŚ measurement poll interval               | 15 min           |
 | **T_poll_aq_model**      | Open-Meteo current AQ model poll interval    | 30 min           |
 | **T_poll_paa**           | PAA status poll interval                       | 5 min            |
 | **T_stale_weather**      | Weather capability stale timeout             | 20 min           |

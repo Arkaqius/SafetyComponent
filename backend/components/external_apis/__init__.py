@@ -13,7 +13,6 @@ from .core import (
     get_registered_api_components,
     register_api_component,
 )
-from .gios_air_quality import GiosAirQualityApiComponent, GiosAirQualityConfig
 from .imgw_warnings import ImgwWarningsApiComponent, ImgwWarningsConfig
 from .open_meteo_air_quality import OpenMeteoAirQualityApiComponent, OpenMeteoAirQualityConfig
 from .open_meteo_weather import OpenMeteoWeatherApiComponent, OpenMeteoWeatherConfig
@@ -24,8 +23,6 @@ __all__ = [
     "ExternalApiComponent",
     "ExternalApiRuntime",
     "ExternalObservation",
-    "GiosAirQualityApiComponent",
-    "GiosAirQualityConfig",
     "HazardType",
     "HttpJsonClient",
     "ImgwWarningsApiComponent",

@@ -12,7 +12,7 @@ from components.external_apis.core.registry import register_api_component
 
 @register_api_component
 class OpenMeteoAirQualityApiComponent(ExternalApiComponent):
-    """Normalize European AQI model values separately from GIOŚ measurements."""
+    """Normalize current European AQI model values for the configured home."""
 
     component_name = "OpenMeteoAirQualityApiComponent"
     _FIELDS = (

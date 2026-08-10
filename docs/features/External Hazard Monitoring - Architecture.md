@@ -55,7 +55,6 @@ The system shall:
 | --- | --- | --- | --- | --- |
 | `OpenMeteoWeatherApiComponent` | Open-Meteo `/v1/forecast` | Current/model temperature, frost forecast, precipitation, weather code, wind and gusts | 10 min | Forecast/model input |
 | `ImgwWarningsApiComponent` | IMGW `/api/data/warningsmeteo` | Current official weather warnings matching configured TERYT codes | 5 min | Authoritative weather warning |
-| `GiosAirQualityApiComponent` | GIOŚ PJP API v1 | Nearest/configured station measurements and Polish AQ information | 15 min | Authoritative measurement source |
 | `OpenMeteoAirQualityApiComponent` | Open-Meteo `/v1/air-quality` | Current CAMS-model European AQI and pollutant values | 30 min | Current model input |
 | `PaaRadiationApiComponent` | Official PAA radiation monitoring API | Official status/messages and station dose-rate data | 5 min | Authoritative only for official PAA status/messages |
 
@@ -68,7 +67,6 @@ Provider references:
   <https://danepubliczne.imgw.pl/api/data/warningsmeteo>
 - IMGW public-data terms:
   <https://danepubliczne.imgw.pl/pl/datastore?product=Mapa+synoptyczna>
-- GIOŚ Swagger: <https://api.gios.gov.pl/pjp-api/swagger-ui/index.html>
 - PAA official radiation map information:
   <https://www.gov.pl/web/paa/nowa-mapa-radiacyjna-polski-panstwowej-agencji-atomistyki>
 
@@ -90,7 +88,6 @@ instead of provider-conditional code inside `PaaRadiationApiComponent`.
 
  OpenMeteoWeatherApiComponent ----+
  ImgwWarningsApiComponent --------+
- GiosAirQualityApiComponent ------+--> ExternalApiRuntime
  OpenMeteoAirQualityApiComponent -+      - bounded worker pool
  PaaRadiationApiComponent --------+      - one in-flight call/provider
                                          - result queue
@@ -134,10 +131,6 @@ backend/components/external_apis/
     component.py
     schema.py
   imgw_warnings/
-    __init__.py
-    component.py
-    schema.py
-  gios_air_quality/
     __init__.py
     component.py
     schema.py
@@ -270,34 +263,17 @@ entity for operator presentation. Locally applicable warnings with recognized
 household hazard types are dispatched as safety observations.
 An updated warning with the same ID replaces the previous provider observation.
 
-### 7.5 `GiosAirQualityApiComponent`
+### 7.5 `OpenMeteoAirQualityApiComponent`
 
-The GIOŚ component shall use only the current versioned API contract. It owns
-station discovery/selection and sensor IDs. It returns station measurements and
-named GIOŚ index information without translating them into Open-Meteo/European
-AQI semantics.
-
-Selection policy:
-
-1. Prefer explicitly configured station IDs.
-2. Otherwise select the nearest station that supplies required pollutants.
-3. Expose distance and unavailable pollutants.
-4. Never silently switch station without publishing the new station ID.
-
-### 7.6 `OpenMeteoAirQualityApiComponent`
-
-This component returns current CAMS model values separately from GIOŚ
-measurements. Required fields:
+This component is the sole outdoor-air-quality provider and returns current
+CAMS model values for the configured home coordinates. Required fields:
 
 - `european_aqi` and contributing sub-indices;
 - PM2.5, PM10, NO2, O3, and SO2;
 - current/model values;
 - grid coordinates, model/source time, validity, and retrieval time.
 
-The component does not decide whether the current model value or station
-measurement wins.
-
-### 7.7 `PaaRadiationApiComponent`
+### 7.6 `PaaRadiationApiComponent`
 
 The component shall preserve two result types:
 
@@ -309,7 +285,7 @@ Unit normalization shall support nSv/h and µSv/h. The component shall not embed
 a universal emergency threshold. It shall mark official confirmation only when
 the source contract explicitly identifies an official authority status/message.
 
-### 7.8 `ExternalHazardComponent`
+### 7.7 `ExternalHazardComponent`
 
 `ExternalHazardComponent` is registered through the existing Safety Component
 registry and integrates with `EventBus`, `FaultManager`, `NotificationManager`,
@@ -379,7 +355,7 @@ other direct sensor path.
 | Frost | Current or forecast external temperature crosses configured policy | Relevant opening is open | Warn with opening and temperature/forecast context |
 | Wind | Gust threshold or applicable IMGW warning | Relevant opening is open | Warn with opening, gust or warning degree |
 | Rain/storm | Precipitation policy or applicable IMGW warning | Relevant opening is open | Warn with opening and validity/source |
-| Outdoor pollution | Configured measured/forecast AQ policy | Relevant opening is open | Warn and inhibit advice to open external openings |
+| Outdoor pollution | Current Open-Meteo European AQI crosses configured policy | Relevant opening is open | Warn and inhibit advice to open external openings |
 | Official radiation event | PAA official status/message | None; applies to household | L2 warning, official guidance, list open apertures as context |
 | Radiation measurement anomaly | Baseline/persistence/corroboration policy | None | Separate unconfirmed L3 warning; never official-alert wording |
 
@@ -388,10 +364,8 @@ other direct sensor path.
 - IMGW warning validity is authoritative for the warning itself.
 - Open-Meteo weather supplies point-model detail and forecast but does not
   replace an IMGW warning.
-- GIOŚ station measurement and Open-Meteo current AQ model values are shown separately.
-- Conservative AQ policy may warn if either a fresh current measurement or a
-  configured high-confidence forecast exceeds policy.
-- Disagreement is evidence, not a parser error; both inputs remain visible.
+- Open-Meteo is the sole outdoor-air-quality provider and supplies the current
+  European AQI for the configured home coordinates.
 - Individual provider failure degrades only capabilities that require it.
 
 ### 9.2 Clearing
@@ -460,7 +434,7 @@ The recovery boundary uses a narrow `RecoveryPolicyEvaluator` interface.
 inhibited_action: open_external_opening
 reason: outdoor_air_pollution
 valid_until: 2026-08-03T18:00:00Z
-source: GIOS/OpenMeteoAirQuality
+source: OpenMeteoAirQualityApiComponent
 ```
 
 `RecoveryManager` consults registered evaluators before showing manual advice
@@ -492,7 +466,6 @@ SafetyFunctions:
       outdoor_air_quality:
         standard: european_aqi
         warning_at: 60
-        conservative_source_policy: any_fresh_source
       radiation:
         official_alert_required_for_confirmed_fault: true
         raw_anomaly_enabled: false
@@ -509,12 +482,6 @@ SafetyFunctions:
           request_timeout_seconds: 10
           max_retries: 2
           stale_after_seconds: 900
-        GiosAirQualityApiComponent:
-          base_url: "https://api.gios.gov.pl/pjp-api/v1"
-          poll_interval_seconds: 900
-          request_timeout_seconds: 10
-          max_retries: 2
-          stale_after_seconds: 2700
         OpenMeteoAirQualityApiComponent:
           base_url: "https://air-quality-api.open-meteo.com/v1/air-quality"
           poll_interval_seconds: 1800
@@ -574,9 +541,6 @@ SafetyFunctions:
         enabled: true
       ImgwWarningsApiComponent:
         enabled: true
-      GiosAirQualityApiComponent:
-        enabled: true
-        station_ids: []
       OpenMeteoAirQualityApiComponent:
         enabled: true
       PaaRadiationApiComponent:
@@ -622,9 +586,8 @@ health together with `observation_count` and an `observations` list bounded to
 The summary does not replace the immutable normalized provider result used by
 the safety policy and does not expose raw provider payloads. User interfaces
 translate stable hazard codes into localized names. Current air-quality
-presentation uses the GIOŚ station index as the primary operator value and
-shows the Open-Meteo point model independently as context or fallback. Provider
-disagreement remains visible and does not constitute a parser failure.
+presentation uses the current Open-Meteo European AQI model value for the
+configured home coordinates.
 
 ## 13. Startup and shutdown sequence
 
@@ -685,8 +648,8 @@ Each API Component requires fixtures for:
 - IMGW warning outside configured TERYT -> ignored.
 - Current IMGW warnings matching configured TERYT codes -> published for
   operator presentation and marked as locally applicable.
-- GIOŚ measurement/Open-Meteo current-model disagreement -> configured policy and
-  both sources visible.
+- Open-Meteo European AQI at and above the configured threshold -> exposure
+  policy active.
 - Official radiation message -> confirmed L2 warning regardless of contacts.
 - Raw radiation anomaly -> never `IonizingRadiationAlert`.
 - Provider timeout while fault active -> fault is not cleared.
