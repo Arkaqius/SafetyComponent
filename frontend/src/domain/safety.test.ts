@@ -364,6 +364,41 @@ test('presents GIOŚ as primary current air quality and Open-Meteo as point-mode
   );
 });
 
+test('falls back to the Open-Meteo model when GIOŚ publishes no index', () => {
+  const external = getExternalHazardMonitoring({
+    'sensor.external_hazard_state': entity('clear'),
+    'sensor.external_provider_gios_air_quality': entity('ok', {
+      provider: 'GiosAirQualityApiComponent',
+      observations: [
+        {
+          id: 'gios-current',
+          hazard_type: 'outdoor_air_pollution',
+          provider_level: 'Brak indeksu',
+          display_value: 'Brak indeksu',
+        },
+      ],
+    }),
+    'sensor.external_provider_open_meteo_air_quality': entity('ok', {
+      provider: 'OpenMeteoAirQualityApiComponent',
+      observations: [
+        {
+          id: 'model-current',
+          hazard_type: 'outdoor_air_pollution',
+          display_value: '24',
+          display_unit: 'EAQI',
+        },
+      ],
+    }),
+  });
+
+  assert.deepEqual(getAirQualityPresentation(external), {
+    label: 'EAQI 24',
+    detail: 'Model jakości powietrza dla współrzędnych domu; stacja GIOŚ nie publikuje obecnie indeksu.',
+    tone: 'info',
+    sourceName: 'Open-Meteo',
+  });
+});
+
 test('localizes raw history states for operators', () => {
   assert.equal(localizedEntityState('sensor.fault_riskytemperature', 'Set'), 'Aktywna');
   assert.equal(localizedEntityState('sensor.recovery_manipulatewindowoffice', 'DO_NOT_PERFORM'), 'Brak potrzeby działania');
