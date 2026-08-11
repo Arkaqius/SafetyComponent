@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Any, Mapping
 
 from components.external_apis.core.api_component import ExternalApiComponent
+from components.external_apis.core.http_json_client import HttpJsonError
 from components.external_apis.core.models import ExternalObservation, HazardType, Measurement, parse_datetime
 from components.external_apis.core.registry import register_api_component
 
@@ -17,10 +18,18 @@ class ImgwWarningsApiComponent(ExternalApiComponent):
     component_name = "ImgwWarningsApiComponent"
 
     def fetch_payload(self) -> Any:
-        return self.http_client.get_json(
-            self.provider_config["base_url"],
-            timeout_seconds=self.request_timeout_seconds,
-        )
+        try:
+            return self.http_client.get_json(
+                self.provider_config["base_url"],
+                timeout_seconds=self.request_timeout_seconds,
+            )
+        except HttpJsonError as exc:
+            if exc.code == "http_404" and exc.payload == {
+                "status": False,
+                "message": "No products were found",
+            }:
+                return []
+            raise
 
     def normalize(self, payload: Any, retrieved_at: datetime) -> tuple[ExternalObservation, ...]:
         configured_teryt = {str(code) for code in self.site_config.get("teryt_codes", [])}

@@ -13,9 +13,10 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 class HttpJsonError(RuntimeError):
     """Categorized transport or payload error suitable for diagnostics."""
 
-    def __init__(self, code: str, message: str) -> None:
+    def __init__(self, code: str, message: str, *, payload: Any = None) -> None:
         super().__init__(message)
         self.code = code
+        self.payload = payload
 
 
 class _SafeRedirectHandler(HTTPRedirectHandler):
@@ -83,7 +84,12 @@ class HttpJsonClient:
                     )
                 body = response.read(self.max_response_bytes + 1)
         except HTTPError as exc:
-            raise HttpJsonError(f"http_{exc.code}", f"Provider returned HTTP {exc.code}") from exc
+            error_payload = self._bounded_error_payload(exc)
+            raise HttpJsonError(
+                f"http_{exc.code}",
+                f"Provider returned HTTP {exc.code}",
+                payload=error_payload,
+            ) from exc
         except (URLError, TimeoutError, OSError, HTTPException) as exc:
             reason = "timeout" if "timed out" in str(exc).lower() else "network_error"
             raise HttpJsonError(reason, f"Provider request failed: {exc}") from exc
@@ -95,6 +101,22 @@ class HttpJsonClient:
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise HttpJsonError("malformed_json", "Provider returned malformed JSON") from exc
         self._validate_shape(payload)
+        return payload
+
+    def _bounded_error_payload(self, error: HTTPError) -> Any:
+        """Parse a bounded JSON error body for provider-specific semantics."""
+
+        try:
+            body = error.read(self.max_response_bytes + 1)
+        except (OSError, HTTPException):
+            return None
+        if len(body) > self.max_response_bytes:
+            return None
+        try:
+            payload = json.loads(body.decode("utf-8-sig"))
+            self._validate_shape(payload)
+        except (UnicodeDecodeError, json.JSONDecodeError, HttpJsonError):
+            return None
         return payload
 
     def _validate_shape(self, value: Any, depth: int = 0) -> None:

@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timedelta, timezone
+from io import BytesIO
 from pathlib import Path
+from urllib.error import HTTPError
 
 import pytest
 
@@ -85,6 +87,58 @@ def test_imgw_filters_warnings_by_configured_teryt_and_preserves_authority() -> 
     assert evidence["warning_count"] == 1
     assert [warning["id"] for warning in evidence["warnings"]] == ["imgw-1219-storm"]
     assert evidence["warnings"][0]["locally_applicable"] is True
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected_state", "expected_detail"),
+    [
+        (
+            {"status": False, "message": "No products were found"},
+            ProviderHealthState.OK,
+            None,
+        ),
+        (
+            {"status": False, "message": "Unknown resource"},
+            ProviderHealthState.UNAVAILABLE,
+            "http_404",
+        ),
+    ],
+)
+def test_imgw_distinguishes_empty_warning_feed_from_other_404_errors(
+    payload: dict[str, object],
+    expected_state: ProviderHealthState,
+    expected_detail: str | None,
+) -> None:
+    class ErrorOpener:
+        def open(self, request, *, timeout):  # type: ignore[no-untyped-def]
+            del timeout
+            raise HTTPError(
+                request.full_url,
+                404,
+                "Not Found",
+                {},
+                BytesIO(json.dumps(payload).encode("utf-8")),
+            )
+
+    client = HttpJsonClient(allowed_hosts={"example.invalid"})
+    client._opener = ErrorOpener()
+    component = ImgwWarningsApiComponent(
+        provider_config=_config(),
+        site_config=SITE,
+        http_client=client,
+    )
+
+    result = component.poll()
+
+    assert result.health.state == expected_state
+    assert result.health.detail_code == expected_detail
+    assert result.observations == ()
+    if expected_state == ProviderHealthState.OK:
+        assert result.evidence == {
+            "observation_count": 0,
+            "warning_count": 0,
+            "warnings": [],
+        }
 
 
 def test_open_meteo_air_quality_keeps_european_aqi_model_identity() -> None:
