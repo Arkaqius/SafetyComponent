@@ -32,6 +32,9 @@
 **Out of scope (for clarity):**
 
 - General home‑automation conveniences (scenes, presence lighting, media, non‑safety automations).
+- The informational inventory may expose health metadata for entities used by
+  those conveniences, but it shall not evaluate or control their automation
+  behavior.
 - Brand‑specific hardware design/certification and regulatory approvals (this is a best‑effort, non‑certified project).
 - Provider payload schemas and class-level software design, which are specified in the SSRD and feature architecture documents.
 
@@ -88,6 +91,9 @@ _Note: the data **providers** are external; the **interfaces** and how we use th
 **E) Processing**
 
 - Home automation instance running the Safety App (decision logic, thresholds/FTTI, evidence logging, notifications).
+- Entity-health registry and evaluation for explicit safety dependencies,
+  component-declared dependencies, and the information-only Home Assistant
+  inventory.
 
 **Responsibilities (internal):**
 
@@ -345,6 +351,21 @@ _Interfaces turn §2 elements into **testable contracts**: freshness, latency, a
 - Expose flow temperature, burner state, error codes.
 - **Rate:** flow temp **≥ 0.2 Hz**; **freshness:** drop if `age > 120 s`.
 - **Semantics:** discrete errors as enumerations with code table.
+
+**IR-009 Home Assistant Entity Health**
+
+- Every monitored record shall identify the Home Assistant entity, its source
+  group, current state, availability, last-change time, last-update time, and
+  associated device and area when available.
+- Explicit safety entities shall use installation-configured freshness and
+  validation policies. Component dependencies shall use contracts owned by the
+  consuming Safety Component or application core.
+- Safety-relevant entity health shall distinguish `healthy`, `degraded`,
+  `stale`, and `unavailable`; a failed or unevaluable check shall never be
+  treated as positive healthy evidence.
+- The information-only inventory shall expose native Home Assistant state and
+  metadata without creating a Safety System symptom, fault, notification, or
+  recovery action.
 
 ### 7.2 Input — Cloud/Data Feeds
 
@@ -968,6 +989,126 @@ C-SEC. Diagnostic handling of unavailable inputs supports SG-003.
 - **Integration tests:** FaultManager aggregation, same-tag notification
   refresh, resolved Home Assistant area names, MQTT diagnostic attributes, and
   zero recovery/actuator calls.
+
+---
+
+### 8.5 Entity Health Monitoring Component (C-ENT)
+
+**Scope:** C-ENT supports SG-003 by detecting failures of Home Assistant
+entities whose loss could mask or prevent a safety function. It also exposes a
+separate information-only inventory of other Home Assistant entities and
+devices. C-ENT observes health and shall not command an entity or actuator.
+
+#### 8.5.1 Monitoring groups
+
+| Group | Stable source code | Membership | Policy owner | Safety effect |
+| --- | --- | --- | --- | --- |
+| A — Explicit safety entities | `explicit` | Entity IDs selected by the installation because they participate in important external automations or safety dependencies | `user_config` | Failed checks may create C-ENT symptoms and the C-ENT fault |
+| B — Component dependencies | `component` | Inputs, common entities, and required diagnostic outputs declared by Safety Components or the application core | Owning component or core | Failed checks use the declared fault owner and shall not create duplicate faults |
+| C — Entity/device inventory | `inventory` | All Home Assistant entities and devices visible to the frontend connection | Home Assistant metadata; frontend filters | Information only; no safety effect |
+
+An entity may belong to more than one group. Its runtime record shall preserve
+all source memberships. Group B policy shall not be weakened by Group A
+configuration, and Group C shall remain information-only even when the same
+entity is safety-relevant through Group A or B.
+
+#### 8.5.2 Inputs and outputs
+
+- **IR-009 Home Assistant Entity Health** state and registry metadata.
+- Group A configuration supplied by the installation.
+- Group B dependency contracts registered by Safety Components and the
+  application core, including every configured `common_entities` binding.
+- Per-entity diagnostic MQTT sensors and an aggregate C-ENT summary for Groups
+  A and B.
+- Symptom events for FaultManager aggregation when C-ENT owns the failure.
+- A frontend entity/device inventory obtained through the authenticated Home
+  Assistant connection rather than an unbounded MQTT attribute payload.
+
+#### 8.5.3 Checks and calibration
+
+- Availability and freshness checks are mandatory for every Group A and Group
+  B record.
+- Group A shall configure `max_silence_seconds`; Group B shall receive its
+  freshness limit from the owning component or core dependency contract.
+- Optional checks are allowed for accepted state sets, value type, numeric
+  range, rate of change, and stuck-at behavior.
+- Numeric range and rate-of-change checks shall define units and bounds.
+  Stuck-at checks shall be enabled only when the source has a declared update
+  cadence and expected minimum variation.
+- Every fault-capable check shall define failure debounce and recovery debounce.
+  C-ENT shall apply a startup grace period before evaluating freshness.
+- For a safety-relevant dependency, freshness timeout plus failure debounce
+  shall not exceed the detection budget allocated from its applicable FTTI.
+- Calibration is per entity for Group A and per dependency contract for Group
+  B. Global defaults may reduce repetition but shall not override a more
+  specific policy.
+
+#### 8.5.4 Runtime identifier contract
+
+| Element | Stable ID |
+| --- | --- |
+| Component | `EntityMonitorComponent` |
+| Safety Mechanism | `sm_entity_health` |
+| Per-check symptom | `EntityHealthFailure{EntityKey}{CheckKey}` |
+| Aggregated fault | `EntityHealthFailure` |
+| Fault level | 3 |
+| Per-entity diagnostic | `sensor.entity_health_<entity_key>` |
+| Aggregate diagnostic | `sensor.entity_monitor_summary` |
+| Recovery actions | None |
+
+#### 8.5.5 Requirements (C-ENT → SYS-SR-ENT-xxx)
+
+- **SYS-SR-ENT-001:** The feature shall distinguish the three monitoring groups
+  defined in §8.5.1. The backend registry shall maintain Groups A/B, and the
+  frontend shall join those records with the Group C inventory while preserving
+  every applicable source membership.
+- **SYS-SR-ENT-002:** Group A shall contain only explicitly configured entity
+  IDs and shall validate every configured check and calibration before safety
+  monitoring is enabled.
+- **SYS-SR-ENT-003:** Group B shall be derived from validated component and core
+  dependency declarations, including all configured common entities, without
+  duplicating those entity IDs in installation configuration.
+- **SYS-SR-ENT-004:** Availability and freshness shall be evaluated for every
+  Group A and Group B entity according to the applicable calibration. For a
+  safety-relevant dependency, freshness timeout plus failure debounce shall fit
+  its allocated FTTI detection budget.
+- **SYS-SR-ENT-005:** Optional accepted-state, type, range, rate-of-change, and
+  stuck-at checks shall run only when their complete calibration is present and
+  the current input is valid for that check.
+- **SYS-SR-ENT-006:** A failed, stale, unavailable, malformed, or unevaluable
+  observation shall not provide positive evidence to clear a C-ENT symptom.
+- **SYS-SR-ENT-007:** When C-ENT owns a Group A or Group B failure, it shall set
+  `EntityHealthFailure{EntityKey}{CheckKey}` after failure debounce and clear it
+  only after fresh valid observations pass recovery debounce.
+- **SYS-SR-ENT-008:** When an owning component already defines fault semantics
+  for a Group B dependency, C-ENT shall expose and aggregate its health without
+  creating a duplicate `EntityHealthFailure` symptom.
+- **SYS-SR-ENT-009:** All C-ENT-owned symptoms shall aggregate into the single
+  level-3 `EntityHealthFailure` fault while retaining every affected entity and
+  failed check in diagnostic context.
+- **SYS-SR-ENT-010:** Group C shall include all entities and devices visible to
+  the authenticated Home Assistant frontend connection and support filtering by
+  at least domain, device, area, availability, source group, and last-change or
+  last-update time.
+- **SYS-SR-ENT-011:** Group C data shall not create symptoms, faults,
+  notifications, recovery actions, or application-health degradation.
+- **SYS-SR-ENT-012:** C-ENT shall publish bounded Group A/B diagnostics and
+  shall not copy the complete Group C inventory into MQTT attributes.
+- **SYS-SR-ENT-013:** C-ENT shall use Home Assistant friendly names, device
+  names, and area names for operator presentation while retaining entity IDs and
+  raw state codes as diagnostic data.
+- **SYS-SR-ENT-014:** C-ENT shall register no recovery action and shall not call
+  a Home Assistant actuator service.
+
+#### 8.5.6 Mapping and verification
+
+- **SG-003:** SYS-SR-ENT-001..009/012/014.
+- **Unit tests:** group membership and deduplication, configuration validation,
+  startup grace, availability, freshness, optional check validation, failure
+  and recovery debounce, fault ownership, stable IDs, and no false clear.
+- **Integration tests:** component dependency registration, common-entity
+  inclusion, FaultManager aggregation, bounded MQTT diagnostics, frontend
+  inventory filtering, and zero recovery/actuator calls.
 
 ---
 

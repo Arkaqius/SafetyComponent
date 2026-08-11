@@ -27,6 +27,10 @@ outdoor air quality, and ionizing-radiation information correlated with
 configured windows and external doors. That contract is notification-only and
 permits no actuator calls.
 
+The safety contract also defines Entity Health Monitoring for explicitly
+configured safety dependencies, dependencies declared by Safety Components, and
+an information-only inventory of other Home Assistant entities and devices.
+
 ## Repository layout
 
 - `backend/SafetyFunctions.py` — AppDaemon application lifecycle and wiring.
@@ -43,6 +47,11 @@ permits no actuator calls.
 - `frontend` — SafetyHome React/Vite application.
 - `docs/sys` — HARA, system requirements, and software safety requirements.
 - `docs/features` — feature-level architecture documents.
+
+Feature architecture documents include
+[`External Hazard Monitoring`](docs/features/External%20Hazard%20Monitoring%20-%20Architecture.md)
+and
+[`Entity Health Monitoring`](docs/features/Entity%20Health%20Monitoring%20-%20Architecture.md).
 
 ## Backend quick start
 
