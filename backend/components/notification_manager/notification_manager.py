@@ -172,10 +172,11 @@ class NotificationManager:
         details = []
         for key, value in additional_info.items():
             normalized_key = str(key).strip().lower()
-            label = (
-                self.localizer.text("detail.location")
-                if normalized_key == "location"
-                else self._humanize_identifier(str(key))
+            if normalized_key == "recommendation":
+                continue
+            label = self.localizer.detail_label(
+                normalized_key,
+                self._humanize_identifier(str(key)),
             )
             details.append(f"{label}: {value}")
         return details
@@ -186,6 +187,15 @@ class NotificationManager:
         """Build a user-friendly message for an active fault."""
         lines = [self.localizer.text("notification.active", fault=friendly_name)]
         lines.extend(self._format_details(additional_info))
+        recommendation = self._get_detail(additional_info, "recommendation")
+        if recommendation:
+            lines.extend(
+                [
+                    "",
+                    self.localizer.text("notification.guidance"),
+                    f"- {recommendation}",
+                ]
+            )
         return "\n".join(lines)
 
     def _format_cleared_message(

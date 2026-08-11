@@ -3,13 +3,19 @@
 Responsywna aplikacja React/Vite prezentująca bieżące dane SafetyComponent bezpośrednio z Home Assistanta przez
 `@hakit/core`.
 
+Ten plik jest celowo prowadzony po polsku jako instrukcja operatorska frontendu.
+Dokumentacja systemowa i wymagania są po angielsku; komendy, ścieżki,
+identyfikatory i surowe stany pozostają wspólnym kontraktem technicznym.
+
 ## Uruchomienie lokalne
 
-Wymagane są Node.js 18+ i npm 7+.
+Wymagany jest Node.js 20 zgodnie z `.nvmrc`.
 
 ```powershell
+nvm install 20
+nvm use 20
 Copy-Item .env.example .env
-npm install
+npm ci
 npm run dev
 ```
 
@@ -88,3 +94,6 @@ npm run sync
 ```
 
 Wygenerowany plik `src/supported-types.d.ts` rozszerzy typy encji oraz usług `@hakit/core`.
+
+Zasady zgłaszania zmian, wymagane testy i oczekiwania dla pull requestów opisuje
+[główny przewodnik współpracy](../CONTRIBUTING.md).

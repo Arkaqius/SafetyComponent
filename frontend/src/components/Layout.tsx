@@ -18,10 +18,16 @@ const menuItems: Array<{ title: string; path: string; icon: IconName; descriptio
     description: 'Odczyty i trendy pomiarów',
   },
   {
-    title: 'Safety Doors',
+    title: 'Wejścia',
     path: '/safety-doors',
     icon: 'door',
-    description: 'Timeouty drzwi i bram',
+    description: 'Czas otwarcia drzwi i bram',
+  },
+  {
+    title: 'Zagrożenia zewnętrzne',
+    path: '/external-hazards',
+    icon: 'environment',
+    description: 'Pogoda, powietrze i promieniowanie',
   },
   {
     title: 'Historia',
@@ -98,6 +104,7 @@ export default function Layout() {
   useEffect(() => {
     if (previousPathname.current === location.pathname) return;
     previousPathname.current = location.pathname;
+    window.scrollTo({ top: 0, behavior: 'auto' });
     if (navigationOpen) closeNavigation();
   }, [closeNavigation, location.pathname, navigationOpen]);
 

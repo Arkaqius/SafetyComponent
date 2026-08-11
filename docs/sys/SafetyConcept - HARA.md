@@ -70,7 +70,39 @@ Similarly, a room's temperature could rise above the safe threshold for the situ
 
 **Rain Entering Window:**
 
-This hazard arises when rain enters through an open window, potentially causing water damage to the home's interior and electrical systems. A smart home system can help prevent this by monitoring the weather and alerting residents or automatically closing windows when rain is detected.
+This hazard arises when rain enters through an open window, potentially causing water damage to the home's interior and electrical systems. The system monitors weather and warns residents; automatic closure is outside the scope of External Hazard Monitoring.
+
+**Frost Exposure Through Openings:**
+
+An external door or window left open during frost can cause rapid heat loss,
+localized freezing, increased energy consumption, and in extreme cases damage
+to water-bearing installations. This is distinct from unsafe occupant cold
+exposure because the initiating condition is an external hazard combined with
+an open building aperture.
+
+**Wind Damage to Openings:**
+
+Strong wind or gusts can slam or damage an open window or door and can carry
+rain or debris into the building. Forecast wind alone is advisory; an official
+warning or current/forecast gust threshold combined with an open aperture
+creates the monitored exposure condition.
+
+**Outdoor Air Pollution Entering the Home:**
+
+Opening windows or external doors while outdoor particulate or gaseous
+pollution is elevated can worsen indoor air quality and can conflict with
+otherwise valid ventilation advice from indoor temperature or air-quality
+mechanisms.
+
+**Ionizing Radiation Event:**
+
+An abnormal radiological situation can expose occupants and the environment.
+Closing doors and windows does not provide meaningful shielding from external
+gamma radiation, although official sheltering instructions may require limiting
+air exchange when airborne contamination is possible. Raw public station
+measurements can vary with local background and rainfall and therefore shall not
+be presented as a confirmed emergency without corroboration or an official
+authority message.
 
 ---
 
@@ -158,7 +190,11 @@ _High:_ These hazards can be easily mitigated if residents are notified in time,
 | Water Leak/Flood          | Medium (2) | High (3)   | Medium (2)      | (2x2)x3x2 = 24 | Level 1 |
 | Loss of Heating/Cooling   | Medium (2) | Low (1)    | Low (3)         | (2x2)x1x3 = 12 | Level 3 |
 | Privacy Invasion          | Medium (2) | Medium (2) | Low (3)         | (2x2)x2x3 = 24 | Level 1 |
-| Rain Entering Window      | Medium (2) | Medium (2) | High (1)        | (2x2)x2x1 = 8  | Level 4 |
+| Rain Entering Window      | Medium (2) | Medium (2) | High (1)        | (2x2)x2x1 = 8  | Level 3 |
+| Frost Exposure Through Openings | Medium (2) | Medium (2) | High (1) | (2x2)x2x1 = 8 | Level 3 |
+| Wind Damage to Openings   | Medium (2) | Medium (2) | High (1)        | (2x2)x2x1 = 8  | Level 3 |
+| Outdoor Air Pollution Ingress | Low (1) | High (3) | High (1)       | (2x1)x3x1 = 6  | Level 3 |
+| Ionizing Radiation Event  | High (3)   | Low (1)    | Low (3)         | (2x3)x1x3 = 18 | Level 2 |
 
 > Life-threatening hazards (Fire, Gas Leak, CO Poisoning, Electrical Shock) should never drop below Level 2 after mitigation, even if the formula suggests Level 3 or 4.  
 > Certainly, it's important to note that the initial risk assessment you have conducted takes into consideration the basic safety measures that are commonly found in homes, even without the presence of a home automation system. These traditional safety measures form the baseline upon which the home automation system's additional safety features are built. (ie. RCD, door locks or manual window locks)
@@ -172,8 +208,14 @@ _High:_ These hazards can be easily mitigated if residents are notified in time,
 - The system shall continuously monitor for indications of unauthorized access or unexpected movement when the home is declared unoccupied.
 - The system shall immediately issue alerts to the occupants upon detection of unauthorized access or unexpected movement.
 - The system shall communicate an alert signal to a pre-defined security company upon detection of unauthorized access or unexpected movement.
-- The system shall persistently monitor the status of external doors in relation to the home occupancy status.
-- The system shall ensure closure of external doors within a predefined timeout interval.
+- The system shall monitor configured doors and gates for continuous open
+  duration under an optional installation-defined condition such as household
+  occupancy.
+- The system shall warn occupants when a configured door or gate remains open
+  beyond its applicable timeout; this monitoring shall not automatically close
+  or lock the opening.
+- Open-duration monitoring alone shall not be treated as evidence of intrusion,
+  unexpected entry, or lock integrity.
 - The system shall ascertain the closure of critical windows in the absence of occupants or presence of minors.
 - The system shall ensure external doors are locked when the house is unoccupied or all occupants are asleep.
 - The system shall ensure critical windows are closed when the house is unoccupied or all occupants are asleep.
@@ -210,7 +252,6 @@ _High:_ These hazards can be easily mitigated if residents are notified in time,
 
 - The system shall promptly alert the occupants upon detecting a leak.
 - The system shall disengage the water supply upon detection of a leak.
-- The system shall alert occupants if any doors or windows are open in case of a rain/storm forecast.
 
 #### 1.3.7 Electrical Shock
 
@@ -259,9 +300,55 @@ _High:_ These hazards can be easily mitigated if residents are notified in time,
 #### 1.3.14 Rain Entering Window
 
 - The system shall monitor weather data and predict potential rain events.
-- The system shall alert occupants when windows are left open during rain or when rain is forecasted.
-- The system shall automatically close motorized windows if rain is detected.
+- The system shall alert occupants when windows or external doors are left open during rain, a storm, or an applicable official warning.
+- External Hazard Monitoring shall not automatically close motorized windows or doors.
 - The system shall log open/close events for audit and maintenance purposes.
+
+#### 1.3.15 Frost Exposure Through Openings
+
+- The system shall monitor current and forecast external temperature.
+- The system shall alert occupants when a configured window or external door is
+  open while the frost warning policy is met.
+- The alert shall identify the affected openings, current/forecast temperature,
+  source, source timestamp, and recommended manual action.
+- External Hazard Monitoring shall not actuate windows, doors, heating, or ventilation.
+
+#### 1.3.16 Wind Damage to Openings
+
+- The system shall monitor current and forecast wind gusts and applicable
+  official wind or storm warnings.
+- The system shall alert occupants when a configured window or external door is
+  open while the wind warning policy is met.
+- The alert shall identify the affected openings, gust value or warning level,
+  validity interval, source, and recommended manual action.
+- External Hazard Monitoring shall not actuate windows, doors, blinds, or gates.
+
+#### 1.3.17 Outdoor Air Pollution Ingress
+
+- The system shall monitor current outdoor air quality using
+  independent provider inputs.
+- The system shall alert occupants when a configured window or external door is
+  open while outdoor air quality exceeds the configured policy threshold.
+- Outdoor pollution shall inhibit conflicting manual advice to open windows;
+  External Hazard Monitoring shall not control ventilation or air purifiers.
+- The system shall report the current measurement or model input controlling
+  the decision and preserve its provider semantics.
+
+#### 1.3.18 Ionizing Radiation Event
+
+- The system shall monitor an official radiological authority source through a
+  dedicated provider component.
+- A confirmed official radiological warning shall alert occupants regardless of
+  window or door state; any open external apertures shall be included as
+  contextual information.
+- A raw dose-rate anomaly without official confirmation shall be identified as
+  unconfirmed and shall not be worded as a confirmed radiological emergency.
+- Notifications shall link or refer to the authoritative source and instruct the
+  user to follow official guidance.
+- Notifications shall not claim that closing windows or doors provides radiation
+  shielding.
+- External Hazard Monitoring shall not actuate windows, doors, ventilation, HVAC, sirens, or other
+  equipment in response to radiological data.
 
 ---
 
@@ -306,6 +393,14 @@ For risks that need further mitigation, you'll need to develop a risk mitigation
 | Loss of Heating/Cooling   | Medium (2) | Low (1)    | Low (3)         | (2x2)x1x3 = 12 | Level 3 |
 | Privacy Invasion          | Medium (2) | Low (1)    | Medium (2)      | (2x2)x1x2 = 8  | Level 4 |
 | Rain Entering Window      | Medium (2) | Low (1)    | High (1)        | (2x2)x1x1 = 4  | Level 4 |
+| Frost Exposure Through Openings | Medium (2) | Low (1) | High (1)     | (2x2)x1x1 = 4  | Level 4 |
+| Wind Damage to Openings   | Medium (2) | Low (1)    | High (1)        | (2x2)x1x1 = 4  | Level 4 |
+| Outdoor Air Pollution Ingress | Low (1) | Medium (2) | High (1)      | (2x1)x2x1 = 4  | Level 4 |
+| Ionizing Radiation Event  | High (3)   | Low (1)    | Low (3)         | (2x3)x1x3 = 18 | Level 2 |
+
+> Notification-only monitoring does not claim to reduce the intrinsic ionizing
+> radiation risk. Its residual level therefore remains Level 2 until an
+> authority-approved mitigation policy is defined.
 
 ---
 
@@ -363,6 +458,10 @@ The following table provides audit-ready traceability from each hazard through s
 | System Failure          | 1.3.11           | Backup power, self-checks, diagnostics              | Device uptime, network health monitoring               | Level 2             | Level 2            |
 | Loss of Heating/Cooling | 1.3.12           | Alerts, redundancy, automated failover              | Heating/cooling performance logs, failover tests       | Level 3             | Level 3            |
 | Privacy Invasion        | 1.3.13           | Secure auth/encryption, disable/mask options        | Access logs, AV device monitoring                      | Level 1             | Level 4            |
-| Rain Entering Window    | 1.3.14           | Weather-based alerts, auto-close windows            | Weather forecasts, window actuator status, event logs  | Level 4             | Level 4            |
+| Rain Entering Window    | 1.3.14           | Weather-based manual closure warning                 | Weather forecasts/warnings, contact states, event logs | Level 3             | Level 4            |
+| Frost Exposure Through Openings | 1.3.15 | Manual closure warning | Weather observations/forecasts, contact states, event logs | Level 3 | Level 4 |
+| Wind Damage to Openings | 1.3.16 | Manual closure warning | Gust forecasts, official warnings, contact states | Level 3 | Level 4 |
+| Outdoor Air Pollution Ingress | 1.3.17 | Manual closure warning and advice conflict inhibition | Measured/forecast AQ, contact states, event logs | Level 3 | Level 4 |
+| Ionizing Radiation Event\* | 1.3.18 | Authority-based warning and official-guidance link | PAA status/messages, provider diagnostics, evidence logs | Level 2 | Level 2 |
 
 \* Life-threatening hazards must **not** be reduced below **Level 2** after mitigation, even if formulas suggest a lower level.

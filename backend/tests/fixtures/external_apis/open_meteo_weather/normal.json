@@ -1,0 +1,26 @@
+{
+  "current": {
+    "time": "2026-08-04T12:00:00+00:00",
+    "temperature_2m": 1.5,
+    "apparent_temperature": 0.5,
+    "precipitation": 0.0,
+    "rain": 0.0,
+    "weather_code": 3,
+    "wind_speed_10m": 4.0,
+    "wind_gusts_10m": 7.0
+  },
+  "current_units": {
+    "temperature_2m": "°C",
+    "wind_gusts_10m": "m/s"
+  },
+  "hourly": {
+    "time": ["2026-08-04T12:00:00+00:00", "2026-08-04T13:00:00+00:00"],
+    "temperature_2m": [1.5, -0.5],
+    "precipitation_probability": [5, 90],
+    "precipitation": [0.0, 3.1],
+    "rain": [0.0, 3.1],
+    "weather_code": [3, 95],
+    "wind_speed_10m": [4.0, 12.0],
+    "wind_gusts_10m": [7.0, 21.0]
+  }
+}

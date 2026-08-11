@@ -1,0 +1,28 @@
+[
+  {
+    "id": "imgw-1219-storm",
+    "nazwa_zdarzenia": "Burze",
+    "stopien": "2",
+    "prawdopodobienstwo": "80",
+    "obowiazuje_od": "2026-08-04T12:00:00+00:00",
+    "obowiazuje_do": "2026-08-04T18:00:00+00:00",
+    "opublikowano": "2026-08-04T11:30:00+00:00",
+    "teryt": ["1219"],
+    "tresc": "Prognozowane są burze.",
+    "komentarz": "",
+    "biuro": "IMGW-PIB"
+  },
+  {
+    "id": "imgw-other",
+    "nazwa_zdarzenia": "Silny wiatr",
+    "stopien": "1",
+    "prawdopodobienstwo": "70",
+    "obowiazuje_od": "2026-08-04T12:00:00+00:00",
+    "obowiazuje_do": "2026-08-04T18:00:00+00:00",
+    "opublikowano": "2026-08-04T11:30:00+00:00",
+    "teryt": ["9999"],
+    "tresc": "Poza obszarem.",
+    "komentarz": "",
+    "biuro": "IMGW-PIB"
+  }
+]

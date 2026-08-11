@@ -9,6 +9,10 @@ from pydantic import ConfigDict, Field
 from components.core.localization import LocalizationSettings
 from components.core.mqtt_entity_manager import MqttSettings
 from components.core.pydantic_utils import StrictBaseModel
+from components.safetycomponents.external_hazard.schema import (
+    ExternalHazardPolicy,
+    SiteConfig,
+)
 
 
 class ValidationSettings(StrictBaseModel):
@@ -49,6 +53,7 @@ class AppPolicy(StrictBaseModel):
     strict_validation: bool = True
     validation: ValidationSettings = Field(default_factory=ValidationSettings)
     calibration: CalibrationSettings = Field(default_factory=CalibrationSettings)
+    external_hazard_policy: ExternalHazardPolicy | None = None
     faults: Dict[str, Dict[str, Any]]
 
 
@@ -63,6 +68,8 @@ class UserConfig(StrictBaseModel):
     mqtt: MqttSettings = Field(default_factory=MqttSettings)
     common_entities: Dict[str, str]
     safety_components: Dict[str, Dict[str, Any]]
+    site: SiteConfig | None = None
+    api_components: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
 
     def enabled_components(self) -> Dict[str, Dict[str, Any]]:
         if not self.components_enabled:

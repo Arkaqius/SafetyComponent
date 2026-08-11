@@ -33,6 +33,102 @@ export const MOCK_ENTITIES: EntityMap = {
     },
     3
   ),
+  'sensor.external_hazard_state': entity(
+    'warning',
+    'Zagrożenia zewnętrzne',
+    {
+      active_hazards: ['niebezpieczny wiatr'],
+      affected_openings: ['Brama garażowa'],
+      providers: {
+        OpenMeteoWeatherApiComponent: 'ok',
+        ImgwWarningsApiComponent: 'ok',
+        OpenMeteoAirQualityApiComponent: 'ok',
+      },
+      enabled_providers: [
+        'OpenMeteoWeatherApiComponent',
+        'ImgwWarningsApiComponent',
+        'OpenMeteoAirQualityApiComponent',
+      ],
+      advice_inhibition: [
+        {
+          reason: 'wind',
+          source: 'OpenMeteoWeatherApiComponent',
+          valid_until: timestamp(-120),
+        },
+      ],
+      last_evaluated_at: timestamp(0),
+      notification_only: true,
+      active_symptom_count: 1,
+    },
+    0
+  ),
+  'sensor.external_provider_open_meteo_weather': entity('ok', 'Dane pogodowe Open-Meteo', {
+    provider: 'OpenMeteoWeatherApiComponent',
+    last_attempt_at: timestamp(0),
+    last_success_at: timestamp(0),
+    consecutive_failures: 0,
+    detail_code: null,
+    observation_count: 4,
+    observations: [
+      { id: 'weather-frost', hazard_type: 'frost', provider_level: 'safe', observed_at: timestamp(0), valid_to: timestamp(-60) },
+      { id: 'weather-wind', hazard_type: 'wind', provider_level: 'warning', observed_at: timestamp(0), valid_to: timestamp(-60) },
+      { id: 'weather-rain', hazard_type: 'rain', provider_level: 'safe', observed_at: timestamp(0), valid_to: timestamp(-60) },
+      { id: 'weather-storm', hazard_type: 'storm', provider_level: 'safe', observed_at: timestamp(0), valid_to: timestamp(-60) },
+    ],
+  }),
+  'sensor.external_provider_imgw_warnings': entity('ok', 'Ostrzeżenia IMGW', {
+    provider: 'ImgwWarningsApiComponent',
+    last_attempt_at: timestamp(1),
+    last_success_at: timestamp(1),
+    consecutive_failures: 0,
+    detail_code: null,
+    observation_count: 1,
+    observations: [
+      {
+        id: 'imgw-local-storm',
+        hazard_type: 'official_warning',
+        provider_level: '2',
+        observed_at: timestamp(1),
+        valid_to: timestamp(-180),
+      },
+    ],
+    warning_count: 1,
+    warnings: [
+      {
+        id: 'imgw-local-storm',
+        event_name: 'Burze',
+        degree: '2',
+        probability: '80',
+        valid_from: timestamp(30),
+        valid_to: timestamp(-180),
+        published_at: timestamp(10),
+        regions: ['1219'],
+        content: 'Prognozowane są burze, którym miejscami będą towarzyszyć silne opady deszczu.',
+        comment: '',
+        office: 'IMGW-PIB',
+        locally_applicable: true,
+      },
+    ],
+  }),
+  'sensor.external_provider_open_meteo_air_quality': entity('ok', 'Jakość powietrza Open-Meteo', {
+    provider: 'OpenMeteoAirQualityApiComponent',
+    last_attempt_at: timestamp(4),
+    last_success_at: timestamp(4),
+    consecutive_failures: 0,
+    detail_code: null,
+    observation_count: 1,
+    observations: [
+      {
+        id: 'open-meteo-air-quality',
+        hazard_type: 'outdoor_air_pollution',
+        provider_level: 'safe',
+        observed_at: timestamp(4),
+        valid_to: timestamp(-60),
+        display_value: '31',
+        display_unit: '',
+      },
+    ],
+  }),
   'sensor.fault_riskytemperature': entity(
     'Set',
     'Fault: Risky temperature',

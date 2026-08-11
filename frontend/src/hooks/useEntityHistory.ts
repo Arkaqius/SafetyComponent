@@ -69,5 +69,17 @@ function createMockTimeline(entityId: string, currentState: string, hoursToShow:
     return [point('no_faults', 0.9), point('hazard', 0.17)];
   }
 
+  if (entityId.startsWith('binary_sensor.')) {
+    const normalized = String(currentState).toLowerCase();
+    const minutePoint = (state: string, minutesAgo: number) => ({
+      state,
+      last_changed: now - minutesAgo * 60_000,
+    });
+    if (['on', 'open', 'opened'].includes(normalized)) {
+      return [minutePoint('off', 300), minutePoint('on', 260), minutePoint('off', 248), minutePoint('on', 20)];
+    }
+    return [minutePoint('off', 300), minutePoint('on', 185), minutePoint('off', 169)];
+  }
+
   return [point(currentState, 0.5)];
 }

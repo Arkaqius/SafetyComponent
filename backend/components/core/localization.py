@@ -44,6 +44,22 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "notification.cleared": "Good news - {fault} is no longer active.",
         "notification.guidance": "What you can do:",
         "detail.location": "Location",
+        "detail.hazard": "Hazard",
+        "detail.openings": "Affected openings",
+        "detail.observed_value": "Observed or forecast value",
+        "detail.threshold": "Policy threshold",
+        "detail.evidence_kind": "Evidence type",
+        "detail.source": "Source",
+        "detail.source_time": "Source time",
+        "detail.valid_to": "Valid until",
+        "detail.freshness": "Freshness",
+        "detail.source_reference": "Authoritative reference",
+        "detail.severity": "Severity",
+        "detail.confirmation": "Confirmation",
+        "detail.capability": "Capability",
+        "detail.providers": "Providers",
+        "detail.stations": "Stations",
+        "detail.source_entity": "Opening sensor",
         "recovery.close_windows": "Please close the windows in {location}.",
         "recovery.open_windows": "Please open the windows in {location}.",
     },
@@ -76,6 +92,22 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "notification.cleared": "Dobra wiadomość - problem „{fault}” został rozwiązany.",
         "notification.guidance": "Co możesz zrobić:",
         "detail.location": "Lokalizacja",
+        "detail.hazard": "Zagrożenie",
+        "detail.openings": "Narażone okna lub drzwi",
+        "detail.observed_value": "Wartość zmierzona lub prognozowana",
+        "detail.threshold": "Próg bezpieczeństwa",
+        "detail.evidence_kind": "Rodzaj danych",
+        "detail.source": "Źródło",
+        "detail.source_time": "Czas danych źródłowych",
+        "detail.valid_to": "Ważne do",
+        "detail.freshness": "Aktualność",
+        "detail.source_reference": "Odnośnik urzędowy",
+        "detail.severity": "Waga",
+        "detail.confirmation": "Potwierdzenie",
+        "detail.capability": "Zakres danych",
+        "detail.providers": "Dostawcy danych",
+        "detail.stations": "Stacje pomiarowe",
+        "detail.source_entity": "Czujnik otwarcia",
         "recovery.close_windows": "Zamknij okna w lokalizacji: {location}.",
         "recovery.open_windows": "Otwórz okna w lokalizacji: {location}.",
     },
@@ -108,6 +140,22 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "notification.cleared": "Gute Nachricht – {fault} ist nicht mehr aktiv.",
         "notification.guidance": "Das können Sie tun:",
         "detail.location": "Ort",
+        "detail.hazard": "Gefahr",
+        "detail.openings": "Betroffene Öffnungen",
+        "detail.observed_value": "Mess- oder Prognosewert",
+        "detail.threshold": "Sicherheitsschwelle",
+        "detail.evidence_kind": "Datentyp",
+        "detail.source": "Quelle",
+        "detail.source_time": "Quellzeit",
+        "detail.valid_to": "Gültig bis",
+        "detail.freshness": "Aktualität",
+        "detail.source_reference": "Behördliche Referenz",
+        "detail.severity": "Schweregrad",
+        "detail.confirmation": "Bestätigung",
+        "detail.capability": "Datenbereich",
+        "detail.providers": "Datenanbieter",
+        "detail.stations": "Messstationen",
+        "detail.source_entity": "Öffnungssensor",
         "recovery.close_windows": "Bitte schließen Sie die Fenster in {location}.",
         "recovery.open_windows": "Bitte öffnen Sie die Fenster in {location}.",
     },
@@ -180,6 +228,12 @@ class Localizer:
         }
         key = built_in_keys.get(normalized_id)
         return self.text(key) if key else fallback
+
+    def detail_label(self, detail_name: str, fallback: str) -> str:
+        """Return a localized label for one notification detail."""
+
+        key = f"detail.{detail_name.strip().lower()}"
+        return self._translations.get(key, _TRANSLATIONS["en"].get(key, fallback))
 
     def state_label(self, entity_id: str, state: Any) -> str | None:
         """Return localized display text for a stable backend state code."""

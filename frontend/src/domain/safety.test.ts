@@ -3,11 +3,15 @@ import test from 'node:test';
 import { requestExternalAuthToken, type ExternalAuthHost } from '../auth/externalAuth.js';
 import {
   getFaults,
+  getExternalHazardMonitoring,
+  getAirQualityPresentation,
   getMonitoredTemperatures,
   getRecoveries,
   getSafetyDoors,
   getSafetySummary,
   normalizeState,
+  localizedEntityState,
+  observationDisplayName,
   recoveryNeedsAttention,
   systemStatePresentation,
   type EntityMap,
@@ -116,7 +120,7 @@ test('discovers faults from MQTT entity IDs and orders active faults first', () 
   assert.equal(faults.length, 2);
   assert.equal(faults[0].entityId, 'sensor.fault_hazard');
   assert.equal(faults[0].level, 2);
-  assert.deepEqual(faults[0].locations, ['Office', 'Bedroom']);
+  assert.deepEqual(faults[0].locations, ['Biuro', 'Sypialnia']);
 });
 
 test('only TO_PERFORM recovery states are actionable', () => {
@@ -130,7 +134,7 @@ test('only TO_PERFORM recovery states are actionable', () => {
   });
 
   assert.equal(recoveries[0].status, 'to_perform');
-  assert.equal(recoveries[0].name, 'Office');
+  assert.equal(recoveries[0].name, 'Biuro');
   assert.equal(recoveries[1].status, 'do_not_perform');
 });
 
@@ -158,6 +162,7 @@ test('discovers monitored temperature from SafetyComponent derivative pair', () 
       unit_of_measurement: '°C/min²',
     }),
     'sensor.office_climatesensor_temperature_low_threshold': entity('18', {
+      friendly_name: 'Dolny próg temperatury — Biuro',
       source_entity: 'sensor.office_climatesensor_temperature',
       threshold_type: 'low',
       unit_of_measurement: '°C',
@@ -172,6 +177,7 @@ test('discovers monitored temperature from SafetyComponent derivative pair', () 
   const temperatures = getMonitoredTemperatures(entities);
   assert.equal(temperatures.length, 1);
   assert.equal(temperatures[0].state, 23.25);
+  assert.equal(temperatures[0].roomName, 'Biuro');
   assert.equal(temperatures[0].rate, -0.015);
   assert.equal(temperatures[0].acceleration, 0.001);
   assert.equal(temperatures[0].lowThreshold, 18);
@@ -241,13 +247,122 @@ test('maps level 1 as the most severe active fault', () => {
   assert.equal(summary.tone, 'critical');
 });
 
-test('maps semantic system states while retaining numeric compatibility', () => {
-  const semanticSummary = getSafetySummary(
-    entity('running'),
-    entity('hazard'),
-    [],
-    []
+test('normalizes external hazard aggregate and independent provider diagnostics', () => {
+  const external = getExternalHazardMonitoring({
+    'sensor.external_hazard_state': entity('warning', {
+      active_hazards: ['niebezpieczny wiatr'],
+      enabled_providers: ['OpenMeteoWeatherApiComponent', 'ImgwWarningsApiComponent'],
+      affected_openings: ['Okno biura'],
+      advice_inhibition: [
+        {
+          reason: 'wind',
+          source: 'OpenMeteoWeatherApiComponent',
+          valid_until: '2026-07-29T10:00:00Z',
+        },
+      ],
+      active_symptom_count: 1,
+      notification_only: true,
+      last_evaluated_at: timestamp,
+    }),
+    'sensor.external_provider_open_meteo_weather': entity('ok', {
+      friendly_name: 'Dane pogodowe Open-Meteo',
+      provider: 'OpenMeteoWeatherApiComponent',
+      last_success_at: timestamp,
+      consecutive_failures: 0,
+      observation_count: 4,
+      observations: [
+        {
+          id: 'weather-wind',
+          hazard_type: 'wind',
+          provider_level: 'warning',
+          observed_at: timestamp,
+          valid_to: timestamp,
+        },
+      ],
+    }),
+    'sensor.external_provider_imgw_warnings': entity('ok', {
+      friendly_name: 'Ostrzeżenia IMGW',
+      provider: 'ImgwWarningsApiComponent',
+      consecutive_failures: 0,
+      observation_count: 1,
+      warnings: [
+        {
+          id: 'imgw-1',
+          event_name: 'Burze',
+          degree: '2',
+          probability: '80',
+          valid_from: timestamp,
+          valid_to: timestamp,
+          regions: ['1219'],
+          content: 'Prognozowane są burze.',
+          locally_applicable: true,
+        },
+        {
+          id: 'imgw-outside-home',
+          event_name: 'Silny wiatr',
+          regions: ['1465'],
+          locally_applicable: false,
+        },
+      ],
+    }),
+  });
+
+  assert.equal(external.status, 'warning');
+  assert.deepEqual(external.activeHazards, ['niebezpieczny wiatr']);
+  assert.deepEqual(external.affectedOpenings, ['Okno biura']);
+  assert.equal(external.adviceInhibition[0].reason, 'wind');
+  assert.equal(external.providers.length, 2);
+  assert.equal(
+    external.providers.find(provider => provider.provider === 'OpenMeteoWeatherApiComponent')?.observations[0].hazardType,
+    'wind'
   );
+  assert.equal(external.imgwWarnings.length, 1);
+  assert.equal(external.imgwWarnings[0].eventName, 'Burze');
+  assert.equal(external.imgwWarnings[0].locallyApplicable, true);
+  assert.equal(
+    external.imgwWarnings.some(warning => warning.id === 'imgw-outside-home'),
+    false
+  );
+});
+
+test('presents current Open-Meteo air quality for the home coordinates', () => {
+  const external = getExternalHazardMonitoring({
+    'sensor.external_hazard_state': entity('clear'),
+    'sensor.external_provider_open_meteo_air_quality': entity('ok', {
+      provider: 'OpenMeteoAirQualityApiComponent',
+      observations: [
+        {
+          id: 'model-current',
+          hazard_type: 'outdoor_air_pollution',
+          provider_level: 'safe',
+          display_value: '24',
+          display_unit: 'EAQI',
+        },
+      ],
+    }),
+  });
+
+  assert.deepEqual(getAirQualityPresentation(external), {
+    label: 'EAQI 24',
+    detail: 'Bieżący model jakości powietrza dla współrzędnych domu.',
+    tone: 'safe',
+    sourceName: 'Open-Meteo',
+  });
+  assert.equal(
+    observationDisplayName(external.providers[0].observations[0]),
+    'Jakość powietrza dla współrzędnych domu'
+  );
+});
+
+test('localizes raw history states for operators', () => {
+  assert.equal(localizedEntityState('sensor.fault_riskytemperature', 'Set'), 'Aktywna');
+  assert.equal(localizedEntityState('sensor.recovery_manipulatewindowoffice', 'DO_NOT_PERFORM'), 'Brak potrzeby działania');
+  assert.equal(localizedEntityState('sensor.safetysystem_state', 'no_faults'), 'Brak aktywnych usterek');
+  assert.equal(localizedEntityState('sensor.safety_app_health', 'running'), 'Działa');
+});
+
+test('maps semantic system states while retaining numeric compatibility', () => {
+  const semanticSummary = getSafetySummary(entity('running'), entity('hazard'), [], []);
   const legacySummary = getSafetySummary(entity('running'), entity('2'), [], []);
 
   assert.equal(semanticSummary.effectiveLevel, 2);

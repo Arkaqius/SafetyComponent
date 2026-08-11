@@ -1,15 +1,46 @@
 import { Link } from 'react-router-dom';
 import ActionsList from '../components/ActionsList';
+import DoorLastActivity from '../components/DoorLastActivity';
 import FaultSection from '../components/FaultSection';
 import Icon from '../components/Icon';
+import StatusBadge from '../components/StatusBadge';
 import SummaryCard from '../components/SummaryCard';
-import { formatNumeric, formatRelativeTime, normalizeState, trendPresentation, type ActivityItem } from '../domain/safety';
+import {
+  formatNumeric,
+  formatRelativeTime,
+  getAirQualityPresentation,
+  systemStatePresentation,
+  type TemperatureView,
+} from '../domain/safety';
 import { useSafetyEntities } from '../hooks/useSafetyEntities';
 
 export default function Dashboard() {
-  const { faults, healthEntity, recentActivity, recoveries, summary, systemEntity, temperatures } = useSafetyEntities();
-  const healthState = normalizeState(healthEntity?.state);
-  const unavailableTemperatures = temperatures.filter(temperature => temperature.state === null).length;
+  const { externalHazards, faults, recoveries, safetyDoors, summary, systemEntity, temperatures } = useSafetyEntities();
+  const systemState = systemStatePresentation(systemEntity?.state);
+  const values = temperatures.filter((temperature): temperature is TemperatureView & { state: number } => temperature.state !== null);
+  const average = values.length > 0 ? values.reduce((sum, temperature) => sum + temperature.state, 0) / values.length : null;
+  const minimum = values.reduce<(TemperatureView & { state: number }) | null>(
+    (current, temperature) => (!current || temperature.state < current.state ? temperature : current),
+    null
+  );
+  const maximum = values.reduce<(TemperatureView & { state: number }) | null>(
+    (current, temperature) => (!current || temperature.state > current.state ? temperature : current),
+    null
+  );
+  const fastestRising = temperatures
+    .filter(temperature => temperature.rate !== null && temperature.rate >= 0.005)
+    .sort((left, right) => (right.rate ?? 0) - (left.rate ?? 0))[0];
+  const airQuality = getAirQualityPresentation(externalHazards);
+  const environmentalTone =
+    externalHazards.status === 'severe'
+      ? 'critical'
+      : externalHazards.status === 'warning'
+        ? 'danger'
+        : externalHazards.status === 'watch'
+          ? 'warning'
+          : externalHazards.status === 'clear'
+            ? 'safe'
+            : 'muted';
 
   return (
     <div className='page-stack'>
@@ -20,43 +51,43 @@ export default function Dashboard() {
         <div className='safety-hero-copy'>
           <span className='section-kicker'>Bieżąca ocena</span>
           <h2>{summary.label}</h2>
-          <p>{summary.detail}. Interfejs prezentuje dane na żywo z encji MQTT w Home Assistant.</p>
+          <p>{summary.detail}. Interfejs prezentuje aktualne dane SafetyComponent z Home Assistanta.</p>
         </div>
         <div className='safety-hero-meta'>
           <span>Stan raportowany</span>
-          <strong>{systemEntity?.state ?? '—'}</strong>
+          <strong>{systemState.label}</strong>
           <small>Zmiana {formatRelativeTime(systemEntity?.last_changed)}</small>
         </div>
       </section>
 
-      <section aria-label='Podsumowanie systemu' className='summary-grid'>
+      <section aria-label='Podsumowanie temperatur' className='summary-grid'>
         <SummaryCard
-          detail={healthState === 'running' ? 'Heartbeat i MQTT są aktywne' : `Stan: ${healthEntity?.state ?? 'brak'}`}
-          icon='activity'
-          label='Kondycja usługi'
-          tone={healthState === 'running' ? 'safe' : healthState === 'init' ? 'warning' : 'critical'}
-          value={healthState === 'running' ? 'Działa' : 'Sprawdź'}
-        />
-        <SummaryCard
-          detail={`${summary.shadowedFaultCount} przesłoniętych`}
-          icon='alert'
-          label='Aktywne usterki'
-          tone={summary.activeFaultCount > 0 ? 'danger' : 'safe'}
-          value={summary.activeFaultCount}
-        />
-        <SummaryCard
-          detail={`${recoveries.length} wszystkich encji recovery`}
-          icon='recovery'
-          label='Działania wymagane'
-          tone={summary.actionableRecoveryCount > 0 ? 'warning' : 'safe'}
-          value={summary.actionableRecoveryCount}
-        />
-        <SummaryCard
-          detail={unavailableTemperatures > 0 ? `${unavailableTemperatures} bez aktualnego odczytu` : 'Wszystkie odczyty dostępne'}
+          detail={`${values.length}/${temperatures.length} dostępnych pomiarów`}
           icon='temperature'
-          label='Monitorowane temperatury'
-          tone={unavailableTemperatures > 0 ? 'warning' : 'info'}
-          value={temperatures.length}
+          label='Średnia temperatura'
+          tone={average === null ? 'muted' : 'info'}
+          value={temperatureValue(average)}
+        />
+        <SummaryCard
+          detail={minimum?.roomName ?? 'Brak dostępnego pomiaru'}
+          icon='temperature'
+          label='Najniższa temperatura'
+          tone={minimum ? 'info' : 'muted'}
+          value={temperatureValue(minimum?.state ?? null)}
+        />
+        <SummaryCard
+          detail={maximum?.roomName ?? 'Brak dostępnego pomiaru'}
+          icon='temperature'
+          label='Najwyższa temperatura'
+          tone={maximum ? 'info' : 'muted'}
+          value={temperatureValue(maximum?.state ?? null)}
+        />
+        <SummaryCard
+          detail={fastestRising ? `${formatNumeric(fastestRising.rate, 3)} °C/min` : 'Brak wyraźnego wzrostu'}
+          icon='temperature'
+          label='Temperatura rośnie'
+          tone={fastestRising ? 'warning' : 'safe'}
+          value={fastestRising?.roomName ?? 'Stabilnie'}
         />
       </section>
 
@@ -66,67 +97,74 @@ export default function Dashboard() {
       </div>
 
       <div className='dashboard-columns dashboard-columns-secondary'>
-        <section className='panel temperatures-preview'>
+        <section className='panel environment-overview-panel'>
           <div className='panel-header'>
             <div>
-              <span className='section-kicker'>Temperature Component</span>
-              <h2>Monitorowane pomiary</h2>
+              <span className='section-kicker'>Warunki zewnętrzne</span>
+              <h2>Otoczenie domu</h2>
             </div>
-            <Link className='text-link' to='/temperature'>
-              Pełny widok <Icon name='chevron' size={15} />
+            <Link className='text-link' to='/external-hazards'>
+              Szczegóły <Icon name='chevron' size={15} />
             </Link>
           </div>
-          {temperatures.length > 0 ? (
-            <div className='temperature-preview-list'>
-              {temperatures.slice(0, 6).map(temperature => {
-                const trend = trendPresentation(temperature.rate);
-                return (
-                  <article className='temperature-preview-row' key={temperature.entityId}>
-                    <span className='temperature-preview-icon'>
-                      <Icon name='temperature' size={18} />
-                    </span>
-                    <span className='temperature-preview-name'>
-                      <strong title={temperature.entityId}>{temperature.name}</strong>
-                      <small>Aktualizacja {formatRelativeTime(temperature.lastUpdated)}</small>
-                    </span>
-                    <strong className='temperature-preview-value'>
-                      {formatNumeric(temperature.state, 1)} {temperature.unit}
-                    </strong>
-                    <span className={`trend-chip ${trend.className}`}>
-                      {trend.symbol} {trend.label}
-                    </span>
-                  </article>
-                );
-              })}
-            </div>
-          ) : (
-            <div className='empty-state compact-empty-state'>
-              <strong>Brak monitorowanych temperatur</strong>
-              <p>Nie znaleziono par encji trendów publikowanych przez SafetyComponent.</p>
-            </div>
-          )}
+
+          <div className='environment-overview-grid'>
+            <article className='environment-overview-item'>
+              <span>Aktualna jakość powietrza</span>
+              <strong>{airQuality.label}</strong>
+              <small>
+                {airQuality.sourceName ? `${airQuality.sourceName} · ` : ''}
+                {airQuality.detail}
+              </small>
+              <StatusBadge tone={airQuality.tone}>{airQuality.tone === 'muted' ? 'Brak danych' : 'Aktualny odczyt'}</StatusBadge>
+            </article>
+            <article className='environment-overview-item'>
+              <span>Ostrzeżenia dla domu</span>
+              <strong>{externalHazards.imgwWarnings.length}</strong>
+              <small>
+                {externalHazards.imgwWarnings.length > 0
+                  ? externalHazards.imgwWarnings.map(warning => warning.eventName).join(' · ')
+                  : 'Brak aktualnych ostrzeżeń IMGW dla lokalizacji domu'}
+              </small>
+              <StatusBadge tone={environmentalTone}>
+                {externalHazards.activeHazards.length > 0
+                  ? externalHazards.activeHazards.length === 1
+                    ? '1 aktywne zagrożenie'
+                    : externalHazards.activeHazards.length < 5
+                      ? `${externalHazards.activeHazards.length} aktywne zagrożenia`
+                      : `${externalHazards.activeHazards.length} aktywnych zagrożeń`
+                  : 'Brak ekspozycji'}
+              </StatusBadge>
+            </article>
+          </div>
         </section>
 
-        <section className='panel activity-panel'>
+        <section className='panel door-overview-panel'>
           <div className='panel-header'>
             <div>
-              <span className='section-kicker'>Live state</span>
-              <h2>Ostatnie zmiany</h2>
+              <span className='section-kicker'>Wejścia</span>
+              <h2>Ostatnie otwarcia</h2>
             </div>
-            <Link className='text-link' to='/history'>
-              Historia <Icon name='chevron' size={15} />
+            <Link className='text-link' to='/safety-doors'>
+              Wszystkie wejścia <Icon name='chevron' size={15} />
             </Link>
           </div>
-          {recentActivity.length > 0 ? (
-            <ol className='activity-list'>
-              {recentActivity.slice(0, 6).map(item => (
-                <ActivityRow item={item} key={item.entityId} />
+          {safetyDoors.length > 0 ? (
+            <div className='door-overview-list'>
+              {safetyDoors.map(door => (
+                <article className='door-overview-row' key={door.entityId}>
+                  <span className={`door-overview-indicator door-overview-${door.doorState}`} />
+                  <div>
+                    <strong>{door.sourceEntityName}</strong>
+                    <DoorLastActivity compact door={door} />
+                  </div>
+                </article>
               ))}
-            </ol>
+            </div>
           ) : (
             <div className='empty-state compact-empty-state'>
-              <strong>Brak danych aktywności</strong>
-              <p>Encje SafetyComponent nie są jeszcze dostępne.</p>
+              <strong>Brak monitorowanych wejść</strong>
+              <p>SafetyComponent nie publikuje obecnie monitorowanych wejść.</p>
             </div>
           )}
         </section>
@@ -135,18 +173,6 @@ export default function Dashboard() {
   );
 }
 
-function ActivityRow({ item }: { item: ActivityItem }) {
-  const icon = item.category === 'fault' ? 'alert' : item.category === 'recovery' ? 'recovery' : 'activity';
-  return (
-    <li>
-      <span className={`activity-marker activity-${item.category}`}>
-        <Icon name={icon} size={16} />
-      </span>
-      <span className='activity-copy'>
-        <strong>{item.name}</strong>
-        <small>{formatRelativeTime(item.timestamp)}</small>
-      </span>
-      <code>{item.state}</code>
-    </li>
-  );
+function temperatureValue(value: number | null): string {
+  return value === null ? '—' : `${formatNumeric(value, 1)} °C`;
 }

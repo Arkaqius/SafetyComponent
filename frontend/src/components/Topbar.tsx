@@ -15,6 +15,8 @@ interface TopbarProps {
 const pageLabels: Record<string, { eyebrow: string; title: string }> = {
   '/': { eyebrow: 'SafetyComponent', title: 'Przegląd systemu' },
   '/temperature': { eyebrow: 'Monitoring środowiska', title: 'Temperatury i trendy' },
+  '/safety-doors': { eyebrow: 'Wejścia do domu', title: 'Drzwi i bramy' },
+  '/external-hazards': { eyebrow: 'Otoczenie domu', title: 'Zagrożenia zewnętrzne' },
   '/history': { eyebrow: 'Diagnostyka', title: 'Historia stanów' },
 };
 

@@ -1,4 +1,5 @@
 import Icon from '../components/Icon';
+import DoorLastActivity from '../components/DoorLastActivity';
 import StatusBadge from '../components/StatusBadge';
 import { formatRelativeTime, type SafetyDoorView } from '../domain/safety';
 import { useSafetyEntities } from '../hooks/useSafetyEntities';
@@ -13,11 +14,11 @@ export default function SafetyDoors() {
     <div className='page-stack'>
       <section className='page-introduction'>
         <div>
-          <span className='section-kicker'>Safety Doors Component</span>
+          <span className='section-kicker'>Wejścia</span>
           <h2>Monitorowane drzwi i bramy</h2>
           <p>
-            Lista zawiera wyłącznie wejścia skonfigurowane w SafetyComponent. Alarm staje się aktywny po ciągłym otwarciu dłuższym
-            niż indywidualny timeout.
+            Lista zawiera wyłącznie wejścia skonfigurowane w SafetyComponent. Alarm staje się aktywny po ciągłym otwarciu dłuższym niż
+            indywidualny limit czasu.
           </p>
         </div>
         <div className='page-introduction-stat'>
@@ -26,8 +27,8 @@ export default function SafetyDoors() {
         </div>
       </section>
 
-      <section aria-label='Podsumowanie Safety Doors' className='metric-strip'>
-        <DoorMetric label='Alarm aktywny' value={activeCount} detail='przekroczony timeout' />
+      <section aria-label='Podsumowanie monitorowanych wejść' className='metric-strip'>
+        <DoorMetric label='Alarm aktywny' value={activeCount} detail='przekroczony limit czasu' />
         <DoorMetric label='Otwarte' value={openCount} detail='łącznie z czasem tolerancji' />
         <DoorMetric label='Dostępne' value={availableCount} detail={`z ${safetyDoors.length} skonfigurowanych`} />
       </section>
@@ -43,7 +44,7 @@ export default function SafetyDoors() {
           <div className='empty-state-icon'>
             <Icon name='door' size={30} />
           </div>
-          <strong>Brak skonfigurowanych Safety Doors</strong>
+          <strong>Brak skonfigurowanych wejść</strong>
           <p>Dodaj drzwi lub bramę w konfiguracji backendu, aby rozpocząć monitorowanie.</p>
         </section>
       )}
@@ -71,10 +72,7 @@ function SafetyDoorCard({ door }: { door: SafetyDoorView }) {
           <Icon name='door' size={22} />
         </span>
         <div>
-          <h3 title={door.entityId}>{door.name}</h3>
-          <small className='entity-friendly-name' title={door.sourceEntityId || door.entityId}>
-            {door.sourceEntityName}
-          </small>
+          <h3 title={`${door.name} · ${door.sourceEntityId || door.entityId}`}>{door.sourceEntityName}</h3>
         </div>
         <StatusBadge pulse={door.status === 'active'} tone={presentation.tone}>
           {presentation.label}
@@ -86,9 +84,11 @@ function SafetyDoorCard({ door }: { door: SafetyDoorView }) {
         <span>{presentation.detail}</span>
       </div>
 
+      <DoorLastActivity door={door} />
+
       <dl className='safety-door-details'>
         <div>
-          <dt>Timeout otwarcia</dt>
+          <dt>Limit czasu otwarcia</dt>
           <dd>{formatDuration(door.timeoutSeconds)}</dd>
         </div>
         <div>
@@ -107,7 +107,7 @@ function SafetyDoorCard({ door }: { door: SafetyDoorView }) {
             </div>
             <div>
               <dt>Stan warunku</dt>
-              <dd>{door.conditionState || 'Brak danych'}</dd>
+              <dd>{conditionStateLabel(door.conditionState)}</dd>
             </div>
           </>
         ) : null}
@@ -127,7 +127,7 @@ function doorPresentation(door: SafetyDoorView): {
   if (door.status === 'active') {
     return {
       label: 'Aktywny',
-      headline: 'Timeout przekroczony',
+      headline: 'Przekroczony czas otwarcia',
       detail: 'Drzwi lub brama nadal pozostają otwarte.',
       tone: 'danger',
     };
@@ -135,12 +135,12 @@ function doorPresentation(door: SafetyDoorView): {
   if (door.status === 'blocked') {
     const conditionDetail =
       door.conditionEntityId && door.conditionState
-        ? `Warunek „${door.conditionEntityName}” ma stan „${door.conditionState}”.`
+        ? `Warunek „${door.conditionEntityName}” ma stan „${conditionStateLabel(door.conditionState)}”.`
         : 'Skonfigurowany warunek blokuje monitorowanie.';
     return {
       label: 'Wstrzymane',
       headline: 'Monitoring zablokowany',
-      detail: `${conditionDetail} Timeout nie jest liczony.`,
+      detail: `${conditionDetail} Limit czasu nie jest liczony.`,
       tone: 'muted',
     };
   }
@@ -163,9 +163,19 @@ function doorPresentation(door: SafetyDoorView): {
   return {
     label: 'Bezpieczne',
     headline: 'Zamknięte',
-    detail: 'Timeout nie jest aktywny.',
+    detail: 'Limit czasu nie jest aktywny.',
     tone: 'safe',
   };
+}
+
+function conditionStateLabel(state: string): string {
+  const labels: Record<string, string> = {
+    occupied: 'obecność wykryta',
+    empty: 'dom pusty',
+    unavailable: 'niedostępny',
+    unknown: 'nieznany',
+  };
+  return labels[state.trim().toLowerCase()] ?? (state || 'Brak danych');
 }
 
 function formatDuration(seconds: number | null): string {

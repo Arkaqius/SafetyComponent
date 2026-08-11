@@ -37,6 +37,7 @@ from components.core.types_common import (
 )
 from components.faults_manager.fault_manager import FaultManager
 from components.notification_manager.notification_manager import NotificationManager
+from components.recovery_manager.policy import RecoveryPolicyEvaluator
 
 
 _TOGGLE_SERVICE_DOMAINS = frozenset(
@@ -99,8 +100,16 @@ class RecoveryManager:
         self.mqtt_entities = mqtt_entities
         self._pending_recovery_confirmations: dict[str, dict[str, str]] = {}
         self._recovery_confirmation_handles: dict[str, list[Any]] = {}
+        self._policy_evaluators: list[RecoveryPolicyEvaluator] = []
 
         self._init_all_rec_entities()
+
+    def register_policy_evaluator(
+        self, evaluator: RecoveryPolicyEvaluator
+    ) -> None:
+        """Register a non-actuating policy check for proposed recovery results."""
+
+        self._policy_evaluators.append(evaluator)
 
     def _init_all_rec_entities(self) -> None:
         for _, recovery_actions in self.recovery_actions.items():
@@ -460,6 +469,16 @@ class RecoveryManager:
             f"Validating potential recovery action for symptom: {symptom.name}",
             level="DEBUG",
         )
+
+        for evaluator in self._policy_evaluators:
+            decision = evaluator.evaluate_recovery_policy(recovery_result)
+            if not decision.allowed:
+                self.hass_app.log(
+                    f"Recovery action for symptom {symptom.name} was inhibited by policy: "
+                    f"{decision.reason or 'unspecified reason'}",
+                    level="WARNING",
+                )
+                return False
 
         if self._is_dry_test_failed(symptom.name, recovery_result.changed_sensors):
             self.hass_app.log(

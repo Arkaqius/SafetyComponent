@@ -2,16 +2,16 @@
 
 **Document ID:** SAF-SWR-SSRD
 
-**Version:** 0.3.0
+**Version:** 0.4.0
 
-**Status:** Working baseline aligned with implementation
+**Status:** Software requirements baseline
 
-**Last updated:** 2026-08-02
+**Last updated:** 2026-08-03
 
 ## 1. Purpose and scope
 
-This Software Safety Requirements Document (SSRD) defines the implemented
-software behaviour of the AppDaemon-based SafetyComponent. It refines the
+This Software Safety Requirements Document (SSRD) defines the required software
+behaviour of the AppDaemon-based SafetyComponent. It refines the
 system requirements and hazards described in:
 
 - `SafetyConcept - HARA.md`;
@@ -19,10 +19,10 @@ system requirements and hazards described in:
 - the deployed configuration in `backend/app_cfg.yaml`.
 
 The software in scope includes configuration validation, component lifecycle,
-temperature and safety-door monitoring, fault aggregation, notification and
-recovery handling, MQTT discovery/state publication, localization metadata,
-and backend verification. The web frontend consumes the published contract but
-does not implement safety decisions.
+temperature, safety-door, and external-hazard monitoring, fault aggregation,
+notification and recovery handling, MQTT discovery/state publication,
+localization metadata, and backend verification. The web frontend consumes the
+published contract but does not implement safety decisions.
 
 ## 2. Operating context
 
@@ -49,6 +49,8 @@ The implementation assumes:
 | `SafetyComponent` | Common safety-mechanism lifecycle, listeners, reevaluation, and debounce handling. |
 | `TemperatureComponent` | Direct and forecast low/high temperature evaluation and window recovery proposals. |
 | `SafetyDoorsComponent` | Per-door open-duration monitoring with optional state gating. |
+| `ExternalHazardComponent` | Correlate normalized external hazards with configured openings, create notification-only symptoms, and maintain advice-inhibition state. |
+| External API Components | One isolated component per remote API; validate and normalize provider data without creating faults or actions. |
 | `DerivativeMonitor` | Calculate and publish first- and second-order temperature derivatives. |
 | `FaultManager` | Aggregate symptoms, preserve multi-symptom fault context, and publish fault/system state. |
 | `NotificationManager` | Maintain one notification per fault and refresh its human-readable content. |
@@ -63,7 +65,7 @@ for fault events, NotificationManager runs before RecoveryManager.
 
 ### 4.1 Configuration and initialization
 
-| ID | Requirement | Implemented by |
+| ID | Requirement | Responsible element |
 | --- | --- | --- |
 | SWR-CFG-001 | The application shall validate the complete configuration before enabling any safety mechanism. | `AppCfgValidator.validate` |
 | SWR-CFG-002 | An enabled component shall have a registered implementation and a valid component-specific configuration. | component registry and schemas |
@@ -76,35 +78,49 @@ for fault events, NotificationManager runs before RecoveryManager.
 
 ### 4.2 Temperature monitoring
 
-| ID | Requirement | Implemented by |
+| ID | Requirement | Responsible element |
 | --- | --- | --- |
 | SWR-TEMP-001 | Each configured room shall evaluate direct low temperature (`sm_tc_1`), forecast low temperature (`sm_tc_2`), direct high temperature (`sm_tc_3`), and forecast high temperature (`sm_tc_4`). | `TemperatureComponent` |
 | SWR-TEMP-002 | Direct mechanisms shall compare the current numeric sensor value with the configured low or high threshold. | `sm_tc_1`, `sm_tc_3` |
 | SWR-TEMP-003 | Forecast mechanisms shall calculate a forecast from the current temperature, first derivative, and configured forecast timespan. | `sm_tc_2`, `sm_tc_4` |
-| SWR-TEMP-004 | Missing, non-numeric, `unknown`, or `unavailable` input shall not create a new temperature fault from invalid data. | `_get_temperature_value` and mechanism callbacks |
+| SWR-TEMP-004 | Missing, non-numeric, non-finite, `unknown`, or `unavailable` temperature or derivative input shall neither create a new symptom nor constitute positive evidence to clear an active symptom. | `_get_temperature_value` and mechanism callbacks |
 | SWR-TEMP-005 | Mechanism results shall use configured debounce and reevaluation timing before fault lifecycle changes are emitted. | `SafetyComponent`, temperature calibration |
 | SWR-TEMP-006 | The DerivativeMonitor shall publish only derivative measurements (`_rate` in °C/min and `_rateofrate` in °C/min²); it shall not own temperature safety limits. | `DerivativeMonitor` |
 | SWR-TEMP-007 | Each room shall expose its low and high configured limits as separate diagnostic MQTT sensors named `<source>_low_threshold` and `<source>_high_threshold`. | `TemperatureComponent._register_temperature_threshold_entities` |
 | SWR-TEMP-008 | Threshold sensors shall identify the source entity, threshold type, `area_id`, and current Home Assistant area name. | threshold sensor attributes |
-| SWR-TEMP-009 | Low-temperature symptoms shall provide a window recovery proposal when a window sensor or supported cover actuator is configured. | `RiskyTemperature_recovery` |
+| SWR-TEMP-009 | Low-temperature mechanisms `sm_tc_1` and `sm_tc_2` shall provide `ManipulateWindow<Room>` recovery proposals when a window sensor or supported cover actuator is configured. High-temperature mechanisms `sm_tc_3` and `sm_tc_4` shall create no recovery action, and C-TEMP shall not issue HVAC/climate commands. | `RiskyTemperature_recovery`, recovery registration |
+| SWR-TEMP-010 | Direct low/high symptoms shall aggregate into level-2 `RiskyTemperature`; forecast low/high symptoms shall aggregate into level-3 `RiskyTemperatureForecast`; the direct fault shall shadow the forecast fault and each fault shall remain active until every related symptom clears. | fault catalog and `FaultManager` |
+
+Stable Temperature runtime IDs are:
+
+| Mechanism | Symptom ID pattern | Fault ID |
+| --- | --- | --- |
+| `sm_tc_1` | `RiskyTemperature<Room>` | `RiskyTemperature` |
+| `sm_tc_2` | `RiskyTemperature<Room>ForeCast` | `RiskyTemperatureForecast` |
+| `sm_tc_3` | `RiskyTemperatureHigh<Room>` | `RiskyTemperature` |
+| `sm_tc_4` | `RiskyTemperatureHigh<Room>ForeCast` | `RiskyTemperatureForecast` |
+
+The existing `ForeCast` capitalization is part of the runtime contract.
 
 ### 4.3 Safety Doors monitoring
 
-| ID | Requirement | Implemented by |
+| ID | Requirement | Responsible element |
 | --- | --- | --- |
 | SWR-DOOR-001 | Every configured door or gate shall have an independent `timeout_seconds` value, inherited from component defaults only when no per-door override is supplied. | Safety Doors schema |
 | SWR-DOOR-002 | A continuously open door shall set its symptom only after its own configured timeout expires. | `sm_safety_door_open_timeout` |
 | SWR-DOOR-003 | Closing a door shall cancel its pending timer and clear its symptom. | Safety Doors runtime |
-| SWR-DOOR-004 | An unavailable or unsupported door state shall publish diagnostic state `unavailable` and shall not create a new open-timeout fault. | `_read_door_state` and evaluation flow |
+| SWR-DOOR-004 | An unavailable or unsupported door state shall publish diagnostic state `unavailable`, cancel pending timing, and shall neither create a new open-timeout fault nor clear an already active per-door symptom. | `_read_door_state` and evaluation flow |
 | SWR-DOOR-005 | A configured condition shall monitor its entity alongside the door; pass states enable timing and blocked states suspend timing and clear the symptom. | `SafetyDoorCondition`, Safety Doors runtime |
-| SWR-DOOR-006 | An unavailable or unsupported condition state shall suspend timing and shall not create a new fault. | `_read_condition_state` |
+| SWR-DOOR-006 | An unavailable or unsupported condition state shall publish diagnostic state `unavailable`, cancel pending timing, and shall neither create a new fault nor clear an already active per-door symptom. | `_read_condition_state` |
 | SWR-DOOR-007 | Each Safety Door MQTT entity shall publish door state, elapsed and remaining time, source entity, timeout, condition diagnostics, `area_id`, and resolved area name. | `_publish_door_state` |
 | SWR-DOOR-008 | The current installation calibration shall use 180 s for `GarageGate`, 180 s for `ExternalGate`, 120 s for `LivingRoomTerraceDoor`, and 900 s for `GarageDoor`. | `backend/app_cfg.yaml` |
 | SWR-DOOR-009 | `LivingRoomTerraceDoor` monitoring shall pass only while `sensor.home_monitor_occupancy` is `empty` and shall be blocked while it is `occupied`. | `backend/app_cfg.yaml` |
+| SWR-DOOR-010 | `SafetyDoorsComponent` shall use mechanism ID `sm_safety_door_open_timeout`, per-door symptom IDs `SafetyDoorOpenTimeout<DoorName>`, the single level-2 fault `SafetyDoorOpenTimeout`, and diagnostic entities `sensor.safety_door_<door_name>`. It shall register no recovery action. | Safety Doors runtime and fault catalog |
+| SWR-DOOR-011 | Safety Doors shall not infer unauthorized entry, lock integrity, or intrusion state and shall not close, lock, unlock, or otherwise actuate a door or gate; those security responsibilities are outside C-DOOR. | Safety Doors component boundary |
 
 ### 4.4 Fault aggregation and system state
 
-| ID | Requirement | Implemented by |
+| ID | Requirement | Responsible element |
 | --- | --- | --- |
 | SWR-FLT-001 | A fault shall aggregate all related active symptoms rather than replace the previous contribution from the same fault. | `FaultManager` merged symptom context |
 | SWR-FLT-002 | When one symptom clears but another related symptom remains set, the fault shall remain set and its notification context shall be refreshed. | `FaultManager._clear_fault` |
@@ -116,7 +132,7 @@ for fault events, NotificationManager runs before RecoveryManager.
 
 ### 4.5 Notifications and recovery
 
-| ID | Requirement | Implemented by |
+| ID | Requirement | Responsible element |
 | --- | --- | --- |
 | SWR-NOT-001 | Notifications shall use the configured fault friendly name and resolved user-facing location. | `FaultManager`, `NotificationManager` |
 | SWR-NOT-002 | A fault shall use one stable notification tag throughout its lifecycle. | fault tag generation and `active_notification` |
@@ -129,7 +145,7 @@ for fault events, NotificationManager runs before RecoveryManager.
 
 ### 4.6 Localization contract
 
-| ID | Requirement | Implemented by |
+| ID | Requirement | Responsible element |
 | --- | --- | --- |
 | SWR-LOC-001 | English (`en`), Polish (`pl`), and German (`de`) shall be supported installation languages. | `LocalizationSettings`, `_TRANSLATIONS` |
 | SWR-LOC-002 | Entity IDs, MQTT topic identifiers, fault identifiers, event codes, and raw lifecycle states shall remain language-independent. | backend runtime contract |
@@ -139,7 +155,7 @@ for fault events, NotificationManager runs before RecoveryManager.
 
 ### 4.7 MQTT lifecycle and diagnostics
 
-| ID | Requirement | Implemented by |
+| ID | Requirement | Responsible element |
 | --- | --- | --- |
 | SWR-MQTT-001 | Internal entities shall use MQTT discovery with stable unique IDs and default entity IDs. | `MqttEntityManager` |
 | SWR-MQTT-002 | Discovery payloads may be retained; transient state and attribute payloads shall not be retained. | MQTT settings and publisher |
@@ -147,6 +163,45 @@ for fault events, NotificationManager runs before RecoveryManager.
 | SWR-MQTT-004 | Availability shall be `offline` during initialization and `online` after successful startup or diagnostic invalid-configuration startup. | `SafetyFunctions` |
 | SWR-MQTT-005 | The heartbeat period shall remain shorter than `expire_after` so unchanged entities do not become unavailable. | `heartbeat_seconds`, `expire_after` |
 | SWR-MQTT-006 | Application termination shall publish health and system state `stopped` before publishing availability `offline`. | `SafetyFunctions.terminate` |
+
+### 4.8 External Hazard Monitoring
+
+This subsection defines the software contract for External Hazard Monitoring.
+The detailed design is in
+[`External Hazard Monitoring - Architecture.md`](../features/External%20Hazard%20Monitoring%20-%20Architecture.md).
+
+The stable runtime contract is:
+
+| Fault ID | Safety Mechanism ID (`related_sms`) | Symptom ID contract | Level |
+| --- | --- | --- | ---: |
+| `ExternalWeatherExposure` | `sm_ext_weather_exposure` | `ExternalWeatherExposure{HazardId}{OpeningId}` | 2 |
+| `OutdoorAirQualityExposure` | `sm_ext_outdoor_air_quality_exposure` | `OutdoorAirQualityExposure{OpeningId}` | 3 |
+| `IonizingRadiationAlert` | `sm_ext_ionizing_radiation_alert` | `IonizingRadiationAlert{AuthorityId}` | 2 |
+| `RadiationDataAnomaly` | `sm_ext_radiation_data_anomaly` | `RadiationDataAnomaly{StationSetId}` | 3 |
+| `ExternalHazardDataUnavailable` | `sm_ext_provider_unavailable` | `ExternalHazardDataUnavailable{CapabilityId}` | 3 |
+
+Each Safety Mechanism ID shall occur in exactly one fault's `related_sms` list.
+The complete `SafetyFunctions.app_config` and `SafetyFunctions.user_config`
+contract, including provider policies and opening bindings, is defined in the
+feature architecture §12.
+
+| ID | Requirement | Responsible element |
+| --- | --- | --- |
+| SWR-EXT-001 | The feature shall use separate `OpenMeteoWeatherApiComponent`, `ImgwWarningsApiComponent`, `OpenMeteoAirQualityApiComponent`, and `PaaRadiationApiComponent` classes. | external API component registry |
+| SWR-EXT-002 | API Components shall have independent schemas, polling schedules, caches, failure counters, health, and contract tests. | `components/external_apis/*` |
+| SWR-EXT-003 | API Components shall not inherit from `SafetyComponent` and shall not create symptoms, faults, notifications, recovery actions, or actuator calls. | `ExternalApiComponent` protocol |
+| SWR-EXT-004 | Network work shall run outside the serialized safety-decision callback and results shall return through a bounded queue for ordered EventBus publication. | `ExternalApiRuntime` |
+| SWR-EXT-005 | `ExternalHazardComponent` shall be the only Safety Component in this feature and shall own household thresholds, freshness, cross-provider policy, opening correlation, aggregation, notification context, and the stable runtime identifiers defined above. | `ExternalHazardComponent` |
+| SWR-EXT-006 | Frost, wind/gust, rain/storm, and outdoor-pollution exposure symptoms shall require both applicable valid hazard evidence and an open configured aperture. | external hazard policy mechanisms |
+| SWR-EXT-007 | An official ionizing-radiation warning shall notify regardless of aperture state; open apertures shall be context only. | radiation authority mechanism |
+| SWR-EXT-008 | Raw radiation measurements shall not create the confirmed radiation-alert fault; any enabled anomaly warning shall be explicitly unconfirmed and corroborated by configured policy. | radiation anomaly mechanism |
+| SWR-EXT-009 | Provider timeout, stale data, or schema error shall not clear an active condition and shall publish provider degradation diagnostics. | provider health and clear policy |
+| SWR-EXT-010 | External Hazard Monitoring shall be notification-only, shall register no executable recovery action, and shall make no Home Assistant actuator service call. | negative actuation boundary |
+| SWR-EXT-011 | Same-fault updates shall retain all active hazards/openings and refresh one notification tag using friendly names and localized area labels. | FaultManager and NotificationManager integration |
+| SWR-EXT-012 | External pollution, damaging wind, storm, or confirmed sheltering policy shall inhibit contradictory advice to open external apertures. | `RecoveryPolicyEvaluator` integration |
+| SWR-EXT-013 | `PaaRadiationApiComponent` shall consume official PAA radiological messages and station dose-rate measurements while preserving their distinct semantics, timestamps, validity, units, and source identity. | `PaaRadiationApiComponent` |
+| SWR-EXT-014 | `ImgwWarningsApiComponent` shall expose only current sanitized warnings matching at least one configured TERYT code, mark them as locally applicable, and dispatch locally applicable recognized hazards into household safety policy. | `ImgwWarningsApiComponent` and provider diagnostic MQTT entity |
+| SWR-EXT-015 | Each provider diagnostic MQTT entity shall expose an `observations` list of at most 64 summaries containing the stable observation ID, hazard type, provider level, observation and validity timestamps, and an optional operator-display value and unit. The list shall contain normalized current observations only and shall not expose unbounded provider payloads. | `ExternalHazardComponent._publish_provider_health` |
 
 ## 5. Non-functional requirements
 
@@ -179,6 +234,16 @@ valid measure of safety-logic verification.
 
 ## 7. Requirements traceability
 
+| Safety scope | SYS requirements | Software requirements |
+| --- | --- | --- |
+| SG-001 Unsafe Cold Exposure | `SYS-SR-TEMP-001/002/004/005/007/008/009/010` | `SWR-TEMP-*` |
+| SG-002 Temperature Prediction | `SYS-SR-TEMP-001/003/004/005/006/009/010` | `SWR-TEMP-*` |
+| SG-004 Unsafe Heat Exposure | `SYS-SR-TEMP-001/002/003/004/005/006/007/008/010` | `SWR-TEMP-*` |
+| SG-015 Door/Gate Open-Duration Contribution | `SYS-SR-DOOR-001..011` | `SWR-DOOR-*` |
+| SG-011/017/018 External Weather Exposure | `SYS-SR-EXT-001..005/010..013/040..043/050..052` | `SWR-EXT-*` |
+| SG-019 Outdoor Pollution Exposure | `SYS-SR-EXT-001..005/020..023/040..043/050..052` | `SWR-EXT-*` |
+| SG-020 Ionizing Radiation Information | `SYS-SR-EXT-001..005/030..034/040..043/050..052` | `SWR-EXT-*` |
+
 | Requirement group | Primary tests |
 | --- | --- |
 | SWR-CFG-* | `test_app_cfg_validator.py`, `test_component_schema_validation.py` |
@@ -189,19 +254,17 @@ valid measure of safety-logic verification.
 | SWR-REC-* | `test_recovery_man.py` |
 | SWR-LOC-* | `test_localization.py`, `test_mqtt_entity_manager.py`, frontend domain tests |
 | SWR-MQTT-* | `test_mqtt_entity_manager.py`, `test_safetyFunctions.py` |
+| SWR-EXT-* | provider contract tests, external hazard policy tests, EventBus/FaultManager/notification integration tests, negative-actuation tests |
 | SWR-NFR-005 | pytest-cov application-code report |
 
-## 8. Known gaps and planned extensions
+## 8. Assurance boundary
 
-- Fire, smoke, gas, water-leak, privacy, and additional access-control hazard
-  components are not implemented.
-- Evidence persistence beyond Home Assistant history/logging is not
-  implemented.
-- System operating modes such as Sleep, Local-only, and Maintenance are not
-  implemented.
-- Hardware and communication paths are not certified safety channels; this
-  software provides monitoring and response assistance within the Home
-  Assistant installation.
+SafetyComponent provides monitoring and response assistance within a Home
+Assistant installation. Home Assistant, AppDaemon, the host, networks, sensors,
+actuators, cloud providers, and notification transports are external or
+non-certified dependencies. This software and its documentation do not claim
+regulatory certification, guaranteed provider availability, medical guidance,
+dosimetry, or physical radiation shielding.
 
 ## 9. Change control
 

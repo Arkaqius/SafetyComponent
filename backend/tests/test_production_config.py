@@ -17,8 +17,8 @@ def test_production_door_timeouts_match_reviewed_calibration() -> None:
     default_timeout = safety_doors["defaults"]["timeout_seconds"]
     doors = safety_doors["doors"]
 
-    assert doors["GarageGate"]["timeout_seconds"] == 180
-    assert doors["ExternalGate"]["timeout_seconds"] == 180
+    assert doors["GarageGate"]["timeout_seconds"] == 300
+    assert doors["ExternalGate"]["timeout_seconds"] == 300
     assert doors["LivingRoomTerraceDoor"].get(
         "timeout_seconds", default_timeout
     ) == 120

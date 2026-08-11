@@ -3,6 +3,8 @@ export const SYSTEM_STATE_ENTITY_ID = 'sensor.safetysystem_state';
 export const FAULT_PREFIX = 'sensor.fault_';
 export const RECOVERY_PREFIX = 'sensor.recovery_';
 export const SAFETY_DOOR_PREFIX = 'sensor.safety_door_';
+export const EXTERNAL_HAZARD_ENTITY_ID = 'sensor.external_hazard_state';
+export const EXTERNAL_PROVIDER_PREFIX = 'sensor.external_provider_';
 
 export interface EntitySnapshot {
   state: string;
@@ -40,6 +42,7 @@ export interface RecoveryView {
 export interface TemperatureView {
   entityId: string;
   name: string;
+  roomName: string;
   state: number | null;
   unit: string;
   rateEntityId: string;
@@ -116,9 +119,79 @@ export function systemStatePresentation(state: unknown): { label: string; tone: 
   if (normalized === 'stopped') return { label: 'Zatrzymany', tone: 'critical' };
   const level = parseSystemLevel(normalized);
   const presentation = level === null ? undefined : LEVEL_PRESENTATION[level];
-  return presentation
-    ? { label: presentation.label, tone: presentation.tone }
-    : { label: String(state ?? 'Stan nieznany'), tone: 'muted' };
+  return presentation ? { label: presentation.label, tone: presentation.tone } : { label: String(state ?? 'Stan nieznany'), tone: 'muted' };
+}
+
+export type ExternalHazardStatus = 'clear' | 'watch' | 'warning' | 'severe' | 'unavailable' | 'unknown';
+export type ExternalProviderStatus = 'ok' | 'stale' | 'unavailable' | 'schema_error' | 'unknown';
+
+export interface ExternalProviderView {
+  entityId: string;
+  name: string;
+  provider: string;
+  status: ExternalProviderStatus;
+  state: string;
+  lastAttemptAt?: string;
+  lastSuccessAt?: string;
+  consecutiveFailures: number;
+  detailCode: string;
+  observationCount: number;
+  observations: ExternalObservationView[];
+  warnings: ImgwWarningView[];
+  lastUpdated?: string;
+}
+
+export interface ExternalObservationView {
+  id: string;
+  hazardType: string;
+  providerLevel: string;
+  observedAt?: string;
+  validTo?: string;
+  displayValue: string;
+  displayUnit: string;
+}
+
+export interface AirQualityPresentation {
+  label: string;
+  detail: string;
+  tone: StatusTone;
+  sourceName: string;
+}
+
+export interface ImgwWarningView {
+  id: string;
+  eventName: string;
+  degree: string;
+  probability: string;
+  validFrom?: string;
+  validTo?: string;
+  publishedAt?: string;
+  regions: string[];
+  content: string;
+  comment: string;
+  office: string;
+  locallyApplicable: boolean;
+}
+
+export interface AdviceInhibitionView {
+  reason: string;
+  source: string;
+  validUntil?: string;
+}
+
+export interface ExternalHazardView {
+  entityId: string;
+  status: ExternalHazardStatus;
+  state: string;
+  activeHazards: string[];
+  affectedOpenings: string[];
+  adviceInhibition: AdviceInhibitionView[];
+  activeSymptomCount: number;
+  notificationOnly: boolean;
+  lastEvaluatedAt?: string;
+  lastUpdated?: string;
+  providers: ExternalProviderView[];
+  imgwWarnings: ImgwWarningView[];
 }
 
 const UNAVAILABLE_STATES = new Set(['unavailable', 'unknown', 'none', '']);
@@ -166,7 +239,7 @@ export function friendlyEntityName(entityId: string, entity?: EntitySnapshot): s
     .replace(/^Safety Door:\s*/i, '')
     .replace(/^ManipulateWindow\s*/i, '');
   const fallback = entityId.split('.', 2)[1] ?? entityId;
-  return humanize(configuredName || fallback.replace(/^(fault|recovery)_/, ''));
+  return localizedTechnicalName(configuredName || fallback.replace(/^(fault|recovery)_/, ''));
 }
 
 export function getFaults(entities: EntityMap): FaultView[] {
@@ -185,7 +258,7 @@ export function getFaults(entities: EntityMap): FaultView[] {
       entityId,
       name: friendlyEntityName(entityId, entity),
       description: stringAttribute(entity, 'description'),
-      locations: splitLocations(entity.attributes.location),
+      locations: splitLocations(entity.attributes.location).map(localizedRoomName),
       level: getFaultLevel(entity),
       state: entity.state,
       status: getFaultStatus(entity.state),
@@ -240,18 +313,15 @@ export function getMonitoredTemperatures(entities: EntityMap): TemperatureView[]
         {
           entityId,
           name: friendlyEntityName(entityId, sourceEntity),
+          roomName: temperatureRoomName(sourceEntity, lowThresholdEntity, highThresholdEntity),
           state: numericState(sourceEntity.state),
           unit: stringAttribute(sourceEntity, 'unit_of_measurement') || '°C',
           rateEntityId,
           rate: numericState(rateEntity.state),
           accelerationEntityId,
           acceleration: numericState(entities[accelerationEntityId]?.state),
-          lowThreshold:
-            numericState(lowThresholdEntity?.state) ??
-            numericAttribute(rateEntity, 'low_temperature_threshold'),
-          highThreshold:
-            numericState(highThresholdEntity?.state) ??
-            numericAttribute(rateEntity, 'high_temperature_threshold'),
+          lowThreshold: numericState(lowThresholdEntity?.state) ?? numericAttribute(rateEntity, 'low_temperature_threshold'),
+          highThreshold: numericState(highThresholdEntity?.state) ?? numericAttribute(rateEntity, 'high_temperature_threshold'),
           lastUpdated: latestTimestamp(
             sourceEntity.last_updated,
             rateEntity.last_updated,
@@ -278,24 +348,21 @@ export function getSafetyDoors(entities: EntityMap): SafetyDoorView[] {
     .map(([entityId, entity]) => {
       const normalizedState = normalizeState(entity.state);
       const rawDoorState = normalizeState(entity.attributes.door_state);
-      const doorState: SafetyDoorView['doorState'] =
-        rawDoorState === 'open' || rawDoorState === 'closed' ? rawDoorState : 'unavailable';
+      const doorState: SafetyDoorView['doorState'] = rawDoorState === 'open' || rawDoorState === 'closed' ? rawDoorState : 'unavailable';
       const status: SafetyDoorStatus =
         normalizedState === 'active'
           ? 'active'
           : normalizedState === 'blocked'
             ? 'blocked'
-          : normalizedState === 'inactive'
-            ? 'inactive'
-            : UNAVAILABLE_STATES.has(normalizedState)
-              ? 'unavailable'
-              : 'unknown';
+            : normalizedState === 'inactive'
+              ? 'inactive'
+              : UNAVAILABLE_STATES.has(normalizedState)
+                ? 'unavailable'
+                : 'unknown';
       const openedAt = optionalStringAttribute(entity, 'opened_at');
       const reportedOpenDuration = numericAttribute(entity, 'open_duration_seconds') ?? 0;
       const liveOpenDuration =
-        doorState === 'open' && openedAt
-          ? Math.max(reportedOpenDuration, elapsedSeconds(openedAt))
-          : reportedOpenDuration;
+        doorState === 'open' && openedAt ? Math.max(reportedOpenDuration, elapsedSeconds(openedAt)) : reportedOpenDuration;
       const timeoutSeconds = numericAttribute(entity, 'timeout_seconds');
       const rawConditionResult = normalizeState(entity.attributes.condition_result);
       const conditionResult: SafetyDoorConditionResult =
@@ -322,13 +389,9 @@ export function getSafetyDoors(entities: EntityMap): SafetyDoorView[] {
         timeoutSeconds,
         openDurationSeconds: liveOpenDuration,
         remainingSeconds:
-          status === 'blocked' || timeoutSeconds === null
-            ? reportedRemainingSeconds
-            : Math.max(0, timeoutSeconds - liveOpenDuration),
+          status === 'blocked' || timeoutSeconds === null ? reportedRemainingSeconds : Math.max(0, timeoutSeconds - liveOpenDuration),
         conditionEntityId,
-        conditionEntityName: conditionEntityId
-          ? friendlyEntityName(conditionEntityId, entities[conditionEntityId])
-          : '',
+        conditionEntityName: conditionEntityId ? friendlyEntityName(conditionEntityId, entities[conditionEntityId]) : '',
         conditionState: stringAttribute(entity, 'condition_state'),
         conditionResult,
         openedAt,
@@ -341,6 +404,148 @@ export function getSafetyDoors(entities: EntityMap): SafetyDoorView[] {
         Number(right.doorState === 'open') - Number(left.doorState === 'open') ||
         left.name.localeCompare(right.name, 'pl')
     );
+}
+
+export function getExternalHazardMonitoring(entities: EntityMap): ExternalHazardView {
+  const aggregate = entities[EXTERNAL_HAZARD_ENTITY_ID];
+  const normalizedState = normalizeState(aggregate?.state);
+  const status: ExternalHazardStatus =
+    normalizedState === 'clear' ||
+    normalizedState === 'watch' ||
+    normalizedState === 'warning' ||
+    normalizedState === 'severe' ||
+    normalizedState === 'unavailable'
+      ? normalizedState
+      : normalizedState
+        ? 'unknown'
+        : 'unavailable';
+  const enabledProviders = new Set(stringArrayAttribute(aggregate, 'enabled_providers'));
+  const providers = Object.entries(entities)
+    .filter(
+      ([entityId, entity]) =>
+        entityId.startsWith(EXTERNAL_PROVIDER_PREFIX) &&
+        (enabledProviders.size === 0 || enabledProviders.has(stringAttribute(entity, 'provider')))
+    )
+    .map(([entityId, entity]) => {
+      const providerState = normalizeState(entity.state);
+      const providerStatus: ExternalProviderStatus =
+        providerState === 'ok' || providerState === 'stale' || providerState === 'unavailable' || providerState === 'schema_error'
+          ? providerState
+          : 'unknown';
+      return {
+        entityId,
+        name: friendlyEntityName(entityId, entity),
+        provider: stringAttribute(entity, 'provider'),
+        status: providerStatus,
+        state: entity.state,
+        lastAttemptAt: optionalStringAttribute(entity, 'last_attempt_at'),
+        lastSuccessAt: optionalStringAttribute(entity, 'last_success_at'),
+        consecutiveFailures: numericAttribute(entity, 'consecutive_failures') ?? 0,
+        detailCode: stringAttribute(entity, 'detail_code'),
+        observationCount: numericAttribute(entity, 'observation_count') ?? 0,
+        observations: externalObservationsAttribute(entity),
+        warnings: imgwWarningsAttribute(entity),
+        lastUpdated: entity.last_updated ?? entity.last_changed,
+      };
+    })
+    .sort((left, right) => Number(left.status === 'ok') - Number(right.status === 'ok') || left.name.localeCompare(right.name, 'pl'));
+
+  const imgwWarnings = providers.flatMap(provider => provider.warnings).filter(warning => warning.locallyApplicable);
+
+  return {
+    entityId: EXTERNAL_HAZARD_ENTITY_ID,
+    status,
+    state: aggregate?.state ?? 'unavailable',
+    activeHazards: stringArrayAttribute(aggregate, 'active_hazards'),
+    affectedOpenings: stringArrayAttribute(aggregate, 'affected_openings'),
+    adviceInhibition: adviceInhibitionAttribute(aggregate),
+    activeSymptomCount: numericAttribute(aggregate, 'active_symptom_count') ?? 0,
+    notificationOnly: aggregate?.attributes.notification_only === true,
+    lastEvaluatedAt: optionalStringAttribute(aggregate, 'last_evaluated_at'),
+    lastUpdated: aggregate?.last_updated ?? aggregate?.last_changed,
+    providers,
+    imgwWarnings,
+  };
+}
+
+export function getAirQualityPresentation(external: ExternalHazardView): AirQualityPresentation {
+  const openMeteo = external.providers.find(provider => provider.provider === 'OpenMeteoAirQualityApiComponent');
+  const openMeteoObservation = openMeteo?.observations.find(observation => observation.hazardType === 'outdoor_air_pollution');
+
+  if (openMeteo && ['ok', 'stale'].includes(openMeteo.status) && openMeteoObservation?.displayValue) {
+    const value = Number(openMeteoObservation.displayValue);
+    const tone: StatusTone = Number.isFinite(value) ? (value <= 40 ? 'safe' : value <= 60 ? 'warning' : 'danger') : 'info';
+    return {
+      label: europeanAqiLabel(openMeteoObservation),
+      detail: 'Bieżący model jakości powietrza dla współrzędnych domu.',
+      tone,
+      sourceName: 'Open-Meteo',
+    };
+  }
+
+  return {
+    label: 'Brak aktualnych danych',
+    detail: 'Żadne źródło jakości powietrza nie przekazało bieżącego indeksu.',
+    tone: 'muted',
+    sourceName: '',
+  };
+}
+
+function europeanAqiLabel(observation: ExternalObservationView): string {
+  const unit = observation.displayUnit.trim();
+  return unit.toUpperCase() === 'EAQI' ? `EAQI ${observation.displayValue}` : `EAQI ${observation.displayValue}${unit ? ` ${unit}` : ''}`;
+}
+
+export function observationDisplayName(observation: ExternalObservationView): string {
+  const labels: Record<string, string> = {
+    frost: 'Mróz i temperatura zewnętrzna',
+    wind: 'Wiatr i porywy',
+    rain: 'Opady',
+    storm: 'Burze',
+    official_warning: 'Oficjalne ostrzeżenia dla domu',
+    ionizing_radiation: 'Promieniowanie jonizujące',
+  };
+  if (observation.hazardType === 'outdoor_air_pollution') {
+    return 'Jakość powietrza dla współrzędnych domu';
+  }
+  return labels[observation.hazardType] ?? humanize(observation.hazardType);
+}
+
+export function localizedEntityState(entityId: string, state: unknown): string {
+  const normalized = normalizeState(state);
+  if (entityId.startsWith(FAULT_PREFIX)) {
+    const labels: Record<FaultStatus, string> = {
+      set: 'Aktywna',
+      shadowed: 'Przesłonięta',
+      cleared: 'Usunięta',
+      not_tested: 'Niesprawdzona',
+      unavailable: 'Niedostępna',
+      unknown: 'Stan nieznany',
+    };
+    return labels[getFaultStatus(state)];
+  }
+  if (entityId.startsWith(RECOVERY_PREFIX)) {
+    const labels: Record<RecoveryStatus, string> = {
+      to_perform: 'Do wykonania',
+      do_not_perform: 'Brak potrzeby działania',
+      unavailable: 'Niedostępne',
+      unknown: 'Stan nieznany',
+    };
+    return labels[getRecoveryStatus(state)];
+  }
+  if (entityId === SYSTEM_STATE_ENTITY_ID) return systemStatePresentation(state).label;
+  if (entityId === HEALTH_ENTITY_ID) {
+    const labels: Record<string, string> = {
+      running: 'Działa',
+      init: 'Uruchamianie',
+      invalid_cfg: 'Błędna konfiguracja',
+      stopped: 'Zatrzymany',
+      unavailable: 'Niedostępny',
+      unknown: 'Stan nieznany',
+    };
+    return labels[normalized] ?? humanize(normalized || 'stan nieznany');
+  }
+  return humanize(normalized || 'stan nieznany');
 }
 
 export function getRecentActivity(entities: EntityMap, limit = 8): ActivityItem[] {
@@ -517,6 +722,130 @@ function optionalStringAttribute(entity: EntitySnapshot | undefined, key: string
 
 function numericAttribute(entity: EntitySnapshot | undefined, key: string): number | null {
   return numericState(entity?.attributes[key]);
+}
+
+function stringArrayAttribute(entity: EntitySnapshot | undefined, key: string): string[] {
+  const value = entity?.attributes[key];
+  if (!Array.isArray(value)) return [];
+  return value
+    .map(String)
+    .map(item => item.trim())
+    .filter(Boolean);
+}
+
+function adviceInhibitionAttribute(entity: EntitySnapshot | undefined): AdviceInhibitionView[] {
+  const value = entity?.attributes.advice_inhibition;
+  if (!Array.isArray(value)) return [];
+  return value.flatMap(item => {
+    if (!item || typeof item !== 'object') return [];
+    const record = item as Record<string, unknown>;
+    const reason = typeof record.reason === 'string' ? record.reason : '';
+    const source = typeof record.source === 'string' ? record.source : '';
+    const validUntil = typeof record.valid_until === 'string' ? record.valid_until : undefined;
+    return reason && source ? [{ reason, source, validUntil }] : [];
+  });
+}
+
+function imgwWarningsAttribute(entity: EntitySnapshot | undefined): ImgwWarningView[] {
+  const value = entity?.attributes.warnings;
+  if (!Array.isArray(value)) return [];
+  return value.flatMap(item => {
+    if (!item || typeof item !== 'object') return [];
+    const record = item as Record<string, unknown>;
+    const id = typeof record.id === 'string' ? record.id.trim() : '';
+    const eventName = typeof record.event_name === 'string' ? record.event_name.trim() : '';
+    if (!id || !eventName) return [];
+    return [
+      {
+        id,
+        eventName,
+        degree: String(record.degree ?? '').trim(),
+        probability: String(record.probability ?? '').trim(),
+        validFrom: typeof record.valid_from === 'string' ? record.valid_from : undefined,
+        validTo: typeof record.valid_to === 'string' ? record.valid_to : undefined,
+        publishedAt: typeof record.published_at === 'string' ? record.published_at : undefined,
+        regions: Array.isArray(record.regions) ? record.regions.map(String) : [],
+        content: typeof record.content === 'string' ? record.content : '',
+        comment: typeof record.comment === 'string' ? record.comment : '',
+        office: typeof record.office === 'string' ? record.office : '',
+        locallyApplicable: record.locally_applicable === true,
+      },
+    ];
+  });
+}
+
+function externalObservationsAttribute(entity: EntitySnapshot | undefined): ExternalObservationView[] {
+  const value = entity?.attributes.observations;
+  if (!Array.isArray(value)) return [];
+  return value.flatMap(item => {
+    if (!item || typeof item !== 'object') return [];
+    const record = item as Record<string, unknown>;
+    const id = typeof record.id === 'string' ? record.id.trim() : '';
+    const hazardType = typeof record.hazard_type === 'string' ? record.hazard_type.trim() : '';
+    if (!id || !hazardType) return [];
+    return [
+      {
+        id,
+        hazardType,
+        providerLevel: String(record.provider_level ?? '').trim(),
+        observedAt: typeof record.observed_at === 'string' ? record.observed_at : undefined,
+        validTo: typeof record.valid_to === 'string' ? record.valid_to : undefined,
+        displayValue: String(record.display_value ?? '').trim(),
+        displayUnit: String(record.display_unit ?? '').trim(),
+      },
+    ];
+  });
+}
+
+function temperatureRoomName(
+  sourceEntity: EntitySnapshot,
+  lowThresholdEntity: EntitySnapshot | undefined,
+  highThresholdEntity: EntitySnapshot | undefined
+): string {
+  for (const thresholdEntity of [lowThresholdEntity, highThresholdEntity]) {
+    const configuredName = stringAttribute(thresholdEntity, 'friendly_name');
+    const roomMatch = configuredName.match(/[—–]\s*([^—–]+)$/);
+    if (roomMatch?.[1]) return localizedRoomName(roomMatch[1]);
+  }
+  const sourceName = stringAttribute(sourceEntity, 'friendly_name');
+  const prefix = sourceName.split(/\s+-\s+/, 1)[0]?.trim();
+  if (prefix && prefix !== sourceName) return localizedRoomName(prefix);
+  return localizedRoomName(
+    sourceName.replace(/\s+(?:climate\s*sensor|czujnik\s+klimatu|heating\s+circuit).*$/i, '').replace(/\s+temperature$/i, '') || sourceName
+  );
+}
+
+function localizedTechnicalName(value: string): string {
+  const normalized = normalizeState(value).replace(/_/g, '');
+  const labels: Record<string, string> = {
+    riskytemperature: 'Niebezpieczna temperatura',
+    riskytemperatureforecast: 'Ryzyko niebezpiecznej temperatury',
+    safetydooropentimeout: 'Zbyt długo otwarte wejście',
+    externalweatherexposure: 'Narażenie domu na pogodę',
+    outdoorairqualityexposure: 'Narażenie na zanieczyszczone powietrze',
+    externalhazarddataunavailable: 'Brak danych o warunkach zewnętrznych',
+  };
+  return labels[normalized] ?? localizedRoomName(value);
+}
+
+function localizedRoomName(value: string): string {
+  const normalized = normalizeState(value).replace(/_/g, '');
+  const labels: Record<string, string> = {
+    bedroom: 'Sypialnia',
+    entrance: 'Wejście',
+    garage: 'Garaż',
+    kidsroom: 'Pokój dziecięcy',
+    kitchen: 'Kuchnia',
+    livingroom: 'Salon',
+    office: 'Biuro',
+    upperbathroom: 'Łazienka na piętrze',
+    heatingcircuittemperature: 'Kuchnia',
+    thermostatcurrentroomtemperature: 'Kuchnia',
+    safetyapphealth: 'Kondycja usługi',
+    danepogodoweopenmeteo: 'Dane pogodowe Open-Meteo',
+    jakoscpowietrzaopenmeteo: 'Jakość powietrza Open-Meteo',
+  };
+  return labels[normalized] ?? humanize(value);
 }
 
 function splitLocations(value: unknown): string[] {

@@ -14,12 +14,14 @@ export default function Temperature() {
   const visibleTemperatures = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase('pl');
     return temperatures
-      .filter(temperature => [temperature.name, temperature.entityId].join(' ').toLocaleLowerCase('pl').includes(normalizedQuery))
+      .filter(temperature =>
+        [temperature.roomName, temperature.name, temperature.entityId].join(' ').toLocaleLowerCase('pl').includes(normalizedQuery)
+      )
       .sort((left, right) => {
         if (sort === 'highest') return (right.state ?? Number.NEGATIVE_INFINITY) - (left.state ?? Number.NEGATIVE_INFINITY);
         if (sort === 'lowest') return (left.state ?? Number.POSITIVE_INFINITY) - (right.state ?? Number.POSITIVE_INFINITY);
         if (sort === 'trend') return Math.abs(right.rate ?? 0) - Math.abs(left.rate ?? 0);
-        return left.name.localeCompare(right.name, 'pl');
+        return left.roomName.localeCompare(right.roomName, 'pl');
       });
   }, [query, sort, temperatures]);
 
@@ -32,7 +34,7 @@ export default function Temperature() {
     <div className='page-stack'>
       <section className='page-introduction'>
         <div>
-          <span className='section-kicker'>Temperature Component</span>
+          <span className='section-kicker'>Temperatury</span>
           <h2>Odczyty monitorowane przez system</h2>
           <p>
             Lista pochodzi z encji trendu <code>_rate</code>, a wartości graniczne z osobnych encji <code>_low_threshold</code> i{' '}
@@ -132,8 +134,7 @@ function TemperatureCard({ temperature }: { temperature: TemperatureView }) {
           <Icon name='temperature' size={21} />
         </span>
         <div>
-          <h3 title={temperature.entityId}>{temperature.name}</h3>
-          <small className='entity-friendly-name'>Czujnik temperatury</small>
+          <h3 title={`${temperature.name} · ${temperature.entityId}`}>{temperature.roomName}</h3>
         </div>
         <span className={`trend-chip ${trend.className}`}>
           {trend.symbol} {trend.label}
@@ -206,11 +207,7 @@ function Sparkline({
 
   const width = 320;
   const height = 82;
-  const chartValues = [
-    ...values,
-    ...(lowThreshold === null ? [] : [lowThreshold]),
-    ...(highThreshold === null ? [] : [highThreshold]),
-  ];
+  const chartValues = [...values, ...(lowThreshold === null ? [] : [lowThreshold]), ...(highThreshold === null ? [] : [highThreshold])];
   const minimum = Math.min(...chartValues);
   const maximum = Math.max(...chartValues);
   const range = Math.max(maximum - minimum, 0.1);
