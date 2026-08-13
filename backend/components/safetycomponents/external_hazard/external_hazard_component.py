@@ -21,8 +21,6 @@ from .policy import HazardAssessment, evaluate_observation
 
 SM_WEATHER = "sm_ext_weather_exposure"
 SM_AIR_QUALITY = "sm_ext_outdoor_air_quality_exposure"
-SM_RADIATION = "sm_ext_ionizing_radiation_alert"
-SM_RADIATION_ANOMALY = "sm_ext_radiation_data_anomaly"
 SM_PROVIDER_UNAVAILABLE = "sm_ext_provider_unavailable"
 
 OPEN_STATES = frozenset({"on", "open", "opening", "true", "1"})
@@ -35,15 +33,12 @@ _HAZARD_PROVIDER_GROUPS: dict[HazardType, tuple[str, ...]] = {
     HazardType.RAIN: ("OpenMeteoWeatherApiComponent", "ImgwWarningsApiComponent"),
     HazardType.STORM: ("OpenMeteoWeatherApiComponent", "ImgwWarningsApiComponent"),
     HazardType.OUTDOOR_AIR_POLLUTION: ("OpenMeteoAirQualityApiComponent",),
-    HazardType.IONIZING_RADIATION: ("PaaRadiationApiComponent",),
-    HazardType.RADIATION_ANOMALY: ("PaaRadiationApiComponent",),
 }
 
 _CAPABILITIES: dict[str, tuple[str, ...]] = {
     "WeatherPointModel": ("OpenMeteoWeatherApiComponent",),
     "OfficialWeatherWarnings": ("ImgwWarningsApiComponent",),
     "OutdoorAirQuality": ("OpenMeteoAirQualityApiComponent",),
-    "IonizingRadiation": ("PaaRadiationApiComponent",),
 }
 
 _EXPECTED_PROVIDERS = frozenset(
@@ -59,16 +54,11 @@ _LABELS = {
         "rain": "heavy rain",
         "storm": "storm",
         "outdoor_air_pollution": "outdoor air pollution",
-        "ionizing_radiation": "ionizing-radiation alert",
-        "radiation_anomaly": "unconfirmed radiation-data anomaly",
         "close": "Close the affected external openings.",
-        "radiation": "Follow the current instructions published by PAA.",
         "verify": "Verify the relevant authoritative source directly.",
         "external_data": "External data",
         "home": "Home",
         "none_open": "none observed open",
-        "official_confirmation": "official PAA message",
-        "unconfirmed": "unconfirmed raw-data anomaly",
     },
     "pl": {
         "frost": "mróz",
@@ -76,16 +66,11 @@ _LABELS = {
         "rain": "intensywny deszcz",
         "storm": "burza",
         "outdoor_air_pollution": "zanieczyszczenie powietrza na zewnątrz",
-        "ionizing_radiation": "oficjalne ostrzeżenie o promieniowaniu jonizującym",
-        "radiation_anomaly": "niepotwierdzona anomalia danych radiacyjnych",
         "close": "Zamknij wskazane okna lub drzwi zewnętrzne.",
-        "radiation": "Postępuj zgodnie z aktualnymi komunikatami Państwowej Agencji Atomistyki.",
         "verify": "Sprawdź właściwe źródło urzędowe bezpośrednio.",
         "external_data": "Dane zewnętrzne",
         "home": "Dom",
         "none_open": "nie wykryto otwartych",
-        "official_confirmation": "oficjalny komunikat PAA",
-        "unconfirmed": "niepotwierdzona anomalia danych pomiarowych",
     },
     "de": {
         "frost": "Frost",
@@ -93,16 +78,11 @@ _LABELS = {
         "rain": "Starkregen",
         "storm": "Gewitter",
         "outdoor_air_pollution": "Außenluftverschmutzung",
-        "ionizing_radiation": "amtliche Warnung vor ionisierender Strahlung",
-        "radiation_anomaly": "unbestätigte Strahlungsdatenanomalie",
         "close": "Schließen Sie die betroffenen Außenöffnungen.",
-        "radiation": "Befolgen Sie die aktuellen Anweisungen der polnischen Atomenergiebehörde PAA.",
         "verify": "Prüfen Sie die zuständige behördliche Quelle direkt.",
         "external_data": "Externe Daten",
         "home": "Haus",
         "none_open": "keine offene Öffnung erkannt",
-        "official_confirmation": "amtliche PAA-Mitteilung",
-        "unconfirmed": "unbestätigte Messdatenanomalie",
     },
 }
 
@@ -141,7 +121,7 @@ class ExternalHazardComponent(SafetyComponent):
         modules: dict[str, SafetyComponent],
         component_cfg: dict[str, Any],
     ) -> tuple[dict[str, Symptom], dict[str, RecoveryAction]]:
-        """Build stable per-opening, authority, and capability symptoms."""
+        """Build stable per-opening and capability symptoms."""
 
         self.policy = dict(component_cfg["policy"])
         self.enabled_providers = set(
@@ -174,19 +154,6 @@ class ExternalHazardComponent(SafetyComponent):
                     hazard="outdoor_air_pollution",
                 )
 
-        if "PaaRadiationApiComponent" in self.enabled_providers:
-            symptoms["IonizingRadiationAlertPaa"] = self._symptom(
-                modules,
-                "IonizingRadiationAlertPaa",
-                SM_RADIATION,
-                hazard="ionizing_radiation",
-            )
-            symptoms["RadiationDataAnomalyPaaStations"] = self._symptom(
-                modules,
-                "RadiationDataAnomalyPaaStations",
-                SM_RADIATION_ANOMALY,
-                hazard="radiation_anomaly",
-            )
         for capability, providers in _CAPABILITIES.items():
             if not self.enabled_providers.intersection(providers):
                 continue
@@ -266,32 +233,6 @@ class ExternalHazardComponent(SafetyComponent):
     ) -> bool:
         return self._evaluate_exposure(mechanism, entities_changes)
 
-    def sm_ext_ionizing_radiation_alert(
-        self,
-        mechanism: SafetyMechanism,
-        entities_changes: dict[str, str] | None = None,
-    ) -> bool:
-        dry_run = entities_changes is not None
-        if dry_run:
-            return False
-        status, context, _ = self._hazard_evidence(HazardType.IONIZING_RADIATION)
-        if mechanism.isEnabled and not dry_run:
-            self._apply_state(mechanism.name, status, context)
-        return status == "active"
-
-    def sm_ext_radiation_data_anomaly(
-        self,
-        mechanism: SafetyMechanism,
-        entities_changes: dict[str, str] | None = None,
-    ) -> bool:
-        dry_run = entities_changes is not None
-        if dry_run:
-            return False
-        status, context = self._radiation_anomaly_evidence()
-        if mechanism.isEnabled and not dry_run:
-            self._apply_state(mechanism.name, status, context)
-        return status == "active"
-
     def sm_ext_provider_unavailable(
         self,
         mechanism: SafetyMechanism,
@@ -339,10 +280,6 @@ class ExternalHazardComponent(SafetyComponent):
             return SM_WEATHER
         if symptom_id.startswith("OutdoorAirQualityExposure"):
             return SM_AIR_QUALITY
-        if symptom_id.startswith("IonizingRadiationAlert"):
-            return SM_RADIATION
-        if symptom_id.startswith("RadiationDataAnomaly"):
-            return SM_RADIATION_ANOMALY
         return SM_PROVIDER_UNAVAILABLE
 
     def _evaluate_exposure(
@@ -416,41 +353,6 @@ class ExternalHazardComponent(SafetyComponent):
             for provider in providers
         )
         return ("clear" if explicit_clear else "unknown"), {}, None
-
-    def _radiation_anomaly_evidence(self) -> tuple[str, dict[str, str]]:
-        radiation_policy = self.policy["radiation"]
-        if not radiation_policy.get("raw_anomaly_enabled", False):
-            return "clear", {}
-        threshold = radiation_policy.get("raw_anomaly_usv_h")
-        if threshold is None:
-            return "unknown", {}
-        now = self._now()
-        anomalous: list[ExternalObservation] = []
-        for observation in self._observations.get("PaaRadiationApiComponent", {}).values():
-            if observation.hazard_type != HazardType.RADIATION_ANOMALY or observation.valid_to < now:
-                continue
-            dose = observation.values.get("dose_rate")
-            try:
-                if float(getattr(dose, "value")) >= float(threshold):
-                    anomalous.append(observation)
-            except (TypeError, ValueError, AttributeError):
-                continue
-        required = int(radiation_policy.get("raw_anomaly_min_stations", 2))
-        if len(anomalous) >= required:
-            stations = ", ".join(str(item.values["station_id"].value) for item in anomalous)
-            return "active", {
-                "hazard": self._label("radiation_anomaly"),
-                "source": "PAA monitoring measurements",
-                "observed_value": f"{len(anomalous)} stations ≥ {threshold} µSv/h",
-                "threshold": f"≥ {required} corroborating stations",
-                "confirmation": self._label("unconfirmed"),
-                "stations": stations,
-                "recommendation": self._label("radiation"),
-            }
-        health = self._health.get("PaaRadiationApiComponent")
-        if health is not None and health.state == ProviderHealthState.OK:
-            return "clear", {}
-        return "unknown", {}
 
     def _capability_health(self, capability: str) -> tuple[str, dict[str, str]]:
         providers = tuple(
@@ -529,10 +431,6 @@ class ExternalHazardComponent(SafetyComponent):
         sm_name = self._sm_name_for(mechanism.name)
         if sm_name in {SM_WEATHER, SM_AIR_QUALITY}:
             return self._evaluate_exposure(mechanism, {})
-        if sm_name == SM_RADIATION:
-            return self._hazard_evidence(HazardType.IONIZING_RADIATION)[0] == "active"
-        if sm_name == SM_RADIATION_ANOMALY:
-            return self._radiation_anomaly_evidence()[0] == "active"
         return self._capability_health(str(mechanism.sm_args["capability"]))[0] == "active"
 
     def _publish_clear(self, symptom_id: str, context: dict[str, str]) -> None:
@@ -593,20 +491,7 @@ class ExternalHazardComponent(SafetyComponent):
             "freshness": "fresh",
             "source_reference": observation.source_reference,
         }
-        if observation.hazard_type == HazardType.IONIZING_RADIATION:
-            context["confirmation"] = self._label("official_confirmation")
-            context["recommendation"] = self._label("radiation")
-            open_names = self._currently_open_names()
-            context["openings"] = ", ".join(open_names) if open_names else self._label("none_open")
-            context["location"] = self._label("home")
         return context
-
-    def _currently_open_names(self) -> list[str]:
-        names = []
-        for opening_name, opening in self.openings.items():
-            if self._opening_state(opening_name, None) == "open":
-                names.append(str(opening["friendly_name"]))
-        return names
 
     def _publish_provider_health(self, result: ApiResult) -> None:
         provider = result.provider

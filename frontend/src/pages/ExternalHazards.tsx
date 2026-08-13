@@ -291,7 +291,6 @@ function humanizeReason(reason: string): string {
     outdoor_air_pollution: 'Zanieczyszczone powietrze na zewnątrz',
     wind: 'Niebezpieczny wiatr',
     storm: 'Burza',
-    ionizing_radiation: 'Oficjalny komunikat radiologiczny',
   };
   return labels[reason] ?? reason.replace(/_/g, ' ');
 }
