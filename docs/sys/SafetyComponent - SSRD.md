@@ -176,8 +176,6 @@ The stable runtime contract is:
 | --- | --- | --- | ---: |
 | `ExternalWeatherExposure` | `sm_ext_weather_exposure` | `ExternalWeatherExposure{HazardId}{OpeningId}` | 2 |
 | `OutdoorAirQualityExposure` | `sm_ext_outdoor_air_quality_exposure` | `OutdoorAirQualityExposure{OpeningId}` | 3 |
-| `IonizingRadiationAlert` | `sm_ext_ionizing_radiation_alert` | `IonizingRadiationAlert{AuthorityId}` | 2 |
-| `RadiationDataAnomaly` | `sm_ext_radiation_data_anomaly` | `RadiationDataAnomaly{StationSetId}` | 3 |
 | `ExternalHazardDataUnavailable` | `sm_ext_provider_unavailable` | `ExternalHazardDataUnavailable{CapabilityId}` | 3 |
 
 Each Safety Mechanism ID shall occur in exactly one fault's `related_sms` list.
@@ -187,19 +185,16 @@ feature architecture §12.
 
 | ID | Requirement | Responsible element |
 | --- | --- | --- |
-| SWR-EXT-001 | The feature shall use separate `OpenMeteoWeatherApiComponent`, `ImgwWarningsApiComponent`, `OpenMeteoAirQualityApiComponent`, and `PaaRadiationApiComponent` classes. | external API component registry |
+| SWR-EXT-001 | The feature shall use separate `OpenMeteoWeatherApiComponent`, `ImgwWarningsApiComponent`, and `OpenMeteoAirQualityApiComponent` classes. | external API component registry |
 | SWR-EXT-002 | API Components shall have independent schemas, polling schedules, caches, failure counters, health, and contract tests. | `components/external_apis/*` |
 | SWR-EXT-003 | API Components shall not inherit from `SafetyComponent` and shall not create symptoms, faults, notifications, recovery actions, or actuator calls. | `ExternalApiComponent` protocol |
 | SWR-EXT-004 | Network work shall run outside the serialized safety-decision callback and results shall return through a bounded queue for ordered EventBus publication. | `ExternalApiRuntime` |
 | SWR-EXT-005 | `ExternalHazardComponent` shall be the only Safety Component in this feature and shall own household thresholds, freshness, cross-provider policy, opening correlation, aggregation, notification context, and the stable runtime identifiers defined above. | `ExternalHazardComponent` |
 | SWR-EXT-006 | Frost, wind/gust, rain/storm, and outdoor-pollution exposure symptoms shall require both applicable valid hazard evidence and an open configured aperture. | external hazard policy mechanisms |
-| SWR-EXT-007 | An official ionizing-radiation warning shall notify regardless of aperture state; open apertures shall be context only. | radiation authority mechanism |
-| SWR-EXT-008 | Raw radiation measurements shall not create the confirmed radiation-alert fault; any enabled anomaly warning shall be explicitly unconfirmed and corroborated by configured policy. | radiation anomaly mechanism |
 | SWR-EXT-009 | Provider timeout, stale data, or schema error shall not clear an active condition and shall publish provider degradation diagnostics. | provider health and clear policy |
 | SWR-EXT-010 | External Hazard Monitoring shall be notification-only, shall register no executable recovery action, and shall make no Home Assistant actuator service call. | negative actuation boundary |
 | SWR-EXT-011 | Same-fault updates shall retain all active hazards/openings and refresh one notification tag using friendly names and localized area labels. | FaultManager and NotificationManager integration |
-| SWR-EXT-012 | External pollution, damaging wind, storm, or confirmed sheltering policy shall inhibit contradictory advice to open external apertures. | `RecoveryPolicyEvaluator` integration |
-| SWR-EXT-013 | `PaaRadiationApiComponent` shall consume official PAA radiological messages and station dose-rate measurements while preserving their distinct semantics, timestamps, validity, units, and source identity. | `PaaRadiationApiComponent` |
+| SWR-EXT-012 | External pollution, damaging wind, or storm shall inhibit contradictory advice to open external apertures. | `RecoveryPolicyEvaluator` integration |
 | SWR-EXT-014 | `ImgwWarningsApiComponent` shall expose only current sanitized warnings matching at least one configured TERYT code, mark them as locally applicable, and dispatch locally applicable recognized hazards into household safety policy. | `ImgwWarningsApiComponent` and provider diagnostic MQTT entity |
 | SWR-EXT-015 | Each provider diagnostic MQTT entity shall expose an `observations` list of at most 64 summaries containing the stable observation ID, hazard type, provider level, observation and validity timestamps, and an optional operator-display value and unit. The list shall contain normalized current observations only and shall not expose unbounded provider payloads. | `ExternalHazardComponent._publish_provider_health` |
 
@@ -277,7 +272,6 @@ valid measure of safety-logic verification.
 | SG-015 Door/Gate Open-Duration Contribution | `SYS-SR-DOOR-001..011` | `SWR-DOOR-*` |
 | SG-011/017/018 External Weather Exposure | `SYS-SR-EXT-001..005/010..013/040..043/050..052` | `SWR-EXT-*` |
 | SG-019 Outdoor Pollution Exposure | `SYS-SR-EXT-001..005/020..023/040..043/050..052` | `SWR-EXT-*` |
-| SG-020 Ionizing Radiation Information | `SYS-SR-EXT-001..005/030..034/040..043/050..052` | `SWR-EXT-*` |
 
 | Requirement group | Primary tests |
 | --- | --- |
@@ -299,8 +293,7 @@ SafetyComponent provides monitoring and response assistance within a Home
 Assistant installation. Home Assistant, AppDaemon, the host, networks, sensors,
 actuators, cloud providers, and notification transports are external or
 non-certified dependencies. This software and its documentation do not claim
-regulatory certification, guaranteed provider availability, medical guidance,
-dosimetry, or physical radiation shielding.
+regulatory certification, guaranteed provider availability, or medical guidance.
 
 ## 9. Change control
 

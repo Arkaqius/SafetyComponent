@@ -94,16 +94,6 @@ pollution is elevated can worsen indoor air quality and can conflict with
 otherwise valid ventilation advice from indoor temperature or air-quality
 mechanisms.
 
-**Ionizing Radiation Event:**
-
-An abnormal radiological situation can expose occupants and the environment.
-Closing doors and windows does not provide meaningful shielding from external
-gamma radiation, although official sheltering instructions may require limiting
-air exchange when airborne contamination is possible. Raw public station
-measurements can vary with local background and rainfall and therefore shall not
-be presented as a confirmed emergency without corroboration or an official
-authority message.
-
 ---
 
 ### 1.2 Hazards assessment and risk classification
@@ -194,7 +184,6 @@ _High:_ These hazards can be easily mitigated if residents are notified in time,
 | Frost Exposure Through Openings | Medium (2) | Medium (2) | High (1) | (2x2)x2x1 = 8 | Level 3 |
 | Wind Damage to Openings   | Medium (2) | Medium (2) | High (1)        | (2x2)x2x1 = 8  | Level 3 |
 | Outdoor Air Pollution Ingress | Low (1) | High (3) | High (1)       | (2x1)x3x1 = 6  | Level 3 |
-| Ionizing Radiation Event  | High (3)   | Low (1)    | Low (3)         | (2x3)x1x3 = 18 | Level 2 |
 
 > Life-threatening hazards (Fire, Gas Leak, CO Poisoning, Electrical Shock) should never drop below Level 2 after mitigation, even if the formula suggests Level 3 or 4.  
 > Certainly, it's important to note that the initial risk assessment you have conducted takes into consideration the basic safety measures that are commonly found in homes, even without the presence of a home automation system. These traditional safety measures form the baseline upon which the home automation system's additional safety features are built. (ie. RCD, door locks or manual window locks)
@@ -339,22 +328,6 @@ _High:_ These hazards can be easily mitigated if residents are notified in time,
 - The system shall report the current measurement or model input controlling
   the decision and preserve its provider semantics.
 
-#### 1.3.18 Ionizing Radiation Event
-
-- The system shall monitor an official radiological authority source through a
-  dedicated provider component.
-- A confirmed official radiological warning shall alert occupants regardless of
-  window or door state; any open external apertures shall be included as
-  contextual information.
-- A raw dose-rate anomaly without official confirmation shall be identified as
-  unconfirmed and shall not be worded as a confirmed radiological emergency.
-- Notifications shall link or refer to the authoritative source and instruct the
-  user to follow official guidance.
-- Notifications shall not claim that closing windows or doors provides radiation
-  shielding.
-- External Hazard Monitoring shall not actuate windows, doors, ventilation, HVAC, sirens, or other
-  equipment in response to radiological data.
-
 ---
 
 ### 1.4 Risk Evaluation
@@ -401,11 +374,6 @@ For risks that need further mitigation, you'll need to develop a risk mitigation
 | Frost Exposure Through Openings | Medium (2) | Low (1) | High (1)     | (2x2)x1x1 = 4  | Level 4 |
 | Wind Damage to Openings   | Medium (2) | Low (1)    | High (1)        | (2x2)x1x1 = 4  | Level 4 |
 | Outdoor Air Pollution Ingress | Low (1) | Medium (2) | High (1)      | (2x1)x2x1 = 4  | Level 4 |
-| Ionizing Radiation Event  | High (3)   | Low (1)    | Low (3)         | (2x3)x1x3 = 18 | Level 2 |
-
-> Notification-only monitoring does not claim to reduce the intrinsic ionizing
-> radiation risk. Its residual level therefore remains Level 2 until an
-> authority-approved mitigation policy is defined.
 
 ---
 
@@ -467,6 +435,5 @@ The following table provides audit-ready traceability from each hazard through s
 | Frost Exposure Through Openings | 1.3.15 | Manual closure warning | Weather observations/forecasts, contact states, event logs | Level 3 | Level 4 |
 | Wind Damage to Openings | 1.3.16 | Manual closure warning | Gust forecasts, official warnings, contact states | Level 3 | Level 4 |
 | Outdoor Air Pollution Ingress | 1.3.17 | Manual closure warning and advice conflict inhibition | Measured/forecast AQ, contact states, event logs | Level 3 | Level 4 |
-| Ionizing Radiation Event\* | 1.3.18 | Authority-based warning and official-guidance link | PAA status/messages, provider diagnostics, evidence logs | Level 2 | Level 2 |
 
 \* Life-threatening hazards must **not** be reduced below **Level 2** after mitigation, even if formulas suggest a lower level.

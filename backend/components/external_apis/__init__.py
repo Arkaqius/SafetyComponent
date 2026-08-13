@@ -16,7 +16,6 @@ from .core import (
 from .imgw_warnings import ImgwWarningsApiComponent, ImgwWarningsConfig
 from .open_meteo_air_quality import OpenMeteoAirQualityApiComponent, OpenMeteoAirQualityConfig
 from .open_meteo_weather import OpenMeteoWeatherApiComponent, OpenMeteoWeatherConfig
-from .paa_radiation import PaaRadiationApiComponent, PaaRadiationConfig
 
 __all__ = [
     "ApiResult",
@@ -32,8 +31,6 @@ __all__ = [
     "OpenMeteoAirQualityConfig",
     "OpenMeteoWeatherApiComponent",
     "OpenMeteoWeatherConfig",
-    "PaaRadiationApiComponent",
-    "PaaRadiationConfig",
     "ProviderHealth",
     "ProviderHealthState",
     "get_registered_api_components",

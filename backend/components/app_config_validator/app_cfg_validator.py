@@ -24,10 +24,6 @@ from components.external_apis.open_meteo_weather.schema import (
     COMPONENT_NAME as OPEN_METEO_WEATHER_COMPONENT_NAME,
     OpenMeteoWeatherConfig,
 )
-from components.external_apis.paa_radiation.schema import (
-    COMPONENT_NAME as PAA_COMPONENT_NAME,
-    PaaRadiationConfig,
-)
 from components.safetycomponents.external_hazard.schema import (
     COMPONENT_NAME as EXTERNAL_HAZARD_COMPONENT_NAME,
     validate_external_hazard_config,
@@ -55,7 +51,6 @@ REQUIRED_EXTERNAL_API_COMPONENTS = (
     OPEN_METEO_WEATHER_COMPONENT_NAME,
     IMGW_COMPONENT_NAME,
     OPEN_METEO_AQ_COMPONENT_NAME,
-    PAA_COMPONENT_NAME,
 )
 
 
@@ -309,7 +304,6 @@ def _validate_api_components(
         OPEN_METEO_WEATHER_COMPONENT_NAME: OpenMeteoWeatherConfig,
         IMGW_COMPONENT_NAME: ImgwWarningsConfig,
         OPEN_METEO_AQ_COMPONENT_NAME: OpenMeteoAirQualityConfig,
-        PAA_COMPONENT_NAME: PaaRadiationConfig,
     }
     normalized: Dict[str, Any] = {}
     for name, schema in validators.items():

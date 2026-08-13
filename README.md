@@ -25,8 +25,8 @@ actions.
 
 The repository also defines the safety contract and provider-isolated
 architecture for External Hazard Monitoring: weather, official IMGW warnings,
-outdoor air quality, and ionizing-radiation information correlated with
-configured windows and external doors. That contract is notification-only and
+and outdoor air quality correlated with configured windows and external doors.
+That contract is notification-only and
 permits no actuator calls.
 
 Entity Health Monitoring covers explicitly configured safety dependencies,

@@ -72,11 +72,6 @@ SafetyFunctions:
       outdoor_air_quality:
         standard: european_aqi
         warning_at: 60
-      radiation:
-        official_alert_required_for_confirmed_fault: true
-        raw_anomaly_enabled: false
-        raw_anomaly_usv_h: 0.3
-        raw_anomaly_min_stations: 2
       providers:
         OpenMeteoWeatherApiComponent:
           base_url: "https://api.open-meteo.com/v1/forecast"
@@ -96,14 +91,6 @@ SafetyFunctions:
           request_timeout_seconds: 10
           max_retries: 2
           stale_after_seconds: 2700
-        PaaRadiationApiComponent:
-          base_url: "https://monitoring.paa.gov.pl/_api/maps"
-          radiation_message_path: "/RadiationMessage/{language}"
-          measurement_path: "/Measurement/{language}"
-          poll_interval_seconds: 300
-          request_timeout_seconds: 10
-          max_retries: 2
-          stale_after_seconds: 900
 
     # Global fault catalog (shared policy).
     #
@@ -146,16 +133,6 @@ SafetyFunctions:
         level: 3
         related_sms:
           - "sm_ext_outdoor_air_quality_exposure"
-      IonizingRadiationAlert:
-        name: "Oficjalne ostrzeżenie radiologiczne"
-        level: 2
-        related_sms:
-          - "sm_ext_ionizing_radiation_alert"
-      RadiationDataAnomaly:
-        name: "Niepotwierdzona anomalia danych radiacyjnych"
-        level: 3
-        related_sms:
-          - "sm_ext_radiation_data_anomaly"
       ExternalHazardDataUnavailable:
         name: "Brak danych o zagrożeniach zewnętrznych"
         level: 3
@@ -217,14 +194,11 @@ SafetyFunctions:
         sensor.fault_safetydooropentimeout: "Zbyt długo otwarte drzwi lub brama"
         sensor.fault_externalweatherexposure: "Narażenie domu na zagrożenie pogodowe"
         sensor.fault_outdoorairqualityexposure: "Narażenie domu na zanieczyszczone powietrze"
-        sensor.fault_ionizingradiationalert: "Oficjalne ostrzeżenie radiologiczne"
-        sensor.fault_radiationdataanomaly: "Niepotwierdzona anomalia danych radiacyjnych"
         sensor.fault_externalhazarddataunavailable: "Brak danych o zagrożeniach zewnętrznych"
         sensor.external_hazard_state: "Zagrożenia zewnętrzne"
         sensor.external_provider_open_meteo_weather: "Dane pogodowe Open-Meteo"
         sensor.external_provider_imgw_warnings: "Ostrzeżenia IMGW"
         sensor.external_provider_open_meteo_air_quality: "Jakość powietrza Open-Meteo"
-        sensor.external_provider_paa_radiation: "Monitoring radiacyjny PAA"
         sensor.safety_door_garagegate: "Brama garażowa"
         sensor.safety_door_externalgate: "Brama zewnętrzna"
         sensor.safety_door_livingroomterracedoor: "Drzwi tarasowe w salonie"
@@ -256,10 +230,6 @@ SafetyFunctions:
         enabled: true
       OpenMeteoAirQualityApiComponent:
         enabled: true
-      PaaRadiationApiComponent:
-        enabled: false
-        language: pl
-        station_ids: []
 
     # MQTT entity publishing.
     #

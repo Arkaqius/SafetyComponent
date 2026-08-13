@@ -503,7 +503,6 @@ export function observationDisplayName(observation: ExternalObservationView): st
     rain: 'Opady',
     storm: 'Burze',
     official_warning: 'Oficjalne ostrzeżenia dla domu',
-    ionizing_radiation: 'Promieniowanie jonizujące',
   };
   if (observation.hazardType === 'outdoor_air_pollution') {
     return 'Jakość powietrza dla współrzędnych domu';

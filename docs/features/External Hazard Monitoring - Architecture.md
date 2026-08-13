@@ -8,29 +8,23 @@
 
 The following decisions are requirements, not open design options:
 
-1. The monitored radiation type is **ionizing radiation**, not UV or solar
-   irradiance.
-2. The feature monitors, diagnoses, and warns. It shall not close a window or
+1. The feature monitors, diagnoses, and warns. It shall not close a window or
    door, operate a gate, lock anything, change HVAC, or control ventilation.
-3. Every external API has a separate API Component with its own configuration,
+2. Every external API has a separate API Component with its own configuration,
    schema validation, polling lifecycle, cache, health, and tests.
-4. Provider-specific code does not create Safety System symptoms or faults.
+3. Provider-specific code does not create Safety System symptoms or faults.
    Household safety policy belongs to `ExternalHazardComponent`.
-5. Raw radiation measurements and official radiological messages are different
-   input classes and shall never be presented as equivalent.
 
 ## 2. Goals
 
 The system shall:
 
-- monitor frost, wind/gusts, rain/storm, outdoor air pollution, and ionizing
-  radiation from external data sources;
+- monitor frost, wind/gusts, rain/storm, and outdoor air pollution from external
+  data sources;
 - monitor configured Home Assistant window and external-door contacts;
 - detect when an active external hazard is relevant to an open aperture;
 - warn with friendly area/opening names, source, value, validity, freshness,
   and a manual recommendation;
-- warn about an official ionizing-radiation event even when all apertures are
-  closed;
 - expose independent health for every external provider;
 - preserve multiple simultaneous hazards and openings in one fault context;
 - inhibit contradictory manual recommendations to open windows while external
@@ -41,11 +35,8 @@ The system shall:
 
 - Automatic closure or locking.
 - Ventilation, HVAC, blind, purifier, siren, or gate control.
-- Radiation shielding or dosimetry advice.
-- Medical interpretation of radiation or air-quality exposure.
+- Medical interpretation of air-quality exposure.
 - Treating forecast model output as a local physical sensor.
-- Treating a single raw radiation station threshold crossing as a confirmed
-  radiological emergency.
 - Scraping human-facing HTML as if it were a supported API contract.
 - Combining all providers into one large client class.
 
@@ -56,7 +47,6 @@ The system shall:
 | `OpenMeteoWeatherApiComponent` | Open-Meteo `/v1/forecast` | Current/model temperature, frost forecast, precipitation, weather code, wind and gusts | 10 min | Forecast/model input |
 | `ImgwWarningsApiComponent` | IMGW `/api/data/warningsmeteo` | Current official weather warnings matching configured TERYT codes | 5 min | Authoritative weather warning |
 | `OpenMeteoAirQualityApiComponent` | Open-Meteo `/v1/air-quality` | Current CAMS-model European AQI and pollutant values | 30 min | Current model input |
-| `PaaRadiationApiComponent` | Official PAA radiation monitoring API | Official status/messages and station dose-rate data | 5 min | Authoritative only for official PAA status/messages |
 
 Provider references:
 
@@ -67,19 +57,6 @@ Provider references:
   <https://danepubliczne.imgw.pl/api/data/warningsmeteo>
 - IMGW public-data terms:
   <https://danepubliczne.imgw.pl/pl/datastore?product=Mapa+synoptyczna>
-- PAA official radiation map information:
-  <https://www.gov.pl/web/paa/nowa-mapa-radiacyjna-polski-panstwowej-agencji-atomistyki>
-
-### 4.1 PAA radiation data contract
-
-`PaaRadiationApiComponent` shall consume the official PAA machine-readable
-radiation source. The provider contract shall identify endpoint ownership,
-payload schema, timestamps, update cadence, units, message validity and
-withdrawal semantics. The component shall preserve official authority messages
-and station dose-rate measurements as distinct result types.
-
-If another radiation provider is added, it shall use a separate API Component
-instead of provider-conditional code inside `PaaRadiationApiComponent`.
 
 ## 5. Logical architecture
 
@@ -89,7 +66,7 @@ instead of provider-conditional code inside `PaaRadiationApiComponent`.
  OpenMeteoWeatherApiComponent ----+
  ImgwWarningsApiComponent --------+
  OpenMeteoAirQualityApiComponent -+      - bounded worker pool
- PaaRadiationApiComponent --------+      - one in-flight call/provider
+                                         - one in-flight call/provider
                                          - result queue
                                          - serialized dispatch
                                                    |
@@ -138,11 +115,6 @@ backend/components/external_apis/
     __init__.py
     component.py
     schema.py
-  paa_radiation/
-    __init__.py
-    component.py
-    schema.py
-
 backend/components/safetycomponents/external_hazard/
   __init__.py
   external_hazard_component.py
@@ -273,19 +245,7 @@ CAMS model values for the configured home coordinates. Required fields:
 - current/model values;
 - grid coordinates, model/source time, validity, and retrieval time.
 
-### 7.6 `PaaRadiationApiComponent`
-
-The component shall preserve two result types:
-
-- `official_message`: authority status/message with publication and validity;
-- `dose_rate_measurement`: station value, station ID/location, timestamp, and
-  original unit.
-
-Unit normalization shall support nSv/h and µSv/h. The component shall not embed
-a universal emergency threshold. It shall mark official confirmation only when
-the source contract explicitly identifies an official authority status/message.
-
-### 7.7 `ExternalHazardComponent`
+### 7.6 `ExternalHazardComponent`
 
 `ExternalHazardComponent` is registered through the existing Safety Component
 registry and integrates with `EventBus`, `FaultManager`, `NotificationManager`,
@@ -356,8 +316,6 @@ other direct sensor path.
 | Wind | Gust threshold or applicable IMGW warning | Relevant opening is open | Warn with opening, gust or warning degree |
 | Rain/storm | Precipitation policy or applicable IMGW warning | Relevant opening is open | Warn with opening and validity/source |
 | Outdoor pollution | Current Open-Meteo European AQI crosses configured policy | Relevant opening is open | Warn and inhibit advice to open external openings |
-| Official radiation event | PAA official status/message | None; applies to household | L2 warning, official guidance, list open apertures as context |
-| Radiation measurement anomaly | Baseline/persistence/corroboration policy | None | Separate unconfirmed L3 warning; never official-alert wording |
 
 ### 9.1 Multiple providers
 
@@ -391,11 +349,9 @@ IDs, not per-condition symptom IDs.
 | --- | --- | --- | ---: | --- |
 | `ExternalWeatherExposure` | `sm_ext_weather_exposure` | `ExternalWeatherExposure{HazardId}{OpeningId}` | 2 | One or more open apertures exposed to rain, storm, frost, or damaging wind |
 | `OutdoorAirQualityExposure` | `sm_ext_outdoor_air_quality_exposure` | `OutdoorAirQualityExposure{OpeningId}` | 3 | One or more open apertures during unacceptable outdoor AQ |
-| `IonizingRadiationAlert` | `sm_ext_ionizing_radiation_alert` | `IonizingRadiationAlert{AuthorityId}` | 2 | Official PAA radiological warning/status |
-| `RadiationDataAnomaly` | `sm_ext_radiation_data_anomaly` | `RadiationDataAnomaly{StationSetId}` | 3 | Corroborated raw measurement anomaly, explicitly unconfirmed |
 | `ExternalHazardDataUnavailable` | `sm_ext_provider_unavailable` | `ExternalHazardDataUnavailable{CapabilityId}` | 3 | Every provider required for an enabled capability is stale or unavailable |
 
-`HazardId`, `OpeningId`, `AuthorityId`, `StationSetId`, and `CapabilityId` are
+`HazardId`, `OpeningId`, and `CapabilityId` are
 stable PascalCase identifiers derived from validated configuration keys or
 normalized provider identities. Human-readable hazard, opening, and area names
 are carried as localized attributes; they do not alter runtime IDs.
@@ -410,22 +366,20 @@ friendly names and resolved area names; entity IDs remain diagnostic attributes.
 Required notification context:
 
 - friendly hazard label;
-- confirmed/unconfirmed label for radiation;
 - affected opening and area names where applicable;
 - observed or forecast values and units;
 - threshold or authority warning degree;
 - source and publication/sample time;
 - validity and freshness;
 - manual recommendation;
-- authoritative link/reference for radiation.
 
 No notification action button may call an actuator service.
 
 ## 11. Advice conflict handling
 
 Temperature or indoor-AQ logic can recommend opening windows.
-That recommendation is unsafe during outdoor pollution, damaging wind, storm,
-or a radiological sheltering instruction.
+That recommendation is unsafe during outdoor pollution, damaging wind, or
+storm.
 
 The recovery boundary uses a narrow `RecoveryPolicyEvaluator` interface.
 `ExternalHazardComponent` provides an evaluator snapshot such as:
@@ -466,9 +420,6 @@ SafetyFunctions:
       outdoor_air_quality:
         standard: european_aqi
         warning_at: 60
-      radiation:
-        official_alert_required_for_confirmed_fault: true
-        raw_anomaly_enabled: false
       providers:
         OpenMeteoWeatherApiComponent:
           base_url: "https://api.open-meteo.com/v1/forecast"
@@ -488,14 +439,6 @@ SafetyFunctions:
           request_timeout_seconds: 10
           max_retries: 2
           stale_after_seconds: 2700
-        PaaRadiationApiComponent:
-          base_url: "https://monitoring.paa.gov.pl/_api/maps"
-          radiation_message_path: "/RadiationMessage/{language}"
-          measurement_path: "/Measurement/{language}"
-          poll_interval_seconds: 300
-          request_timeout_seconds: 10
-          max_retries: 2
-          stale_after_seconds: 900
 
     faults:
       ExternalWeatherExposure:
@@ -508,16 +451,6 @@ SafetyFunctions:
         level: 3
         related_sms:
           - "sm_ext_outdoor_air_quality_exposure"
-      IonizingRadiationAlert:
-        name: "Oficjalne ostrzeżenie radiologiczne"
-        level: 2
-        related_sms:
-          - "sm_ext_ionizing_radiation_alert"
-      RadiationDataAnomaly:
-        name: "Niepotwierdzona anomalia danych radiacyjnych"
-        level: 3
-        related_sms:
-          - "sm_ext_radiation_data_anomaly"
       ExternalHazardDataUnavailable:
         name: "Brak danych o zagrożeniach zewnętrznych"
         level: 3
@@ -543,10 +476,6 @@ SafetyFunctions:
         enabled: true
       OpenMeteoAirQualityApiComponent:
         enabled: true
-      PaaRadiationApiComponent:
-        enabled: true
-        language: pl
-        station_ids: []
 
     safety_components:
       ExternalHazardComponent:
@@ -630,7 +559,7 @@ Each API Component requires fixtures for:
 
 - normal data;
 - empty/no-warning response;
-- multiple simultaneous warnings or stations;
+- multiple simultaneous warnings;
 - duplicate and updated IDs;
 - stale timestamps;
 - missing required fields/units;
@@ -650,8 +579,6 @@ Each API Component requires fixtures for:
   operator presentation and marked as locally applicable.
 - Open-Meteo European AQI at and above the configured threshold -> exposure
   policy active.
-- Official radiation message -> confirmed L2 warning regardless of contacts.
-- Raw radiation anomaly -> never `IonizingRadiationAlert`.
 - Provider timeout while fault active -> fault is not cleared.
 - External pollution -> open-window advice inhibited.
 - Every external-hazard scenario -> zero actuator service calls.

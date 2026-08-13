@@ -27,7 +27,7 @@ const menuItems: Array<{ title: string; path: string; icon: IconName; descriptio
     title: 'Zagrożenia zewnętrzne',
     path: '/external-hazards',
     icon: 'environment',
-    description: 'Pogoda, powietrze i promieniowanie',
+    description: 'Pogoda i jakość powietrza',
   },
   {
     title: 'Encje i urządzenia',

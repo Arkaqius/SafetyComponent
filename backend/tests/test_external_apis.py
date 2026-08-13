@@ -21,7 +21,6 @@ from components.external_apis.core.models import (
 from components.external_apis.imgw_warnings.component import ImgwWarningsApiComponent
 from components.external_apis.open_meteo_air_quality.component import OpenMeteoAirQualityApiComponent
 from components.external_apis.open_meteo_weather.component import OpenMeteoWeatherApiComponent
-from components.external_apis.paa_radiation.component import PaaRadiationApiComponent
 
 FIXTURES = Path(__file__).parent / "fixtures" / "external_apis"
 RETRIEVED_AT = datetime(2026, 8, 4, 12, 5, tzinfo=timezone.utc)
@@ -151,26 +150,6 @@ def test_open_meteo_air_quality_keeps_european_aqi_model_identity() -> None:
     assert observation.values["current_european_aqi"].unit == "EAQI"
 
 
-def test_paa_keeps_official_message_and_raw_measurement_semantics_separate() -> None:
-    component = _component(
-        PaaRadiationApiComponent,
-        radiation_message_path="/RadiationMessage/{language}",
-        measurement_path="/Measurement/{language}",
-        language="pl",
-        station_ids=[],
-    )
-    observations = component.normalize(_payload("paa_radiation"), RETRIEVED_AT)
-
-    official = next(item for item in observations if item.hazard_type == HazardType.IONIZING_RADIATION)
-    measurement = next(item for item in observations if item.hazard_type == HazardType.RADIATION_ANOMALY)
-    assert official.authority_confirmed is True
-    assert official.values["result_type"].value == "official_message"
-    assert measurement.authority_confirmed is False
-    assert measurement.values["result_type"].value == "dose_rate_measurement"
-    assert measurement.values["dose_rate"].value == pytest.approx(0.095)
-    assert measurement.values["dose_rate"].unit == "µSv/h"
-
-
 def test_http_json_shape_limits_reject_oversized_untrusted_values() -> None:
     client = HttpJsonClient(
         allowed_hosts={"example.com"},
@@ -252,77 +231,3 @@ def test_unexpected_provider_exception_becomes_schema_health_result() -> None:
     assert result.health.state == ProviderHealthState.SCHEMA_ERROR
     assert result.health.detail_code == "schema_error"
     assert result.observations == ()
-
-
-def test_paa_fetch_uses_separate_official_and_measurement_endpoints() -> None:
-    calls: list[str] = []
-
-    class PaaClient:
-        def get_json(self, url: str, **_: object) -> object:
-            calls.append(url)
-            return {"url": url}
-
-    component = PaaRadiationApiComponent(
-        provider_config=_config(
-            radiation_message_path="/messages/{language}",
-            measurement_path="/measurements/{language}",
-            language="pl",
-            station_ids=[],
-        ),
-        site_config=SITE,
-        http_client=PaaClient(),
-    )
-
-    payload = component.fetch_payload()
-
-    assert calls == [
-        "https://example.invalid/messages/pl",
-        "https://example.invalid/measurements/pl",
-    ]
-    assert payload == {
-        "messages": {"url": calls[0]},
-        "measurements": {"url": calls[1]},
-    }
-
-
-def test_paa_rejects_ambiguous_data_and_filters_stale_or_unconfigured_records() -> None:
-    component = _component(
-        PaaRadiationApiComponent,
-        radiation_message_path="/messages/{language}",
-        measurement_path="/measurements/{language}",
-        language="pl",
-        station_ids=["wanted"],
-    )
-
-    with pytest.raises(ValueError, match="mapping"):
-        component.normalize([], RETRIEVED_AT)
-    with pytest.raises(ValueError, match="mappings or lists"):
-        component._records("unexpected")
-    with pytest.raises(ValueError, match="Unsupported"):
-        component._normalize_dose_rate(1, "mSv/h")
-
-    payload = {
-        "messages": [
-            {"status": "brak alarmu"},
-            {
-                "active": True,
-                "status": "alarm",
-                "validTo": "2026-08-04T11:00:00Z",
-            },
-        ],
-        "measurements": [
-            {"stationId": "ignored", "value": 95, "unit": "nSv/h"},
-            {
-                "stationId": "wanted",
-                "value": 95,
-                "unit": "nSv/h",
-                "timestamp": "2026-08-04T11:00:00Z",
-            },
-            {"stationId": "wanted", "unit": "nSv/h"},
-        ],
-    }
-
-    assert component.normalize(payload, RETRIEVED_AT) == ()
-    assert component._official_alert_active({"warning": 1}) is True
-    assert component._official_alert_active({"status": "normal"}) is False
-    assert component._safe_datetime("invalid", RETRIEVED_AT) == RETRIEVED_AT
