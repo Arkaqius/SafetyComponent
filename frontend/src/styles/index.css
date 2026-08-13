@@ -203,6 +203,8 @@ p {
 .filter-button:focus-visible,
 .text-button:focus-visible,
 .text-link:focus-visible,
+.dashboard-entity-trigger:focus-visible,
+.entity-card-overlay-button:focus-visible,
 .search-field:focus-within,
 .select-field select:focus-visible,
 details summary:focus-visible {
@@ -492,6 +494,8 @@ details summary:focus-visible {
   overflow: hidden;
   padding: clamp(22px, 3vw, 34px);
   position: relative;
+  text-align: left;
+  width: 100%;
 }
 
 .safety-hero::before {
@@ -602,6 +606,16 @@ details summary:focus-visible {
     transform 160ms ease;
 }
 
+.summary-card-clickable,
+.dashboard-entity-trigger {
+  cursor: pointer;
+}
+
+.summary-card-clickable {
+  text-align: left;
+  width: 100%;
+}
+
 .summary-card:hover {
   border-color: var(--border-strong);
   transform: translateY(-2px);
@@ -689,7 +703,7 @@ details summary:focus-visible {
   border-radius: 16px;
   display: grid;
   gap: 18px;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
   padding: 18px 22px;
 }
 
@@ -1066,6 +1080,12 @@ details summary:focus-visible {
   gap: 7px;
   min-height: 172px;
   padding: 16px;
+  text-align: left;
+  width: 100%;
+}
+
+.environment-overview-item:disabled {
+  cursor: default;
 }
 
 .environment-overview-item > span:first-child {
@@ -1102,6 +1122,23 @@ details summary:focus-visible {
   gap: 11px;
   grid-template-columns: auto minmax(0, 1fr);
   padding: 11px 13px;
+  text-align: left;
+  width: 100%;
+}
+
+.dashboard-entity-trigger:not(:disabled),
+.summary-card-clickable,
+.entity-card-clickable {
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    transform 160ms ease;
+}
+
+.dashboard-entity-trigger:not(:disabled):hover,
+.entity-card-clickable:hover {
+  background-color: var(--surface-hover);
+  border-color: var(--border-strong);
 }
 
 .door-overview-row > div {
@@ -1355,6 +1392,10 @@ details summary:focus-visible {
   margin-bottom: 16px;
 }
 
+.fault-details-button {
+  margin-top: 14px;
+}
+
 .details-grid {
   display: grid;
   gap: 12px;
@@ -1425,6 +1466,7 @@ details summary:focus-visible {
   gap: 12px;
   grid-template-columns: auto 1fr auto;
   padding: 12px;
+  position: relative;
 }
 
 .recovery-warning {
@@ -1460,6 +1502,264 @@ details summary:focus-visible {
 .recovery-card-copy small {
   color: var(--text-muted);
   font-size: 0.68rem;
+}
+
+.recovery-card-copy code {
+  color: var(--text-muted);
+  display: block;
+  font-size: 0.62rem;
+  margin-top: 4px;
+}
+
+.entity-card-overlay-button {
+  background: transparent;
+  border-radius: inherit;
+  cursor: pointer;
+  inset: 0;
+  position: absolute;
+  z-index: 1;
+}
+
+.entity-dialog-backdrop {
+  align-items: stretch;
+  background: rgba(2, 8, 12, 0.74);
+  display: flex;
+  inset: 0;
+  justify-content: flex-end;
+  padding-left: min(12vw, 180px);
+  position: fixed;
+  z-index: 100;
+}
+
+.entity-dialog {
+  background: var(--bg-soft);
+  border-left: 1px solid var(--border-strong);
+  box-shadow: -24px 0 70px rgba(0, 0, 0, 0.42);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-width: 720px;
+  width: 100%;
+}
+
+.entity-dialog-header {
+  align-items: start;
+  border-bottom: 1px solid var(--border);
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  padding: 24px 26px 20px;
+}
+
+.entity-dialog-heading {
+  min-width: 0;
+}
+
+.entity-dialog-heading h2 {
+  font-size: 1.22rem;
+  line-height: 1.3;
+  margin: 5px 0 3px;
+}
+
+.entity-dialog-heading p {
+  color: var(--text-soft);
+  font-size: 0.74rem;
+  margin: 0 0 7px;
+}
+
+.entity-dialog-heading code {
+  color: var(--text-muted);
+  display: block;
+  font-size: 0.68rem;
+}
+
+.entity-dialog-close {
+  margin-top: -5px;
+}
+
+.entity-dialog-scroll {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 20px;
+  overflow-y: auto;
+  padding: 24px 26px 32px;
+}
+
+.entity-dialog-facts {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+
+.entity-dialog-facts > div {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 13px;
+}
+
+.entity-dialog-facts dt,
+.entity-dialog-attributes dt {
+  color: var(--text-muted);
+  font-size: 0.63rem;
+  margin-bottom: 5px;
+  text-transform: uppercase;
+}
+
+.entity-dialog-facts dd,
+.entity-dialog-attributes dd {
+  color: var(--text-soft);
+  font-size: 0.75rem;
+  line-height: 1.45;
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.entity-dialog-history,
+.entity-dialog-attributes {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  padding: 18px;
+}
+
+.entity-dialog-section-header {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.entity-dialog-section-header h3 {
+  font-size: 0.92rem;
+  margin: 3px 0 0;
+}
+
+.entity-history-bar {
+  background: rgba(158, 180, 194, 0.07);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  height: 34px;
+  margin-top: 20px;
+  overflow: hidden;
+}
+
+.entity-history-segment {
+  flex: var(--segment-duration) 1 0;
+  min-width: 2px;
+}
+
+.history-segment-safe {
+  background: var(--safe);
+}
+
+.history-segment-critical,
+.history-segment-danger {
+  background: var(--danger);
+}
+
+.history-segment-warning {
+  background: var(--warning);
+}
+
+.history-segment-info {
+  background: var(--info);
+}
+
+.history-segment-muted {
+  background: var(--text-muted);
+}
+
+.entity-history-axis {
+  color: var(--text-muted);
+  display: flex;
+  font-size: 0.61rem;
+  justify-content: space-between;
+  margin-top: 6px;
+}
+
+.entity-dialog-timeline {
+  max-height: 330px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.state-timeline .timeline-safe {
+  background: var(--safe);
+}
+
+.state-timeline .timeline-critical,
+.state-timeline .timeline-danger {
+  background: var(--danger);
+}
+
+.state-timeline .timeline-warning {
+  background: var(--warning);
+}
+
+.state-timeline .timeline-info {
+  background: var(--info);
+}
+
+.state-timeline .timeline-muted {
+  background: var(--text-muted);
+}
+
+.entity-dialog-attributes {
+  padding: 0;
+}
+
+.entity-dialog-attributes > summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  font-size: 0.78rem;
+  font-weight: 700;
+  justify-content: space-between;
+  list-style: none;
+  padding: 16px 18px;
+}
+
+.entity-dialog-attributes > summary::-webkit-details-marker {
+  display: none;
+}
+
+.entity-dialog-attributes > summary span {
+  background: rgba(158, 180, 194, 0.1);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: 0.65rem;
+  padding: 3px 8px;
+}
+
+.entity-dialog-attributes dl {
+  border-top: 1px solid var(--border);
+  display: grid;
+  margin: 0;
+}
+
+.entity-dialog-attributes dl > div {
+  border-bottom: 1px solid var(--border);
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(120px, 0.36fr) minmax(0, 1fr);
+  padding: 12px 18px;
+}
+
+.entity-dialog-attributes dl > div:last-child {
+  border-bottom: 0;
+}
+
+.entity-dialog-attributes p {
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  margin: 0;
+  padding: 16px 18px;
 }
 
 .empty-state {
@@ -2714,6 +3014,40 @@ details summary:focus-visible {
 }
 
 @media (max-width: 720px) {
+  .entity-dialog-backdrop {
+    padding-left: 0;
+  }
+
+  .entity-dialog {
+    max-width: none;
+  }
+
+  .entity-dialog-header {
+    gap: 10px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 18px;
+  }
+
+  .entity-dialog-header .status-badge {
+    grid-column: 1;
+    grid-row: 2;
+    justify-self: start;
+  }
+
+  .entity-dialog-close {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .entity-dialog-scroll {
+    padding: 18px;
+  }
+
+  .entity-dialog-section-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
   .entity-monitor-overview {
     align-items: flex-start;
     grid-template-columns: 1fr;
@@ -2949,6 +3283,15 @@ details summary:focus-visible {
 }
 
 @media (max-width: 430px) {
+  .entity-dialog-facts {
+    grid-template-columns: 1fr;
+  }
+
+  .entity-dialog-attributes dl > div {
+    gap: 6px;
+    grid-template-columns: 1fr;
+  }
+
   .entity-health-summary,
   .entity-detail-grid {
     grid-template-columns: 1fr;
