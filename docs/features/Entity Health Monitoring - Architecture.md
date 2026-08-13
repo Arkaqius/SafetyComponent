@@ -19,14 +19,18 @@ The following decisions define the feature boundary:
    installation configuration.
 4. Group C is informational. It shall never create a symptom, fault,
    notification, recovery action, or application-health degradation.
-5. Availability and freshness are mandatory for Groups A and B. Additional
-   checks are opt-in and require complete, type-compatible calibration.
+5. Availability is mandatory for Groups A and B. Freshness and value checks are
+   opt-in and require complete, type-compatible calibration.
 6. Entity Monitor observes and diagnoses. It shall not call a Home Assistant
    actuator service or modify a monitored entity.
 7. One underlying failure has one fault owner. Entity Monitor shall not create a
    duplicate fault when the owning component already defines failure semantics.
 8. The complete Group C inventory is read through the authenticated Home
    Assistant frontend connection. It is not copied into MQTT attributes.
+9. C-ENT creates at most one fault per unhealthy Group A/B entity that it owns.
+   Individual failed checks are symptoms of that per-entity fault.
+10. Failure and recovery debounce govern the transition of each check result
+    between passing and failed states.
 
 ## 2. Goals
 
@@ -39,8 +43,8 @@ The feature shall:
 - make SafetyFunctions aware of the health of every entity dependency consumed
   by its components and core services;
 - expose one consistent view of explicit and component-owned entity health;
-- aggregate multiple C-ENT-owned failures without losing per-entity or per-check
-  context;
+- keep failures of different entities in separate faults while aggregating all
+  failed checks of one entity without losing context;
 - provide an entity/device audit view for the complete Home Assistant instance;
 - make entity source, owner, state, availability, timestamps, device, and area
   easy to filter in SafetyHome;
@@ -58,7 +62,7 @@ The feature shall:
 - Explicit installation-owned safety dependencies.
 - Safety Component and core dependency declarations.
 - Every configured `common_entities` binding.
-- Availability, freshness, optional sanity checks, failure/recovery debounce,
+- Availability, optional freshness and value checks, failure/recovery debounce,
   and diagnostic publication for Groups A and B.
 - Information-only inventory, search, sorting, filtering, and device grouping for
   Group C.
@@ -88,8 +92,9 @@ Each entry has a stable installation key and contains:
 
 - `entity_id`;
 - optional `area_id` and operator description;
-- mandatory availability and freshness calibration;
-- optional accepted-state, type, range, rate-of-change, or stuck-at checks;
+- mandatory availability monitoring;
+- optional freshness, required-value, allowed-values, finite-number, numeric-
+  range, or rate-of-change checks;
 - failure and recovery debounce;
 - an enabled/disabled flag that preserves the stable key.
 
@@ -106,7 +111,7 @@ contains:
 - `entity_id` resolved from validated configuration;
 - owner component/core service;
 - purpose and expected value kind;
-- freshness contract;
+- optional freshness contract with a trustworthy timestamp source;
 - enabled optional checks;
 - fault ownership;
 - optional area/device context.
@@ -117,8 +122,8 @@ have to repeat the same entity in Group A.
 
 Examples of Group B dependencies include temperature inputs registered by
 `TemperatureComponent`, door contacts registered by `SafetyDoorsComponent`,
-shared outside-temperature or occupancy inputs, and required provider or
-aggregate diagnostics registered by `ExternalHazardComponent`.
+and shared outside-temperature or occupancy inputs registered by the application
+core or their consuming component.
 
 ### 4.3 Group C - entity and device inventory
 
@@ -252,8 +257,8 @@ membership and merges compatible checks. The frontend joins those records with
 the complete Group C inventory. A component-owned check cannot be disabled or
 relaxed by Group A configuration.
 
-Conflicting value kinds, units, or fault owners are configuration errors. Two
-identical checks are deduplicated by their stable check key.
+Conflicting value kinds or fault owners are configuration errors. Two identical
+checks are deduplicated by their stable check key.
 
 ## 8. Check model
 
@@ -261,32 +266,56 @@ Every check returns a structured result containing check key, result state,
 reason code, observed value, evaluation timestamp, relevant source timestamps,
 and calibration identity.
 
-### 8.1 Mandatory checks
+### 8.1 Mandatory check
 
 | Check code | Purpose | Failure state |
 | --- | --- | --- |
 | `availability` | Detect missing entities, read failures, and native `unknown` or `unavailable` states | `unavailable` |
-| `freshness` | Detect absence of a trustworthy state/attribute update within `max_silence_seconds` | `stale` |
 
-The freshness timer starts after the initial snapshot and startup grace. It uses
-the newest trustworthy update timestamp available from Home Assistant. The
-configured timeout must reflect the source's real update behavior; a check shall
-not infer a heartbeat from domain type alone.
-
-For a safety-relevant dependency, the owning contract shall allocate a detection
-budget from its applicable FTTI. Freshness timeout plus failure debounce shall
-fit that budget. If the real source cadence cannot satisfy the budget, the
-source cannot serve as the sole safety channel for that requirement.
+Availability is evaluated against the entity itself. It fails when the entity
+cannot be read, is missing, returns `None`, or has a normalized native state of
+`unknown` or `unavailable`. An empty state may be rejected by an enabled
+`required_value` check rather than by availability.
 
 ### 8.2 Optional checks
 
-| Check code | Required calibration | Result on failure |
-| --- | --- | --- |
-| `accepted_states` | Non-empty set of normalized allowed raw states | `degraded` |
-| `value_type` | Expected boolean, string, integer, or finite number | `degraded` |
-| `numeric_range` | Unit plus inclusive minimum and/or maximum | `degraded` |
-| `rate_of_change` | Unit, sample window, maximum rise and/or fall | `degraded` |
-| `stuck_at` | Expected update cadence, observation window, and minimum variation or transition count | `degraded` |
+Every optional check targets either the entity `state` or one named attribute.
+
+| Check code | Required calibration | Exact pass condition | Failure state |
+| --- | --- | --- | --- |
+| `freshness` | `timestamp_source` and positive `max_silence_seconds` | The age of the latest valid confirmation is no greater than `max_silence_seconds` | `stale` |
+| `required_value` | Target | The target exists and is neither `None` nor an empty string | `degraded` |
+| `allowed_values` | Target and non-empty set of normalized values | The normalized target value belongs to the configured set | `degraded` |
+| `finite_number` | Target | The target converts to a finite number; `NaN` and positive/negative infinity fail | `degraded` |
+| `numeric_range` | Target plus inclusive `minimum` and/or `maximum` | The finite numeric target is within every configured bound | `degraded` |
+| `rate_of_change` | Target, positive `window_seconds`, `min_samples >= 2`, and at least one rise/fall bound | The rate calculated from the oldest and newest valid samples in the window is within every configured bound | `degraded` |
+
+`target: state` reads the entity state. `target: <attribute_name>` reads exactly
+that Home Assistant attribute. Missing targets are unevaluable unless
+`required_value` is enabled for the same target; unevaluable input cannot pass a
+dependent numeric check or clear an active symptom.
+
+Freshness uses only the configured trustworthy source:
+
+- `last_updated` when the owning integration is known to publish a real periodic
+  update or heartbeat; or
+- one named timestamp attribute supplied by the entity.
+
+`last_changed` is presentation metadata and is never a freshness source. A
+change in value is not required for freshness, and an unchanged door, switch,
+valve, or temperature remains fresh while its configured source continues to
+provide valid confirmations within `max_silence_seconds`.
+
+The freshness timer starts after the initial snapshot and startup grace. The
+configured timeout shall reflect the source's real update behavior; C-ENT shall
+not infer a heartbeat from entity domain or from repeated reads performed by
+C-ENT itself.
+
+For a safety-relevant dependency, the owning contract shall allocate a detection
+budget from its applicable FTTI. Availability failure debounce shall fit that
+budget. When freshness is enabled, freshness timeout plus failure debounce shall
+also fit the budget. If the real source cadence cannot satisfy the budget, the
+source cannot serve as the sole safety channel for that requirement.
 
 Optional checks are generic channel-health diagnostics. Safety-specific
 thresholds, such as unsafe room temperature, remain in the owning Safety
@@ -294,12 +323,18 @@ Component and are not duplicated here.
 
 Rate-of-change evaluation may reuse numeric sampling utilities from
 `DerivativeMonitor`, but Entity Monitor owns its check result, calibration, and
-fault semantics. Non-numeric, non-finite, unit-incompatible, stale, or
-unavailable input is unevaluable and cannot pass a numeric check.
+fault semantics. The rate is `(newest_value - oldest_value) / elapsed_time`
+expressed per minute. Non-numeric, non-finite, stale, or unavailable input is
+unevaluable and cannot pass a numeric check.
 
-Stuck-at checking is disabled unless the policy declares a meaningful expected
-variation. A door that remains closed or a switch that remains off for a long
-time is not faulty merely because its state is unchanged.
+### 8.3 Debounce policy
+
+`failure_debounce_seconds` and `recovery_debounce_seconds` apply independently
+to the state transition of each check result and do not create additional
+symptom IDs. A failing check enters `PENDING_FAILURE`; it creates its symptom
+only when failure debounce expires without a passing result. A failed check
+enters `PENDING_RECOVERY` only on current positive passing evidence and clears
+only when recovery debounce expires without another failure.
 
 ## 9. Evaluation lifecycle
 
@@ -347,13 +382,15 @@ C-ENT uses the following stable contract when it owns a failure:
 
 | Element | Stable ID |
 | --- | --- |
-| Safety Mechanism | `sm_entity_health` |
+| Safety Mechanism | `sm_entity_health_<entity_key>` |
 | Symptom | `EntityHealthFailure{EntityKey}{CheckKey}` |
-| Fault | `EntityHealthFailure` |
+| Fault | `EntityHealth{EntityKey}` |
 | Level | 3 |
 | Recovery action | None |
 
-The fault aggregates all active entity/check symptoms and retains:
+Each C-ENT-owned Group A/B entity has its own fault. All active check symptoms
+for that entity aggregate into the same fault; symptoms belonging to another
+entity aggregate into that other entity's fault. Each fault retains:
 
 - friendly name and entity ID;
 - source groups and owner;
@@ -361,6 +398,12 @@ The fault aggregates all active entity/check symptoms and retains:
 - current and last valid values;
 - last change, last update, failure-start, and evaluation timestamps;
 - area and device when known.
+
+After Group A/B records are merged and validated, C-ENT registers the safety
+mechanism and fault definition for each C-ENT-owned entity with FaultManager
+before state listeners and check evaluation start. Registration is deterministic
+from the stable entity key. The operator-facing fault name uses the current
+friendly entity name while the runtime IDs remain unchanged.
 
 For Group B, the dependency declaration selects `entity_monitor`, `component`,
 or `none` as fault owner. When `component` is selected, C-ENT provides health
@@ -440,13 +483,6 @@ app_config:
       default_failure_debounce_seconds: 15
       default_recovery_debounce_seconds: 60
 
-  faults:
-    EntityHealthFailure:
-      name: "Safety entity health failure"
-      level: 3
-      related_sms:
-        - "sm_entity_health"
-
 user_config:
   components_enabled:
     EntityMonitorComponent: true
@@ -458,13 +494,15 @@ user_config:
           entity_id: "climate.bedroom_radiator"
           area_id: "bedroom"
           description: "Heating dependency used by the bedroom automation"
-          max_silence_seconds: 45
+          detection_budget_seconds: 120
           failure_debounce_seconds: 15
           recovery_debounce_seconds: 60
           checks:
-            value_type:
-              type: "string"
-            accepted_states:
+            freshness:
+              timestamp_source: "last_updated"
+              max_silence_seconds: 45
+            allowed_values:
+              target: "state"
               values: ["heat", "off", "auto"]
 ```
 
@@ -476,13 +514,12 @@ Strict validation rejects:
 - missing or invalid entity IDs;
 - duplicate stable keys pointing to different entities;
 - non-positive timing values;
-- a safety freshness/debounce combination that exceeds its allocated FTTI
-  detection budget;
-- empty accepted-state sets;
+- an availability debounce that exceeds its allocated FTTI detection budget;
+- a safety freshness/debounce combination that exceeds that budget;
+- freshness checks without a trustworthy timestamp source or timeout;
+- empty allowed-value sets;
 - range checks without a bound;
-- numeric checks without units;
-- rate checks without a sample window or direction bound;
-- stuck-at checks without cadence and variation semantics;
+- rate checks without a sample window, minimum sample count, or direction bound;
 - incompatible checks for the declared value type;
 - Group B ownership or calibration conflicts.
 
@@ -511,16 +548,16 @@ Strict validation rejects:
 ### 17.1 Backend unit tests
 
 - Group A schema validation and calibration precedence.
-- Group B registration for Temperature, Safety Doors, External Hazard, and every
-  common entity.
+- Group B registration for Temperature, Safety Doors, shared application inputs,
+  and every common entity.
 - Membership merge and conflict rejection.
 - Missing, `unknown`, `unavailable`, stale, and recovered states.
 - Startup grace and restart snapshots.
-- Optional check type and unit validation.
-- Rate-of-change and stuck-at edge cases.
+- Optional check calibration and target validation.
+- Freshness and rate-of-change edge cases.
 - Independent failure and recovery debounce.
 - Fault ownership and duplicate-fault prevention.
-- Multi-entity fault aggregation and no false clear.
+- Same-entity check aggregation, per-entity fault separation, and no false clear.
 - Stable MQTT IDs and bounded attributes.
 - No RecoveryManager registration or actuator service calls.
 
@@ -548,7 +585,7 @@ Strict validation rejects:
 | Safety source | Allocation |
 | --- | --- |
 | HARA 1.3.11 System Failure | Groups A/B entity availability, freshness, diagnostics, and alerts |
-| SG-003 | C-ENT checks, fault ownership, no-false-clear behavior, and level-3 fault aggregation |
+| SG-003 | C-ENT checks, fault ownership, no-false-clear behavior, and per-entity level-3 fault allocation |
 | IR-009 | Entity state, timestamps, source membership, device, area, and information-only boundary |
 | SYS-SR-ENT-* | Software requirements `SWR-ENT-*` |
 | NFR-030/031 | Component-owned contracts and freedom from interference by Group C |

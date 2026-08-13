@@ -46,6 +46,21 @@ def test_german_localization_covers_notifications_and_dynamic_entities() -> None
     )
 
 
+def test_entity_monitor_presentation_is_localized() -> None:
+    localizer = Localizer({"language": "de"})
+
+    assert localizer.entity_name(
+        "sensor.entity_monitor_summary", "fallback"
+    ) == "Überwachte Entitäten"
+    assert (
+        localizer.state_label("sensor.entity_health_office", "stale")
+        == "Veraltete Daten"
+    )
+    assert localizer.text("fault.entity_health", entity="Büro") == (
+        "Entitätsproblem: Büro"
+    )
+
+
 def test_unknown_text_key_falls_back_to_key() -> None:
     assert Localizer({"language": "de"}).text("missing.key") == "missing.key"
 

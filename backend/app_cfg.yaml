@@ -47,6 +47,12 @@ SafetyFunctions:
         SM_TC_2_REEVAL_DELAY_SECONDS: 30
         # Sampling interval (minutes) used to register derivative monitoring for sm_tc_2.
         SM_TC_2_DERIVATIVE_SAMPLE_MINUTES: 15
+      entity_monitor:
+        startup_grace_seconds: 60
+        default_failure_debounce_seconds: 15
+        default_recovery_debounce_seconds: 60
+        evaluation_interval_seconds: 5
+        unhealthy_summary_limit: 32
 
     external_hazard_policy:
       notification_only: true
@@ -176,6 +182,7 @@ SafetyFunctions:
       TemperatureComponent: true
       SafetyDoorsComponent: true
       ExternalHazardComponent: true
+      EntityMonitorComponent: true
       # WaterLeakComponent: false
       # SmokeComponent: false
 
@@ -278,6 +285,11 @@ SafetyFunctions:
     # Each component has its own schema. If a component is enabled above, its
     # config must exist here and must be valid.
     safety_components:
+      EntityMonitorComponent:
+        # Group A entries are selected explicitly by the installation owner.
+        # Each entry may enable freshness and calibrated value checks.
+        explicit_entities: {}
+
       ExternalHazardComponent:
         openings:
           BathroomWindow:

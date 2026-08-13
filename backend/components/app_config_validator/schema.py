@@ -13,6 +13,7 @@ from components.safetycomponents.external_hazard.schema import (
     ExternalHazardPolicy,
     SiteConfig,
 )
+from components.safetycomponents.entity_monitor.schema import EntityMonitorCalibration
 
 
 class ValidationSettings(StrictBaseModel):
@@ -42,6 +43,7 @@ class CalibrationSettings(StrictBaseModel):
     model_config = ConfigDict(extra="allow")
 
     temperature: TemperatureCalibration = Field(default_factory=TemperatureCalibration)
+    entity_monitor: EntityMonitorCalibration = Field(default_factory=EntityMonitorCalibration)
 
 
 class AppPolicy(StrictBaseModel):

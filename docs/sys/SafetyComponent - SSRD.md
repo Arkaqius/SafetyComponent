@@ -213,23 +213,23 @@ The stable runtime contract is:
 | Element | Stable ID |
 | --- | --- |
 | Component | `EntityMonitorComponent` |
-| Safety Mechanism | `sm_entity_health` |
+| Safety Mechanism pattern | `sm_entity_health_<entity_key>` |
 | Symptom pattern | `EntityHealthFailure{EntityKey}{CheckKey}` |
-| Fault | `EntityHealthFailure`, level 3 |
+| Fault pattern | `EntityHealth{EntityKey}`, level 3 |
 | Per-entity diagnostic | `sensor.entity_health_<entity_key>` |
 | Aggregate diagnostic | `sensor.entity_monitor_summary` |
 
 | ID | Requirement | Responsible element |
 | --- | --- | --- |
 | SWR-ENT-001 | The feature shall distinguish `explicit`, `component`, and `inventory` source groups. `EntityHealthRegistry` shall maintain Groups A/B, and the frontend shall join them with Group C while preserving every applicable membership. | `EntityHealthRegistry` and SafetyHome join |
-| SWR-ENT-002 | Explicit safety entities shall be accepted only from validated installation configuration with a stable key, valid entity ID, area when configured, mandatory freshness calibration, and complete definitions for every enabled optional check. | Entity Monitor schema and `AppCfgValidator` |
-| SWR-ENT-003 | Safety Components and the application core shall register their entity dependencies with owner, purpose, freshness, checks, and fault ownership; all configured `common_entities` shall be registered as component dependencies. | component registry integration |
-| SWR-ENT-004 | Availability shall fail when Home Assistant reports `unknown` or `unavailable`, the entity cannot be read, or the entity disappears after startup. | availability check |
-| SWR-ENT-005 | Freshness shall use the newest trustworthy Home Assistant update timestamp and shall become `stale` after `max_silence_seconds`; startup grace shall prevent a false stale result before the initial snapshot is evaluated. For a safety-relevant dependency, freshness timeout plus failure debounce shall not exceed its allocated FTTI detection budget. | freshness check and scheduler |
-| SWR-ENT-006 | Accepted-state, value-type, numeric-range, rate-of-change, and stuck-at checks shall be opt-in and shall reject incomplete, incompatible, non-numeric, non-finite, or unit-inconsistent calibration. | check registry and schemas |
+| SWR-ENT-002 | Explicit safety entities shall be accepted only from validated installation configuration with a stable key, valid entity ID, area when configured, debounce policy, and complete definitions for every enabled optional check. | Entity Monitor schema and `AppCfgValidator` |
+| SWR-ENT-003 | Safety Components and the application core shall register their entity dependencies with owner, purpose, checks, debounce, optional freshness contract, and fault ownership; all configured `common_entities` shall be registered as component dependencies. | component registry integration |
+| SWR-ENT-004 | Availability shall fail when Home Assistant reports `unknown` or `unavailable`, the entity cannot be read, or the entity disappears after startup. For a safety-relevant dependency, availability failure debounce shall fit its allocated FTTI detection budget. | availability check |
+| SWR-ENT-005 | Freshness shall be enabled only when the entity contract identifies a trustworthy heartbeat or timestamp source and `max_silence_seconds`. It shall become `stale` when that confirmation expires; startup grace shall prevent a false stale result before the initial snapshot is evaluated. For a safety-relevant dependency, freshness timeout plus failure debounce shall fit its allocated FTTI detection budget. | freshness check and scheduler |
+| SWR-ENT-006 | Required-value, allowed-values, finite-number, numeric-range, and rate-of-change checks shall be opt-in and shall reject incomplete or type-incompatible calibration. Numeric-range checks shall define at least one inclusive bound. Rate-of-change checks shall define a sample window, minimum sample count, and at least one permitted rise or fall bound. | check registry and schemas |
 | SWR-ENT-007 | A failing C-ENT-owned check shall set its stable symptom only after failure debounce and shall clear only after fresh valid observations pass recovery debounce. Invalid or missing observations shall not clear an active symptom. | evaluation state machine |
 | SWR-ENT-008 | Component-owned fault handling shall take precedence for a component dependency. Entity Monitor shall expose the dependency health but shall not emit a duplicate C-ENT symptom for the same failure. | fault-ownership resolver |
-| SWR-ENT-009 | C-ENT-owned symptoms shall aggregate into one level-3 `EntityHealthFailure` fault with every affected friendly name, entity ID, source group, failed check, last valid value, and relevant timestamps retained in context. | FaultManager integration |
+| SWR-ENT-009 | C-ENT-owned check symptoms shall aggregate per entity into one level-3 `EntityHealth{EntityKey}` fault. Different unhealthy entities shall have different faults. Each fault shall retain the friendly name, entity ID, source groups, failed checks, last valid value, and relevant timestamps. | dynamic fault registration and FaultManager integration |
 | SWR-ENT-010 | Each Group A/B diagnostic shall publish `healthy`, `degraded`, `stale`, or `unavailable`, plus source membership, owner, friendly name, area, device, current state, last change, last update, last valid observation, checks, and fault ownership. | MQTT diagnostics |
 | SWR-ENT-011 | The aggregate diagnostic shall publish bounded counts by health and source group plus bounded summaries of unhealthy Group A/B entities; it shall not contain the complete Home Assistant inventory. | `sensor.entity_monitor_summary` publisher |
 | SWR-ENT-012 | The frontend shall read Group C entity/device state and registry metadata through its authenticated Home Assistant connection and support filtering by domain, device, area, availability, source group, and last-change or last-update time. | SafetyHome entity audit view |

@@ -56,6 +56,61 @@ class TemperatureComponent(SafetyComponent):
 
     component_name: str = "TemperatureComponent"
 
+    @classmethod
+    def get_entity_dependencies(
+        cls, component_cfg: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Declare temperature inputs, window inputs, and configured actuators."""
+
+        dependencies: list[dict[str, Any]] = []
+        for entry in component_cfg:
+            for location, data in entry.items():
+                dependencies.append(
+                    {
+                        "key": f"Temperature{location}",
+                        "entity_id": data["temperature_sensor"],
+                        "owner": cls.component_name,
+                        "purpose": f"Temperature input for {location}",
+                        "checks": {
+                            "freshness": {
+                                "timestamp_source": "last_updated",
+                                "max_silence_seconds": 3600,
+                            },
+                            "finite_number": {"target": "state"},
+                        },
+                        "detection_budget_seconds": 3615,
+                        "area_id": data.get("area_id"),
+                        "area_name": data.get("area_name"),
+                    }
+                )
+                if data.get("window_sensor"):
+                    dependencies.append(
+                        {
+                            "key": f"TemperatureWindow{location}",
+                            "entity_id": data["window_sensor"],
+                            "owner": cls.component_name,
+                            "purpose": f"Window input for {location} temperature policy",
+                            "checks": {},
+                            "detection_budget_seconds": 30,
+                            "area_id": data.get("area_id"),
+                            "area_name": data.get("area_name"),
+                        }
+                    )
+                if data.get("actuator"):
+                    dependencies.append(
+                        {
+                            "key": f"TemperatureActuator{location}",
+                            "entity_id": data["actuator"],
+                            "owner": cls.component_name,
+                            "purpose": f"Configured recovery actuator for {location}",
+                            "checks": {},
+                            "detection_budget_seconds": 30,
+                            "area_id": data.get("area_id"),
+                            "area_name": data.get("area_name"),
+                        }
+                    )
+        return dependencies
+
     # region Init and enables
     def __init__(
         self,

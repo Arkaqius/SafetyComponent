@@ -44,11 +44,7 @@ export const MOCK_ENTITIES: EntityMap = {
         ImgwWarningsApiComponent: 'ok',
         OpenMeteoAirQualityApiComponent: 'ok',
       },
-      enabled_providers: [
-        'OpenMeteoWeatherApiComponent',
-        'ImgwWarningsApiComponent',
-        'OpenMeteoAirQualityApiComponent',
-      ],
+      enabled_providers: ['OpenMeteoWeatherApiComponent', 'ImgwWarningsApiComponent', 'OpenMeteoAirQualityApiComponent'],
       advice_inhibition: [
         {
           reason: 'wind',
@@ -267,5 +263,76 @@ for (const [entityId, friendlyName, value, rate, acceleration, lowThreshold, hig
     source_entity: entityId,
     threshold_type: 'high',
     unit_of_measurement: '°C',
+  });
+}
+
+MOCK_ENTITIES['sensor.entity_monitor_summary'] = entity('stale', 'Monitorowane encje', {
+  total: 3,
+  healthy: 2,
+  degraded: 0,
+  stale: 1,
+  unavailable: 0,
+  unhealthy_entities: [
+    {
+      entity_id: 'sensor.office_climatesensor_temperature',
+      entity_key: 'TemperatureOffice',
+      friendly_name: 'Temperatura biura',
+      health: 'stale',
+      failed_checks: ['freshness'],
+    },
+  ],
+});
+
+for (const [key, sourceEntity, name, health, areaName, owner] of [
+  ['temperature_office', 'sensor.office_climatesensor_temperature', 'Temperatura biura', 'stale', 'Biuro', 'TemperatureComponent'],
+  [
+    'safety_door_garage_gate',
+    'binary_sensor.garage_gatedoorlow_contact_contact',
+    'Brama garażowa',
+    'healthy',
+    'Garaż',
+    'SafetyDoorsComponent',
+  ],
+  ['common_outside_temp', 'sensor.dom_temperature', 'Temperatura zewnętrzna', 'healthy', undefined, 'SafetyFunctions'],
+] as const) {
+  const source = MOCK_ENTITIES[sourceEntity] ?? entity('7.2', name);
+  MOCK_ENTITIES[sourceEntity] = source;
+  MOCK_ENTITIES[`sensor.entity_health_${key}`] = entity(health, name, {
+    entity_id: sourceEntity,
+    entity_key: key,
+    friendly_name: name,
+    current_state: source.state,
+    source_groups: ['component'],
+    owners: [owner],
+    purposes: ['Źródło danych funkcji bezpieczeństwa'],
+    fault_owner: 'entity_monitor',
+    fault_name: `EntityHealth${key}`,
+    area_name: areaName,
+    last_changed: source.last_changed,
+    last_updated: source.last_updated,
+    failure_debounce_seconds: 15,
+    recovery_debounce_seconds: 60,
+    checks: [
+      {
+        check: 'availability',
+        result: 'passed',
+        reason: 'entity_available',
+        observed_value: source.state,
+        evaluated_at: timestamp(0),
+        calibration: {},
+      },
+      ...(health === 'stale'
+        ? [
+            {
+              check: 'freshness',
+              result: 'failed',
+              reason: 'freshness_expired',
+              observed_value: 3720,
+              evaluated_at: timestamp(0),
+              calibration: { timestamp_source: 'last_updated', max_silence_seconds: 3600 },
+            },
+          ]
+        : []),
+    ],
   });
 }

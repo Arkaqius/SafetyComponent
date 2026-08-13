@@ -113,6 +113,26 @@ class ExternalHazardComponent(SafetyComponent):
 
     component_name = "ExternalHazardComponent"
 
+    @classmethod
+    def get_entity_dependencies(
+        cls, component_cfg: dict[str, Any]
+    ) -> list[dict[str, Any]]:
+        """Declare opening contacts used by external-hazard correlation."""
+
+        return [
+            {
+                "key": f"ExternalOpening{opening_name}",
+                "entity_id": opening["entity_id"],
+                "owner": cls.component_name,
+                "purpose": f"External-hazard opening input for {opening_name}",
+                "checks": {},
+                "detection_budget_seconds": 30,
+                "area_id": opening.get("area_id"),
+                "area_name": opening.get("area_name"),
+            }
+            for opening_name, opening in component_cfg.get("openings", {}).items()
+        ]
+
     def __init__(
         self,
         hass_app: hass.Hass,

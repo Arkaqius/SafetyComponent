@@ -39,6 +39,43 @@ class SafetyDoorsComponent(SafetyComponent):
 
     component_name = "SafetyDoorsComponent"
 
+    @classmethod
+    def get_entity_dependencies(
+        cls, component_cfg: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Declare door contacts and optional monitoring conditions."""
+
+        dependencies: list[dict[str, Any]] = []
+        for entry in component_cfg:
+            for door_name, data in entry.items():
+                dependencies.append(
+                    {
+                        "key": f"SafetyDoor{door_name}",
+                        "entity_id": data["entity_id"],
+                        "owner": cls.component_name,
+                        "purpose": f"Open-duration input for {door_name}",
+                        "checks": {},
+                        "detection_budget_seconds": 30,
+                        "area_id": data.get("area_id"),
+                        "area_name": data.get("area_name"),
+                    }
+                )
+                condition = data.get("condition")
+                if condition:
+                    dependencies.append(
+                        {
+                            "key": f"SafetyDoorCondition{door_name}",
+                            "entity_id": condition["entity_id"],
+                            "owner": cls.component_name,
+                            "purpose": f"Monitoring condition for {door_name}",
+                            "checks": {},
+                            "detection_budget_seconds": 30,
+                            "area_id": data.get("area_id"),
+                            "area_name": data.get("area_name"),
+                        }
+                    )
+        return dependencies
+
     def __init__(
         self,
         hass_app: hass.Hass,

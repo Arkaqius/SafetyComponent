@@ -15,7 +15,8 @@ import {
 import { useSafetyEntities } from '../hooks/useSafetyEntities';
 
 export default function Dashboard() {
-  const { externalHazards, faults, recoveries, safetyDoors, summary, systemEntity, temperatures } = useSafetyEntities();
+  const { entityMonitorSummary, externalHazards, faults, recoveries, safetyDoors, summary, systemEntity, temperatures } =
+    useSafetyEntities();
   const systemState = systemStatePresentation(systemEntity?.state);
   const values = temperatures.filter((temperature): temperature is TemperatureView & { state: number } => temperature.state !== null);
   const average = values.length > 0 ? values.reduce((sum, temperature) => sum + temperature.state, 0) / values.length : null;
@@ -58,6 +59,40 @@ export default function Dashboard() {
           <strong>{systemState.label}</strong>
           <small>Zmiana {formatRelativeTime(systemEntity?.last_changed)}</small>
         </div>
+      </section>
+
+      <section className='entity-monitor-overview'>
+        <div>
+          <span className='section-kicker'>Źródła danych</span>
+          <strong>Monitorowane encje</strong>
+          <small>
+            {entityMonitorSummary.total === 0
+              ? 'Brak opublikowanej diagnostyki C-ENT'
+              : `${entityMonitorSummary.healthy}/${entityMonitorSummary.total} encji działa prawidłowo`}
+          </small>
+        </div>
+        <StatusBadge
+          tone={
+            entityMonitorSummary.unavailable > 0
+              ? 'danger'
+              : entityMonitorSummary.degraded + entityMonitorSummary.stale > 0
+                ? 'warning'
+                : entityMonitorSummary.total > 0
+                  ? 'safe'
+                  : 'muted'
+          }
+        >
+          {entityMonitorSummary.unavailable > 0
+            ? `${entityMonitorSummary.unavailable} niedostępnych`
+            : entityMonitorSummary.degraded + entityMonitorSummary.stale > 0
+              ? `${entityMonitorSummary.degraded + entityMonitorSummary.stale} wymaga uwagi`
+              : entityMonitorSummary.total > 0
+                ? 'Wszystkie sprawne'
+                : 'Brak danych'}
+        </StatusBadge>
+        <Link className='text-link' to='/entities'>
+          Pokaż encje <Icon name='chevron' size={15} />
+        </Link>
       </section>
 
       <section aria-label='Podsumowanie temperatur' className='summary-grid'>

@@ -1003,7 +1003,7 @@ devices. C-ENT observes health and shall not command an entity or actuator.
 
 | Group | Stable source code | Membership | Policy owner | Safety effect |
 | --- | --- | --- | --- | --- |
-| A — Explicit safety entities | `explicit` | Entity IDs selected by the installation because they participate in important external automations or safety dependencies | `user_config` | Failed checks may create C-ENT symptoms and the C-ENT fault |
+| A — Explicit safety entities | `explicit` | Entity IDs selected by the installation because they participate in important external automations or safety dependencies | `user_config` | Failed checks may create symptoms and one C-ENT fault for that entity |
 | B — Component dependencies | `component` | Inputs, common entities, and required diagnostic outputs declared by Safety Components or the application core | Owning component or core | Failed checks use the declared fault owner and shall not create duplicate faults |
 | C — Entity/device inventory | `inventory` | All Home Assistant entities and devices visible to the frontend connection | Home Assistant metadata; frontend filters | Information only; no safety effect |
 
@@ -1026,19 +1026,22 @@ entity is safety-relevant through Group A or B.
 
 #### 8.5.3 Checks and calibration
 
-- Availability and freshness checks are mandatory for every Group A and Group
-  B record.
-- Group A shall configure `max_silence_seconds`; Group B shall receive its
-  freshness limit from the owning component or core dependency contract.
-- Optional checks are allowed for accepted state sets, value type, numeric
-  range, rate of change, and stuck-at behavior.
-- Numeric range and rate-of-change checks shall define units and bounds.
-  Stuck-at checks shall be enabled only when the source has a declared update
-  cadence and expected minimum variation.
-- Every fault-capable check shall define failure debounce and recovery debounce.
-  C-ENT shall apply a startup grace period before evaluating freshness.
-- For a safety-relevant dependency, freshness timeout plus failure debounce
-  shall not exceed the detection budget allocated from its applicable FTTI.
+- Availability is mandatory for every Group A and Group B record.
+- Freshness is enabled only when the entity contract identifies a trustworthy
+  heartbeat or source timestamp and defines `max_silence_seconds`. The check
+  evaluates the age of the latest valid confirmation from that source.
+- Optional checks are allowed for required state/attribute values, allowed
+  values, finite numeric values, numeric range, and rate of change.
+- Numeric-range checks shall define at least one inclusive bound.
+  Rate-of-change checks shall define a sample window, minimum sample count, and
+  at least one permitted rise or fall bound.
+- Failure and recovery debounce govern state transitions independently for each
+  check result. C-ENT shall apply a startup grace period before evaluating
+  freshness.
+- For a safety-relevant dependency, availability failure debounce shall not
+  exceed the detection budget allocated from its applicable FTTI. When
+  freshness is enabled, freshness timeout plus failure debounce shall also fit
+  that budget.
 - Calibration is per entity for Group A and per dependency contract for Group
   B. Global defaults may reduce repetition but shall not override a more
   specific policy.
@@ -1048,9 +1051,9 @@ entity is safety-relevant through Group A or B.
 | Element | Stable ID |
 | --- | --- |
 | Component | `EntityMonitorComponent` |
-| Safety Mechanism | `sm_entity_health` |
+| Per-entity Safety Mechanism | `sm_entity_health_<entity_key>` |
 | Per-check symptom | `EntityHealthFailure{EntityKey}{CheckKey}` |
-| Aggregated fault | `EntityHealthFailure` |
+| Per-entity fault | `EntityHealth{EntityKey}` |
 | Fault level | 3 |
 | Per-entity diagnostic | `sensor.entity_health_<entity_key>` |
 | Aggregate diagnostic | `sensor.entity_monitor_summary` |
@@ -1068,13 +1071,15 @@ entity is safety-relevant through Group A or B.
 - **SYS-SR-ENT-003:** Group B shall be derived from validated component and core
   dependency declarations, including all configured common entities, without
   duplicating those entity IDs in installation configuration.
-- **SYS-SR-ENT-004:** Availability and freshness shall be evaluated for every
-  Group A and Group B entity according to the applicable calibration. For a
-  safety-relevant dependency, freshness timeout plus failure debounce shall fit
-  its allocated FTTI detection budget.
-- **SYS-SR-ENT-005:** Optional accepted-state, type, range, rate-of-change, and
-  stuck-at checks shall run only when their complete calibration is present and
-  the current input is valid for that check.
+- **SYS-SR-ENT-004:** Availability shall be evaluated for every Group A and
+  Group B entity. Freshness shall be evaluated only when the applicable
+  calibration declares a trustworthy heartbeat or timestamp source and
+  `max_silence_seconds`. For a safety-relevant dependency, freshness timeout
+  plus failure debounce shall fit its allocated FTTI detection budget, and the
+  availability failure debounce shall independently fit that budget.
+- **SYS-SR-ENT-005:** Optional required-value, allowed-values, finite-number,
+  numeric-range, and rate-of-change checks shall run only when their complete
+  calibration is present and the current input is valid for that check.
 - **SYS-SR-ENT-006:** A failed, stale, unavailable, malformed, or unevaluable
   observation shall not provide positive evidence to clear a C-ENT symptom.
 - **SYS-SR-ENT-007:** When C-ENT owns a Group A or Group B failure, it shall set
@@ -1083,9 +1088,10 @@ entity is safety-relevant through Group A or B.
 - **SYS-SR-ENT-008:** When an owning component already defines fault semantics
   for a Group B dependency, C-ENT shall expose and aggregate its health without
   creating a duplicate `EntityHealthFailure` symptom.
-- **SYS-SR-ENT-009:** All C-ENT-owned symptoms shall aggregate into the single
-  level-3 `EntityHealthFailure` fault while retaining every affected entity and
-  failed check in diagnostic context.
+- **SYS-SR-ENT-009:** All C-ENT-owned check symptoms for one entity shall
+  aggregate into that entity's level-3 `EntityHealth{EntityKey}` fault. A
+  different unhealthy entity shall have a different fault. The fault shall
+  retain every failed check in diagnostic context.
 - **SYS-SR-ENT-010:** Group C shall include all entities and devices visible to
   the authenticated Home Assistant frontend connection and support filtering by
   at least domain, device, area, availability, source group, and last-change or
