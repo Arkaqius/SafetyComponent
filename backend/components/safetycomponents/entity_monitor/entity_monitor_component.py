@@ -503,6 +503,9 @@ class EntityMonitorComponent(SafetyComponent):
         snapshot = runtime.snapshot or {}
         dependency = runtime.dependency
         return {
+            # Home Assistant removes the reserved ``entity_id`` attribute from
+            # MQTT JSON attributes, so publish a non-reserved source reference.
+            "source_entity_id": dependency.entity_id,
             "entity_id": dependency.entity_id,
             "entity_key": dependency.key,
             "friendly_name": self._friendly_name(snapshot, dependency),

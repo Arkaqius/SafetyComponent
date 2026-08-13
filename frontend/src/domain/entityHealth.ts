@@ -211,7 +211,7 @@ export function buildDeviceInventory(
 }
 
 function monitoredEntity(diagnosticEntityId: string, entity: EntitySnapshot): MonitoredEntityView | null {
-  const entityId = stringAttribute(entity, 'entity_id');
+  const entityId = stringAttribute(entity, 'source_entity_id') ?? stringAttribute(entity, 'entity_id');
   const entityKey = stringAttribute(entity, 'entity_key');
   if (!entityId || !entityKey) return null;
   return {

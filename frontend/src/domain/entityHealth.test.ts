@@ -8,7 +8,7 @@ test('normalizes monitored diagnostics and summary', () => {
     'sensor.entity_health_temperature_office': {
       state: 'stale',
       attributes: {
-        entity_id: 'sensor.office_temperature',
+        source_entity_id: 'sensor.office_temperature',
         entity_key: 'TemperatureOffice',
         friendly_name: 'Temperatura biura',
         current_state: '21.5',
@@ -38,6 +38,25 @@ test('normalizes monitored diagnostics and summary', () => {
     stale: 1,
     unavailable: 0,
   });
+});
+
+test('accepts the legacy entity_id attribute as a fallback', () => {
+  const monitored = getMonitoredEntities({
+    'sensor.entity_health_temperature_office': {
+      state: 'healthy',
+      attributes: {
+        entity_id: 'sensor.office_temperature',
+        entity_key: 'TemperatureOffice',
+        source_groups: ['component'],
+        owners: ['TemperatureComponent'],
+        purposes: ['Temperature input'],
+        fault_owner: 'entity_monitor',
+        checks: [],
+      },
+    },
+  });
+
+  assert.equal(monitored[0]?.entityId, 'sensor.office_temperature');
 });
 
 test('joins Home Assistant entity, device, area, and monitoring records', () => {

@@ -85,6 +85,9 @@ def test_entity_monitor_creates_per_check_symptoms_and_per_entity_fault(
     fault = component.get_fault_definitions()["EntityHealthTemperatureOffice"]
     assert fault["level"] == 3
     assert fault["related_sms"] == ["sm_entity_health_temperature_office"]
+    runtime = component._entities["TemperatureOffice"]
+    attributes = component._diagnostic_attributes(runtime)
+    assert attributes["source_entity_id"] == "sensor.office_temperature"
 
 
 def test_entity_monitor_debounces_failure_and_recovery(mocked_hass_app_basic):
