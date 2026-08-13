@@ -198,6 +198,40 @@ feature architecture §12.
 | SWR-EXT-014 | `ImgwWarningsApiComponent` shall expose only current sanitized warnings matching at least one configured TERYT code, mark them as locally applicable, and dispatch locally applicable recognized hazards into household safety policy. | `ImgwWarningsApiComponent` and provider diagnostic MQTT entity |
 | SWR-EXT-015 | Each provider diagnostic MQTT entity shall expose an `observations` list of at most 64 summaries containing the stable observation ID, hazard type, provider level, observation and validity timestamps, and an optional operator-display value and unit. The list shall contain normalized current observations only and shall not expose unbounded provider payloads. | `ExternalHazardComponent._publish_provider_health` |
 
+### 4.9 Entity Health Monitoring
+
+The detailed design is in
+[`Entity Health Monitoring - Architecture.md`](../features/Entity%20Health%20Monitoring%20-%20Architecture.md).
+
+The stable runtime contract is:
+
+| Element | Stable ID |
+| --- | --- |
+| Component | `EntityMonitorComponent` |
+| Safety Mechanism pattern | `sm_entity_health_<entity_key>` |
+| Symptom pattern | `EntityHealthFailure{EntityKey}{CheckKey}` |
+| Fault pattern | `EntityHealth{EntityKey}`, level 3 |
+| Per-entity diagnostic | `sensor.entity_health_<entity_key>` |
+| Aggregate diagnostic | `sensor.entity_monitor_summary` |
+
+| ID | Requirement | Responsible element |
+| --- | --- | --- |
+| SWR-ENT-001 | The feature shall distinguish `explicit`, `component`, and `inventory` source groups. `EntityHealthRegistry` shall maintain Groups A/B, and the frontend shall join them with Group C while preserving every applicable membership. | `EntityHealthRegistry` and SafetyHome join |
+| SWR-ENT-002 | Explicit safety entities shall be accepted only from validated installation configuration with a stable key, valid entity ID, area when configured, debounce policy, and complete definitions for every enabled optional check. | Entity Monitor schema and `AppCfgValidator` |
+| SWR-ENT-003 | Safety Components and the application core shall register their entity dependencies with owner, purpose, checks, debounce, optional freshness contract, and fault ownership; all configured `common_entities` shall be registered as component dependencies. | component registry integration |
+| SWR-ENT-004 | Availability shall fail when Home Assistant reports `unknown` or `unavailable`, the entity cannot be read, or the entity disappears after startup. For a safety-relevant dependency, availability failure debounce shall fit its allocated FTTI detection budget. | availability check |
+| SWR-ENT-005 | Freshness shall be enabled only when the entity contract identifies a trustworthy heartbeat or timestamp source and `max_silence_seconds`. It shall become `stale` when that confirmation expires; startup grace shall prevent a false stale result before the initial snapshot is evaluated. For a safety-relevant dependency, freshness timeout plus failure debounce shall fit its allocated FTTI detection budget. | freshness check and scheduler |
+| SWR-ENT-006 | Required-value, allowed-values, finite-number, numeric-range, and rate-of-change checks shall be opt-in and shall reject incomplete or type-incompatible calibration. Numeric-range checks shall define at least one inclusive bound. Rate-of-change checks shall define a sample window, minimum sample count, and at least one permitted rise or fall bound. | check registry and schemas |
+| SWR-ENT-007 | A failing C-ENT-owned check shall set its stable symptom only after failure debounce and shall clear only after fresh valid observations pass recovery debounce. Invalid or missing observations shall not clear an active symptom. | evaluation state machine |
+| SWR-ENT-008 | Component-owned fault handling shall take precedence for a component dependency. Entity Monitor shall expose the dependency health but shall not emit a duplicate C-ENT symptom for the same failure. | fault-ownership resolver |
+| SWR-ENT-009 | C-ENT-owned check symptoms shall aggregate per entity into one level-3 `EntityHealth{EntityKey}` fault. Different unhealthy entities shall have different faults. Each fault shall retain the friendly name, entity ID, source groups, failed checks, last valid value, and relevant timestamps. | dynamic fault registration and FaultManager integration |
+| SWR-ENT-010 | Each Group A/B diagnostic shall publish `healthy`, `degraded`, `stale`, or `unavailable`, plus source membership, owner, friendly name, area, device, current state, last change, last update, last valid observation, checks, and fault ownership. | MQTT diagnostics |
+| SWR-ENT-011 | The aggregate diagnostic shall publish bounded counts by health and source group plus bounded summaries of unhealthy Group A/B entities; it shall not contain the complete Home Assistant inventory. | `sensor.entity_monitor_summary` publisher |
+| SWR-ENT-012 | The frontend shall read Group C entity/device state and registry metadata through its authenticated Home Assistant connection and support filtering by domain, device, area, availability, source group, and last-change or last-update time. | SafetyHome entity audit view |
+| SWR-ENT-013 | Group C shall not create symptoms, faults, notifications, recovery actions, MQTT inventory payloads, or application-health degradation. | frontend inventory boundary and backend negative contract |
+| SWR-ENT-014 | Entity Monitor shall register no recovery action and shall make no Home Assistant actuator service call. | negative actuation boundary |
+| SWR-ENT-015 | User-facing Entity Monitor names and states shall support English, Polish, and German; entity IDs, source codes, check codes, and raw health states shall remain language-independent. | localization and frontend presentation |
+
 ## 5. Non-functional requirements
 
 | ID | Requirement |
@@ -233,6 +267,7 @@ valid measure of safety-logic verification.
 | --- | --- | --- |
 | SG-001 Unsafe Cold Exposure | `SYS-SR-TEMP-001/002/004/005/007/008/009/010` | `SWR-TEMP-*` |
 | SG-002 Temperature Prediction | `SYS-SR-TEMP-001/003/004/005/006/009/010` | `SWR-TEMP-*` |
+| SG-003 Sensor/Communication Fault Detection | `SYS-SR-ENT-001..009/012/014` plus component-specific unavailable-input requirements | `SWR-ENT-*`, `SWR-TEMP-004`, `SWR-DOOR-004/006`, `SWR-EXT-009` |
 | SG-004 Unsafe Heat Exposure | `SYS-SR-TEMP-001/002/003/004/005/006/007/008/010` | `SWR-TEMP-*` |
 | SG-015 Door/Gate Open-Duration Contribution | `SYS-SR-DOOR-001..011` | `SWR-DOOR-*` |
 | SG-011/017/018 External Weather Exposure | `SYS-SR-EXT-001..005/010..013/040..043/050..052` | `SWR-EXT-*` |
@@ -249,6 +284,7 @@ valid measure of safety-logic verification.
 | SWR-LOC-* | `test_localization.py`, `test_mqtt_entity_manager.py`, frontend domain tests |
 | SWR-MQTT-* | `test_mqtt_entity_manager.py`, `test_safetyFunctions.py` |
 | SWR-EXT-* | provider contract tests, external hazard policy tests, EventBus/FaultManager/notification integration tests, negative-actuation tests |
+| SWR-ENT-* | entity health registry/check/state-machine tests, component dependency and common-entity integration tests, FaultManager/MQTT tests, frontend inventory/filter tests, negative-actuation tests |
 | SWR-NFR-005 | pytest-cov application-code report |
 
 ## 8. Assurance boundary

@@ -34,6 +34,11 @@ from .external_hazard import (
     SiteConfig,
     validate_external_hazard_config,
 )
+from .entity_monitor import (
+    EntityMonitorCalibration,
+    EntityMonitorComponent,
+    validate_entity_monitor_config,
+)
 
 __all__ = [
     "DebounceAction",
@@ -42,6 +47,8 @@ __all__ = [
     "ExternalHazardComponent",
     "ExternalHazardComponentConfig",
     "ExternalHazardPolicy",
+    "EntityMonitorCalibration",
+    "EntityMonitorComponent",
     "SafetyComponent",
     "SafetyMechanism",
     "SafetyMechanismResult",
@@ -60,5 +67,6 @@ __all__ = [
     "safety_mechanism_decorator",
     "validate_safety_doors_config",
     "validate_external_hazard_config",
+    "validate_entity_monitor_config",
     "validate_temperature_config",
 ]

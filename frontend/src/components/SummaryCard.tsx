@@ -8,11 +8,12 @@ interface SummaryCardProps {
   detail: string;
   icon: IconName;
   tone?: StatusTone;
+  onClick?: () => void;
 }
 
-export default function SummaryCard({ label, value, detail, icon, tone = 'info' }: SummaryCardProps) {
-  return (
-    <article className={`summary-card summary-${tone}`}>
+export default function SummaryCard({ label, value, detail, icon, tone = 'info', onClick }: SummaryCardProps) {
+  const content = (
+    <>
       <div className='summary-card-icon'>
         <Icon name={icon} size={22} />
       </div>
@@ -21,6 +22,14 @@ export default function SummaryCard({ label, value, detail, icon, tone = 'info' 
         <strong className='summary-card-value'>{value}</strong>
         <span className='summary-card-detail'>{detail}</span>
       </div>
-    </article>
+    </>
+  );
+
+  return onClick ? (
+    <button className={`summary-card summary-card-clickable summary-${tone}`} onClick={onClick} type='button'>
+      {content}
+    </button>
+  ) : (
+    <article className={`summary-card summary-${tone}`}>{content}</article>
   );
 }

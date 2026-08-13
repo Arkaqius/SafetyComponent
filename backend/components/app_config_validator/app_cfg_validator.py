@@ -28,6 +28,10 @@ from components.safetycomponents.external_hazard.schema import (
     COMPONENT_NAME as EXTERNAL_HAZARD_COMPONENT_NAME,
     validate_external_hazard_config,
 )
+from components.safetycomponents.entity_monitor.schema import (
+    COMPONENT_NAME as ENTITY_MONITOR_COMPONENT_NAME,
+    validate_entity_monitor_config,
+)
 from components.safetycomponents.safety_doors.schema import (
     COMPONENT_NAME as SAFETY_DOORS_COMPONENT_NAME,
     validate_safety_doors_config,
@@ -147,6 +151,25 @@ def _collect_entity_ids(runtime_cfg: Dict[str, Any]) -> list[tuple[str, str]]:
                         )
                     )
 
+    entity_monitor_cfg = components_cfg.get(ENTITY_MONITOR_COMPONENT_NAME)
+    if isinstance(entity_monitor_cfg, dict):
+        explicit_entities = entity_monitor_cfg.get("explicit_entities", {})
+        if isinstance(explicit_entities, list):
+            for entity_cfg in explicit_entities:
+                if not isinstance(entity_cfg, dict):
+                    continue
+                entity_id = entity_cfg.get("entity_id")
+                if isinstance(entity_id, str):
+                    key = entity_cfg.get("key", "unknown")
+                    entity_ids.append(
+                        (
+                            "user_config.safety_components."
+                            f"{ENTITY_MONITOR_COMPONENT_NAME}.explicit_entities."
+                            f"{key}.entity_id",
+                            entity_id,
+                        )
+                    )
+
     return entity_ids
 
 
@@ -250,6 +273,21 @@ def _resolve_area_names(runtime_cfg: Dict[str, Any], hass: Any) -> None:
                     hass, area_id, config_path
                 )
 
+    entity_monitor_cfg = components.get(ENTITY_MONITOR_COMPONENT_NAME)
+    if isinstance(entity_monitor_cfg, dict):
+        for entity_cfg in entity_monitor_cfg.get("explicit_entities", []):
+            if not isinstance(entity_cfg, dict):
+                continue
+            area_id = entity_cfg.get("area_id")
+            if not isinstance(area_id, str):
+                continue
+            key = entity_cfg.get("key", "unknown")
+            config_path = (
+                "user_config.safety_components."
+                f"{ENTITY_MONITOR_COMPONENT_NAME}.explicit_entities.{key}.area_id"
+            )
+            entity_cfg["area_name"] = _resolve_area_name(hass, area_id, config_path)
+
 
 def _validate_api_components(
     cfg: AppCfg,
@@ -345,6 +383,13 @@ def _to_runtime(
                     "api_components"
                 ].items()
                 if provider_cfg.get("enabled", True)
+            )
+        elif name == ENTITY_MONITOR_COMPONENT_NAME:
+            runtime_components[name] = validate_entity_monitor_config(
+                component_cfg,
+                calibration=cfg.app_config.calibration.entity_monitor.model_dump(),
+                strict_validation=strict_validation,
+                log=log,
             )
         else:
             runtime_components[name] = component_cfg

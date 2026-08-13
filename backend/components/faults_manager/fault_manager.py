@@ -269,7 +269,7 @@ class FaultManager:
 
             # Determinate additional info
             info_to_send: dict | None
-            if sm_name.startswith("sm_ext_"):
+            if sm_name.startswith(("sm_ext_", "sm_entity_health_")):
                 info_to_send = self._aggregate_active_fault_info(fault)
             else:
                 info_to_send = self._determinate_info(
@@ -517,7 +517,7 @@ class FaultManager:
         )
 
         if has_active_related_symptoms:
-            if sm_name.startswith("sm_ext_"):
+            if sm_name.startswith(("sm_ext_", "sm_entity_health_")):
                 info_to_send = self._aggregate_active_fault_info(fault)
             else:
                 info_to_send = self._determinate_info(

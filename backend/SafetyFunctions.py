@@ -64,6 +64,8 @@ from components.safetycomponents.core.safety_component import (
 )
 import components.safetycomponents.temperature.temperature_component  # noqa: F401 - component registration
 import components.safetycomponents.safety_doors.safety_doors_component  # noqa: F401 - component registration
+import components.safetycomponents.external_hazard.external_hazard_component  # noqa: F401 - component registration
+import components.safetycomponents.entity_monitor.entity_monitor_component  # noqa: F401 - component registration
 from components.core.types_common import Symptom, RecoveryAction
 
 DEBUG = False
@@ -129,6 +131,18 @@ class SafetyFunctions(hass.Hass):
             self, self.common_entities_cfg
         )
 
+        try:
+            self._attach_entity_monitor_dependencies()
+        except ValueError as exc:
+            self.log(f"Invalid app configuration: {exc}", level="ERROR")
+            self._set_internal_entity(
+                "sensor.safety_app_health",
+                "invalid_cfg",
+                attributes={"configuration_error": str(exc)},
+            )
+            self._start_mqtt_reporting()
+            return
+
         # Instantiate provider adapters without starting network activity.
         for component_name, component_cls in get_registered_api_components().items():
             provider_cfg = self.api_components_cfg.get(component_name)
@@ -161,6 +175,16 @@ class SafetyFunctions(hass.Hass):
 
                 self.symptoms.update(symptoms_data)
                 self.recovery_actions.update(recovery_data)
+                fault_definitions = getattr(
+                    component_instance, "get_fault_definitions", None
+                )
+                if callable(fault_definitions):
+                    for fault_name, fault_config in fault_definitions().items():
+                        if fault_name in self.fault_dict:
+                            raise ValueError(
+                                f"Duplicate fault definition: {fault_name}"
+                            )
+                        self.fault_dict[fault_name] = fault_config
 
         # Build fault models from the validated fault configuration.
         self.faults = cfg_pr.get_faults(self.fault_dict)
@@ -227,6 +251,80 @@ class SafetyFunctions(hass.Hass):
         self._set_internal_entity("sensor.safety_app_health", "running")
         self._start_mqtt_reporting()
         self.log("Safety app started successfully", level="DEBUG")
+
+    def _attach_entity_monitor_dependencies(self) -> None:
+        """Collect Group B declarations before safety components are created."""
+
+        monitor_cfg = self.safety_components_cfg.get("EntityMonitorComponent")
+        if not isinstance(monitor_cfg, dict):
+            return
+        failure_debounce = int(monitor_cfg["default_failure_debounce_seconds"])
+        recovery_debounce = int(monitor_cfg["default_recovery_debounce_seconds"])
+        dependencies: list[dict[str, Any]] = []
+        for component_name, component_cls in get_registered_components().items():
+            if component_name == "EntityMonitorComponent":
+                continue
+            component_cfg = self.safety_components_cfg.get(component_name)
+            if component_cfg is None:
+                continue
+            for dependency in component_cls.get_entity_dependencies(component_cfg):
+                dependencies.append(
+                    {
+                        **dependency,
+                        "source": "component",
+                        "fault_owner": "entity_monitor",
+                        "failure_debounce_seconds": failure_debounce,
+                        "recovery_debounce_seconds": recovery_debounce,
+                    }
+                )
+        for key, entity_id in self.common_entities_cfg.items():
+            checks = (
+                {
+                    "freshness": {
+                        "timestamp_source": "last_updated",
+                        "max_silence_seconds": 3600,
+                    },
+                    "finite_number": {"target": "state"},
+                }
+                if key == "outside_temp"
+                else {}
+            )
+            dependencies.append(
+                {
+                    "key": "Common" + "".join(
+                        part.capitalize() for part in str(key).split("_")
+                    ),
+                    "entity_id": entity_id,
+                    "owner": "SafetyFunctions",
+                    "purpose": f"Shared application entity: {key}",
+                    "checks": checks,
+                    "detection_budget_seconds": (
+                        3615 if key == "outside_temp" else 30
+                    ),
+                    "source": "component",
+                    "fault_owner": "entity_monitor",
+                    "failure_debounce_seconds": failure_debounce,
+                    "recovery_debounce_seconds": recovery_debounce,
+                }
+            )
+        for dependency in dependencies:
+            budget = dependency.get("detection_budget_seconds")
+            if budget is None:
+                continue
+            if failure_debounce > int(budget):
+                raise ValueError(
+                    f"{dependency['key']} availability debounce exceeds detection budget"
+                )
+            freshness = dependency.get("checks", {}).get("freshness")
+            if freshness and (
+                int(freshness["max_silence_seconds"]) + failure_debounce
+                > int(budget)
+            ):
+                raise ValueError(
+                    f"{dependency['key']} freshness and failure debounce "
+                    "exceed detection budget"
+                )
+        monitor_cfg["component_entities"] = dependencies
 
     def _initialize_mqtt(self) -> bool:
         """Validate MQTT settings and initialize discovery in an offline state."""

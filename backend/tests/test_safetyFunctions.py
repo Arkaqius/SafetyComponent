@@ -1,3 +1,4 @@
+from copy import deepcopy
 from unittest.mock import Mock
 
 from components.core.types_common import FaultState
@@ -66,6 +67,60 @@ def test_safety_functions_initialization(mocked_hass_app_with_temp_component) ->
         "source_entity": "sensor.office_temperature",
         "threshold_type": "low",
     }
+
+
+def test_entity_monitor_is_wired_into_application_startup(
+    mocked_hass_app_with_temp_component,
+) -> None:
+    app_instance, _, __, ___, _ = mocked_hass_app_with_temp_component
+    app_instance.args = deepcopy(app_instance.args)
+    app_instance.args["app_config"].setdefault("calibration", {})[
+        "entity_monitor"
+    ] = {
+        "startup_grace_seconds": 0,
+        "default_failure_debounce_seconds": 15,
+        "default_recovery_debounce_seconds": 60,
+        "evaluation_interval_seconds": 5,
+        "unhealthy_summary_limit": 32,
+    }
+    app_instance.args["user_config"]["components_enabled"][
+        "EntityMonitorComponent"
+    ] = True
+    app_instance.args["user_config"]["safety_components"][
+        "EntityMonitorComponent"
+    ] = {"explicit_entities": {}}
+
+    app_instance.initialize()
+
+    assert "EntityMonitorComponent" in app_instance.sm_modules
+    assert "sensor.entity_monitor_summary" in app_instance.mqtt_entities.discovered_entities
+    assert "EntityHealthTemperatureOffice" in app_instance.faults
+    assert (
+        "EntityHealthFailureTemperatureOfficeAvailability" in app_instance.symptoms
+    )
+
+
+def test_entity_monitor_rejects_component_timing_outside_detection_budget(
+    mocked_hass_app_with_temp_component,
+) -> None:
+    app_instance, mocked_hass, __, ___, _ = mocked_hass_app_with_temp_component
+    app_instance.args = deepcopy(app_instance.args)
+    app_instance.args["app_config"].setdefault("calibration", {})[
+        "entity_monitor"
+    ] = {"default_failure_debounce_seconds": 31}
+    app_instance.args["user_config"]["components_enabled"][
+        "EntityMonitorComponent"
+    ] = True
+    app_instance.args["user_config"]["safety_components"][
+        "EntityMonitorComponent"
+    ] = {"explicit_entities": {}}
+
+    app_instance.initialize()
+
+    assert mqtt_payloads(
+        mocked_hass, mqtt_topic_for("sensor.safety_app_health")
+    )[-1] == "invalid_cfg"
+    assert "EntityMonitorComponent" not in app_instance.sm_modules
 
 
 def test_mqtt_heartbeat_accepts_appdaemon_dictionary_unpacking_callback(

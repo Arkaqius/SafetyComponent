@@ -5,6 +5,7 @@ import StatusBadge from './StatusBadge';
 
 interface ActionsListProps {
   recoveries: RecoveryView[];
+  onSelectEntity?: (entityId: string) => void;
 }
 
 const statusPresentation: Record<RecoveryStatus, { label: string; tone: StatusTone }> = {
@@ -14,7 +15,7 @@ const statusPresentation: Record<RecoveryStatus, { label: string; tone: StatusTo
   unknown: { label: 'Stan nieznany', tone: 'muted' },
 };
 
-export default function ActionsList({ recoveries }: ActionsListProps) {
+export default function ActionsList({ recoveries, onSelectEntity }: ActionsListProps) {
   const [showAll, setShowAll] = useState(false);
   const actionable = recoveries.filter(recovery => recovery.status === 'to_perform');
   const requiringAttention = recoveries.filter(recoveryNeedsAttention);
@@ -49,7 +50,7 @@ export default function ActionsList({ recoveries }: ActionsListProps) {
 
       <div aria-live='polite' className='recovery-list'>
         {visibleRecoveries.length > 0 ? (
-          visibleRecoveries.map(recovery => <RecoveryCard key={recovery.entityId} recovery={recovery} />)
+          visibleRecoveries.map(recovery => <RecoveryCard key={recovery.entityId} onSelectEntity={onSelectEntity} recovery={recovery} />)
         ) : (
           <div className='empty-state'>
             <div className='empty-state-icon'>
@@ -68,11 +69,11 @@ export default function ActionsList({ recoveries }: ActionsListProps) {
   );
 }
 
-function RecoveryCard({ recovery }: { recovery: RecoveryView }) {
+function RecoveryCard({ recovery, onSelectEntity }: { recovery: RecoveryView; onSelectEntity?: (entityId: string) => void }) {
   const presentation = statusPresentation[recovery.status];
 
   return (
-    <article className={`recovery-card recovery-${presentation.tone}`}>
+    <article className={`recovery-card recovery-${presentation.tone}${onSelectEntity ? ' entity-card-clickable' : ''}`}>
       <span className='recovery-card-icon'>
         <Icon name='recovery' size={20} />
       </span>
@@ -80,8 +81,17 @@ function RecoveryCard({ recovery }: { recovery: RecoveryView }) {
         <strong title={recovery.entityId}>{recovery.name}</strong>
         <p>{recovery.description || 'Brak dodatkowego opisu.'}</p>
         <small>Zmiana {formatRelativeTime(recovery.lastChanged)}</small>
+        <code>{recovery.entityId}</code>
       </div>
       <StatusBadge tone={presentation.tone}>{presentation.label}</StatusBadge>
+      {onSelectEntity && (
+        <button
+          aria-label={`Pokaż szczegóły ${recovery.name}`}
+          className='entity-card-overlay-button'
+          onClick={() => onSelectEntity(recovery.entityId)}
+          type='button'
+        />
+      )}
     </article>
   );
 }

@@ -1,6 +1,8 @@
+import { useCallback, useState } from 'react';
 import { Link } from 'react-router-dom';
 import ActionsList from '../components/ActionsList';
 import DoorLastActivity from '../components/DoorLastActivity';
+import EntityDetailsDialog from '../components/EntityDetailsDialog';
 import FaultSection from '../components/FaultSection';
 import Icon from '../components/Icon';
 import StatusBadge from '../components/StatusBadge';
@@ -13,9 +15,13 @@ import {
   type TemperatureView,
 } from '../domain/safety';
 import { useSafetyEntities } from '../hooks/useSafetyEntities';
+import { ENTITY_MONITOR_SUMMARY_ID } from '../domain/entityHealth';
 
 export default function Dashboard() {
-  const { externalHazards, faults, recoveries, safetyDoors, summary, systemEntity, temperatures } = useSafetyEntities();
+  const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
+  const closeEntityDetails = useCallback(() => setSelectedEntityId(null), []);
+  const { entities, entityMonitorSummary, externalHazards, faults, recoveries, safetyDoors, summary, systemEntity, temperatures } =
+    useSafetyEntities();
   const systemState = systemStatePresentation(systemEntity?.state);
   const values = temperatures.filter((temperature): temperature is TemperatureView & { state: number } => temperature.state !== null);
   const average = values.length > 0 ? values.reduce((sum, temperature) => sum + temperature.state, 0) / values.length : null;
@@ -44,7 +50,11 @@ export default function Dashboard() {
 
   return (
     <div className='page-stack'>
-      <section className={`safety-hero hero-${summary.tone}`}>
+      <button
+        className={`safety-hero dashboard-entity-trigger hero-${summary.tone}`}
+        onClick={() => setSelectedEntityId(systemEntity ? 'sensor.safetysystem_state' : 'sensor.safety_app_health')}
+        type='button'
+      >
         <div className='safety-hero-icon'>
           <Icon name={summary.tone === 'safe' ? 'shield' : 'alert'} size={32} />
         </div>
@@ -58,6 +68,43 @@ export default function Dashboard() {
           <strong>{systemState.label}</strong>
           <small>Zmiana {formatRelativeTime(systemEntity?.last_changed)}</small>
         </div>
+      </button>
+
+      <section className='entity-monitor-overview'>
+        <div>
+          <span className='section-kicker'>Źródła danych</span>
+          <strong>Monitorowane encje</strong>
+          <small>
+            {entityMonitorSummary.total === 0
+              ? 'Brak opublikowanej diagnostyki C-ENT'
+              : `${entityMonitorSummary.healthy}/${entityMonitorSummary.total} encji działa prawidłowo`}
+          </small>
+        </div>
+        <StatusBadge
+          tone={
+            entityMonitorSummary.unavailable > 0
+              ? 'danger'
+              : entityMonitorSummary.degraded + entityMonitorSummary.stale > 0
+                ? 'warning'
+                : entityMonitorSummary.total > 0
+                  ? 'safe'
+                  : 'muted'
+          }
+        >
+          {entityMonitorSummary.unavailable > 0
+            ? `${entityMonitorSummary.unavailable} niedostępnych`
+            : entityMonitorSummary.degraded + entityMonitorSummary.stale > 0
+              ? `${entityMonitorSummary.degraded + entityMonitorSummary.stale} wymaga uwagi`
+              : entityMonitorSummary.total > 0
+                ? 'Wszystkie sprawne'
+                : 'Brak danych'}
+        </StatusBadge>
+        <button className='text-button' onClick={() => setSelectedEntityId(ENTITY_MONITOR_SUMMARY_ID)} type='button'>
+          Szczegóły <Icon name='history' size={15} />
+        </button>
+        <Link className='text-link' to='/entities'>
+          Pokaż encje <Icon name='chevron' size={15} />
+        </Link>
       </section>
 
       <section aria-label='Podsumowanie temperatur' className='summary-grid'>
@@ -74,6 +121,7 @@ export default function Dashboard() {
           label='Najniższa temperatura'
           tone={minimum ? 'info' : 'muted'}
           value={temperatureValue(minimum?.state ?? null)}
+          onClick={minimum ? () => setSelectedEntityId(minimum.entityId) : undefined}
         />
         <SummaryCard
           detail={maximum?.roomName ?? 'Brak dostępnego pomiaru'}
@@ -81,6 +129,7 @@ export default function Dashboard() {
           label='Najwyższa temperatura'
           tone={maximum ? 'info' : 'muted'}
           value={temperatureValue(maximum?.state ?? null)}
+          onClick={maximum ? () => setSelectedEntityId(maximum.entityId) : undefined}
         />
         <SummaryCard
           detail={fastestRising ? `${formatNumeric(fastestRising.rate, 3)} °C/min` : 'Brak wyraźnego wzrostu'}
@@ -88,12 +137,13 @@ export default function Dashboard() {
           label='Temperatura rośnie'
           tone={fastestRising ? 'warning' : 'safe'}
           value={fastestRising?.roomName ?? 'Stabilnie'}
+          onClick={fastestRising ? () => setSelectedEntityId(fastestRising.entityId) : undefined}
         />
       </section>
 
       <div className='dashboard-columns'>
-        <FaultSection compact faults={faults} />
-        <ActionsList recoveries={recoveries} />
+        <FaultSection compact faults={faults} onSelectEntity={setSelectedEntityId} />
+        <ActionsList onSelectEntity={setSelectedEntityId} recoveries={recoveries} />
       </div>
 
       <div className='dashboard-columns dashboard-columns-secondary'>
@@ -109,7 +159,16 @@ export default function Dashboard() {
           </div>
 
           <div className='environment-overview-grid'>
-            <article className='environment-overview-item'>
+            <button
+              className='environment-overview-item dashboard-entity-trigger'
+              disabled={!externalHazards.providers.find(provider => provider.provider === 'OpenMeteoAirQualityApiComponent')}
+              onClick={() =>
+                setSelectedEntityId(
+                  externalHazards.providers.find(provider => provider.provider === 'OpenMeteoAirQualityApiComponent')?.entityId ?? null
+                )
+              }
+              type='button'
+            >
               <span>Aktualna jakość powietrza</span>
               <strong>{airQuality.label}</strong>
               <small>
@@ -117,8 +176,12 @@ export default function Dashboard() {
                 {airQuality.detail}
               </small>
               <StatusBadge tone={airQuality.tone}>{airQuality.tone === 'muted' ? 'Brak danych' : 'Aktualny odczyt'}</StatusBadge>
-            </article>
-            <article className='environment-overview-item'>
+            </button>
+            <button
+              className='environment-overview-item dashboard-entity-trigger'
+              onClick={() => setSelectedEntityId(externalHazards.entityId)}
+              type='button'
+            >
               <span>Ostrzeżenia dla domu</span>
               <strong>{externalHazards.imgwWarnings.length}</strong>
               <small>
@@ -135,7 +198,7 @@ export default function Dashboard() {
                       : `${externalHazards.activeHazards.length} aktywnych zagrożeń`
                   : 'Brak ekspozycji'}
               </StatusBadge>
-            </article>
+            </button>
           </div>
         </section>
 
@@ -152,13 +215,18 @@ export default function Dashboard() {
           {safetyDoors.length > 0 ? (
             <div className='door-overview-list'>
               {safetyDoors.map(door => (
-                <article className='door-overview-row' key={door.entityId}>
+                <button
+                  className='door-overview-row dashboard-entity-trigger'
+                  key={door.entityId}
+                  onClick={() => setSelectedEntityId(door.entityId)}
+                  type='button'
+                >
                   <span className={`door-overview-indicator door-overview-${door.doorState}`} />
                   <div>
                     <strong>{door.sourceEntityName}</strong>
                     <DoorLastActivity compact door={door} />
                   </div>
-                </article>
+                </button>
               ))}
             </div>
           ) : (
@@ -169,6 +237,7 @@ export default function Dashboard() {
           )}
         </section>
       </div>
+      <EntityDetailsDialog entities={entities} entityId={selectedEntityId} onClose={closeEntityDetails} />
     </div>
   );
 }

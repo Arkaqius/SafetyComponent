@@ -12,7 +12,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "tsc -p tsconfig.app.json --noEmit",
-    "test": "tsc -p tsconfig.test.json && node .test-dist/domain/safety.test.js",
+    "test": "tsc -p tsconfig.test.json && node --test .test-dist/domain",
     "sync": "node scripts/sync-types.mjs",
     "deploy": "npm run build && node scripts/deploy.mjs"
   },

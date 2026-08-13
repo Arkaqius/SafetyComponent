@@ -544,6 +544,20 @@ export function localizedEntityState(entityId: string, state: unknown): string {
     };
     return labels[normalized] ?? humanize(normalized || 'stan nieznany');
   }
+  const commonLabels: Record<string, string> = {
+    on: entityId.startsWith('binary_sensor.') ? 'Aktywna' : 'Włączona',
+    off: entityId.startsWith('binary_sensor.') ? 'Nieaktywna' : 'Wyłączona',
+    open: 'Otwarte',
+    opened: 'Otwarte',
+    closed: 'Zamknięte',
+    locked: 'Zablokowane',
+    unlocked: 'Odblokowane',
+    occupied: 'Obecność wykryta',
+    not_occupied: 'Brak obecności',
+    unknown: 'Stan nieznany',
+    unavailable: 'Niedostępna',
+  };
+  if (normalized in commonLabels) return commonLabels[normalized];
   return humanize(normalized || 'stan nieznany');
 }
 

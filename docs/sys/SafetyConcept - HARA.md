@@ -267,6 +267,11 @@ _High:_ These hazards can be easily mitigated if residents are notified in time,
 #### 1.3.11 System Failure
 
 - The system shall consistently monitor the activity of all sensors and actuators to detect timeouts and failures.
+- The system shall monitor explicitly selected safety-relevant Home Assistant
+  entities and every entity dependency declared by a Safety Component, including
+  shared entities consumed across components.
+- The system shall distinguish safety-relevant entity-health failures from an
+  informational inventory of other Home Assistant entities and devices.
 - The system shall remind the users about updates periodically.
 - The system shall provide a backup power supply to ensure continuous operation in the event of a power outage.
 - The system shall perform regular self-checks or diagnostics to identify and alert users to potential failures or malfunctions.
@@ -423,7 +428,7 @@ The following table provides audit-ready traceability from each hazard through s
 | Poor Air Quality        | 1.3.8            | Alerts, interface with purifiers, proactive control | Air quality sensor trends, anomaly detection           | Level 3             | Level 4            |
 | Unsafe Cold Exposure    | 1.3.9            | Alerts, heating integration, proactive prevention   | Temperature logs, HVAC health monitoring               | Level 1             | Level 4            |
 | Unsafe Heat Exposure    | 1.3.10           | Alerts, cooling integration, proactive prevention   | Temperature logs, AC system diagnostics                | Level 1             | Level 4            |
-| System Failure          | 1.3.11           | Backup power, self-checks, diagnostics              | Device uptime, network health monitoring               | Level 2             | Level 2            |
+| System Failure          | 1.3.11           | Backup power, self-checks, diagnostics              | Safety-entity freshness, device uptime, network health monitoring | Level 2             | Level 2            |
 | Loss of Heating/Cooling | 1.3.12           | Alerts, redundancy, automated failover              | Heating/cooling performance logs, failover tests       | Level 3             | Level 3            |
 | Privacy Invasion        | 1.3.13           | Secure auth/encryption, disable/mask options        | Access logs, AV device monitoring                      | Level 1             | Level 4            |
 | Rain Entering Window    | 1.3.14           | Weather-based manual closure warning                 | Weather forecasts/warnings, contact states, event logs | Level 3             | Level 4            |

@@ -18,8 +18,10 @@ actions.
   retained-state cleanup, and heartbeat publication.
 - Localized Home Assistant presentation in English, Polish, and German while
   runtime IDs and raw state codes remain stable.
-- SafetyHome React/Vite frontend with Dashboard, Temperature, Safety Doors, and
-  History views connected through `@hakit/core`.
+- Entity Health Monitoring for explicit and component-owned safety
+  dependencies, with a read-only Home Assistant entity and device inventory.
+- SafetyHome React/Vite frontend with Dashboard, Temperature, Safety Doors,
+  Entity Health, and History views connected through `@hakit/core`.
 
 The repository also defines the safety contract and provider-isolated
 architecture for External Hazard Monitoring: weather, official IMGW warnings,
@@ -27,13 +29,17 @@ and outdoor air quality correlated with configured windows and external doors.
 That contract is notification-only and
 permits no actuator calls.
 
+Entity Health Monitoring covers explicitly configured safety dependencies,
+dependencies declared by Safety Components, and an information-only inventory
+of other Home Assistant entities and devices.
+
 ## Repository layout
 
 - `backend/SafetyFunctions.py` — AppDaemon application lifecycle and wiring.
 - `backend/components/core` — EventBus, MQTT entities, localization, common
   types, and `DerivativeMonitor`.
 - `backend/components/safetycomponents` — base safety framework plus
-  `TemperatureComponent` and `SafetyDoorsComponent`.
+  Temperature, Safety Doors, External Hazard, and Entity Monitor components.
 - `backend/components/faults_manager` — fault catalog and symptom aggregation.
 - `backend/components/notification_manager` — user notification lifecycle.
 - `backend/components/recovery_manager` — supported recovery execution and
@@ -43,6 +49,11 @@ permits no actuator calls.
 - `frontend` — SafetyHome React/Vite application.
 - `docs/sys` — HARA, system requirements, and software safety requirements.
 - `docs/features` — feature-level architecture documents.
+
+Feature architecture documents include
+[`External Hazard Monitoring`](docs/features/External%20Hazard%20Monitoring%20-%20Architecture.md)
+and
+[`Entity Health Monitoring`](docs/features/Entity%20Health%20Monitoring%20-%20Architecture.md).
 
 ## Backend quick start
 
@@ -101,6 +112,7 @@ the [frontend README](frontend/README.md).
 - [System safety architecture and requirements](<docs/sys/SafetyConcept - SYS.md>)
 - [Software safety requirements](<docs/sys/SafetyComponent - SSRD.md>)
 - [External Hazard Monitoring architecture](<docs/features/External Hazard Monitoring - Architecture.md>)
+- [Entity Health Monitoring architecture](<docs/features/Entity Health Monitoring - Architecture.md>)
 - [Backend coding standards](backend/README.md)
 - [Contribution workflow](CONTRIBUTING.md)
 - [Agent instructions](AGENTS.md)

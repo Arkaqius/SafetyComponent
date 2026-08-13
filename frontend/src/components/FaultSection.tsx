@@ -15,6 +15,7 @@ type FaultFilter = 'attention' | 'set' | 'shadowed' | 'all';
 interface FaultSectionProps {
   faults: FaultView[];
   compact?: boolean;
+  onSelectEntity?: (entityId: string) => void;
 }
 
 const statusPresentation: Record<FaultStatus, { label: string; tone: StatusTone }> = {
@@ -33,7 +34,7 @@ const filters: Array<{ value: FaultFilter; label: string }> = [
   { value: 'all', label: 'Wszystkie' },
 ];
 
-export default function FaultSection({ faults, compact = false }: FaultSectionProps) {
+export default function FaultSection({ faults, compact = false, onSelectEntity }: FaultSectionProps) {
   const [filter, setFilter] = useState<FaultFilter>('attention');
   const [query, setQuery] = useState('');
 
@@ -92,7 +93,7 @@ export default function FaultSection({ faults, compact = false }: FaultSectionPr
 
       <div aria-live='polite' className='fault-list'>
         {filteredFaults.length > 0 ? (
-          filteredFaults.map(fault => <FaultCard fault={fault} key={fault.entityId} />)
+          filteredFaults.map(fault => <FaultCard fault={fault} key={fault.entityId} onSelectEntity={onSelectEntity} />)
         ) : (
           <div className='empty-state'>
             <div className='empty-state-icon'>
@@ -111,7 +112,7 @@ export default function FaultSection({ faults, compact = false }: FaultSectionPr
   );
 }
 
-function FaultCard({ fault }: { fault: FaultView }) {
+function FaultCard({ fault, onSelectEntity }: { fault: FaultView; onSelectEntity?: (entityId: string) => void }) {
   const status = statusPresentation[fault.status];
   const level = fault.level ? LEVEL_PRESENTATION[fault.level] : undefined;
 
@@ -124,6 +125,7 @@ function FaultCard({ fault }: { fault: FaultView }) {
         <span className='fault-card-title'>
           <strong title={fault.entityId}>{fault.name}</strong>
           <small>{fault.locations.length > 0 ? fault.locations.join(' · ') : 'Brak przypisanej lokalizacji'}</small>
+          <small className='technical-id'>{fault.entityId}</small>
         </span>
         {level && <span className={`level-chip status-${level.tone}`}>{level.shortLabel}</span>}
         <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
@@ -145,6 +147,11 @@ function FaultCard({ fault }: { fault: FaultView }) {
             <dd>{formatRelativeTime(fault.lastChanged)}</dd>
           </div>
         </dl>
+        {onSelectEntity && (
+          <button className='text-button fault-details-button' onClick={() => onSelectEntity(fault.entityId)} type='button'>
+            Pełne szczegóły i historia <Icon name='history' size={15} />
+          </button>
+        )}
       </div>
     </details>
   );

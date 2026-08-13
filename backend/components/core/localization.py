@@ -18,6 +18,7 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
     "en": {
         "entity.safety_app_health": "Safety app health",
         "entity.safety_system_state": "Safety system state",
+        "entity.entity_monitor_summary": "Monitored entities",
         "entity.recovery_window": "Window recovery: {location}",
         "entity.temperature_low_threshold": "Low temperature limit: {location}",
         "entity.temperature_high_threshold": "High temperature limit: {location}",
@@ -37,6 +38,11 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "state.fault.not_tested": "Not tested",
         "state.recovery.to_perform": "Action needed",
         "state.recovery.do_not_perform": "No action needed",
+        "state.entity_health.healthy": "Healthy",
+        "state.entity_health.degraded": "Needs attention",
+        "state.entity_health.stale": "Stale data",
+        "state.entity_health.unavailable": "Unavailable",
+        "fault.entity_health": "Entity problem: {entity}",
         "notification.title.1": "Immediate action needed",
         "notification.title.2": "Safety issue detected",
         "notification.title.3": "Please check your home",
@@ -66,6 +72,7 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
     "pl": {
         "entity.safety_app_health": "Stan aplikacji bezpieczeństwa",
         "entity.safety_system_state": "Stan systemu bezpieczeństwa",
+        "entity.entity_monitor_summary": "Monitorowane encje",
         "entity.recovery_window": "Działanie naprawcze: okna — {location}",
         "entity.temperature_low_threshold": "Dolny próg temperatury — {location}",
         "entity.temperature_high_threshold": "Górny próg temperatury — {location}",
@@ -85,6 +92,11 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "state.fault.not_tested": "Nieprzetestowana",
         "state.recovery.to_perform": "Wymaga działania",
         "state.recovery.do_not_perform": "Nie wymaga działania",
+        "state.entity_health.healthy": "Sprawna",
+        "state.entity_health.degraded": "Wymaga uwagi",
+        "state.entity_health.stale": "Dane nieaktualne",
+        "state.entity_health.unavailable": "Niedostępna",
+        "fault.entity_health": "Problem z encją: {entity}",
         "notification.title.1": "Wymagane natychmiastowe działanie",
         "notification.title.2": "Wykryto zagrożenie w domu",
         "notification.title.3": "Sprawdź, co dzieje się w domu",
@@ -114,6 +126,7 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
     "de": {
         "entity.safety_app_health": "Status der Sicherheitsanwendung",
         "entity.safety_system_state": "Status des Sicherheitssystems",
+        "entity.entity_monitor_summary": "Überwachte Entitäten",
         "entity.recovery_window": "Fenstermaßnahme – {location}",
         "entity.temperature_low_threshold": "Untere Temperaturgrenze – {location}",
         "entity.temperature_high_threshold": "Obere Temperaturgrenze – {location}",
@@ -133,6 +146,11 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "state.fault.not_tested": "Nicht getestet",
         "state.recovery.to_perform": "Maßnahme erforderlich",
         "state.recovery.do_not_perform": "Keine Maßnahme erforderlich",
+        "state.entity_health.healthy": "Fehlerfrei",
+        "state.entity_health.degraded": "Prüfung erforderlich",
+        "state.entity_health.stale": "Veraltete Daten",
+        "state.entity_health.unavailable": "Nicht verfügbar",
+        "fault.entity_health": "Entitätsproblem: {entity}",
         "notification.title.1": "Sofortiges Handeln erforderlich",
         "notification.title.2": "Sicherheitsproblem erkannt",
         "notification.title.3": "Bitte prüfen Sie Ihr Zuhause",
@@ -225,6 +243,7 @@ class Localizer:
         built_in_keys = {
             "sensor.safety_app_health": "entity.safety_app_health",
             "sensor.safetysystem_state": "entity.safety_system_state",
+            "sensor.entity_monitor_summary": "entity.entity_monitor_summary",
         }
         key = built_in_keys.get(normalized_id)
         return self.text(key) if key else fallback
@@ -247,6 +266,10 @@ class Localizer:
             prefix = "state.fault"
         elif normalized_id.startswith("sensor.recovery_"):
             prefix = "state.recovery"
+        elif normalized_id == "sensor.entity_monitor_summary" or normalized_id.startswith(
+            "sensor.entity_health_"
+        ):
+            prefix = "state.entity_health"
         else:
             return None
         key = f"{prefix}.{normalized_state}"
