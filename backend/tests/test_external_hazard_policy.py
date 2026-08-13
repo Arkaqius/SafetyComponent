@@ -150,33 +150,6 @@ def test_open_meteo_air_quality_uses_current_european_aqi() -> None:
     assert model.evidence_kind == "current"
 
 
-def test_only_authority_confirmed_radiation_message_is_severe() -> None:
-    official = evaluate_observation(
-        _observation(
-            HazardType.IONIZING_RADIATION,
-            {"status": Measurement("alarm")},
-            provider="PaaRadiationApiComponent",
-            confirmed=True,
-        ),
-        POLICY,
-        NOW,
-    )
-    raw = evaluate_observation(
-        _observation(
-            HazardType.RADIATION_ANOMALY,
-            {"dose_rate": Measurement(0.5, "uSv/h")},
-            provider="PaaRadiationApiComponent",
-        ),
-        POLICY,
-        NOW,
-    )
-
-    assert official.active is True
-    assert official.severity == "severe"
-    assert raw.active is False
-    assert raw.severity == "unknown"
-
-
 def test_stale_or_incomplete_normalized_data_cannot_be_positive_evidence() -> None:
     stale = evaluate_observation(
         _observation(

@@ -80,15 +80,6 @@ class AirQualityPolicy(StrictBaseModel):
     warning_at: float = Field(gt=0)
 
 
-class RadiationPolicy(StrictBaseModel):
-    """Ionizing-radiation semantic and anomaly policy."""
-
-    official_alert_required_for_confirmed_fault: Literal[True] = True
-    raw_anomaly_enabled: bool = False
-    raw_anomaly_usv_h: float | None = Field(default=None, gt=0)
-    raw_anomaly_min_stations: int = Field(default=2, ge=2)
-
-
 class ExternalHazardPolicy(StrictBaseModel):
     """Global household external-hazard policy."""
 
@@ -97,7 +88,6 @@ class ExternalHazardPolicy(StrictBaseModel):
     clear_delay_seconds: int = Field(default=120, ge=0)
     weather: WeatherPolicy
     outdoor_air_quality: AirQualityPolicy
-    radiation: RadiationPolicy
     providers: dict[str, dict[str, Any]] = Field(min_length=1)
 
 

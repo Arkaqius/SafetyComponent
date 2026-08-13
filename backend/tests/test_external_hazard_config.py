@@ -20,14 +20,13 @@ def _production_config() -> dict:
     )["SafetyFunctions"]
 
 
-def test_external_hazard_config_normalizes_all_four_independent_providers() -> None:
+def test_external_hazard_config_normalizes_all_three_independent_providers() -> None:
     runtime = AppCfgValidator.validate(_production_config())
 
     assert set(runtime["user_config"]["api_components"]) == {
         "OpenMeteoWeatherApiComponent",
         "ImgwWarningsApiComponent",
         "OpenMeteoAirQualityApiComponent",
-        "PaaRadiationApiComponent",
     }
     external = runtime["user_config"]["safety_components"][
         "ExternalHazardComponent"
@@ -38,15 +37,14 @@ def test_external_hazard_config_normalizes_all_four_independent_providers() -> N
         "OpenMeteoAirQualityApiComponent",
         "OpenMeteoWeatherApiComponent",
     ]
-    assert runtime["user_config"]["api_components"]["PaaRadiationApiComponent"]["enabled"] is False
     assert len(external["openings"]) == 11
 
 
 def test_enabled_external_hazard_rejects_a_missing_provider_binding() -> None:
     config = copy.deepcopy(_production_config())
-    del config["user_config"]["api_components"]["PaaRadiationApiComponent"]
+    del config["user_config"]["api_components"]["ImgwWarningsApiComponent"]
 
-    with pytest.raises(AppCfgValidationError, match="PaaRadiationApiComponent"):
+    with pytest.raises(AppCfgValidationError, match="ImgwWarningsApiComponent"):
         AppCfgValidator.validate(config)
 
 

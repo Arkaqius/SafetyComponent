@@ -16,8 +16,6 @@ class HazardType(str, Enum):
     RAIN = "rain"
     STORM = "storm"
     OUTDOOR_AIR_POLLUTION = "outdoor_air_pollution"
-    IONIZING_RADIATION = "ionizing_radiation"
-    RADIATION_ANOMALY = "radiation_anomaly"
 
 
 class ProviderHealthState(str, Enum):

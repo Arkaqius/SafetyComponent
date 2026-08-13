@@ -75,10 +75,7 @@ def evaluate_observation(
         current = _number(values, "current_european_aqi")
         threshold = float(aq_policy["warning_at"])
         return HazardAssessment(current >= threshold, "warning", f"EAQI {current:.0f}", f"EAQI ≥ {threshold:.0f}", "current", current >= threshold)
-    if observation.hazard_type == HazardType.IONIZING_RADIATION:
-        active = observation.authority_confirmed
-        return HazardAssessment(active, "severe", _measurement(values, "status", "official alert"), "official PAA message", "official_warning", active)
-    return HazardAssessment(False, "unknown", "raw measurement", "corroborated anomaly policy", "measurement")
+    return HazardAssessment(False, "unknown", "unsupported observation", "supported hazard type", "unknown")
 
 
 def _measurement(values: Mapping[str, Any], name: str, default: str) -> str:

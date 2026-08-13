@@ -76,11 +76,6 @@ POLICY = {
     "outdoor_air_quality": {
         "warning_at": 60,
     },
-    "radiation": {
-        "raw_anomaly_enabled": False,
-        "raw_anomaly_usv_h": 0.3,
-        "raw_anomaly_min_stations": 2,
-    },
 }
 
 
@@ -241,10 +236,10 @@ def test_aggregate_remains_unavailable_until_every_provider_is_healthy() -> None
 
     component.handle_external_api_result(
         result=ApiResult(
-            provider="PaaRadiationApiComponent",
+            provider="OpenMeteoWeatherApiComponent",
             observations=(),
             health=_health(
-                "PaaRadiationApiComponent", ProviderHealthState.UNAVAILABLE
+                "OpenMeteoWeatherApiComponent", ProviderHealthState.UNAVAILABLE
             ),
         )
     )
@@ -281,42 +276,6 @@ def test_provider_failure_cannot_clear_active_hazard_but_closed_window_can() -> 
     hass.states["binary_sensor.office_window"] = "off"
     component._evaluate_all()
     assert component.symptom_states[symptom_id] == FaultState.CLEARED
-
-
-def test_official_radiation_warning_ignores_aperture_state_and_raw_data_is_not_official() -> None:
-    component, hass, _, events = _component()
-    hass.states["binary_sensor.office_window"] = "off"
-    official = _observation(
-        "PaaRadiationApiComponent",
-        HazardType.IONIZING_RADIATION,
-        {
-            "status": Measurement("official alert"),
-            "message": Measurement("Follow PAA instructions"),
-        },
-        confirmed=True,
-    )
-    component.handle_external_api_result(
-        result=ApiResult(official.provider, (official,), _health(official.provider))
-    )
-    assert component.symptom_states["IonizingRadiationAlertPaa"] == FaultState.SET
-
-    fresh_component, _, _, raw_events = _component()
-    raw = _observation(
-        "PaaRadiationApiComponent",
-        HazardType.RADIATION_ANOMALY,
-        {
-            "station_id": Measurement("KRK-1"),
-            "dose_rate": Measurement(9.0, "µSv/h"),
-        },
-    )
-    fresh_component.handle_external_api_result(
-        result=ApiResult(raw.provider, (raw,), _health(raw.provider))
-    )
-    assert not any(
-        event["symptom_id"] == "IonizingRadiationAlertPaa"
-        and event["state"] == FaultState.SET
-        for event in raw_events
-    )
 
 
 def test_active_external_hazard_inhibits_only_opening_recovery_proposals() -> None:
