@@ -337,7 +337,19 @@ class NotificationManager:
         previous_level = int((existing or {}).get("level", level))
         is_escalation = existing is not None and level < previous_level
         should_alert = is_new or is_escalation
-        recovery_messages = list((existing or {}).get("_recovery_messages", []))
+        restored_guidance = (existing or {}).get("_recovery_messages", {})
+        if isinstance(restored_guidance, list):
+            recovery_messages = {
+                f"legacy-{index}": str(message)
+                for index, message in enumerate(restored_guidance)
+            }
+        elif isinstance(restored_guidance, dict):
+            recovery_messages = {
+                str(key): str(message)
+                for key, message in restored_guidance.items()
+            }
+        else:
+            recovery_messages = {}
         base_message = self._format_active_message(display_name, additional_info)
         title = self._title(level)
         record: dict[str, Any] = {
@@ -535,6 +547,7 @@ class NotificationManager:
             )
 
         completed_at = self._clock()
+        self._last_attempt_at = completed_at
         if not delivery.deadline_missed and completed_at > delivery.deadline_at:
             delivery.deadline_missed = True
             self._counters["deadline_misses"] += 1
@@ -586,14 +599,26 @@ class NotificationManager:
                 del self.pending_deliveries[delivery_id]
 
     def _add_recovery_action(self, notification_msg: str, fault_tag: str) -> None:
-        """Append distinct recovery guidance and refresh the active push quietly."""
+        """Compatibility wrapper for older recovery producers."""
+
+        self.upsert_recovery_guidance(notification_msg, notification_msg, fault_tag)
+
+    def upsert_recovery_guidance(
+        self, proposal_id: str, notification_msg: str, fault_tag: str
+    ) -> None:
+        """Insert or replace guidance owned by one recovery proposal."""
 
         notification = self.active_notification.get(fault_tag)
         if notification is None:
             return
-        recovery_messages = notification.setdefault("_recovery_messages", [])
-        if notification_msg not in recovery_messages:
-            recovery_messages.append(notification_msg)
+        recovery_messages = notification.setdefault("_recovery_messages", {})
+        if isinstance(recovery_messages, list):
+            recovery_messages = {
+                f"legacy-{index}": str(message)
+                for index, message in enumerate(recovery_messages)
+            }
+            notification["_recovery_messages"] = recovery_messages
+        recovery_messages[proposal_id] = notification_msg
         self._refresh_notification_message(notification)
         self._persist_state()
         level = int(notification["level"])
@@ -606,11 +631,30 @@ class NotificationManager:
                 kind="update",
             )
 
+    def remove_recovery_guidance(self, proposal_id: str, fault_tag: str) -> None:
+        """Remove guidance when its proposal is completed or withdrawn."""
+
+        notification = self.active_notification.get(fault_tag)
+        if notification is None:
+            return
+        recovery_messages = notification.get("_recovery_messages", {})
+        if not isinstance(recovery_messages, dict):
+            return
+        if recovery_messages.pop(proposal_id, None) is None:
+            return
+        self._refresh_notification_message(notification)
+        self._persist_state()
+
     def _refresh_notification_message(self, notification: dict[str, Any]) -> None:
         message = notification.get("_base_message", notification["message"])
-        recovery_messages = notification.get("_recovery_messages", [])
+        recovery_messages = notification.get("_recovery_messages", {})
         if recovery_messages:
-            guidance = "\n".join(f"- {item}" for item in recovery_messages)
+            items = (
+                recovery_messages.values()
+                if isinstance(recovery_messages, dict)
+                else recovery_messages
+            )
+            guidance = "\n".join(f"- {item}" for item in items)
             header = self.localizer.text("notification.guidance")
             message = f"{message}\n\n{header}\n{guidance}"
         notification["message"] = message

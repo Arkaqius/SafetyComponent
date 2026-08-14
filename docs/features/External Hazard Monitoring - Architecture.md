@@ -8,8 +8,10 @@
 
 The following decisions are requirements, not open design options:
 
-1. The feature monitors, diagnoses, and warns. It shall not close a window or
-   door, operate a gate, lock anything, change HVAC, or control ventilation.
+1. The feature monitors, diagnoses, and creates close recommendations. Windows
+   and ordinary doors remain manual. The garage and external gates may use
+   directional cover actuators only after authenticated confirmation of a
+   current proposal in SafetyHome.
 2. Every external API has a separate API Component with its own configuration,
    schema validation, polling lifecycle, cache, health, and tests.
 3. Provider-specific code does not create Safety System symptoms or faults.
@@ -24,7 +26,9 @@ The system shall:
 - monitor configured Home Assistant window and external-door contacts;
 - detect when an active external hazard is relevant to an open aperture;
 - warn with friendly area/opening names, source, value, validity, freshness,
-  and a manual recommendation;
+  and a structured close recommendation;
+- require explicit resident confirmation before either configured gate cover
+  is commanded and verify the physical closed contact afterward;
 - expose independent health for every external provider;
 - preserve multiple simultaneous hazards and openings in one fault context;
 - inhibit contradictory manual recommendations to open windows while external
@@ -33,8 +37,9 @@ The system shall:
 
 ## 3. Out of scope
 
-- Automatic closure or locking.
-- Ventilation, HVAC, blind, purifier, siren, or gate control.
+- Automatic closure or locking without a resident confirmation.
+- Window and ordinary-door actuation.
+- Ventilation, HVAC, blind, purifier, siren, lock, or raw relay/pulse control.
 - Medical interpretation of air-quality exposure.
 - Treating forecast model output as a local physical sensor.
 - Scraping human-facing HTML as if it were a supported API contract.
@@ -84,9 +89,13 @@ Provider references:
                                                    v
  EventBus --> FaultManager --> NotificationManager --> HA/MQTT notification
                    |
-                   +--> MQTT fault/system state and evidence
-
- C-EXT has no edge to RecoveryManager actuator execution.
+                   +--> RecoveryManager --> MQTT proposal --> SafetyHome
+                                                ^                |
+                                                +-- confirmation-+
+                                                        |
+                                           allowlisted cover.close_cover
+                                                        |
+                                             configured closed contact
 ```
 
 ## 6. Code placement
@@ -373,7 +382,9 @@ Required notification context:
 - validity and freshness;
 - manual recommendation;
 
-No notification action button may call an actuator service.
+SafetyHome never calls an actuator service directly. Its confirmation button
+publishes only `safety_recovery_confirm`; RecoveryManager owns validation and
+the constrained Home Assistant service call.
 
 ## 11. Advice conflict handling
 
@@ -391,9 +402,10 @@ valid_until: 2026-08-03T18:00:00Z
 source: OpenMeteoAirQualityApiComponent
 ```
 
-`RecoveryManager` consults registered evaluators before showing manual advice
-or executing an action. This filters contradictory advice; C-EXT itself
-registers no executable recovery actions.
+`RecoveryManager` consults registered evaluators before showing advice and again
+immediately before confirmed execution. C-EXT registers one close proposal per
+exposure symptom. The proposal is manual unless the opening is an explicitly
+configured `garage_door` or `gate` with a directional cover actuator.
 
 ## 12. Configuration architecture
 
@@ -403,7 +415,7 @@ Global policy and per-home binding remain separate.
 SafetyFunctions:
   app_config:
     external_hazard_policy:
-      notification_only: true
+      actuation_mode: manual_and_user_confirmed
       decision_timeout_seconds: 1
       clear_delay_seconds: 120
       weather:
@@ -490,6 +502,24 @@ SafetyFunctions:
               - rain
               - storm
               - outdoor_air_pollution
+          GarageGate:
+            area_id: garage
+            entity_id: binary_sensor.garage_gatedoorlow_contact_contact
+            friendly_name: "Brama garażowa"
+            kind: garage_door
+            hazards: [frost, wind, rain, storm, outdoor_air_pollution]
+            actuator_entity_id: cover.brama_garazowa
+            execution_policy: user_confirmed
+            confirmation_timeout_seconds: 180
+          ExternalGate:
+            area_id: frontyard
+            entity_id: binary_sensor.frontyard_externalgate_contact_contact
+            friendly_name: "Brama zewnętrzna"
+            kind: gate
+            hazards: [frost, wind, rain, storm, outdoor_air_pollution]
+            actuator_entity_id: cover.gate
+            execution_policy: user_confirmed
+            confirmation_timeout_seconds: 180
 ```
 
 Provider network policy and the fault catalog belong to global application
@@ -524,7 +554,7 @@ configured home coordinates.
 2. Resolve all `area_id` values and validate Home Assistant entities.
 3. Instantiate API Components without network activity.
 4. Instantiate C-EXT and collect its symptom definitions.
-5. Create FaultManager, NotificationManager, and diagnostics.
+5. Create FaultManager, NotificationManager, RecoveryManager, and diagnostics.
 6. Subscribe EventBus handlers in deterministic order.
 7. Register MQTT provider and aggregate hazard entities.
 8. Start the external runtime and submit an immediate poll for each enabled
@@ -581,7 +611,11 @@ Each API Component requires fixtures for:
   policy active.
 - Provider timeout while fault active -> fault is not cleared.
 - External pollution -> open-window advice inhibited.
-- Every external-hazard scenario -> zero actuator service calls.
+- Window and ordinary-door proposals -> zero actuator service calls.
+- Gate proposal before confirmation, with an invalid token, after expiry, after
+  clear/shadow, or on replay -> zero actuator service calls.
+- Current valid gate confirmation -> exactly one allowlisted
+  `cover.close_cover` call and closed-contact verification.
 
 ### 15.3 Integration tests
 
@@ -603,4 +637,5 @@ The following values shall be defined for the installation:
 3. The air-quality disagreement policy.
 4. Default fault notification levels.
 5. Provider station identifiers and regional codes where required.
-6. The notification-only boundary: no actuator calls under any condition.
+6. The manual-versus-confirmed execution policy for every opening.
+7. The exact directional cover and closed contact for each confirmed gate.

@@ -16,7 +16,16 @@ export interface EntitySnapshot {
 export type EntityMap = Record<string, EntitySnapshot>;
 
 export type FaultStatus = 'set' | 'shadowed' | 'cleared' | 'not_tested' | 'unavailable' | 'unknown';
-export type RecoveryStatus = 'to_perform' | 'do_not_perform' | 'unavailable' | 'unknown';
+export type RecoveryStatus =
+  | 'to_perform'
+  | 'awaiting_confirmation'
+  | 'executing'
+  | 'confirmed'
+  | 'failed'
+  | 'timed_out'
+  | 'do_not_perform'
+  | 'unavailable'
+  | 'unknown';
 export type StatusTone = 'safe' | 'critical' | 'danger' | 'warning' | 'info' | 'muted';
 
 export interface FaultView {
@@ -32,8 +41,17 @@ export interface FaultView {
 
 export interface RecoveryView {
   entityId: string;
+  proposalId: string;
   name: string;
   description: string;
+  instruction: string;
+  executionPolicy: string;
+  confirmationToken: string;
+  reason: string;
+  source: string;
+  validUntil?: string;
+  expiresAt?: number;
+  actuatorEntityId: string;
   state: string;
   status: RecoveryStatus;
   lastChanged?: string;
@@ -187,7 +205,7 @@ export interface ExternalHazardView {
   affectedOpenings: string[];
   adviceInhibition: AdviceInhibitionView[];
   activeSymptomCount: number;
-  notificationOnly: boolean;
+  actuationMode: string;
   lastEvaluatedAt?: string;
   lastUpdated?: string;
   providers: ExternalProviderView[];
@@ -221,6 +239,11 @@ export function getRecoveryStatus(state: unknown): RecoveryStatus {
   const normalized = normalizeState(state);
   if (normalized === 'to_perform') return 'to_perform';
   if (normalized === 'do_not_perform') return 'do_not_perform';
+  if (normalized === 'awaiting_confirmation') return 'awaiting_confirmation';
+  if (normalized === 'executing') return 'executing';
+  if (normalized === 'confirmed') return 'confirmed';
+  if (normalized === 'failed') return 'failed';
+  if (normalized === 'timed_out') return 'timed_out';
   if (UNAVAILABLE_STATES.has(normalized)) return 'unavailable';
   return 'unknown';
 }
@@ -274,28 +297,73 @@ export function getFaults(entities: EntityMap): FaultView[] {
 
 export function getRecoveries(entities: EntityMap): RecoveryView[] {
   const statusPriority: Record<RecoveryStatus, number> = {
-    to_perform: 0,
-    unavailable: 1,
-    unknown: 2,
-    do_not_perform: 3,
+    failed: 0,
+    timed_out: 1,
+    awaiting_confirmation: 2,
+    to_perform: 3,
+    executing: 4,
+    unavailable: 5,
+    unknown: 6,
+    confirmed: 7,
+    do_not_perform: 8,
   };
 
   return Object.entries(entities)
     .filter(([entityId]) => entityId.startsWith(RECOVERY_PREFIX))
-    .map(([entityId, entity]) => ({
-      entityId,
-      name: friendlyEntityName(entityId, entity),
-      description: stringAttribute(entity, 'description'),
-      state: entity.state,
-      status: getRecoveryStatus(entity.state),
-      lastChanged: entity.last_changed,
-    }))
+    .flatMap(([entityId, entity]) => {
+      const proposals = Array.isArray(entity.attributes.proposals) ? entity.attributes.proposals : [];
+      if (proposals.length === 0) {
+        return [
+          {
+            entityId,
+            proposalId: entityId,
+            name: friendlyEntityName(entityId, entity),
+            description: stringAttribute(entity, 'description'),
+            instruction: stringAttribute(entity, 'description'),
+            executionPolicy: 'manual',
+            confirmationToken: '',
+            reason: '',
+            source: '',
+            actuatorEntityId: '',
+            state: entity.state,
+            status: getRecoveryStatus(entity.state),
+            lastChanged: entity.last_changed,
+          },
+        ];
+      }
+      return proposals.flatMap(raw => {
+        if (!raw || typeof raw !== 'object') return [];
+        const proposal = raw as Record<string, unknown>;
+        const proposalId = String(proposal.proposal_id ?? '');
+        if (!proposalId) return [];
+        const status = getRecoveryStatus(proposal.status);
+        return [
+          {
+            entityId,
+            proposalId,
+            name: friendlyEntityName(entityId, entity),
+            description: String(proposal.instruction ?? stringAttribute(entity, 'description')),
+            instruction: String(proposal.instruction ?? ''),
+            executionPolicy: String(proposal.execution_policy ?? 'manual'),
+            confirmationToken: String(proposal.confirmation_token ?? ''),
+            reason: String(proposal.reason ?? ''),
+            source: String(proposal.source ?? ''),
+            validUntil: proposal.valid_until ? String(proposal.valid_until) : undefined,
+            expiresAt: typeof proposal.expires_at === 'number' ? proposal.expires_at : undefined,
+            actuatorEntityId: String(proposal.actuator_entity_id ?? ''),
+            state: String(proposal.status ?? entity.state),
+            status,
+            lastChanged: entity.last_changed,
+          },
+        ];
+      });
+    })
     .sort((left, right) => statusPriority[left.status] - statusPriority[right.status] || left.name.localeCompare(right.name, 'pl'));
 }
 
 /** Returns true when a recovery sensor needs an action or diagnostic attention. */
 export function recoveryNeedsAttention(recovery: RecoveryView): boolean {
-  return recovery.status !== 'do_not_perform';
+  return !['do_not_perform', 'confirmed'].includes(recovery.status);
 }
 
 export function getMonitoredTemperatures(entities: EntityMap): TemperatureView[] {
@@ -460,7 +528,7 @@ export function getExternalHazardMonitoring(entities: EntityMap): ExternalHazard
     affectedOpenings: stringArrayAttribute(aggregate, 'affected_openings'),
     adviceInhibition: adviceInhibitionAttribute(aggregate),
     activeSymptomCount: numericAttribute(aggregate, 'active_symptom_count') ?? 0,
-    notificationOnly: aggregate?.attributes.notification_only === true,
+    actuationMode: stringAttribute(aggregate, 'actuation_mode'),
     lastEvaluatedAt: optionalStringAttribute(aggregate, 'last_evaluated_at'),
     lastUpdated: aggregate?.last_updated ?? aggregate?.last_changed,
     providers,
@@ -526,6 +594,11 @@ export function localizedEntityState(entityId: string, state: unknown): string {
   if (entityId.startsWith(RECOVERY_PREFIX)) {
     const labels: Record<RecoveryStatus, string> = {
       to_perform: 'Do wykonania',
+      awaiting_confirmation: 'Wymaga potwierdzenia',
+      executing: 'W trakcie',
+      confirmed: 'Potwierdzone',
+      failed: 'Niepowodzenie',
+      timed_out: 'Przekroczono czas',
       do_not_perform: 'Brak potrzeby działania',
       unavailable: 'Niedostępne',
       unknown: 'Stan nieznany',

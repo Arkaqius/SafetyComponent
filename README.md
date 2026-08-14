@@ -24,11 +24,11 @@ actions.
 - SafetyHome React/Vite frontend with Dashboard, Temperature, Safety Doors,
   Entity Health, and History views connected through `@hakit/core`.
 
-The repository also defines the safety contract and provider-isolated
-architecture for External Hazard Monitoring: weather, official IMGW warnings,
-and outdoor air quality correlated with configured windows and external doors.
-That contract is notification-only and
-permits no actuator calls.
+External Hazard Monitoring correlates weather, official IMGW warnings, and
+outdoor air quality with configured windows and external doors. It creates
+manual close recommendations for ordinary openings. The two explicitly
+configured gate covers may be closed only after a current proposal is confirmed
+by an authenticated user in SafetyHome; provider code never actuates devices.
 
 Entity Health Monitoring covers explicitly configured safety dependencies,
 dependencies declared by Safety Components, and an information-only inventory
@@ -53,6 +53,7 @@ of other Home Assistant entities and devices.
 
 Feature architecture documents include
 [`Mobile Notification Delivery`](docs/features/Mobile%20Notification%20Delivery%20-%20Architecture.md),
+[`Recommended Actions and Recovery`](docs/features/Recommended%20Actions%20and%20Recovery%20-%20Architecture.md),
 [`External Hazard Monitoring`](docs/features/External%20Hazard%20Monitoring%20-%20Architecture.md),
 and [`Entity Health Monitoring`](docs/features/Entity%20Health%20Monitoring%20-%20Architecture.md).
 

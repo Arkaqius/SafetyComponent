@@ -31,6 +31,16 @@ npm run dev:mock
 Tryb demonstracyjny działa tylko przy deweloperskim buildzie Vite i jest jawnie oznaczony w nagłówku. Produkcyjny build
 zawsze korzysta z rzeczywistych encji Home Assistanta.
 
+## Działania rekomendowane
+
+Karta działania pokazuje instrukcję, powód, źródło, ważność i bieżący etap
+wykonania. Zamknięcie zwykłego okna lub drzwi jest czynnością ręczną.
+Przycisk potwierdzenia pojawia się wyłącznie dla skonfigurowanej bramy
+garażowej i zewnętrznej. Frontend wysyła potwierdzenie do SafetyComponent przez
+uwierzytelnione połączenie Home Assistanta; nie wywołuje usługi bramy
+bezpośrednio. Nie potwierdzaj akcji, jeżeli nie masz pewności, że ruch bramy jest
+bezpieczny.
+
 ## Weryfikacja
 
 ```powershell

@@ -31,13 +31,17 @@ def test_external_hazard_config_normalizes_all_three_independent_providers() -> 
     external = runtime["user_config"]["safety_components"][
         "ExternalHazardComponent"
     ]
-    assert external["policy"]["notification_only"] is True
+    assert external["policy"]["actuation_mode"] == "manual_and_user_confirmed"
     assert external["enabled_providers"] == [
         "ImgwWarningsApiComponent",
         "OpenMeteoAirQualityApiComponent",
         "OpenMeteoWeatherApiComponent",
     ]
-    assert len(external["openings"]) == 11
+    assert len(external["openings"]) == 12
+    assert external["openings"]["GarageGate"]["actuator_entity_id"] == (
+        "cover.brama_garazowa"
+    )
+    assert external["openings"]["ExternalGate"]["actuator_entity_id"] == "cover.gate"
 
 
 def test_enabled_external_hazard_rejects_a_missing_provider_binding() -> None:
@@ -48,9 +52,13 @@ def test_enabled_external_hazard_rejects_a_missing_provider_binding() -> None:
         AppCfgValidator.validate(config)
 
 
-def test_external_hazard_rejects_any_attempt_to_enable_actuation() -> None:
+def test_external_hazard_rejects_unconfirmed_or_non_cover_actuation() -> None:
     config = copy.deepcopy(_production_config())
-    config["app_config"]["external_hazard_policy"]["notification_only"] = False
+    config["user_config"]["safety_components"]["ExternalHazardComponent"][
+        "openings"
+    ]["GarageGate"]["actuator_entity_id"] = (
+        "button.garaz_przekaznik_bramy_garazowej_garage_gate_pulse"
+    )
 
-    with pytest.raises(AppCfgValidationError, match="notification_only"):
+    with pytest.raises(AppCfgValidationError, match="cover actuator_entity_id"):
         AppCfgValidator.validate(config)

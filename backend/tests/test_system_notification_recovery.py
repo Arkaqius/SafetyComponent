@@ -203,13 +203,13 @@ def test_recovery_manager_sets_recovery_state_and_actuator_entities(
 
     symptom = app_instance.symptoms["RiskyTemperatureOffice"]
     recovery_action = app_instance.reco_man.recovery_actions["RiskyTemperatureOffice"]
-    assert recovery_action.current_status == RecoveryActionState.TO_PERFORM
+    assert recovery_action.current_status == RecoveryActionState.EXECUTING
     assert (
         mqtt_payloads(
             app_instance,
             mqtt_topic_for("sensor.recovery_ManipulateWindowOffice"),
         )[-1]
-        == "TO_PERFORM"
+        == "EXECUTING"
     )
     app_instance.call_service.assert_any_call(
         "cover/close_cover", entity_id="cover.office_window"

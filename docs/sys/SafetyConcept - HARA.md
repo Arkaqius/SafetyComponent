@@ -295,7 +295,9 @@ _High:_ These hazards can be easily mitigated if residents are notified in time,
 
 - The system shall monitor weather data and predict potential rain events.
 - The system shall alert occupants when windows or external doors are left open during rain, a storm, or an applicable official warning.
-- External Hazard Monitoring shall not automatically close motorized windows or doors.
+- External Hazard Monitoring shall not automatically close an opening. It may
+  command an explicitly configured garage or external gate cover only after an
+  authenticated resident confirms the current close proposal in SafetyHome.
 - The system shall log open/close events for audit and maintenance purposes.
 
 #### 1.3.15 Frost Exposure Through Openings
@@ -305,7 +307,8 @@ _High:_ These hazards can be easily mitigated if residents are notified in time,
   open while the frost warning policy is met.
 - The alert shall identify the affected openings, current/forecast temperature,
   source, source timestamp, and recommended manual action.
-- External Hazard Monitoring shall not actuate windows, doors, heating, or ventilation.
+- External Hazard Monitoring shall not actuate windows, ordinary doors, heating,
+  or ventilation. Gate closure requires the resident-confirmation boundary.
 
 #### 1.3.16 Wind Damage to Openings
 
@@ -315,7 +318,9 @@ _High:_ These hazards can be easily mitigated if residents are notified in time,
   open while the wind warning policy is met.
 - The alert shall identify the affected openings, gust value or warning level,
   validity interval, source, and recommended manual action.
-- External Hazard Monitoring shall not actuate windows, doors, blinds, or gates.
+- External Hazard Monitoring shall not actuate windows, ordinary doors, or
+  blinds. An allowlisted gate may close only after resident confirmation and
+  shall be verified from its configured contact.
 
 #### 1.3.17 Outdoor Air Pollution Ingress
 
@@ -325,6 +330,8 @@ _High:_ These hazards can be easily mitigated if residents are notified in time,
   open while outdoor air quality exceeds the configured policy threshold.
 - Outdoor pollution shall inhibit conflicting manual advice to open windows;
   External Hazard Monitoring shall not control ventilation or air purifiers.
+- Any garage or external gate close proposal shall remain non-actuating until a
+  resident confirms it in SafetyHome.
 - The system shall report the current measurement or model input controlling
   the decision and preserve its provider semantics.
 

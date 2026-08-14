@@ -49,7 +49,7 @@ The implementation assumes:
 | `SafetyComponent` | Common safety-mechanism lifecycle, listeners, reevaluation, and debounce handling. |
 | `TemperatureComponent` | Direct and forecast low/high temperature evaluation and window recovery proposals. |
 | `SafetyDoorsComponent` | Per-door open-duration monitoring with optional state gating. |
-| `ExternalHazardComponent` | Correlate normalized external hazards with configured openings, create notification-only symptoms, and maintain advice-inhibition state. |
+| `ExternalHazardComponent` | Correlate normalized external hazards with configured openings, create close recommendations, and maintain advice-inhibition state. |
 | External API Components | One isolated component per remote API; validate and normalize provider data without creating faults or actions. |
 | `DerivativeMonitor` | Calculate and publish first- and second-order temperature derivatives. |
 | `FaultManager` | Aggregate symptoms, preserve multi-symptom fault context, and publish fault/system state. |
@@ -157,7 +157,12 @@ The existing `ForeCast` capitalization is part of the runtime contract.
 | SWR-NOT-018 | `sensor.notification_delivery_health` shall expose active, acknowledged, queued, accepted, failed, deadline-miss and exhausted counts; per-service status, attempt time and error; plus the last Home Assistant acceptance result and error. | MQTT delivery diagnostics |
 | SWR-REC-001 | Recovery commands shall be limited to explicitly supported Home Assistant entity domains and services. | `RecoveryManager._resolve_entity_action` |
 | SWR-REC-002 | A recovery action shall verify the requested postcondition and shall report failure or timeout instead of assuming success. | RecoveryManager confirmation flow |
-| SWR-REC-003 | Recovery entities shall expose stable raw states `TO_PERFORM` and `DO_NOT_PERFORM` plus localized `state_label`. | RecoveryManager and Localizer |
+| SWR-REC-003 | Recovery entities shall expose stable raw states `DO_NOT_PERFORM`, `TO_PERFORM`, `AWAITING_CONFIRMATION`, `EXECUTING`, `CONFIRMED`, `FAILED`, and `TIMED_OUT`; the frontend shall localize their presentation. | RecoveryManager and SafetyHome |
+| SWR-REC-004 | A `user_confirmed` proposal shall not execute until RecoveryManager receives the exact current proposal ID and one-time confirmation token through the authenticated Home Assistant event connection. | confirmation event handler |
+| SWR-REC-005 | RecoveryManager shall re-evaluate current symptom state, expiry, policy, and the exact configured actuator immediately before a confirmed command, and shall reject replayed or stale confirmation. | confirmation validation |
+| SWR-REC-006 | Active proposal state shall be atomically persisted outside the deployed app directory. Restart shall restore operator-visible state without replaying an actuator command and shall rotate confirmation tokens. | `RecoveryStateStore` |
+| SWR-REC-007 | MQTT proposal attributes shall use an explicit allowlist and shall include instruction, policy, lifecycle, reason, source, validity, area, postcondition, and actuator only where applicable. | proposal publication |
+| SWR-REC-008 | Recovery guidance shall be owned by proposal ID so that updates replace prior text and clearing or shadowing removes stale guidance. | NotificationManager guidance API |
 
 ### 4.6 Localization contract
 
@@ -208,11 +213,13 @@ feature architecture §12.
 | SWR-EXT-005 | `ExternalHazardComponent` shall be the only Safety Component in this feature and shall own household thresholds, freshness, cross-provider policy, opening correlation, aggregation, notification context, and the stable runtime identifiers defined above. | `ExternalHazardComponent` |
 | SWR-EXT-006 | Frost, wind/gust, rain/storm, and outdoor-pollution exposure symptoms shall require both applicable valid hazard evidence and an open configured aperture. | external hazard policy mechanisms |
 | SWR-EXT-009 | Provider timeout, stale data, or schema error shall not clear an active condition and shall publish provider degradation diagnostics. | provider health and clear policy |
-| SWR-EXT-010 | External Hazard Monitoring shall be notification-only, shall register no executable recovery action, and shall make no Home Assistant actuator service call. | negative actuation boundary |
+| SWR-EXT-010 | External Hazard Monitoring shall register a close recommendation for each exposure symptom. Window and ordinary-door recommendations shall remain manual. | recovery registration |
 | SWR-EXT-011 | Same-fault updates shall retain all active hazards/openings and refresh one notification tag using friendly names and localized area labels. | FaultManager and NotificationManager integration |
 | SWR-EXT-012 | External pollution, damaging wind, or storm shall inhibit contradictory advice to open external apertures. | `RecoveryPolicyEvaluator` integration |
 | SWR-EXT-014 | `ImgwWarningsApiComponent` shall expose only current sanitized warnings matching at least one configured TERYT code, mark them as locally applicable, and dispatch locally applicable recognized hazards into household safety policy. | `ImgwWarningsApiComponent` and provider diagnostic MQTT entity |
 | SWR-EXT-015 | Each provider diagnostic MQTT entity shall expose an `observations` list of at most 64 summaries containing the stable observation ID, hazard type, provider level, observation and validity timestamps, and an optional operator-display value and unit. The list shall contain normalized current observations only and shall not expose unbounded provider payloads. | `ExternalHazardComponent._publish_provider_health` |
+| SWR-EXT-016 | The garage and external gate may bind only directional `cover.*` actuators and `user_confirmed` execution. No other opening kind may define an actuator. | `OpeningConfig` validation |
+| SWR-EXT-017 | A gate close shall call only `cover.close_cover` after valid SafetyHome confirmation and shall use its configured contact as the physical closed postcondition. | RecoveryManager confirmed execution |
 
 ### 4.9 Entity Health Monitoring
 

@@ -163,6 +163,16 @@ def _collect_entity_ids(runtime_cfg: Dict[str, Any]) -> list[tuple[str, str]]:
                             entity_id,
                         )
                     )
+                actuator_entity_id = opening_cfg.get("actuator_entity_id")
+                if isinstance(actuator_entity_id, str):
+                    entity_ids.append(
+                        (
+                            "user_config.safety_components."
+                            f"{EXTERNAL_HAZARD_COMPONENT_NAME}."
+                            f"openings.{opening_name}.actuator_entity_id",
+                            actuator_entity_id,
+                        )
+                    )
 
     entity_monitor_cfg = components_cfg.get(ENTITY_MONITOR_COMPONENT_NAME)
     if isinstance(entity_monitor_cfg, dict):

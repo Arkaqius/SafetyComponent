@@ -148,6 +148,34 @@ test('treats unavailable and unknown recovery states as requiring attention', ()
   assert.deepEqual(recoveries.map(recoveryNeedsAttention), [true, true, false]);
 });
 
+test('exposes a confirmation-gated recovery proposal without losing raw identifiers', () => {
+  const [recovery] = getRecoveries({
+    'sensor.recovery_closeexternalopeningexternalgate': entity('AWAITING_CONFIRMATION', {
+      friendly_name: 'Zamknij: Brama zewnętrzna',
+      proposals: [
+        {
+          proposal_id: 'ExternalWeatherExposureWindExternalGate',
+          confirmation_token: 'one-time-token',
+          instruction: 'Potwierdź zamknięcie bramy zewnętrznej.',
+          execution_policy: 'user_confirmed',
+          status: 'AWAITING_CONFIRMATION',
+          reason: 'silny wiatr',
+          source: 'OpenMeteoWeatherApiComponent',
+          valid_until: '2026-08-14T12:00:00Z',
+          actuator_entity_id: 'cover.gate',
+        },
+      ],
+    }),
+  });
+
+  assert.equal(recovery.status, 'awaiting_confirmation');
+  assert.equal(recovery.proposalId, 'ExternalWeatherExposureWindExternalGate');
+  assert.equal(recovery.confirmationToken, 'one-time-token');
+  assert.equal(recovery.executionPolicy, 'user_confirmed');
+  assert.equal(recovery.actuatorEntityId, 'cover.gate');
+  assert.equal(recoveryNeedsAttention(recovery), true);
+});
+
 test('discovers monitored temperature from SafetyComponent derivative pair', () => {
   const entities: EntityMap = {
     'sensor.office_climatesensor_temperature': entity('23.25', {
@@ -261,7 +289,7 @@ test('normalizes external hazard aggregate and independent provider diagnostics'
         },
       ],
       active_symptom_count: 1,
-      notification_only: true,
+      actuation_mode: 'manual_and_user_confirmed',
       last_evaluated_at: timestamp,
     }),
     'sensor.external_provider_open_meteo_weather': entity('ok', {
@@ -348,10 +376,7 @@ test('presents current Open-Meteo air quality for the home coordinates', () => {
     tone: 'safe',
     sourceName: 'Open-Meteo',
   });
-  assert.equal(
-    observationDisplayName(external.providers[0].observations[0]),
-    'Jakość powietrza dla współrzędnych domu'
-  );
+  assert.equal(observationDisplayName(external.providers[0].observations[0]), 'Jakość powietrza dla współrzędnych domu');
 });
 
 test('localizes raw history states for operators', () => {

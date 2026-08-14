@@ -55,7 +55,7 @@ SafetyFunctions:
         unhealthy_summary_limit: 32
 
     external_hazard_policy:
-      notification_only: true
+      actuation_mode: manual_and_user_confirmed
       decision_timeout_seconds: 1
       clear_delay_seconds: 120
       weather:
@@ -235,6 +235,12 @@ SafetyFunctions:
       # are still retried, but WAN loss cannot be detected before a call.
       wan_entity: null
 
+    recovery:
+      persistence:
+        enabled: true
+        # Kept outside /config/appdaemon/apps so deployments preserve proposals.
+        state_file: "/config/appdaemon/recovery_state.json"
+
     # User-facing language. Backend state codes and entity IDs remain stable
     # English API values; Home Assistant names, state_label attributes, and
     # notification copy are localized for this installation.
@@ -377,6 +383,18 @@ SafetyFunctions:
             friendly_name: "Brama garażowa"
             kind: garage_door
             hazards: [frost, wind, rain, storm, outdoor_air_pollution]
+            actuator_entity_id: "cover.brama_garazowa"
+            execution_policy: user_confirmed
+            confirmation_timeout_seconds: 180
+          ExternalGate:
+            area_id: "frontyard"
+            entity_id: "binary_sensor.frontyard_externalgate_contact_contact"
+            friendly_name: "Brama zewnętrzna"
+            kind: gate
+            hazards: [frost, wind, rain, storm, outdoor_air_pollution]
+            actuator_entity_id: "cover.gate"
+            execution_policy: user_confirmed
+            confirmation_timeout_seconds: 180
           UpperBathroomWindow:
             area_id: "upper_bathroom"
             entity_id: "binary_sensor.upperbathroom_window_contact_contact"

@@ -53,7 +53,7 @@ export const MOCK_ENTITIES: EntityMap = {
         },
       ],
       last_evaluated_at: timestamp(0),
-      notification_only: true,
+      actuation_mode: 'manual_and_user_confirmed',
       active_symptom_count: 1,
     },
     0

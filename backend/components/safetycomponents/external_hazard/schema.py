@@ -83,7 +83,9 @@ class AirQualityPolicy(StrictBaseModel):
 class ExternalHazardPolicy(StrictBaseModel):
     """Global household external-hazard policy."""
 
-    notification_only: Literal[True] = True
+    actuation_mode: Literal["manual_and_user_confirmed"] = (
+        "manual_and_user_confirmed"
+    )
     decision_timeout_seconds: int = Field(default=1, ge=1, le=10)
     clear_delay_seconds: int = Field(default=120, ge=0)
     weather: WeatherPolicy
@@ -97,8 +99,11 @@ class OpeningConfig(StrictBaseModel):
     area_id: str
     entity_id: str
     friendly_name: str
-    kind: Literal["window", "door", "garage_door"]
+    kind: Literal["window", "door", "garage_door", "gate"]
     hazards: list[HazardName] = Field(min_length=1)
+    actuator_entity_id: str | None = None
+    execution_policy: Literal["manual", "user_confirmed"] = "manual"
+    confirmation_timeout_seconds: int = Field(default=120, ge=15, le=600)
 
     @field_validator("area_id", "entity_id", "friendly_name")
     @classmethod
@@ -114,6 +119,23 @@ class OpeningConfig(StrictBaseModel):
         if len(value) != len(set(value)):
             raise ValueError("Opening hazards must not contain duplicates")
         return value
+
+    @model_validator(mode="after")
+    def _safe_actuator_contract(self) -> "OpeningConfig":
+        if self.execution_policy == "manual" and self.actuator_entity_id is not None:
+            raise ValueError("manual openings must not define actuator_entity_id")
+        if self.execution_policy == "user_confirmed":
+            if self.kind not in {"garage_door", "gate"}:
+                raise ValueError(
+                    "user_confirmed execution is limited to garage_door and gate"
+                )
+            if not self.actuator_entity_id or not self.actuator_entity_id.startswith(
+                "cover."
+            ):
+                raise ValueError(
+                    "user_confirmed openings require a cover actuator_entity_id"
+                )
+        return self
 
 
 class ExternalHazardComponentConfig(StrictBaseModel):

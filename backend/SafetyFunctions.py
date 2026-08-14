@@ -63,6 +63,10 @@ from components.notification_manager.state_store import (
     JsonNotificationStateStore,
 )
 from components.recovery_manager.recovery_manager import RecoveryManager
+from components.recovery_manager.state_store import (
+    InMemoryRecoveryStateStore,
+    JsonRecoveryStateStore,
+)
 from components.safetycomponents.core.safety_component import (
     get_registered_components,
 )
@@ -220,6 +224,14 @@ class SafetyFunctions(hass.Hass):
         )
 
         # Create the recovery orchestration manager.
+        recovery_persistence_cfg = self.args["user_config"].get(
+            "recovery", {}
+        ).get("persistence", {})
+        recovery_state_store = (
+            JsonRecoveryStateStore(recovery_persistence_cfg["state_file"])
+            if recovery_persistence_cfg.get("enabled", False)
+            else InMemoryRecoveryStateStore()
+        )
         self.reco_man: RecoveryManager = RecoveryManager(
             self,
             self.fm,
@@ -227,6 +239,7 @@ class SafetyFunctions(hass.Hass):
             self.common_entities,
             self.notify_man,
             self.mqtt_entities,
+            recovery_state_store,
         )
         for component in self.sm_modules.values():
             if callable(getattr(component, "evaluate_recovery_policy", None)):
@@ -246,6 +259,7 @@ class SafetyFunctions(hass.Hass):
         # Publish system and fault entities before mechanisms begin evaluation.
         self.register_entities()
         self.notify_man.start()
+        self.reco_man.start()
 
         # Initialize state listeners and timers for every safety mechanism.
         self.fm.init_safety_mechanisms()
@@ -423,6 +437,15 @@ class SafetyFunctions(hass.Hass):
             except Exception as exc:
                 self.log(
                     f"Unable to persist notification manager state: {exc}",
+                    level="ERROR",
+                )
+        recovery_manager = getattr(self, "reco_man", None)
+        if recovery_manager is not None:
+            try:
+                recovery_manager.stop()
+            except Exception as exc:
+                self.log(
+                    f"Unable to persist recovery manager state: {exc}",
                     level="ERROR",
                 )
         mqtt_entities = getattr(self, "mqtt_entities", None)

@@ -151,6 +151,7 @@ class ExternalHazardComponent(SafetyComponent):
             name: dict(config) for name, config in component_cfg["openings"].items()
         }
         symptoms: dict[str, Symptom] = {}
+        recoveries: dict[str, RecoveryAction] = {}
         weather_hazards = ("frost", "wind", "rain", "storm")
         for opening_name, opening in self.openings.items():
             for hazard in weather_hazards:
@@ -164,6 +165,9 @@ class ExternalHazardComponent(SafetyComponent):
                     opening_name=opening_name,
                     hazard=hazard,
                 )
+                recoveries[symptom_id] = self._opening_recovery(
+                    symptom_id, opening_name, opening
+                )
             if "outdoor_air_pollution" in opening["hazards"]:
                 symptom_id = f"OutdoorAirQualityExposure{opening_name}"
                 symptoms[symptom_id] = self._symptom(
@@ -172,6 +176,9 @@ class ExternalHazardComponent(SafetyComponent):
                     SM_AIR_QUALITY,
                     opening_name=opening_name,
                     hazard="outdoor_air_pollution",
+                )
+                recoveries[symptom_id] = self._opening_recovery(
+                    symptom_id, opening_name, opening
                 )
 
         for capability, providers in _CAPABILITIES.items():
@@ -184,7 +191,85 @@ class ExternalHazardComponent(SafetyComponent):
                 SM_PROVIDER_UNAVAILABLE,
                 capability=capability,
             )
-        return symptoms, {}
+        return symptoms, recoveries
+
+    def _opening_recovery(
+        self,
+        symptom_id: str,
+        opening_name: str,
+        opening: dict[str, Any],
+    ) -> RecoveryAction:
+        """Build one close-opening proposal for an exposure symptom."""
+
+        localizer = getattr(self.hass_app, "localizer", None)
+        friendly_name = (
+            localizer.text(
+                "recovery.close_opening", opening=opening["friendly_name"]
+            )
+            if localizer is not None
+            else f"Close {opening['friendly_name']}"
+        )
+        return RecoveryAction(
+            f"CloseExternalOpening{opening_name}",
+            {
+                "opening_name": opening_name,
+                "friendly_name": friendly_name,
+                "location": opening.get("area_name", opening["area_id"]),
+                "area_id": opening["area_id"],
+            },
+            self._close_opening_recovery,
+        )
+
+    def _close_opening_recovery(
+        self,
+        _hass_app: hass.Hass,
+        symptom: Symptom,
+        _common_entities: CommonEntities,
+        **_: Any,
+    ) -> RecoveryResult:
+        """Return a non-actuating proposal or a confirmation-gated cover command."""
+
+        opening_name = str(symptom.parameters["opening_name"])
+        opening = self.openings[opening_name]
+        friendly_name = str(opening["friendly_name"])
+        context = self._last_context.get(symptom.name, {})
+        execution_policy = str(opening.get("execution_policy", "manual"))
+        actuator = opening.get("actuator_entity_id")
+        changed_actuators = (
+            {str(actuator): "closed"}
+            if execution_policy == "user_confirmed" and actuator
+            else {}
+        )
+        localizer = getattr(self.hass_app, "localizer", None)
+        if localizer is not None:
+            instruction = localizer.text(
+                "recovery.close_opening", opening=friendly_name
+            )
+        else:
+            instruction = f"Close {friendly_name}."
+        if execution_policy == "user_confirmed":
+            if localizer is not None:
+                instruction = localizer.text(
+                    "recovery.confirm_close_opening", opening=friendly_name
+                )
+            else:
+                instruction = (
+                    f"Confirm closing {friendly_name}. SafetyComponent will act "
+                    "only after your confirmation."
+                )
+        return RecoveryResult(
+            changed_sensors={str(opening["entity_id"]): "off"},
+            changed_actuators=changed_actuators,
+            notifications=[instruction],
+            instruction=instruction,
+            execution_policy=execution_policy,
+            reason=str(context.get("hazard", symptom.parameters.get("hazard", ""))),
+            source=str(context.get("source", "SafetyComponent")),
+            valid_until=str(context.get("valid_to", "")),
+            confirmation_timeout_seconds=int(
+                opening.get("confirmation_timeout_seconds", 120)
+            ),
+        )
 
     def _symptom(
         self,
@@ -633,7 +718,9 @@ class ExternalHazardComponent(SafetyComponent):
                 "enabled_providers": sorted(self.enabled_providers),
                 "advice_inhibition": list(self._inhibited_reasons.values()),
                 "last_evaluated_at": self._now().isoformat(),
-                "notification_only": True,
+                "actuation_mode": self.policy.get(
+                    "actuation_mode", "manual_and_user_confirmed"
+                ),
                 "active_symptom_count": len(external_active),
             },
         )
