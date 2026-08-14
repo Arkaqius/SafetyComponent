@@ -70,7 +70,7 @@ def _notify_calls(app_instance: Any) -> list[Any]:
     return [
         call
         for call in app_instance.call_service.call_args_list
-        if call.args and call.args[0] == "notify/notify"
+        if call.args and call.args[0] == "notify/all_phones"
     ]
 
 

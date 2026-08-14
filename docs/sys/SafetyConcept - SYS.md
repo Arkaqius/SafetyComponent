@@ -172,7 +172,11 @@ This chapter defines **notification levels and vectors** used by the Safety Syst
 ### 4.2 Deadlines & Retries
 
 - **Delivery deadlines:** Level 1 ≤ **10 s**; Level 2/3 ≤ **30 s** from fault confirmation; Level 4 best‑effort.
-- **Retries:** If delivery confirmation is unavailable, attempt **N_retry** with **T_cooldown** between attempts (configurable). In _Local‑Only_, queue cloud/mobile and prefer local lights/siren.
+- **Retries:** If submission to Home Assistant fails, attempt **N_retry** with
+  **T_cooldown** between attempts (configurable). Absence of individual-phone
+  delivery confirmation is reported diagnostically and does not by itself
+  trigger duplicate pushes. In _Local‑Only_, queue cloud/mobile and prefer
+  local lights/siren.
 - **Repeat policy (optional):** For persistent L1 events (e.g., CO at night), repeat phone alerts every **T_repeat ≤ 60 s** until acknowledged.
 
 ### 4.3 Mode‑Aware Behavior
@@ -204,7 +208,21 @@ SafetyFunctions:
 
   user_config:
     notification:
-      light_entity: "light.info"
+      mobile:
+        services:
+          - "notify/all_phones"
+        default_url: "https://ha.kojbito.org/5c36e1c9_hakit"
+      local:
+        light_entity: "light.info"
+      retry:
+        max_attempts: 3
+        base_delay_seconds: 5
+        max_delay_seconds: 60
+        deadlines_seconds: {1: 10, 2: 30, 3: 30}
+      level_one_repeat:
+        enabled: true
+        interval_seconds: 60
+        max_repeats: 3
     localization:
       language: "pl"
 ```
@@ -457,6 +475,14 @@ _Interfaces turn §2 elements into **testable contracts**: freshness, latency, a
 
 - Profiles per §4 (L1–L4); **Deadline:** L1 **≤ 10 s**, L2/L3 **≤ 30 s**; repeat policy for L1 (configurable).
 - **Queueing:** in Local‑Only, queue and flush on WAN recovery.
+- **Routing:** use an explicit configured mobile group or device-service list;
+  `notify.notify` shall not be used as a safety-delivery target.
+- **Result semantics:** distinguish acceptance by Home Assistant from confirmed
+  display or delivery by an individual phone.
+- **Lifecycle:** a new alarm may alert; same-fault context changes shall refresh
+  quietly; shadowing shall use the Companion `clear_notification` command.
+- **Persistence:** active, acknowledged, repeated, and queued delivery state
+  shall survive AppDaemon reload and restart.
 
 **OR-021 Dashboard Main Safety Card**
 

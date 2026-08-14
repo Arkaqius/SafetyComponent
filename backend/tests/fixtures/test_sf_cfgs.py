@@ -40,7 +40,10 @@ def _temperature_component_rooms():
 def _base_user_config():
     return {
         "components_enabled": {"TemperatureComponent": True},
-        "notification": {"light_entity": "light.warning_light"},
+        "notification": {
+            "local": {"light_entity": "light.warning_light"},
+            "persistence": {"enabled": False},
+        },
         "common_entities": {"outside_temp": "sensor.dom_temperature"},
         "safety_components": {
             "TemperatureComponent": {

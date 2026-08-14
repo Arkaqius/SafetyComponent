@@ -1,4 +1,5 @@
 """Minimal stub of appdaemon Hass API for tests."""
+
 from __future__ import annotations
 
 import re
@@ -49,6 +50,7 @@ class Hass:
         self.run_in = getattr(ad, "run_in", self.run_in)  # type: ignore
         self.run_every = getattr(ad, "run_every", self.run_every)  # type: ignore
         self.listen_state = getattr(ad, "listen_state", self.listen_state)  # type: ignore
+        self.listen_event = getattr(ad, "listen_event", self.listen_event)  # type: ignore
         self.render_template = getattr(ad, "render_template", self.render_template)  # type: ignore
 
     def log(self, msg: str, *args: Any, **kwargs: Any) -> None:
@@ -59,7 +61,13 @@ class Hass:
                 pass
         return None
 
-    def set_state(self, entity_id: str, state: Any = None, attributes: Optional[dict] = None, **kwargs: Any) -> None:
+    def set_state(
+        self,
+        entity_id: str,
+        state: Any = None,
+        attributes: Optional[dict] = None,
+        **kwargs: Any,
+    ) -> None:
         self._state[entity_id] = {"state": state, "attributes": attributes or {}}
 
     def get_state(self, entity_id: str, **kwargs: Any) -> Any:
@@ -98,6 +106,11 @@ class Hass:
     def listen_state(self, callback: Callable, entity: str, **kwargs: Any) -> Any:
         # Return a dummy handle for cancellation in potential future extensions
         return (callback, entity, kwargs)
+
+    def listen_event(self, callback: Callable, event: str, **kwargs: Any) -> Any:
+        """Return a dummy Home Assistant event-listener handle."""
+
+        return (callback, event, kwargs)
 
     def cancel_timer(self, handle: Any) -> None:
         return None

@@ -73,9 +73,22 @@ def _collect_entity_ids(runtime_cfg: Dict[str, Any]) -> list[tuple[str, str]]:
             entity_ids.append((f"user_config.common_entities.{key}", value))
 
     notification_cfg = user_cfg.get("notification", {}) or {}
-    for key, value in notification_cfg.items():
-        if key.endswith("_entity") and isinstance(value, str):
-            entity_ids.append((f"user_config.notification.{key}", value))
+
+    def collect_notification_entities(value: Any, path: str) -> None:
+        if not isinstance(value, dict):
+            return
+        for key, nested_value in value.items():
+            nested_path = f"{path}.{key}"
+            if (
+                isinstance(key, str)
+                and key.endswith("_entity")
+                and isinstance(nested_value, str)
+            ):
+                entity_ids.append((nested_path, nested_value))
+            elif isinstance(nested_value, dict):
+                collect_notification_entities(nested_value, nested_path)
+
+    collect_notification_entities(notification_cfg, "user_config.notification")
 
     components_cfg = user_cfg.get("safety_components", {}) or {}
     temperature_cfg = components_cfg.get(TEMPERATURE_COMPONENT_NAME)

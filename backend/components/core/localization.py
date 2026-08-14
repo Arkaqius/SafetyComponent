@@ -19,6 +19,7 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "entity.safety_app_health": "Safety app health",
         "entity.safety_system_state": "Safety system state",
         "entity.entity_monitor_summary": "Monitored entities",
+        "entity.notification_delivery_health": "Notification delivery health",
         "entity.recovery_window": "Window recovery: {location}",
         "entity.temperature_low_threshold": "Low temperature limit: {location}",
         "entity.temperature_high_threshold": "High temperature limit: {location}",
@@ -42,6 +43,9 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "state.entity_health.degraded": "Needs attention",
         "state.entity_health.stale": "Stale data",
         "state.entity_health.unavailable": "Unavailable",
+        "state.notification_delivery.healthy": "Healthy",
+        "state.notification_delivery.degraded": "Needs attention",
+        "state.notification_delivery.queued": "Queued",
         "fault.entity_health": "Entity problem: {entity}",
         "notification.title.1": "Immediate action needed",
         "notification.title.2": "Safety issue detected",
@@ -49,6 +53,7 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "notification.active": "{fault} needs your attention.",
         "notification.cleared": "Good news - {fault} is no longer active.",
         "notification.guidance": "What you can do:",
+        "notification.action.ack": "Acknowledge",
         "detail.location": "Location",
         "detail.hazard": "Hazard",
         "detail.openings": "Affected openings",
@@ -73,6 +78,7 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "entity.safety_app_health": "Stan aplikacji bezpieczeństwa",
         "entity.safety_system_state": "Stan systemu bezpieczeństwa",
         "entity.entity_monitor_summary": "Monitorowane encje",
+        "entity.notification_delivery_health": "Stan dostarczania powiadomień",
         "entity.recovery_window": "Działanie naprawcze: okna — {location}",
         "entity.temperature_low_threshold": "Dolny próg temperatury — {location}",
         "entity.temperature_high_threshold": "Górny próg temperatury — {location}",
@@ -96,6 +102,9 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "state.entity_health.degraded": "Wymaga uwagi",
         "state.entity_health.stale": "Dane nieaktualne",
         "state.entity_health.unavailable": "Niedostępna",
+        "state.notification_delivery.healthy": "Sprawne",
+        "state.notification_delivery.degraded": "Wymaga uwagi",
+        "state.notification_delivery.queued": "Oczekuje w kolejce",
         "fault.entity_health": "Problem z encją: {entity}",
         "notification.title.1": "Wymagane natychmiastowe działanie",
         "notification.title.2": "Wykryto zagrożenie w domu",
@@ -103,6 +112,7 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "notification.active": "Wymaga uwagi: {fault}.",
         "notification.cleared": "Dobra wiadomość - problem „{fault}” został rozwiązany.",
         "notification.guidance": "Co możesz zrobić:",
+        "notification.action.ack": "Potwierdź",
         "detail.location": "Lokalizacja",
         "detail.hazard": "Zagrożenie",
         "detail.openings": "Narażone okna lub drzwi",
@@ -127,6 +137,7 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "entity.safety_app_health": "Status der Sicherheitsanwendung",
         "entity.safety_system_state": "Status des Sicherheitssystems",
         "entity.entity_monitor_summary": "Überwachte Entitäten",
+        "entity.notification_delivery_health": "Status der Benachrichtigungszustellung",
         "entity.recovery_window": "Fenstermaßnahme – {location}",
         "entity.temperature_low_threshold": "Untere Temperaturgrenze – {location}",
         "entity.temperature_high_threshold": "Obere Temperaturgrenze – {location}",
@@ -150,6 +161,9 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "state.entity_health.degraded": "Prüfung erforderlich",
         "state.entity_health.stale": "Veraltete Daten",
         "state.entity_health.unavailable": "Nicht verfügbar",
+        "state.notification_delivery.healthy": "Fehlerfrei",
+        "state.notification_delivery.degraded": "Prüfung erforderlich",
+        "state.notification_delivery.queued": "In Warteschlange",
         "fault.entity_health": "Entitätsproblem: {entity}",
         "notification.title.1": "Sofortiges Handeln erforderlich",
         "notification.title.2": "Sicherheitsproblem erkannt",
@@ -157,6 +171,7 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "notification.active": "{fault} erfordert Ihre Aufmerksamkeit.",
         "notification.cleared": "Gute Nachricht – {fault} ist nicht mehr aktiv.",
         "notification.guidance": "Das können Sie tun:",
+        "notification.action.ack": "Bestätigen",
         "detail.location": "Ort",
         "detail.hazard": "Gefahr",
         "detail.openings": "Betroffene Öffnungen",
@@ -244,6 +259,7 @@ class Localizer:
             "sensor.safety_app_health": "entity.safety_app_health",
             "sensor.safetysystem_state": "entity.safety_system_state",
             "sensor.entity_monitor_summary": "entity.entity_monitor_summary",
+            "sensor.notification_delivery_health": "entity.notification_delivery_health",
         }
         key = built_in_keys.get(normalized_id)
         return self.text(key) if key else fallback
@@ -266,10 +282,13 @@ class Localizer:
             prefix = "state.fault"
         elif normalized_id.startswith("sensor.recovery_"):
             prefix = "state.recovery"
-        elif normalized_id == "sensor.entity_monitor_summary" or normalized_id.startswith(
-            "sensor.entity_health_"
+        elif (
+            normalized_id == "sensor.entity_monitor_summary"
+            or normalized_id.startswith("sensor.entity_health_")
         ):
             prefix = "state.entity_health"
+        elif normalized_id == "sensor.notification_delivery_health":
+            prefix = "state.notification_delivery"
         else:
             return None
         key = f"{prefix}.{normalized_state}"

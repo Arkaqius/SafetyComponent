@@ -30,7 +30,7 @@ def test_safety_functions_initialization(mocked_hass_app_with_temp_component) ->
 
     # Assert the 'notification_cfg' dictionary content
     notification = app_instance.notification_cfg
-    assert notification["light_entity"] == "light.warning_light"
+    assert notification["local"]["light_entity"] == "light.warning_light"
 
     # Ensure that the correct common entity was used
     assert app_instance.common_entities_cfg["outside_temp"] == "sensor.dom_temperature"
@@ -151,7 +151,7 @@ def test_mqtt_heartbeat_accepts_appdaemon_dictionary_unpacking_callback(
 
     # Verify the NotificationManager is initialized with the correct entity
     assert (
-        app_instance.notify_man.notification_config["light_entity"]
+        app_instance.notify_man.notification_config["local"]["light_entity"]
         == "light.warning_light"
     )
 

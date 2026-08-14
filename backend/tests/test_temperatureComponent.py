@@ -633,4 +633,4 @@ def test_initialize_dicts_symptom(mocked_hass_app_with_temp_component):
     assert fault["related_sms"][0] == "sm_tc_1"
 
     notification = app_instance.notification_cfg
-    assert notification["light_entity"] == "light.warning_light"
+    assert notification["local"]["light_entity"] == "light.warning_light"

@@ -61,6 +61,40 @@ def test_entity_monitor_presentation_is_localized() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("language", "entity_name", "queued_label", "ack_label"),
+    [
+        ("en", "Notification delivery health", "Queued", "Acknowledge"),
+        (
+            "pl",
+            "Stan dostarczania powiadomie\u0144",
+            "Oczekuje w kolejce",
+            "Potwierd\u017a",
+        ),
+        (
+            "de",
+            "Status der Benachrichtigungszustellung",
+            "In Warteschlange",
+            "Best\u00e4tigen",
+        ),
+    ],
+)
+def test_notification_delivery_presentation_is_localized(
+    language: str, entity_name: str, queued_label: str, ack_label: str
+) -> None:
+    localizer = Localizer({"language": language})
+
+    assert (
+        localizer.entity_name("sensor.notification_delivery_health", "fallback")
+        == entity_name
+    )
+    assert (
+        localizer.state_label("sensor.notification_delivery_health", "queued")
+        == queued_label
+    )
+    assert localizer.text("notification.action.ack") == ack_label
+
+
 def test_unknown_text_key_falls_back_to_key() -> None:
     assert Localizer({"language": "de"}).text("missing.key") == "missing.key"
 

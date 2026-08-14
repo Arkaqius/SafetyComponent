@@ -12,8 +12,9 @@ actions.
   configured rooms.
 - Safety Doors monitoring with independent open-duration timeouts and optional
   condition gating for each door or gate.
-- Fault aggregation, severity calculation, same-tag notification refresh, and
-  explicit recovery confirmation.
+- Fault aggregation, severity calculation, explicit multi-phone delivery,
+  same-tag quiet refresh, acknowledgement, retry/WAN queueing, persistent
+  lifecycle state, delivery diagnostics, and explicit recovery confirmation.
 - MQTT discovery, non-retained runtime state, availability, diagnostics, stale
   retained-state cleanup, and heartbeat publication.
 - Localized Home Assistant presentation in English, Polish, and German while
@@ -51,9 +52,9 @@ of other Home Assistant entities and devices.
 - `docs/features` — feature-level architecture documents.
 
 Feature architecture documents include
-[`External Hazard Monitoring`](docs/features/External%20Hazard%20Monitoring%20-%20Architecture.md)
-and
-[`Entity Health Monitoring`](docs/features/Entity%20Health%20Monitoring%20-%20Architecture.md).
+[`Mobile Notification Delivery`](docs/features/Mobile%20Notification%20Delivery%20-%20Architecture.md),
+[`External Hazard Monitoring`](docs/features/External%20Hazard%20Monitoring%20-%20Architecture.md),
+and [`Entity Health Monitoring`](docs/features/Entity%20Health%20Monitoring%20-%20Architecture.md).
 
 ## Backend quick start
 
@@ -111,6 +112,7 @@ the [frontend README](frontend/README.md).
 - [Hazard analysis and risk assessment](<docs/sys/SafetyConcept - HARA.md>)
 - [System safety architecture and requirements](<docs/sys/SafetyConcept - SYS.md>)
 - [Software safety requirements](<docs/sys/SafetyComponent - SSRD.md>)
+- [Mobile Notification Delivery architecture](<docs/features/Mobile Notification Delivery - Architecture.md>)
 - [External Hazard Monitoring architecture](<docs/features/External Hazard Monitoring - Architecture.md>)
 - [Entity Health Monitoring architecture](<docs/features/Entity Health Monitoring - Architecture.md>)
 - [Backend coding standards](backend/README.md)

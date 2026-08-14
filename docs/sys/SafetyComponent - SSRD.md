@@ -53,7 +53,10 @@ The implementation assumes:
 | External API Components | One isolated component per remote API; validate and normalize provider data without creating faults or actions. |
 | `DerivativeMonitor` | Calculate and publish first- and second-order temperature derivatives. |
 | `FaultManager` | Aggregate symptoms, preserve multi-symptom fault context, and publish fault/system state. |
-| `NotificationManager` | Maintain one notification per fault and refresh its human-readable content. |
+| `NotificationManager` | Maintain one notification lifecycle per fault, including acknowledgement, retry, deadlines, WAN queueing, bounded L1 repeats, persistence, and diagnostics. |
+| `MobilePushProvider` | Build Android/iOS Companion payloads and submit them to explicit Home Assistant notify services. |
+| `LocalAnnunciator` | Operate optional local light and alarm outputs independently from mobile delivery. |
+| `NotificationStateStore` | Atomically persist filtered active and pending notification state across AppDaemon reloads and restarts. |
 | `RecoveryManager` | Determine, execute, and confirm supported recovery actions. |
 | `MqttEntityManager` | MQTT discovery, state, attributes, availability, retained cleanup, and heartbeat. |
 | `Localizer` | Translate presentation text while retaining stable internal codes. |
@@ -139,6 +142,19 @@ The existing `ForeCast` capitalization is part of the runtime contract.
 | SWR-NOT-003 | A repeated SET for an active fault shall update the current base message instead of creating a second notification. | `NotificationManager.active_notification` |
 | SWR-NOT-004 | Distinct recovery guidance accumulated for the same active fault shall be retained and shown once under a localized guidance heading. | `_recovery_messages` |
 | SWR-NOT-005 | Clearing a fault shall publish a friendly cleared message using the same tag. | `cleared_notification` |
+| SWR-NOT-006 | Mobile delivery shall use one or more explicitly configured `notify/<service>` targets and shall reject the ambiguous `notify/notify` service. | `MobilePushConfig`, `MobilePushProvider` |
+| SWR-NOT-007 | A shadowed fault shall remove its mobile notification by sending `message: clear_notification` with the stable tag. | `MobilePushProvider.clear` |
+| SWR-NOT-008 | Levels 1 through 3 shall use separately configured Android and iOS profiles. A newly active fault or same-tag increase in urgency may alert audibly; repeated context and recovery-guidance updates at the same severity shall use a quiet profile and shall not reactivate local annunciators. An update shall not downgrade a still-pending new-alert attempt for an undelivered target to quiet. | `MobileProfile`, `MobilePushProvider`, `LocalAnnunciator` |
+| SWR-NOT-009 | Mobile submission shall explicitly request a Home Assistant service result. A returned result shall be reported as `accepted_by_home_assistant` and shall not be represented as confirmed phone delivery; a missing or failed result shall be retried as a transport failure. | delivery result and diagnostics contract |
+| SWR-NOT-010 | Failed target submissions shall be retried independently with bounded exponential backoff. Failure of one target shall not prevent submission to another configured target. | `PendingDelivery`, scheduler |
+| SWR-NOT-011 | When configured WAN state is not positively online, remote notification submissions shall remain queued. The queue shall be flushed after confirmed WAN recovery. Unknown, unavailable, or malformed WAN state shall not be treated as online. | WAN state handler and delivery queue |
+| SWR-NOT-012 | Home Assistant acceptance later than 10 seconds for L1 or 30 seconds for L2/L3 shall increment deadline-miss telemetry without blocking fault or recovery processing. | retry deadlines and diagnostics |
+| SWR-NOT-013 | An acknowledgement action shall suppress subsequent L1 repeats without clearing the active fault or preventing quiet content refreshes. | mobile action handler |
+| SWR-NOT-014 | L1 repeats shall use a configurable interval and finite maximum count. Clearing, shadowing, or acknowledging the fault shall cancel pending repeats. | `LevelOneRepeatPolicy` |
+| SWR-NOT-015 | Active records, acknowledgement, pending deliveries, repeat state, counters, and last transport result shall be restored from a versioned atomic state snapshot after AppDaemon reload or restart. A restored active record shall remain fail-safe until a current authoritative fault event confirms or clears it. | `NotificationStateStore`, fault-event reconciliation |
+| SWR-NOT-016 | Only configured allowlisted detail fields shall be included in mobile payloads or persistent notification state. | `_filter_details` |
+| SWR-NOT-017 | Mobile transport, local light/alarm outputs, and persistence shall be isolated adapters. Failure in one adapter shall not block fault state, recovery policy, or another delivery adapter. | notification adapter boundaries |
+| SWR-NOT-018 | `sensor.notification_delivery_health` shall expose active, acknowledged, queued, accepted, failed, deadline-miss and exhausted counts; per-service status, attempt time and error; plus the last Home Assistant acceptance result and error. | MQTT delivery diagnostics |
 | SWR-REC-001 | Recovery commands shall be limited to explicitly supported Home Assistant entity domains and services. | `RecoveryManager._resolve_entity_action` |
 | SWR-REC-002 | A recovery action shall verify the requested postcondition and shall report failure or timeout instead of assuming success. | RecoveryManager confirmation flow |
 | SWR-REC-003 | Recovery entities shall expose stable raw states `TO_PERFORM` and `DO_NOT_PERFORM` plus localized `state_label`. | RecoveryManager and Localizer |
@@ -279,7 +295,7 @@ valid measure of safety-logic verification.
 | SWR-TEMP-* | `test_temperatureComponent.py`, `test_derivative_monitor.py`, `test_safetyFunctions.py` |
 | SWR-DOOR-* | `test_safety_doors_component.py`, `test_app_cfg_validator.py` |
 | SWR-FLT-* | `test_fault_manager.py`, `test_system_notification_recovery.py` |
-| SWR-NOT-* | `test_notify_man.py`, `test_system_notification_recovery.py` |
+| SWR-NOT-* | `test_notify_man.py`, `test_notification_schema.py`, `test_notification_state_store.py`, `test_system_notification_recovery.py` |
 | SWR-REC-* | `test_recovery_man.py` |
 | SWR-LOC-* | `test_localization.py`, `test_mqtt_entity_manager.py`, frontend domain tests |
 | SWR-MQTT-* | `test_mqtt_entity_manager.py`, `test_safetyFunctions.py` |
