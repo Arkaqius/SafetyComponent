@@ -65,6 +65,16 @@ def _component(mocked_hass_app_basic):
     return app, event_bus, component
 
 
+def _mqtt_topic_calls(app, topic: str) -> list:
+    return [
+        call
+        for call in app.call_service.call_args_list
+        if call.args
+        and call.args[0] == "mqtt/publish"
+        and call.kwargs["topic"] == topic
+    ]
+
+
 def test_entity_monitor_creates_per_check_symptoms_and_per_entity_fault(
     mocked_hass_app_basic,
 ):
@@ -130,6 +140,49 @@ def test_entity_monitor_debounces_failure_and_recovery(mocked_hass_app_basic):
     runtime = component._entities["TemperatureOffice"]
     assert runtime.last_valid_value == "21.5"
     assert runtime.last_valid_at == clock["now"]
+
+
+def test_entity_monitor_publishes_stable_diagnostics_only_on_change(
+    mocked_hass_app_basic,
+):
+    app, _, component = _component(mocked_hass_app_basic)
+    now = datetime(2026, 8, 13, 10, 0, tzinfo=timezone.utc)
+    clock = {"now": now}
+    component._now = lambda: clock["now"]  # type: ignore[method-assign]
+    app.get_state = MagicMock(return_value=_snapshot("21.5", now))
+    symptoms, _ = component.get_symptoms_data(
+        {"EntityMonitorComponent": component}, _config()
+    )
+    for symptom in symptoms.values():
+        assert component.init_safety_mechanism(
+            symptom.sm_name, symptom.name, symptom.parameters
+        )
+        assert component.enable_safety_mechanism(symptom.name, SMState.ENABLED)
+
+    topic = "safety_component/attributes/entity_health_temperature_office"
+    component._evaluate_entity("TemperatureOffice")
+    first_publish_count = len(_mqtt_topic_calls(app, topic))
+
+    clock["now"] += timedelta(seconds=5)
+    component._evaluate_entity("TemperatureOffice")
+
+    assert len(_mqtt_topic_calls(app, topic)) == first_publish_count
+    assert component._entities["TemperatureOffice"].last_valid_at == now
+
+    app.get_state = MagicMock(return_value=_snapshot("22.0", clock["now"]))
+    component._evaluate_entity("TemperatureOffice")
+    source_change_publish_count = len(_mqtt_topic_calls(app, topic))
+
+    assert source_change_publish_count == first_publish_count + 1
+
+    clock["now"] += timedelta(seconds=61)
+    component._evaluate_entity("TemperatureOffice")
+
+    assert len(_mqtt_topic_calls(app, topic)) == source_change_publish_count + 1
+    assert (
+        component._entities["TemperatureOffice"].checks["freshness"].result
+        == "pending_failure"
+    )
 
 
 def test_entity_monitor_merges_memberships_for_same_entity(mocked_hass_app_basic):

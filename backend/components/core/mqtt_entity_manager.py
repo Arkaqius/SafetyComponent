@@ -264,24 +264,40 @@ class MqttEntityManager:
         if effective_attributes is not None:
             self.publish_sensor_attributes(canonical_id, effective_attributes)
 
-        self.entity_states[canonical_id] = state
+        if (
+            canonical_id in self.entity_states
+            and self._state_payload(self.entity_states[canonical_id])
+            == self._state_payload(state)
+        ):
+            return
+
         self._publish(
             self.state_topic(canonical_id),
             self._state_payload(state),
             retain=self.retain_state,
         )
+        self.entity_states[canonical_id] = state
 
     def publish_sensor_attributes(
         self, entity_id: str, attributes: Mapping[str, Any]
     ) -> None:
         """Publish JSON attributes for a registered sensor."""
         canonical_id = self.canonical_entity_id(entity_id, expected_domain="sensor")
-        self.entity_attributes[canonical_id] = dict(attributes)
+        next_attributes = dict(attributes)
+        current_attributes = self.entity_attributes.get(canonical_id)
+        if (
+            current_attributes is not None
+            and self._json_payload(current_attributes)
+            == self._json_payload(next_attributes)
+        ):
+            return
+
         self._publish_json(
             self.attributes_topic(canonical_id),
-            self.entity_attributes[canonical_id],
+            next_attributes,
             retain=self.retain_state,
         )
+        self.entity_attributes[canonical_id] = next_attributes
 
     def publish_heartbeat(self) -> None:
         """Refresh cached state and attributes after restarts and for expiry."""
@@ -448,9 +464,13 @@ class MqttEntityManager:
     ) -> None:
         self._publish(
             topic,
-            json.dumps(dict(payload), sort_keys=True, default=str),
+            self._json_payload(payload),
             retain=retain,
         )
+
+    @staticmethod
+    def _json_payload(payload: Mapping[str, Any]) -> str:
+        return json.dumps(dict(payload), sort_keys=True, default=str)
 
     def _publish(self, topic: str, payload: str, *, retain: bool) -> None:
         response = self.hass_app.call_service(
