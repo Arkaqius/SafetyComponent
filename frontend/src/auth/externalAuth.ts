@@ -5,10 +5,7 @@ export interface ExternalAuthToken {
   expiresIn: number;
 }
 
-export type ExternalAuthResult =
-  | { supported: false }
-  | { supported: true; token: ExternalAuthToken }
-  | { supported: true; error: string };
+export type ExternalAuthResult = { supported: false } | { supported: true; token: ExternalAuthToken } | { supported: true; error: string };
 
 interface ExternalAuthPayload {
   access_token?: unknown;
