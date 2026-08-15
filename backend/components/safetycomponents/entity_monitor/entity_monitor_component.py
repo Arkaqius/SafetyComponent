@@ -282,7 +282,10 @@ class EntityMonitorComponent(SafetyComponent):
 
         if results and all(result[0] is False for result in results.values()):
             runtime.last_valid_value = (runtime.snapshot or {}).get("state")
-            runtime.last_valid_at = now
+            runtime.last_valid_at = (
+                self._timestamp_value(runtime.snapshot or {}, "last_updated")
+                or now
+            )
 
         for check_name, result in results.items():
             symptom_name = self._symptom_name(entity_key, check_name)
@@ -428,11 +431,17 @@ class EntityMonitorComponent(SafetyComponent):
         if runtime.diagnostic_entity_id is None:
             return
         health = self._health(runtime)
+        attributes = self._diagnostic_attributes(runtime)
+        signature = self._diagnostic_signature(health, attributes)
+        if runtime.published_diagnostic_signature == signature:
+            return
+
         self.mqtt_entities.publish_sensor_state(
             runtime.diagnostic_entity_id,
             health.value,
-            attributes=self._diagnostic_attributes(runtime),
+            attributes=attributes,
         )
+        runtime.published_diagnostic_signature = signature
 
     def _publish_summary(self) -> None:
         counts = {state.value: 0 for state in EntityHealthState}
@@ -539,6 +548,49 @@ class EntityMonitorComponent(SafetyComponent):
                 for name, state in runtime.checks.items()
             ],
         }
+
+    @staticmethod
+    def _diagnostic_signature(
+        health: EntityHealthState, attributes: dict[str, Any]
+    ) -> tuple[Any, ...]:
+        """Return the change-driven subset of an entity diagnostic payload."""
+
+        checks = []
+        for check in attributes["checks"]:
+            observed_value = check["observed_value"]
+            if check["check"] == "freshness":
+                observed_value = None
+            checks.append(
+                (
+                    check["check"],
+                    check["result"],
+                    check["reason"],
+                    repr(observed_value),
+                    repr(check["calibration"]),
+                )
+            )
+
+        return (
+            health.value,
+            attributes["source_entity_id"],
+            attributes["friendly_name"],
+            tuple(attributes["source_groups"]),
+            tuple(attributes["owners"]),
+            tuple(attributes["purposes"]),
+            attributes["fault_owner"],
+            attributes["fault_name"],
+            attributes["area_id"],
+            attributes["area_name"],
+            attributes["device_id"],
+            repr(attributes["current_state"]),
+            repr(attributes["last_valid_value"]),
+            attributes["last_changed"],
+            attributes["last_updated"],
+            attributes["failure_debounce_seconds"],
+            attributes["recovery_debounce_seconds"],
+            attributes["detection_budget_seconds"],
+            tuple(checks),
+        )
 
     def _health(self, runtime: EntityRuntime) -> EntityHealthState:
         availability = runtime.checks.get("availability")

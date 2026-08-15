@@ -75,3 +75,4 @@ class EntityRuntime:
     last_valid_at: datetime | None = None
     listener_handle: Any | None = None
     diagnostic_entity_id: str | None = None
+    published_diagnostic_signature: tuple[Any, ...] | None = None

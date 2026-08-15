@@ -222,6 +222,36 @@ def test_heartbeat_republishes_cached_states_without_retaining_them():
     assert attributes_call.kwargs["retain"] is False
 
 
+def test_unchanged_state_and_attributes_are_not_republished():
+    hass_app = Mock()
+    mqtt_entities = MqttEntityManager(hass_app)
+    mqtt_entities.register_sensor(
+        "sensor.health",
+        "Health",
+        state="running",
+        attributes={"mode": "normal"},
+    )
+
+    hass_app.call_service.reset_mock()
+    mqtt_entities.publish_sensor_state(
+        "sensor.health",
+        "running",
+        attributes={"mode": "normal"},
+    )
+
+    assert _mqtt_calls(hass_app, "safety_component/state/health") == []
+    assert _mqtt_calls(hass_app, "safety_component/attributes/health") == []
+
+    mqtt_entities.publish_sensor_state(
+        "sensor.health",
+        "degraded",
+        attributes={"mode": "diagnostic"},
+    )
+
+    assert len(_mqtt_calls(hass_app, "safety_component/state/health")) == 1
+    assert len(_mqtt_calls(hass_app, "safety_component/attributes/health")) == 1
+
+
 def test_failed_mqtt_publish_response_is_rejected():
     hass_app = Mock(
         call_service=Mock(
@@ -232,3 +262,22 @@ def test_failed_mqtt_publish_response_is_rejected():
 
     with pytest.raises(RuntimeError, match="MQTT publish failed"):
         mqtt_entities.publish_availability()
+
+
+def test_failed_sensor_publish_is_not_cached_as_successful():
+    hass_app = Mock()
+    mqtt_entities = MqttEntityManager(hass_app)
+    mqtt_entities.register_sensor("sensor.health", "Health")
+    hass_app.call_service = Mock(
+        return_value={"success": False, "error": "broker unavailable"}
+    )
+
+    with pytest.raises(RuntimeError, match="MQTT publish failed"):
+        mqtt_entities.publish_sensor_state("sensor.health", "running")
+
+    assert "sensor.health" not in mqtt_entities.entity_states
+
+    hass_app.call_service = Mock(return_value={"success": True})
+    mqtt_entities.publish_sensor_state("sensor.health", "running")
+
+    assert len(_mqtt_calls(hass_app, "safety_component/state/health")) == 1
