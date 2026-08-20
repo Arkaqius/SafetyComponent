@@ -181,6 +181,45 @@ def test_closing_active_door_clears_condition_and_timer() -> None:
     ]
 
 
+def test_recovery_dry_run_accepts_overrides_without_runtime_side_effects() -> None:
+    now = datetime(2026, 7, 29, 12, 0, tzinfo=timezone.utc)
+    component, hass_app, events = _build_component(
+        {
+            "state": "open",
+            "last_changed": (now - timedelta(seconds=120)).isoformat(),
+        },
+        now=now,
+    )
+    mechanism = component.safety_mechanisms[
+        "SafetyDoorOpenTimeoutGarageGate"
+    ]
+    runtime_before = (
+        component._door_runtime[mechanism.name].opened_at,
+        component._door_runtime[mechanism.name].timer_handle,
+        component._door_runtime[mechanism.name].active,
+    )
+    calls_before = list(hass_app.call_service.call_args_list)
+
+    assert (
+        component.sm_safety_door_open_timeout(
+            mechanism,
+            {"binary_sensor.garage_gate": "closed"},
+        )
+        is False
+    )
+
+    runtime_after = component._door_runtime[mechanism.name]
+    assert (
+        runtime_after.opened_at,
+        runtime_after.timer_handle,
+        runtime_after.active,
+    ) == runtime_before
+    assert hass_app.call_service.call_args_list == calls_before
+    hass_app.run_in.assert_not_called()
+    hass_app.cancel_timer.assert_not_called()
+    assert events == []
+
+
 def test_unavailable_door_is_reported_without_new_open_fault() -> None:
     now = datetime(2026, 7, 29, 12, 0, tzinfo=timezone.utc)
     component, hass_app, events = _build_component(

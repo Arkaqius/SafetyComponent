@@ -193,8 +193,18 @@ class SafetyDoorsComponent(SafetyComponent):
         )
         return False
 
-    def sm_safety_door_open_timeout(self, sm: SafetyMechanism) -> bool:
-        """Evaluate whether one door has remained open beyond its timeout."""
+    def sm_safety_door_open_timeout(
+        self,
+        sm: SafetyMechanism,
+        entities_changes: dict[str, str] | None = None,
+    ) -> bool:
+        """Evaluate whether one door has remained open beyond its timeout.
+
+        When ``entities_changes`` is provided, evaluate the proposed states
+        without publishing symptoms, scheduling timers, or changing runtime
+        state. Recovery dry-runs use this callback contract to ensure a
+        proposed action does not introduce another fault.
+        """
         if not sm.isEnabled:
             return False
 
@@ -202,11 +212,28 @@ class SafetyDoorsComponent(SafetyComponent):
         now = self._now()
         timeout_seconds = int(sm.sm_args["timeout_seconds"])
         condition_result, condition_state, condition_last_changed = (
-            self._read_condition_state(sm)
+            self._read_condition_state(sm, entities_changes)
         )
         door_state, door_last_changed = self._read_door_state(
-            sm.sm_args["entity_id"]
+            sm.sm_args["entity_id"], entities_changes
         )
+
+        if entities_changes is not None:
+            if condition_result != "pass" or door_state != "open":
+                return False
+            opened_at = runtime.opened_at
+            if opened_at is None:
+                active_since_candidates = [
+                    changed_at
+                    for changed_at in (door_last_changed, condition_last_changed)
+                    if changed_at is not None
+                ]
+                opened_at = (
+                    max(active_since_candidates)
+                    if active_since_candidates
+                    else now
+                )
+            return int((now - opened_at).total_seconds()) >= timeout_seconds
 
         if condition_result == "blocked":
             self._cancel_timer(sm.name)
@@ -438,7 +465,9 @@ class SafetyDoorsComponent(SafetyComponent):
         )
 
     def _read_condition_state(
-        self, mechanism: SafetyMechanism
+        self,
+        mechanism: SafetyMechanism,
+        entities_changes: dict[str, str] | None = None,
     ) -> tuple[str, str | None, datetime | None]:
         condition = mechanism.sm_args.get("condition")
         if not isinstance(condition, dict):
@@ -446,7 +475,11 @@ class SafetyDoorsComponent(SafetyComponent):
 
         entity_id = str(condition["entity_id"])
         try:
-            raw_state = self.hass_app.get_state(entity_id, attribute="all")
+            raw_state: Any
+            if entities_changes is not None and entity_id in entities_changes:
+                raw_state = entities_changes[entity_id]
+            else:
+                raw_state = self.hass_app.get_state(entity_id, attribute="all")
         except Exception as exc:
             self.hass_app.log(
                 f"Unable to read Safety Doors condition {entity_id}: {exc}",
@@ -476,9 +509,15 @@ class SafetyDoorsComponent(SafetyComponent):
         return "unavailable", normalized or "unavailable", last_changed
 
     def _read_door_state(
-        self, entity_id: str
+        self,
+        entity_id: str,
+        entities_changes: dict[str, str] | None = None,
     ) -> tuple[str, datetime | None]:
-        raw_state = self.hass_app.get_state(entity_id, attribute="all")
+        raw_state: Any
+        if entities_changes is not None and entity_id in entities_changes:
+            raw_state = entities_changes[entity_id]
+        else:
+            raw_state = self.hass_app.get_state(entity_id, attribute="all")
         last_changed: datetime | None = None
         if isinstance(raw_state, dict):
             state = raw_state.get("state")
