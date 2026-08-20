@@ -253,15 +253,57 @@ class EntityMonitorComponent(SafetyComponent):
         for key in self._entities:
             self._evaluate_entity(key)
 
-    def _evaluate_mechanism(self, mechanism: SafetyMechanism) -> bool:
-        """Evaluate the entity containing the enabled check mechanism."""
+    def _evaluate_mechanism(
+        self,
+        mechanism: SafetyMechanism,
+        entities_changes: dict[str, str] | None = None,
+    ) -> bool:
+        """Evaluate one check, including side-effect-free recovery dry-runs."""
 
         if not mechanism.isEnabled:
             return False
         entity_key = str(mechanism.sm_args["entity_key"])
-        self._evaluate_entity(entity_key)
         check_key = str(mechanism.sm_args["check_key"])
-        return self._entities[entity_key].checks[check_key].active
+        runtime = self._entities[entity_key]
+
+        if entities_changes is None:
+            self._evaluate_entity(entity_key)
+            return runtime.checks[check_key].active
+
+        entity_id = runtime.dependency.entity_id
+        now = self._now()
+        if entity_id in entities_changes:
+            snapshot = dict(runtime.snapshot or {})
+            snapshot["attributes"] = dict(snapshot.get("attributes") or {})
+            snapshot["state"] = entities_changes[entity_id]
+            snapshot["last_changed"] = now
+            snapshot["last_updated"] = now
+        else:
+            snapshot = self._read_snapshot(entity_id)
+
+        availability = self._check_availability(snapshot)
+        if check_key == "availability":
+            return availability[0]
+
+        dry_runtime = EntityRuntime(
+            dependency=runtime.dependency,
+            checks=dict(runtime.checks),
+            samples={
+                target: list(samples)
+                for target, samples in runtime.samples.items()
+            },
+            snapshot=snapshot,
+            last_valid_value=runtime.last_valid_value,
+            last_valid_at=runtime.last_valid_at,
+        )
+        result = self._evaluate_check(
+            check_key,
+            runtime.dependency.checks[check_key],
+            dry_runtime,
+            now,
+            available=availability[0] is False,
+        )
+        return result[0] is True
 
     def _evaluate_entity(self, entity_key: str) -> None:
         runtime = self._entities[entity_key]
