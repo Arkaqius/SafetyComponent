@@ -1511,6 +1511,31 @@ details summary:focus-visible {
   margin-top: 4px;
 }
 
+.recovery-confirm-button {
+  background: var(--warning);
+  border: 0;
+  border-radius: 9px;
+  color: #101418;
+  cursor: pointer;
+  font-size: 0.7rem;
+  font-weight: 700;
+  grid-column: 3;
+  justify-self: end;
+  padding: 8px 11px;
+  position: relative;
+  z-index: 2;
+}
+
+.recovery-confirm-button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.recovery-error {
+  color: var(--danger) !important;
+  display: block;
+}
+
 .entity-card-overlay-button {
   background: transparent;
   border-radius: inherit;
@@ -3285,6 +3310,11 @@ details summary:focus-visible {
 @media (max-width: 430px) {
   .entity-dialog-facts {
     grid-template-columns: 1fr;
+  }
+
+  .recovery-confirm-button {
+    grid-column: 2;
+    justify-self: start;
   }
 
   .entity-dialog-attributes dl > div {

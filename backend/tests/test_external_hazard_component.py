@@ -1,4 +1,4 @@
-"""Safety-policy tests for notification-only External Hazard Monitoring."""
+"""Safety-policy tests for External Hazard Monitoring recommendations."""
 
 from __future__ import annotations
 
@@ -64,7 +64,7 @@ class FakeMqtt:
 
 
 POLICY = {
-    "notification_only": True,
+    "actuation_mode": "manual_and_user_confirmed",
     "clear_delay_seconds": 0,
     "weather": {
         "frost_watch_c": 2.0,
@@ -138,7 +138,11 @@ def _component() -> tuple[ExternalHazardComponent, FakeHass, FakeMqtt, list[dict
     symptoms, recovery = component.get_symptoms_data(
         {component.component_name: component}, config
     )
-    assert recovery == {}
+    assert set(recovery) == {
+        name
+        for name in symptoms
+        if not name.startswith("ExternalHazardDataUnavailable")
+    }
     for symptom in symptoms.values():
         assert component.init_safety_mechanism(
             symptom.sm_name, symptom.name, symptom.parameters
@@ -181,6 +185,41 @@ def test_active_wind_and_open_window_sets_exposure_and_never_calls_actuator() ->
             "display_unit": None,
         }
     ]
+    assert hass.service_calls == []
+
+
+def test_gate_recovery_requires_confirmation_and_uses_directional_cover() -> None:
+    hass = FakeHass()
+    hass.states = {"binary_sensor.external_gate": "on"}
+    component = ExternalHazardComponent(hass, object(), EventBus(), FakeMqtt())
+    config = {
+        "policy": POLICY,
+        "openings": {
+            "ExternalGate": {
+                "area_id": "frontyard",
+                "area_name": "Przed domem",
+                "entity_id": "binary_sensor.external_gate",
+                "friendly_name": "Brama zewnętrzna",
+                "kind": "gate",
+                "hazards": ["wind"],
+                "actuator_entity_id": "cover.gate",
+                "execution_policy": "user_confirmed",
+                "confirmation_timeout_seconds": 180,
+            }
+        },
+    }
+    symptoms, recoveries = component.get_symptoms_data(
+        {component.component_name: component}, config
+    )
+    symptom = symptoms["ExternalWeatherExposureWindExternalGate"]
+    result = recoveries[symptom.name].rec_fun(
+        hass, symptom, object(), **recoveries[symptom.name].params
+    )
+
+    assert result.execution_policy == "user_confirmed"
+    assert result.changed_sensors == {"binary_sensor.external_gate": "off"}
+    assert result.changed_actuators == {"cover.gate": "closed"}
+    assert result.confirmation_timeout_seconds == 180
     assert hass.service_calls == []
 
 

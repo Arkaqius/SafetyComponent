@@ -66,6 +66,7 @@ class UserConfig(StrictBaseModel):
 
     components_enabled: Dict[str, bool] = Field(default_factory=dict)
     notification: Dict[str, Any] = Field(default_factory=dict)
+    recovery: Dict[str, Any] = Field(default_factory=dict)
     localization: LocalizationSettings = Field(default_factory=LocalizationSettings)
     mqtt: MqttSettings = Field(default_factory=MqttSettings)
     common_entities: Dict[str, str]

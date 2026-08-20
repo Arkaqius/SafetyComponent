@@ -1,4 +1,5 @@
 import Icon from '../components/Icon';
+import ActionsList from '../components/ActionsList';
 import StatusBadge from '../components/StatusBadge';
 import {
   formatRelativeTime,
@@ -10,7 +11,10 @@ import {
 import { useSafetyEntities } from '../hooks/useSafetyEntities';
 
 export default function ExternalHazards() {
-  const { externalHazards } = useSafetyEntities();
+  const { externalHazards, recoveries } = useSafetyEntities();
+  const externalRecoveries = recoveries.filter(
+    recovery => recovery.proposalId.startsWith('ExternalWeatherExposure') || recovery.proposalId.startsWith('OutdoorAirQualityExposure')
+  );
   const presentation = hazardPresentation(externalHazards.status);
   const healthyProviders = externalHazards.providers.filter(provider => provider.status === 'ok').length;
 
@@ -22,7 +26,8 @@ export default function ExternalHazards() {
           <h2>Ochrona domu przed warunkami zewnętrznymi</h2>
           <p>
             System łączy dane pogodowe, bieżącą jakość powietrza i oficjalne ostrzeżenia IMGW ze stanem skonfigurowanych okien i drzwi. Ten
-            moduł wyłącznie ostrzega — nie steruje żadnym urządzeniem.
+            moduł wskazuje potrzebne zamknięcia. Okna i drzwi pozostają czynnością ręczną, a zamknięcie bramy garażowej lub zewnętrznej jest
+            wykonywane wyłącznie po jawnym potwierdzeniu użytkownika w tym interfejsie.
           </p>
         </div>
         <div className='external-current-state'>
@@ -32,6 +37,8 @@ export default function ExternalHazards() {
           <small>Ocena {formatRelativeTime(externalHazards.lastEvaluatedAt ?? externalHazards.lastUpdated)}</small>
         </div>
       </section>
+
+      <ActionsList recoveries={externalRecoveries} />
 
       <section aria-label='Podsumowanie zagrożeń zewnętrznych' className='metric-strip'>
         <Metric

@@ -28,10 +28,14 @@ class StubExternalRuntime:
         self.started = False
 
 
-def test_production_external_hazard_startup_is_wired_before_polling() -> None:
+def test_production_external_hazard_startup_is_wired_before_polling(tmp_path) -> None:
     raw = yaml.safe_load(
         (Path(__file__).parents[1] / "app_cfg.yaml").read_text(encoding="utf-8")
     )["SafetyFunctions"]
+    state_file = tmp_path / "notification_state.json"
+    raw["user_config"]["notification"]["persistence"]["state_file"] = str(
+        state_file
+    )
     app = SafetyFunctions(args=raw)
     service_calls: list[str] = []
 
@@ -58,3 +62,4 @@ def test_production_external_hazard_startup_is_wired_before_polling() -> None:
 
     app.terminate()
     assert app.external_api_runtime.started is False
+    assert state_file.exists()

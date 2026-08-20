@@ -55,11 +55,11 @@ SafetyFunctions:
         unhealthy_summary_limit: 32
 
     external_hazard_policy:
-      notification_only: true
+      actuation_mode: manual_and_user_confirmed
       decision_timeout_seconds: 1
       clear_delay_seconds: 120
       weather:
-        forecast_horizon_hours: 12
+        forecast_horizon_hours: 2
         frost_watch_c: 2.0
         frost_warning_c: 0.0
         gust_watch_m_s: 15.0
@@ -175,11 +175,71 @@ SafetyFunctions:
     # Even if only a subset is used today (e.g., warning light), keep this as the
     # single place to expand notification channels without leaking entities into
     # individual safety components.
-    notification: {}
-    # light_entity: "light.livingroom_rightstrip_controler"
-    # future examples:
-    # phone_notify_service: "notify.mobile_app_my_phone"
-    # tts_media_player: "media_player.livingroom_speaker"
+    notification:
+      mobile:
+        # Explicit routing is required; notify/notify is intentionally rejected.
+        services:
+          - "notify/all_phones"
+        default_url: "https://ha.kojbito.org/5c36e1c9_hakit"
+        profiles:
+          1:
+            color: "#FF0000"
+            notification_icon: "mdi:exit-run"
+            android_channel: "Safety critical"
+            android_importance: "max"
+            android_priority: "high"
+            android_ttl: 0
+            vibration_pattern: "100, 1000, 100, 1000, 100"
+            ios_interruption_level: "time-sensitive"
+            ios_critical_sound: false
+          2:
+            color: "#FFA500"
+            notification_icon: "mdi:hazard-lights"
+            android_channel: "Safety hazards"
+            android_importance: "high"
+            android_priority: "high"
+            android_ttl: 0
+            vibration_pattern: "100, 500, 100, 500"
+            ios_interruption_level: "time-sensitive"
+            ios_critical_sound: false
+          3:
+            color: "#FFFF00"
+            notification_icon: "mdi:home-alert"
+            android_channel: "Safety warnings"
+            android_importance: "default"
+            android_priority: "normal"
+            android_ttl: 0
+            vibration_pattern: null
+            ios_interruption_level: "active"
+            ios_critical_sound: false
+      retry:
+        max_attempts: 3
+        base_delay_seconds: 5
+        max_delay_seconds: 60
+        deadlines_seconds:
+          1: 10
+          2: 30
+          3: 30
+      level_one_repeat:
+        enabled: true
+        interval_seconds: 60
+        max_repeats: 3
+      persistence:
+        enabled: true
+        # Kept outside /config/appdaemon/apps so an app-directory deployment
+        # cannot overwrite active notification lifecycle state.
+        state_file: "/config/appdaemon/notification_state.json"
+      local: {}
+      # Configure an installation-owned connectivity entity to proactively
+      # queue pushes while WAN is unconfirmed. Without one, failed submissions
+      # are still retried, but WAN loss cannot be detected before a call.
+      wan_entity: null
+
+    recovery:
+      persistence:
+        enabled: true
+        # Kept outside /config/appdaemon/apps so deployments preserve proposals.
+        state_file: "/config/appdaemon/recovery_state.json"
 
     # User-facing language. Backend state codes and entity IDs remain stable
     # English API values; Home Assistant names, state_label attributes, and
@@ -188,6 +248,7 @@ SafetyFunctions:
       language: "pl"
       entity_names:
         sensor.safety_app_health: "Stan aplikacji bezpieczeństwa"
+        sensor.notification_delivery_health: "Stan dostarczania powiadomień"
         sensor.safetysystem_state: "Stan systemu bezpieczeństwa"
         sensor.fault_riskytemperature: "Niebezpieczna temperatura"
         sensor.fault_riskytemperatureforecast: "Prognoza niebezpiecznej temperatury"
@@ -316,12 +377,6 @@ SafetyFunctions:
             friendly_name: "Drzwi wejściowe"
             kind: door
             hazards: [frost, wind, rain, storm, outdoor_air_pollution]
-          GarageGate:
-            area_id: "garage"
-            entity_id: "binary_sensor.garage_gatedoorlow_contact_contact"
-            friendly_name: "Brama garażowa"
-            kind: garage_door
-            hazards: [frost, wind, rain, storm, outdoor_air_pollution]
           UpperBathroomWindow:
             area_id: "upper_bathroom"
             entity_id: "binary_sensor.upperbathroom_window_contact_contact"
@@ -341,7 +396,7 @@ SafetyFunctions:
           ExternalGate:
             area_id: "frontyard"
             entity_id: "binary_sensor.frontyard_externalgate_contact_contact"
-            timeout_seconds: 300
+            timeout_seconds: 600
           LivingRoomTerraceDoor:
             area_id: "45db77f4035011eb9a3115c8afedaa08"
             entity_id: "binary_sensor.livingroom_door_contact_contact"
@@ -413,4 +468,4 @@ SafetyFunctions:
           Upperbathroom:
             area_id: "upper_bathroom"
             temperature_sensor: "sensor.upperbathroom_climatesensor_temperature"
-            #window_sensor: "sensor.upperbathroom_window_contact_contact"
+            window_sensor: "binary_sensor.upperbathroom_window_contact_contact"

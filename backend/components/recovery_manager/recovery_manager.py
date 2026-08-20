@@ -20,6 +20,9 @@ logic within callable functions and associating them with particular fault condi
 This module's approach to fault recovery empowers developers to construct robust and adaptable safety mechanisms, enhancing the resilience and reliability of automated systems. The faulttag feature helps uniquely identify each fault scenario, aiding in efficient fault resolution and ensuring accurate system state tracking throughout the recovery process.
 """
 
+import secrets
+import time
+from datetime import datetime, timezone
 from typing import Any, Mapping, Optional
 
 import appdaemon.plugins.hass.hassapi as hass  # type: ignore
@@ -38,6 +41,10 @@ from components.core.types_common import (
 from components.faults_manager.fault_manager import FaultManager
 from components.notification_manager.notification_manager import NotificationManager
 from components.recovery_manager.policy import RecoveryPolicyEvaluator
+from components.recovery_manager.state_store import (
+    InMemoryRecoveryStateStore,
+    RecoveryStateStore,
+)
 
 
 _TOGGLE_SERVICE_DOMAINS = frozenset(
@@ -70,6 +77,7 @@ class RecoveryManager:
         common_entities: CommonEntities,
         nm: NotificationManager,
         mqtt_entities: MqttEntityManager,
+        state_store: RecoveryStateStore | None = None,
     ) -> None:
         """
         Initializes the RecoveryManager with the necessary application context and recovery configuration.
@@ -98,11 +106,78 @@ class RecoveryManager:
         self.fm: FaultManager = fm
         self.nm: NotificationManager = nm
         self.mqtt_entities = mqtt_entities
+        self.state_store = state_store or InMemoryRecoveryStateStore()
         self._pending_recovery_confirmations: dict[str, dict[str, str]] = {}
         self._recovery_confirmation_handles: dict[str, list[Any]] = {}
+        self._recovery_deadline_handles: dict[str, Any] = {}
+        self._proposals: dict[str, dict[str, Any]] = {}
         self._policy_evaluators: list[RecoveryPolicyEvaluator] = []
+        self._started = False
 
         self._init_all_rec_entities()
+
+    def start(self) -> None:
+        """Register the authenticated frontend confirmation event."""
+
+        if self._started:
+            return
+        self._started = True
+        listen_event = getattr(self.hass_app, "listen_event", None)
+        if callable(listen_event):
+            listen_event(
+                self.handle_recovery_confirmation,
+                "safety_recovery_confirm",
+            )
+        self._restore_state()
+
+    def stop(self) -> None:
+        """Persist active proposals during controlled shutdown."""
+
+        self._persist_state()
+
+    def _persist_state(self) -> None:
+        """Persist only the allowlisted proposal lifecycle state."""
+
+        self.state_store.save(
+            {
+                "version": 1,
+                "proposals": [
+                    {
+                        **self._public_proposal(record),
+                        "action_name": record.get("action_name"),
+                        "fault_tag": record.get("fault_tag"),
+                    }
+                    for record in self._proposals.values()
+                ],
+            }
+        )
+
+    def _restore_state(self) -> None:
+        """Restore visible active state without replaying actuator commands."""
+
+        try:
+            snapshot = self.state_store.load()
+        except Exception as exc:
+            self.hass_app.log(
+                f"Unable to restore recovery state: {exc}", level="ERROR"
+            )
+            return
+        for raw in snapshot.get("proposals", []):
+            if not isinstance(raw, dict):
+                continue
+            proposal_id = str(raw.get("proposal_id", ""))
+            recovery = self.recovery_actions.get(proposal_id)
+            if recovery is None:
+                continue
+            record = dict(raw)
+            if record.get("execution_policy") == "user_confirmed":
+                record["status"] = RecoveryActionState.AWAITING_CONFIRMATION.name
+                record["confirmation_token"] = secrets.token_urlsafe(24)
+                record["expires_at"] = time.time() + 120
+            elif record.get("status") == RecoveryActionState.EXECUTING.name:
+                record["status"] = RecoveryActionState.TO_PERFORM.name
+            self._proposals[proposal_id] = record
+            self._set_rec_entity(recovery)
 
     def register_policy_evaluator(
         self, evaluator: RecoveryPolicyEvaluator
@@ -195,7 +270,7 @@ class RecoveryManager:
                 found_fault: Fault | None = self.fm.found_mapped_fault(
                     found_symptom.name, found_symptom.sm_name
                 )
-                if found_fault and found_fault.level > rec_fault_prio:
+                if found_fault and found_fault.level < rec_fault_prio:
                     return True
 
         return False
@@ -282,19 +357,69 @@ class RecoveryManager:
         sensor_name = MqttEntityManager.canonical_entity_id(
             sensor_name, expected_domain="sensor"
         )
-        sensor_value: str = str(recovery.current_status.name)
+        proposals = [
+            self._public_proposal(record)
+            for record in self._proposals.values()
+            if record.get("action_name") == recovery.name
+        ]
+        state_priority = {
+            RecoveryActionState.FAILED.name: 0,
+            RecoveryActionState.TIMED_OUT.name: 1,
+            RecoveryActionState.EXECUTING.name: 2,
+            RecoveryActionState.AWAITING_CONFIRMATION.name: 3,
+            RecoveryActionState.TO_PERFORM.name: 4,
+            RecoveryActionState.CONFIRMED.name: 5,
+        }
+        if proposals:
+            state_name = min(
+                (str(proposal["status"]) for proposal in proposals),
+                key=lambda status: state_priority.get(status, 99),
+            )
+            recovery.current_status = RecoveryActionState[state_name]
+        else:
+            recovery.current_status = RecoveryActionState.DO_NOT_PERFORM
+        sensor_value: str = recovery.current_status.name
+        description = (
+            str(proposals[0].get("instruction", ""))
+            if len(proposals) == 1
+            else f"{len(proposals)} aktywne zalecenia."
+            if proposals
+            else f"Recovery status for {recovery.name}."
+        )
         self.mqtt_entities.register_sensor(
             sensor_name,
             str(recovery.params.get("friendly_name", f"Recovery {recovery.name}")),
             attributes={
-                "description": f"Recovery status for {recovery.name}.",
+                "description": description,
                 "area_id": recovery.params.get("area_id"),
                 "area_name": recovery.params.get("location"),
+                "proposals": proposals,
             },
             icon="mdi:lifebuoy",
             entity_category="diagnostic",
         )
         self.mqtt_entities.publish_sensor_state(sensor_name, sensor_value)
+
+    @staticmethod
+    def _public_proposal(record: dict[str, Any]) -> dict[str, Any]:
+        """Return the allowlisted MQTT/frontend representation of a proposal."""
+
+        allowed = (
+            "proposal_id",
+            "confirmation_token",
+            "instruction",
+            "execution_policy",
+            "status",
+            "reason",
+            "source",
+            "valid_until",
+            "expires_at",
+            "area_id",
+            "area_name",
+            "postcondition_entity_id",
+            "actuator_entity_id",
+        )
+        return {key: record.get(key) for key in allowed if record.get(key) not in (None, "")}
 
     def _execute_entity_action(self, entity: str, value: str) -> None:
         """Execute a supported recovery action through a native HA service."""
@@ -362,7 +487,7 @@ class RecoveryManager:
                     symptom_data.module.safety_mechanisms[symptom_data.name],
                     entities_changes,
                 )
-                if isFaultTrigged and symptom_name is not prefaul_name:
+                if isFaultTrigged and symptom_name != prefaul_name:
                     return True
         return False
 
@@ -413,6 +538,7 @@ class RecoveryManager:
     ) -> None:
         """EventBus handler for fault events."""
         if fault_state == FaultState.SHADOWED:
+            self._recovery_clear(symptom)
             return
         self.recovery(symptom, fault_tag)
 
@@ -507,12 +633,41 @@ class RecoveryManager:
         self.hass_app.log(
             f"Executing recovery for symptom: {symptom.name}", level="DEBUG"
         )
+        proposal = self._create_proposal(symptom, recovery_result, fault_tag)
+        self._proposals[symptom.name] = proposal
+        recovery = self.recovery_actions[symptom.name]
+        for notification in recovery_result.notifications:
+            self.nm.upsert_recovery_guidance(
+                symptom.name, notification, fault_tag
+            )
+
+        if recovery_result.execution_policy == "user_confirmed":
+            proposal["status"] = RecoveryActionState.AWAITING_CONFIRMATION.name
+            self._set_rec_entity(recovery)
+            self._persist_state()
+            self._schedule_recovery_deadline(
+                symptom.name,
+                int(recovery_result.confirmation_timeout_seconds),
+            )
+            self.hass_app.log(
+                f"Recovery {symptom.name} awaits explicit frontend confirmation",
+                level="INFO",
+            )
+            return
+
         executed_actuator_changes = self._perform_recovery(
             symptom,
-            recovery_result.notifications,
+            [],
             recovery_result.changed_actuators,
             fault_tag,
         )
+        proposal["status"] = (
+            RecoveryActionState.EXECUTING.name
+            if executed_actuator_changes
+            else RecoveryActionState.TO_PERFORM.name
+        )
+        self._set_rec_entity(recovery)
+        self._persist_state()
         self.hass_app.log(
             f"Recovery performed for symptom: {symptom.name}. Setting up listeners for changes.",
             level="DEBUG",
@@ -523,6 +678,194 @@ class RecoveryManager:
             executed_actuator_changes,
         )
         self.hass_app.log(f"Listeners set for symptom: {symptom.name}", level="DEBUG")
+
+    def _create_proposal(
+        self,
+        symptom: Symptom,
+        recovery_result: RecoveryResult,
+        fault_tag: str,
+    ) -> dict[str, Any]:
+        """Create an allowlisted, replay-resistant recovery proposal record."""
+
+        recovery = self.recovery_actions[symptom.name]
+        timeout = max(15, int(recovery_result.confirmation_timeout_seconds))
+        now = time.time()
+        sensor_entity = next(iter(recovery_result.changed_sensors), "")
+        actuator_entity = next(iter(recovery_result.changed_actuators), "")
+        return {
+            "proposal_id": symptom.name,
+            "confirmation_token": (
+                secrets.token_urlsafe(24)
+                if recovery_result.execution_policy == "user_confirmed"
+                else ""
+            ),
+            "action_name": recovery.name,
+            "instruction": recovery_result.instruction
+            or " ".join(recovery_result.notifications),
+            "execution_policy": recovery_result.execution_policy,
+            "status": RecoveryActionState.TO_PERFORM.name,
+            "reason": recovery_result.reason,
+            "source": recovery_result.source,
+            "valid_until": recovery_result.valid_until,
+            "expires_at": now + timeout,
+            "area_id": recovery.params.get("area_id"),
+            "area_name": recovery.params.get("location"),
+            "postcondition_entity_id": sensor_entity,
+            "actuator_entity_id": actuator_entity,
+            "fault_tag": fault_tag,
+        }
+
+    def handle_recovery_confirmation(
+        self,
+        event_name: str,
+        data: Mapping[str, Any],
+        **_: Any,
+    ) -> None:
+        """Authorize one current gate-closing proposal from the SafetyHome UI."""
+
+        del event_name
+        proposal_id = str(data.get("proposal_id", ""))
+        token = str(data.get("confirmation_token", ""))
+        proposal = self._proposals.get(proposal_id)
+        if (
+            proposal is None
+            or proposal.get("status")
+            != RecoveryActionState.AWAITING_CONFIRMATION.name
+            or not secrets.compare_digest(
+                token, str(proposal.get("confirmation_token", ""))
+            )
+        ):
+            self.hass_app.log(
+                f"Rejected invalid or replayed recovery confirmation for {proposal_id!r}",
+                level="WARNING",
+            )
+            return
+        if self._proposal_expired(proposal):
+            self._mark_recovery_timed_out(proposal_id)
+            return
+
+        self._cancel_recovery_deadline(proposal_id)
+
+        symptom = self.fm.symptoms.get(proposal_id)
+        if symptom is None or symptom.state != FaultState.SET:
+            self.hass_app.log(
+                f"Rejected stale recovery confirmation for {proposal_id!r}",
+                level="WARNING",
+            )
+            self._recovery_clear_by_name(proposal_id)
+            return
+        recovery_result = self._get_potential_recovery_action(symptom)
+        if (
+            recovery_result is None
+            or recovery_result.execution_policy != "user_confirmed"
+            or not recovery_result.changed_actuators
+            or not self._validate_recovery_action(symptom, recovery_result)
+        ):
+            self.hass_app.log(
+                f"Recovery {proposal_id!r} no longer passes execution policy",
+                level="WARNING",
+            )
+            return
+
+        expected_actuator = str(proposal.get("actuator_entity_id", ""))
+        if set(recovery_result.changed_actuators) != {expected_actuator}:
+            self.hass_app.log(
+                f"Recovery actuator changed for {proposal_id!r}; confirmation rejected",
+                level="ERROR",
+            )
+            return
+
+        executed = self._perform_recovery(
+            symptom,
+            [],
+            recovery_result.changed_actuators,
+            str(proposal["fault_tag"]),
+        )
+        if set(executed) != {expected_actuator}:
+            proposal["status"] = RecoveryActionState.FAILED.name
+            proposal["confirmation_token"] = ""
+            self._set_rec_entity(self.recovery_actions[proposal_id])
+            self._persist_state()
+            return
+        proposal["status"] = RecoveryActionState.EXECUTING.name
+        proposal["confirmation_token"] = ""
+        self._set_rec_entity(self.recovery_actions[proposal_id])
+        self._persist_state()
+        self._listen_to_changes(
+            symptom,
+            recovery_result.changed_sensors,
+            executed,
+        )
+        if proposal_id in self._proposals:
+            self._schedule_recovery_deadline(
+                proposal_id,
+                int(recovery_result.confirmation_timeout_seconds),
+            )
+
+    def _schedule_recovery_deadline(
+        self, symptom_name: str, timeout_seconds: int
+    ) -> None:
+        """Replace the active proposal deadline timer."""
+
+        self._cancel_recovery_deadline(symptom_name)
+        run_in = getattr(self.hass_app, "run_in", None)
+        if callable(run_in):
+            self._recovery_deadline_handles[symptom_name] = run_in(
+                self._recovery_deadline_reached,
+                timeout_seconds,
+                symptom_name=symptom_name,
+            )
+
+    def _cancel_recovery_deadline(self, symptom_name: str) -> None:
+        handle = self._recovery_deadline_handles.pop(symptom_name, None)
+        if handle is None:
+            return
+        cancel_timer = getattr(self.hass_app, "cancel_timer", None)
+        if callable(cancel_timer):
+            try:
+                cancel_timer(handle)
+            except Exception as exc:
+                self.hass_app.log(
+                    f"Failed to cancel recovery deadline: {exc}",
+                    level="WARNING",
+                )
+
+    def _recovery_deadline_reached(self, **kwargs: Any) -> None:
+        self._mark_recovery_timed_out(str(kwargs["symptom_name"]))
+
+    def _mark_recovery_timed_out(self, symptom_name: str) -> None:
+        proposal = self._proposals.get(symptom_name)
+        if proposal is None or proposal.get("status") not in {
+            RecoveryActionState.AWAITING_CONFIRMATION.name,
+            RecoveryActionState.EXECUTING.name,
+        }:
+            return
+        proposal["status"] = RecoveryActionState.TIMED_OUT.name
+        proposal["confirmation_token"] = ""
+        recovery = self.recovery_actions.get(symptom_name)
+        if recovery is not None:
+            self._set_rec_entity(recovery)
+        self._persist_state()
+        self.hass_app.log(
+            f"Recovery deadline missed for {symptom_name}", level="ERROR"
+        )
+
+    @staticmethod
+    def _proposal_expired(proposal: Mapping[str, Any]) -> bool:
+        """Apply both the UI confirmation deadline and provider validity."""
+
+        if time.time() > float(proposal["expires_at"]):
+            return True
+        valid_until = str(proposal.get("valid_until", "")).strip()
+        if not valid_until:
+            return False
+        try:
+            parsed = datetime.fromisoformat(valid_until.replace("Z", "+00:00"))
+        except ValueError:
+            return True
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return datetime.now(timezone.utc) > parsed.astimezone(timezone.utc)
 
     def _recovery_clear(self, symptom: Symptom) -> None:
         """
@@ -535,15 +878,27 @@ class RecoveryManager:
         Args:
             symptom (symptom): The symptom object representing the fault to clear the recovery action for.
         """
-        if symptom.name in self.recovery_actions:
-            self._cancel_recovery_confirmation_listeners(symptom.name)
-            self._pending_recovery_confirmations.pop(symptom.name, None)
+        self._recovery_clear_by_name(symptom.name)
+
+    def _recovery_clear_by_name(self, symptom_name: str) -> None:
+        """Withdraw one proposal and all guidance/timers it owns."""
+
+        if symptom_name in self.recovery_actions:
+            self._cancel_recovery_confirmation_listeners(symptom_name)
+            self._pending_recovery_confirmations.pop(symptom_name, None)
+            self._cancel_recovery_deadline(symptom_name)
+            proposal = self._proposals.pop(symptom_name, None)
+            if proposal is not None:
+                self.nm.remove_recovery_guidance(
+                    symptom_name, str(proposal.get("fault_tag", ""))
+                )
             # Clear internal register
-            self.recovery_actions[symptom.name].current_status = (
+            self.recovery_actions[symptom_name].current_status = (
                 RecoveryActionState.DO_NOT_PERFORM
             )
             # Set HA entity
-            self._set_rec_entity(self.recovery_actions[symptom.name])
+            self._set_rec_entity(self.recovery_actions[symptom_name])
+            self._persist_state()
 
     def _listen_to_changes(
         self,
@@ -594,6 +949,10 @@ class RecoveryManager:
             handles.append(handle)
 
         if self._all_recovery_postconditions_met(symptom.name):
+            proposal = self._proposals.get(symptom.name)
+            if proposal is not None:
+                proposal["status"] = RecoveryActionState.CONFIRMED.name
+                self._set_rec_entity(self.recovery_actions[symptom.name])
             self._recovery_clear(symptom)
 
     def _cancel_recovery_confirmation_listeners(self, symptom_name: str) -> None:
@@ -663,6 +1022,10 @@ class RecoveryManager:
             return
 
         if self._all_recovery_postconditions_met(symptom.name):
+            proposal = self._proposals.get(symptom.name)
+            if proposal is not None:
+                proposal["status"] = RecoveryActionState.CONFIRMED.name
+                self._set_rec_entity(self.recovery_actions[symptom.name])
             self._recovery_clear(symptom)
 
     def _all_recovery_postconditions_met(self, symptom_name: str) -> bool:

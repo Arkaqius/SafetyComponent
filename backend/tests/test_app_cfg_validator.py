@@ -359,6 +359,31 @@ def test_collect_entity_ids_skips_invalid_room_entries():
     assert ("user_config.safety_components.TemperatureComponent.RoomB.temperature_sensor", "sensor.test") in entity_ids
 
 
+def test_collect_entity_ids_includes_nested_notification_entities():
+    runtime_cfg = {
+        "user_config": {
+            "common_entities": {},
+            "notification": {
+                "wan_entity": "binary_sensor.internet",
+                "local": {
+                    "light_entity": "light.warning",
+                    "alarm_entity": "alarm_control_panel.house",
+                },
+            },
+            "safety_components": {},
+        }
+    }
+
+    assert _collect_entity_ids(runtime_cfg) == [
+        ("user_config.notification.wan_entity", "binary_sensor.internet"),
+        ("user_config.notification.local.light_entity", "light.warning"),
+        (
+            "user_config.notification.local.alarm_entity",
+            "alarm_control_panel.house",
+        ),
+    ]
+
+
 def test_collect_entity_ids_includes_safety_door_condition():
     runtime_cfg = {
         "user_config": {

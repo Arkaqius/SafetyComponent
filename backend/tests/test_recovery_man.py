@@ -3,6 +3,7 @@
 
 from components.core.types_common import FaultState, RecoveryResult, RecoveryActionState, Fault, Symptom, RecoveryAction
 from components.recovery_manager.recovery_manager import RecoveryManager
+from components.recovery_manager.state_store import InMemoryRecoveryStateStore
 from unittest.mock import Mock
 
 import pytest
@@ -367,7 +368,7 @@ def test_integration_with_fault_and_notification_managers(
 
     # Mock NotificationManager to validate the notification actions
     notification_manager = app_instance.notify_man
-    notification_manager._add_recovery_action = Mock()
+    notification_manager.upsert_recovery_guidance = Mock()
 
     # Execute recovery
     recovery_manager._is_dry_test_failed = Mock(return_value=False)
@@ -379,8 +380,8 @@ def test_integration_with_fault_and_notification_managers(
     )
 
     # Validate that the notification action was called correctly
-    notification_manager._add_recovery_action.assert_called_once_with(
-        "Manual intervention required for actuator_1.", fault_tag
+    notification_manager.upsert_recovery_guidance.assert_called_once_with(
+        symptom.name, "Manual intervention required for actuator_1.", fault_tag
     )
 
 
@@ -419,8 +420,8 @@ def test_recovery_action_state_transition(mocked_hass_app_with_temp_component):
     # Execute the recovery process
     recovery_manager.recovery(symptom,"00")
 
-    # Assert that the recovery action state is updated to `TO_PERFORM`
-    assert recovery_action.current_status == RecoveryActionState.TO_PERFORM
+    # An accepted actuator command remains EXECUTING until its postcondition.
+    assert recovery_action.current_status == RecoveryActionState.EXECUTING
     # Verify that the recovery function (`rec_fun`) was called
     recovery_action.rec_fun.assert_called_once_with(
         recovery_manager.hass_app,
@@ -455,7 +456,7 @@ def test_check_conflict_with_higher_priority(mocked_hass_app_with_temp_component
     found_symptom.name = "MatchingSymptom"
     
     higher_priority_fault = Mock()
-    higher_priority_fault.level = 5  # Set higher priority
+    higher_priority_fault.level = 1  # Lower numeric level is higher priority
     
     # Set the fault manager's symptoms and found_fault method to match
     recovery_manager.fm.symptoms = {
@@ -521,7 +522,7 @@ def test_recovery_conflict_with_higher_priority(mocked_hass_app_with_temp_compon
     found_symptom.name = "MatchingSymptom"
     found_symptom.sm_name = "sm_test"
     found_fault = Mock()
-    found_fault.level = 5  # Set higher priority than current recovery fault
+    found_fault.level = 1  # Lower numeric level is higher priority
 
     test_fault = Mock()
     test_fault.level = 3  # Priority of the current recovery fault (lower)
@@ -736,7 +737,253 @@ def test_perform_recovery_no_matching_action(mocked_hass_app_with_temp_component
     recovery_manager.hass_app.log.assert_called_once_with(
         f"Recovery action for {symptom.name} was not found!", level="ERROR"
     )
-    
+
+
+def test_user_confirmed_cover_recovery_never_actuates_before_valid_confirmation(
+    mocked_hass_app_with_temp_component,
+):
+    app_instance, _, __, ___, _ = mocked_hass_app_with_temp_component
+    app_instance.initialize()
+    recovery_manager = app_instance.reco_man
+    symptom = Mock()
+    symptom.name = "ExternalWeatherExposureWindExternalGate"
+    symptom.state = FaultState.SET
+    symptom.sm_name = "sm_ext_weather_exposure"
+    result = RecoveryResult(
+        changed_sensors={"binary_sensor.external_gate": "off"},
+        changed_actuators={"cover.gate": "closed"},
+        notifications=["Potwierdź zamknięcie bramy zewnętrznej."],
+        instruction="Potwierdź zamknięcie bramy zewnętrznej.",
+        execution_policy="user_confirmed",
+        confirmation_timeout_seconds=180,
+    )
+    action = RecoveryAction(
+        "CloseExternalOpeningExternalGate",
+        {"friendly_name": "Zamknij: Brama zewnętrzna"},
+        Mock(return_value=result),
+    )
+    recovery_manager.recovery_actions = {symptom.name: action}
+    recovery_manager.fm.symptoms = {symptom.name: symptom}
+    recovery_manager._validate_recovery_action = Mock(return_value=True)
+    recovery_manager.nm.upsert_recovery_guidance = Mock()
+    recovery_manager.nm.remove_recovery_guidance = Mock()
+    app_instance.call_service.reset_mock()
+
+    recovery_manager.recovery(symptom, "fault-tag")
+
+    assert not any(
+        call.args[0] == "cover/close_cover"
+        for call in app_instance.call_service.call_args_list
+    )
+
+    proposal = recovery_manager._proposals[symptom.name]
+    assert proposal["status"] == RecoveryActionState.AWAITING_CONFIRMATION.name
+    token = proposal["confirmation_token"]
+
+    recovery_manager.handle_recovery_confirmation(
+        "safety_recovery_confirm",
+        {"proposal_id": symptom.name, "confirmation_token": "wrong"},
+    )
+    assert not any(
+        call.args[0] == "cover/close_cover"
+        for call in app_instance.call_service.call_args_list
+    )
+
+    recovery_manager.handle_recovery_confirmation(
+        "safety_recovery_confirm",
+        {"proposal_id": symptom.name, "confirmation_token": token},
+    )
+    cover_calls = [
+        call
+        for call in app_instance.call_service.call_args_list
+        if call.args[0] == "cover/close_cover"
+    ]
+    assert len(cover_calls) == 1
+    assert cover_calls[0].kwargs == {"entity_id": "cover.gate"}
+    assert proposal["status"] == RecoveryActionState.EXECUTING.name
+
+    recovery_manager.handle_recovery_confirmation(
+        "safety_recovery_confirm",
+        {"proposal_id": symptom.name, "confirmation_token": token},
+    )
+    assert sum(
+        call.args[0] == "cover/close_cover"
+        for call in app_instance.call_service.call_args_list
+    ) == 1
+
+
+def test_confirmation_fail_closed_paths_and_deadline_state(
+    mocked_hass_app_with_temp_component,
+):
+    app_instance, _, __, ___, _ = mocked_hass_app_with_temp_component
+    app_instance.initialize()
+    manager = app_instance.reco_man
+    symptom = Mock()
+    symptom.name = "ExternalWeatherExposureWindExternalGate"
+    symptom.state = FaultState.SET
+    symptom.sm_name = "sm_ext_weather_exposure"
+    valid_result = RecoveryResult(
+        {"binary_sensor.external_gate": "off"},
+        {"cover.gate": "closed"},
+        ["Confirm close."],
+        execution_policy="user_confirmed",
+    )
+    action = RecoveryAction(
+        "CloseExternalOpeningExternalGate",
+        {"friendly_name": "Close external gate"},
+        Mock(return_value=valid_result),
+    )
+    manager.recovery_actions = {symptom.name: action}
+    manager.fm.symptoms = {symptom.name: symptom}
+    manager._validate_recovery_action = Mock(return_value=True)
+    manager.nm.upsert_recovery_guidance = Mock()
+    manager.nm.remove_recovery_guidance = Mock()
+
+    manager.recovery(symptom, "fault-tag")
+    proposal = manager._proposals[symptom.name]
+    proposal["expires_at"] = 0
+    manager.handle_recovery_confirmation(
+        "safety_recovery_confirm",
+        {
+            "proposal_id": symptom.name,
+            "confirmation_token": proposal["confirmation_token"],
+        },
+    )
+    assert proposal["status"] == RecoveryActionState.TIMED_OUT.name
+
+    manager.recovery(symptom, "fault-tag")
+    proposal = manager._proposals[symptom.name]
+    symptom.state = FaultState.CLEARED
+    manager.handle_recovery_confirmation(
+        "safety_recovery_confirm",
+        {
+            "proposal_id": symptom.name,
+            "confirmation_token": proposal["confirmation_token"],
+        },
+    )
+    assert symptom.name not in manager._proposals
+
+    symptom.state = FaultState.SET
+    manager.recovery(symptom, "fault-tag")
+    proposal = manager._proposals[symptom.name]
+    action.rec_fun.return_value = RecoveryResult({}, {}, [])
+    manager.handle_recovery_confirmation(
+        "safety_recovery_confirm",
+        {
+            "proposal_id": symptom.name,
+            "confirmation_token": proposal["confirmation_token"],
+        },
+    )
+    assert proposal["status"] == RecoveryActionState.AWAITING_CONFIRMATION.name
+
+    action.rec_fun.return_value = valid_result
+    manager.recovery(symptom, "fault-tag")
+    proposal = manager._proposals[symptom.name]
+    changed_result = valid_result._replace(
+        changed_actuators={"cover.different_gate": "closed"}
+    )
+    action.rec_fun.return_value = changed_result
+    manager.handle_recovery_confirmation(
+        "safety_recovery_confirm",
+        {
+            "proposal_id": symptom.name,
+            "confirmation_token": proposal["confirmation_token"],
+        },
+    )
+    assert proposal["status"] == RecoveryActionState.AWAITING_CONFIRMATION.name
+
+    action.rec_fun.return_value = valid_result
+    manager.recovery(symptom, "fault-tag")
+    proposal = manager._proposals[symptom.name]
+    manager._perform_recovery = Mock(return_value={})
+    manager.handle_recovery_confirmation(
+        "safety_recovery_confirm",
+        {
+            "proposal_id": symptom.name,
+            "confirmation_token": proposal["confirmation_token"],
+        },
+    )
+    assert proposal["status"] == RecoveryActionState.FAILED.name
+
+
+def test_recovery_restore_rotates_tokens_without_replaying_commands(
+    mocked_hass_app_with_temp_component,
+):
+    app_instance, _, __, ___, _ = mocked_hass_app_with_temp_component
+    app_instance.initialize()
+    manager = app_instance.reco_man
+    proposal_id = "ExternalWeatherExposureWindExternalGate"
+    action = RecoveryAction(
+        "CloseExternalOpeningExternalGate",
+        {"friendly_name": "Close external gate"},
+        Mock(),
+    )
+    manager.recovery_actions = {proposal_id: action}
+    manager._proposals = {}
+    manager.state_store = InMemoryRecoveryStateStore(
+        {
+            "proposals": [
+                "invalid",
+                {"proposal_id": "UnknownProposal"},
+                {
+                    "proposal_id": proposal_id,
+                    "action_name": action.name,
+                    "execution_policy": "user_confirmed",
+                    "status": "EXECUTING",
+                    "confirmation_token": "persisted-token",
+                },
+            ]
+        }
+    )
+    app_instance.call_service.reset_mock()
+
+    manager._restore_state()
+
+    restored = manager._proposals[proposal_id]
+    assert restored["status"] == RecoveryActionState.AWAITING_CONFIRMATION.name
+    assert restored["confirmation_token"] != "persisted-token"
+    assert not any(
+        call.args[0] == "cover/close_cover"
+        for call in app_instance.call_service.call_args_list
+    )
+
+    manager._proposals = {}
+    manager.state_store = InMemoryRecoveryStateStore(
+        {
+            "proposals": [
+                {
+                    "proposal_id": proposal_id,
+                    "action_name": action.name,
+                    "execution_policy": "automatic",
+                    "status": "EXECUTING",
+                }
+            ]
+        }
+    )
+    manager._restore_state()
+    assert manager._proposals[proposal_id]["status"] == (
+        RecoveryActionState.TO_PERFORM.name
+    )
+
+    manager.state_store = Mock()
+    manager.state_store.load.side_effect = ValueError("broken snapshot")
+    manager._restore_state()
+    app_instance.log.assert_any_call(
+        "Unable to restore recovery state: broken snapshot", level="ERROR"
+    )
+
+
+def test_proposal_validity_is_fail_closed() -> None:
+    assert RecoveryManager._proposal_expired(
+        {"expires_at": 9_999_999_999, "valid_until": "malformed"}
+    )
+    assert RecoveryManager._proposal_expired(
+        {"expires_at": 9_999_999_999, "valid_until": "2000-01-01T00:00:00"}
+    )
+    assert not RecoveryManager._proposal_expired(
+        {"expires_at": 9_999_999_999, "valid_until": "2999-01-01T00:00:00Z"}
+    )
+
 def test_no_recovery_conflict(mocked_hass_app_with_temp_component):
     """
     Test Case: Indirectly test `_isRecoveryConflict()` returning `False`.

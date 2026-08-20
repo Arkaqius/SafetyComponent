@@ -172,7 +172,11 @@ This chapter defines **notification levels and vectors** used by the Safety Syst
 ### 4.2 Deadlines & Retries
 
 - **Delivery deadlines:** Level 1 ≤ **10 s**; Level 2/3 ≤ **30 s** from fault confirmation; Level 4 best‑effort.
-- **Retries:** If delivery confirmation is unavailable, attempt **N_retry** with **T_cooldown** between attempts (configurable). In _Local‑Only_, queue cloud/mobile and prefer local lights/siren.
+- **Retries:** If submission to Home Assistant fails, attempt **N_retry** with
+  **T_cooldown** between attempts (configurable). Absence of individual-phone
+  delivery confirmation is reported diagnostically and does not by itself
+  trigger duplicate pushes. In _Local‑Only_, queue cloud/mobile and prefer
+  local lights/siren.
 - **Repeat policy (optional):** For persistent L1 events (e.g., CO at night), repeat phone alerts every **T_repeat ≤ 60 s** until acknowledged.
 
 ### 4.3 Mode‑Aware Behavior
@@ -204,7 +208,21 @@ SafetyFunctions:
 
   user_config:
     notification:
-      light_entity: "light.info"
+      mobile:
+        services:
+          - "notify/all_phones"
+        default_url: "https://ha.kojbito.org/5c36e1c9_hakit"
+      local:
+        light_entity: "light.info"
+      retry:
+        max_attempts: 3
+        base_delay_seconds: 5
+        max_delay_seconds: 60
+        deadlines_seconds: {1: 10, 2: 30, 3: 30}
+      level_one_repeat:
+        enabled: true
+        interval_seconds: 60
+        max_repeats: 3
     localization:
       language: "pl"
 ```
@@ -263,7 +281,10 @@ When **WAN is down** (see §3, M4 Local‑Only), prefer delivery vectors that do
 - **A3.** Operator response to **L2/L3** notifications within **T_op_resp** minutes (household policy).
 - **A4.** Actuation available within **T_act** seconds to effect temperature/AQ changes or shutoff valves.
 - **A5.** Occupancy is **an input to some safety goals** but **does not control system modes** (see §3).
-- **A6.** External cloud data is advisory and non-certified. External Hazard Monitoring is notification-only and shall not command an actuator.
+- **A6.** External cloud data is advisory and non-certified. External Hazard
+  Monitoring shall never actuate from provider data alone; only an authenticated
+  resident confirmation of a current allowlisted gate-close proposal may
+  authorize a command.
 
 ---
 
@@ -457,6 +478,14 @@ _Interfaces turn §2 elements into **testable contracts**: freshness, latency, a
 
 - Profiles per §4 (L1–L4); **Deadline:** L1 **≤ 10 s**, L2/L3 **≤ 30 s**; repeat policy for L1 (configurable).
 - **Queueing:** in Local‑Only, queue and flush on WAN recovery.
+- **Routing:** use an explicit configured mobile group or device-service list;
+  `notify.notify` shall not be used as a safety-delivery target.
+- **Result semantics:** distinguish acceptance by Home Assistant from confirmed
+  display or delivery by an individual phone.
+- **Lifecycle:** a new alarm may alert; same-fault context changes shall refresh
+  quietly; shadowing shall use the Companion `clear_notification` command.
+- **Persistence:** active, acknowledged, repeated, and queued delivery state
+  shall survive AppDaemon reload and restart.
 
 **OR-021 Dashboard Main Safety Card**
 
@@ -676,19 +705,22 @@ temperature.
 
 #### 8.3.3 Outputs (to §7)
 
-- **OR-020/021** notification and dashboard outputs only.
+- **OR-020/021** notification and dashboard outputs for every exposure.
+- **OR-006/007** only for closing the explicitly configured garage and external
+  gate covers after authenticated SafetyHome confirmation.
 - Diagnostic MQTT entities for normalized hazard state and per-provider health.
-- A non-actuating advice policy that can inhibit contradictory recommendations
+- An advice policy that can inhibit contradictory recommendations
   such as opening windows during external pollution, damaging wind, or storm.
-- C-EXT shall not use **OR-003**, **OR-006**, **OR-007**, locks, gates, or
-  any other actuator output.
+- C-EXT shall not use locks, HVAC, ventilation, raw relay/pulse buttons, or any
+  actuator other than the two configured directional gate covers.
 
 #### 8.3.4 Parameters
 
 - Site identity: latitude, longitude, timezone, country, and configured TERYT
   codes.
 - Opening registry: stable opening name, `entity_id`, `area_id`, opening kind,
-  and applicable hazard types.
+  applicable hazard types, execution policy, and optional allowlisted
+  `cover.*` actuator.
 - Weather policy: frost watch/warning temperature, wind/gust thresholds,
   rain/precipitation policy, forecast horizon, hysteresis, persistence, and
   clear delay.
@@ -781,13 +813,13 @@ provider is unusable beyond its stale timeout.
   AQI/pollutant input.
 - **SYS-SR-EXT-023:** While outdoor AQ, damaging wind, storm, or a confirmed
   sheltering policy is active, C-EXT shall expose an advice inhibition for
-  `open_external_opening`. C-EXT may filter manual advice but shall not
-  command an actuator.
+  `open_external_opening`. C-EXT may filter manual advice. A close command is
+  permitted only through SYS-SR-EXT-040 through SYS-SR-EXT-044.
 
-**Notification-only control boundary**
+**Recommended-action and confirmed-actuation boundary**
 
-- **SYS-SR-EXT-040:** C-EXT shall not register or execute actuator recovery
-  actions and shall not call Home Assistant actuator services.
+- **SYS-SR-EXT-040:** C-EXT shall register close recommendations for exposure
+  symptoms. Windows and ordinary doors shall remain manual actions.
 - **SYS-SR-EXT-041:** Every warning shall include hazard type, human-readable
   opening/area names when applicable, observed or forecast value, threshold or
   authority level, validity, source, freshness, and recommended manual action.
@@ -797,6 +829,14 @@ provider is unusable beyond its stale timeout.
 - **SYS-SR-EXT-043:** Clearing shall require positive valid evidence or expiry
   according to provider semantics. Network failure, stale data, or parse error
   shall not clear an active condition.
+- **SYS-SR-EXT-044:** Only `cover.brama_garazowa` and `cover.gate`, when bound
+  to their configured closed contacts, may be commanded, and only with
+  `cover.close_cover` after an authenticated SafetyHome user confirms a current
+  one-time proposal. Raw pulse buttons shall not be used.
+- **SYS-SR-EXT-045:** Before command execution RecoveryManager shall reject an
+  expired, replayed, shadowed, cleared, policy-inhibited, or actuator-mismatched
+  proposal. It shall publish executing, confirmed, failed, or timed-out state
+  and verify closure from the configured contact.
 
 **Diagnostics and evidence**
 
@@ -831,8 +871,9 @@ provider is unusable beyond its stale timeout.
   EventBus ordering, FaultManager aggregation, same-tag notification refresh,
   MQTT provider diagnostics, and restart followed by immediate provider refresh
   without an intermediate false-clear transition.
-- **Negative-actuation tests:** assert no cover, lock, switch, fan, climate, or
-  other actuator service is called by C-EXT paths.
+- **Negative-actuation tests:** assert no actuator call occurs before valid
+  confirmation and no lock, switch, raw pulse button, fan, climate, or
+  non-allowlisted cover service is called by C-EXT paths.
 - **Failure injection:** WAN loss, HTTP timeout, partial provider outage,
   rate-limit response, clock skew, duplicate warning ID, provider withdrawal,
   and stale data that must not clear an active fault.

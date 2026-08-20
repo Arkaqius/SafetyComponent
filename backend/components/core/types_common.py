@@ -65,6 +65,11 @@ class SMState(Enum):
 class RecoveryActionState(Enum):
     DO_NOT_PERFORM = 0
     TO_PERFORM = 1
+    AWAITING_CONFIRMATION = 2
+    EXECUTING = 3
+    CONFIRMED = 4
+    FAILED = 5
+    TIMED_OUT = 6
 
 
 class RecoveryAction:
@@ -187,3 +192,9 @@ class RecoveryResult(NamedTuple):
     changed_sensors: Dict[str, str]
     changed_actuators: Dict[str, str]
     notifications: List[str]
+    instruction: str = ""
+    execution_policy: str = "automatic"
+    reason: str = ""
+    source: str = ""
+    valid_until: str = ""
+    confirmation_timeout_seconds: int = 120

@@ -36,7 +36,7 @@ def test_initialize_dicts_symptom(mocked_hass_app_basic):
 
     # Assert the 'notification_cfg' dictionary content
     notification = app_instance.notification_cfg
-    assert notification["light_entity"] == "light.warning_light"
+    assert notification["local"]["light_entity"] == "light.warning_light"
 
 
 def test_NotificationManager_init(mocked_hass_app_basic):
