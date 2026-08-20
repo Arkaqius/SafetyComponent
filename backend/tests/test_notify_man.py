@@ -217,6 +217,7 @@ def test_cleared_fault_uses_same_tag_and_resolved_quiet_profile() -> None:
     manager.notify("Fault", 3, FaultState.CLEARED, None, "tag-resolved")
 
     sent = hass.call_service.call_args
+    assert sent.kwargs["title"] == "Safety issue resolved"
     assert sent.kwargs["message"] == "Good news - Fault is no longer active."
     assert sent.kwargs["data"]["tag"] == "tag-resolved"
     assert sent.kwargs["data"]["persistent"] is False

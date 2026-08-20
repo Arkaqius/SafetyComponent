@@ -339,14 +339,14 @@ def test_forecasted_symptom_set_when_temp_rate_indicates_drop(
     Test Case: Forecasted Symptom Set When Temperature Rate Indicates a Drop
 
     Scenario:
-        - Input: Initial temperature is 20.0°C, rate is -0.1°C/min, and forecast timespan is 2 hours.
+        - Input: Initial temperature is 20.0°C, rate is -0.02°C/min, and forecast timespan is 2 hours.
         - Expected Result: Symptom "RiskyTemperatureOfficeForeCast" should be set to True.
     """
     app_instance, __, _, ___, mock_behaviors_default = (
         mocked_hass_app_with_temp_component
     )
     temperature_sequence = ["20.0"]
-    rate_of_change = "-1"  # degrees per 15 minute
+    rate_of_change = "-0.02"
 
     # Initialize the application and register the monitored entity in DerivativeMonitor
     app_instance.initialize()
@@ -381,6 +381,42 @@ def test_forecasted_symptom_set_when_temp_rate_indicates_drop(
     )
 
 
+def test_temperature_forecast_uses_rate_per_minute_and_rejects_implausible_jump(
+    mocked_hass_app_with_temp_component,
+):
+    app_instance, *_ = mocked_hass_app_with_temp_component
+    app_instance.initialize()
+    component = app_instance.sm_modules["TemperatureComponent"]
+
+    assert component.forecast_temperature(20.0, 0.02, 2.0, 15.0) == 22.4
+    assert component.forecast_temperature(20.0, 0.35, 2.0, 15.0) is None
+
+
+def test_implausible_measurement_cannot_set_or_clear_temperature_fault(
+    mocked_hass_app_with_temp_component,
+):
+    app_instance, *_ = mocked_hass_app_with_temp_component
+    app_instance.initialize()
+    component = app_instance.sm_modules["TemperatureComponent"]
+    mechanism = component.safety_mechanisms["RiskyTemperatureHighOffice"]
+    app_instance.get_state.side_effect = lambda entity_id, **kwargs: mock_get_state(
+        entity_id,
+        [MockBehavior("sensor.office_temperature", iter(["30"] * 10))],
+    )
+
+    for _ in range(DEBOUNCE_LIMIT + 2):
+        component.sm_tc_3(mechanism)
+    assert app_instance.fm.check_symptom("RiskyTemperatureHighOffice") is FaultState.SET
+
+    app_instance.get_state.side_effect = lambda entity_id, **kwargs: mock_get_state(
+        entity_id,
+        [MockBehavior("sensor.office_temperature", iter(["3618"] * 10))],
+    )
+    for _ in range(DEBOUNCE_LIMIT + 2):
+        component.sm_tc_3(mechanism)
+    assert app_instance.fm.check_symptom("RiskyTemperatureHighOffice") is FaultState.SET
+
+
 def test_forecasted_overtemp_symptom_set_when_temp_rate_indicates_rise(
     mocked_hass_app_with_temp_component,
 ):
@@ -394,8 +430,8 @@ def test_forecasted_overtemp_symptom_set_when_temp_rate_indicates_rise(
     app_instance, __, _, ___, mock_behaviors_default = (
         mocked_hass_app_with_temp_component
     )
-    temperature_sequence = ["30.0"]
-    rate_of_change = "1"
+    temperature_sequence = ["27.0"]
+    rate_of_change = "0.02"
 
     # Initialize the application and register the monitored entity in DerivativeMonitor
     app_instance.initialize()
@@ -442,10 +478,10 @@ def test_forecasted_overtemp_multi_room_fault_clear(
     app_instance.initialize()
 
     test_mock_behaviours = [
-        MockBehavior("sensor.office_temperature", iter(["30"])),
-        MockBehavior("sensor.office_temperature_rate", iter(["1"])),
-        MockBehavior("sensor.kitchen_temperature", iter(["30"])),
-        MockBehavior("sensor.kitchen_temperature_rate", iter(["1"])),
+        MockBehavior("sensor.office_temperature", iter(["27"])),
+        MockBehavior("sensor.office_temperature_rate", iter(["0.02"])),
+        MockBehavior("sensor.kitchen_temperature", iter(["27"])),
+        MockBehavior("sensor.kitchen_temperature_rate", iter(["0.02"])),
     ]
     mock_behaviors_default = update_mocked_get_state(
         mock_behaviors_default, test_mock_behaviours

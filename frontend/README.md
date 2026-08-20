@@ -31,6 +31,17 @@ npm run dev:mock
 Tryb demonstracyjny działa tylko przy deweloperskim buildzie Vite i jest jawnie oznaczony w nagłówku. Produkcyjny build
 zawsze korzysta z rzeczywistych encji Home Assistanta.
 
+## Historia temperatur
+
+Popupy temperatur pobierają historię na żądanie z Rejestratora Home Assistanta.
+Repozytorium zawiera wąski przykład allowlisty obejmujący wyłącznie osiem
+czujników używanych przez SafetyComponent:
+[`docs/examples/home_assistant_recorder_temperature.yaml`](../docs/examples/home_assistant_recorder_temperature.yaml).
+Scal listę `include.entities` z istniejącą konfiguracją `recorder`; nie zastępuj
+pozostałych reguł `include`/`exclude`. Taki zakres przywraca wykresy temperatur
+bez włączania zapisu całej domeny `sensor`. Retencja `purge_keep_days` pozostaje
+globalnym ustawieniem Rejestratora i nie jest zmieniana przez przykład.
+
 ## Działania rekomendowane
 
 Karta działania pokazuje instrukcję, powód, źródło, ważność i bieżący etap

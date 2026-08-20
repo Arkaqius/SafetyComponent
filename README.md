@@ -26,9 +26,9 @@ actions.
 
 External Hazard Monitoring correlates weather, official IMGW warnings, and
 outdoor air quality with configured windows and external doors. It creates
-manual close recommendations for ordinary openings. The two explicitly
-configured gate covers may be closed only after a current proposal is confirmed
-by an authenticated user in SafetyHome; provider code never actuates devices.
+manual close recommendations for the current installation. Provider code never
+actuates devices; any future configured cover action remains subject to the
+validated explicit-confirmation policy.
 
 Entity Health Monitoring covers explicitly configured safety dependencies,
 dependencies declared by Safety Components, and an information-only inventory
@@ -45,7 +45,9 @@ of other Home Assistant entities and devices.
 - `backend/components/notification_manager` — user notification lifecycle.
 - `backend/components/recovery_manager` — supported recovery execution and
   confirmation.
-- `backend/app_cfg.yaml` — annotated deployable configuration contract.
+- `backend/config/system_config.yml` — software policy and calibration.
+- `backend/config/user_config.yml` — installation-owned Home Assistant bindings.
+- `backend/app_cfg.yaml` — generated deployable AppDaemon configuration.
 - `backend/tests` — isolated backend tests with the bundled AppDaemon Hass stub.
 - `frontend` — SafetyHome React/Vite application.
 - `docs/sys` — HARA, system requirements, and software safety requirements.
@@ -68,24 +70,31 @@ python -m pip install -r backend/requirements.txt
 pytest backend/tests
 ```
 
-Deploy the application by making `backend/SafetyFunctions.py` and
-`backend/components/` available in the AppDaemon apps directory. Merge the
-`SafetyFunctions` block from `backend/app_cfg.yaml` into AppDaemon `apps.yaml`,
-then replace the installation-specific entity IDs and area IDs under
-`user_config`.
+Copy `backend/config/user_config.example.yml` to `user_config.yml`, replace the
+installation-specific values, and compile the deployable file:
+
+```powershell
+python backend/build_app_config.py
+python backend/build_app_config.py --check
+```
+
+Deploy `backend/SafetyFunctions.py` and `backend/components/`, then merge the
+generated `SafetyFunctions` block from `backend/app_cfg.yaml` into AppDaemon
+`apps.yaml`.
 
 After startup, verify that Home Assistant discovers
 `sensor.safety_app_health` through MQTT and that it reports `running`.
 
 ## Configuration
 
-`backend/app_cfg.yaml` separates:
+The configuration sources separate:
 
-- `app_config` — installation-independent policy, validation behavior,
-  calibration, and the stable fault catalog;
-- `user_config` — component enablement, Home Assistant entity/area bindings,
-  localization, notification bindings, MQTT settings, and per-room/per-door
-  calibration.
+- `system_config.yml` — application policy, calibration, stable fault catalog,
+  provider lifecycle, MQTT behavior, notification profiles, explicit health
+  monitoring, and per-dependency system checks;
+- `user_config.yml` — component selection, language, notification destinations,
+  site data, and Home Assistant entity/area bindings;
+- `app_cfg.yaml` — generated output; do not edit it directly.
 
 `config_version` must match the schema supported by the backend. Stable fault
 keys, Safety Mechanism IDs, entity IDs, MQTT topics, and raw state codes are

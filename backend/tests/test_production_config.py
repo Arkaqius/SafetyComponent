@@ -18,7 +18,7 @@ def test_production_door_timeouts_match_reviewed_calibration() -> None:
     doors = safety_doors["doors"]
 
     assert doors["GarageGate"]["timeout_seconds"] == 300
-    assert doors["ExternalGate"]["timeout_seconds"] == 300
+    assert doors["ExternalGate"]["timeout_seconds"] == 600
     assert doors["LivingRoomTerraceDoor"].get(
         "timeout_seconds", default_timeout
     ) == 120
@@ -38,3 +38,15 @@ def test_production_localization_and_area_references_are_explicit() -> None:
         door["area_id"]
         for door in components["SafetyDoorsComponent"]["doors"].values()
     )
+
+
+def test_other_appdaemon_health_entities_are_explicitly_monitored() -> None:
+    entities = _production_config()["user_config"]["safety_components"][
+        "EntityMonitorComponent"
+    ]["explicit_entities"]
+
+    assert {
+        "SmartHeatingAppHealth": "sensor.sh_health",
+        "GarageDoorAppHealth": "sensor.garage_door_health",
+        "ExternalGateAppHealth": "sensor.external_gate_health",
+    } == {key: value["entity_id"] for key, value in entities.items()}

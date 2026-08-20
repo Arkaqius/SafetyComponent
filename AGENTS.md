@@ -32,8 +32,9 @@ For documentation work:
 
 1. Classify the task as build or review and use brownfield mode by default.
 2. Inventory the affected documentation and governance surfaces before editing.
-3. Verify implementation claims against current code, `backend/app_cfg.yaml`,
-   and relevant tests.
+3. Verify implementation claims against current code,
+   `backend/config/system_config.yml`, `backend/config/user_config.yml`, the
+   generated `backend/app_cfg.yaml`, and relevant tests.
 4. Preserve the existing docs-as-code layout unless a migration is explicitly
    requested.
 5. Keep identifiers, requirements, links, examples, and configuration consistent

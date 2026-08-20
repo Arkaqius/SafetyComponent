@@ -36,6 +36,10 @@ def test_production_external_hazard_startup_is_wired_before_polling(tmp_path) ->
     raw["user_config"]["notification"]["persistence"]["state_file"] = str(
         state_file
     )
+    recovery_state_file = tmp_path / "recovery_state.json"
+    raw["user_config"]["recovery"]["persistence"]["state_file"] = str(
+        recovery_state_file
+    )
     app = SafetyFunctions(args=raw)
     service_calls: list[str] = []
 

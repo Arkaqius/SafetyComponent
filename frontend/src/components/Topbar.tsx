@@ -27,6 +27,8 @@ export default function Topbar({ menuButtonRef, navigationOpen, onMenuClick }: T
   const page = pageLabels[location.pathname] ?? pageLabels['/'];
   const healthState = normalizeState(healthEntity?.state);
   const isConnected = connection.ready && !connection.cannotConnect;
+  const safetyLabel = summary.activeFaultCount > 0 ? 'Aktywna usterka' : 'Brak aktywnych usterek';
+  const safetyTone = summary.activeFaultCount > 0 ? summary.tone : 'safe';
   const healthLabel =
     healthState === 'running'
       ? 'Usługa działa'
@@ -59,8 +61,8 @@ export default function Topbar({ menuButtonRef, navigationOpen, onMenuClick }: T
       <div aria-live='polite' className='topbar-statuses'>
         <div className='topbar-status-group'>
           <span className='topbar-status-label'>Bezpieczeństwo</span>
-          <StatusBadge pulse={summary.tone === 'critical'} tone={summary.tone}>
-            {summary.label}
+          <StatusBadge pulse={summary.activeFaultCount > 0 && summary.tone === 'critical'} tone={safetyTone}>
+            {safetyLabel}
           </StatusBadge>
         </div>
         <div className='topbar-status-group desktop-status'>

@@ -1,0 +1,338 @@
+app_definition:
+  module: SafetyFunctions
+  class: SafetyFunctions
+  log_level: ERROR
+  use_dictionary_unpacking: true
+app_config:
+  config_version: 1
+  strict_validation: true
+  validation:
+    validate_entity_id_syntax: true
+    validate_entity_existence: true
+  calibration:
+    temperature:
+      SM_TC_1_DEBOUNCE_LIMIT: 2
+      SM_TC_1_REEVAL_DELAY_SECONDS: 30
+      SM_TC_2_DEBOUNCE_LIMIT: 2
+      SM_TC_2_REEVAL_DELAY_SECONDS: 30
+      SM_TC_2_DERIVATIVE_SAMPLE_MINUTES: 15
+      SM_TC_MIN_VALID_TEMPERATURE_C: -40.0
+      SM_TC_MAX_VALID_TEMPERATURE_C: 80.0
+      SM_TC_MAX_ABS_RATE_C_PER_MIN: 0.25
+      SM_TC_MAX_FORECAST_DELTA_C: 6.0
+    entity_monitor:
+      startup_grace_seconds: 60
+      default_failure_debounce_seconds: 15
+      default_recovery_debounce_seconds: 60
+      evaluation_interval_seconds: 5
+      unhealthy_summary_limit: 32
+      component_overrides:
+        TemperatureKitchen:
+          failure_debounce_seconds: 15
+          recovery_debounce_seconds: 60
+          detection_budget_seconds: 1815
+          checks:
+            freshness:
+              timestamp_source: last_updated
+              max_silence_seconds: 1800
+  external_hazard_policy:
+    actuation_mode: manual_and_user_confirmed
+    decision_timeout_seconds: 1
+    clear_delay_seconds: 120
+    weather:
+      forecast_horizon_hours: 2
+      frost_watch_c: 2.0
+      frost_warning_c: 0.0
+      gust_watch_m_s: 15.0
+      gust_warning_m_s: 20.0
+      precipitation_warning_mm_h: 2.5
+      persistence_seconds: 120
+      hysteresis:
+        temperature_c: 0.5
+        gust_m_s: 1.0
+    outdoor_air_quality:
+      standard: european_aqi
+      warning_at: 60
+    providers:
+      OpenMeteoWeatherApiComponent:
+        base_url: https://api.open-meteo.com/v1/forecast
+        poll_interval_seconds: 600
+        request_timeout_seconds: 10
+        max_retries: 2
+        stale_after_seconds: 1200
+      ImgwWarningsApiComponent:
+        base_url: https://danepubliczne.imgw.pl/api/data/warningsmeteo
+        poll_interval_seconds: 300
+        request_timeout_seconds: 10
+        max_retries: 2
+        stale_after_seconds: 900
+      OpenMeteoAirQualityApiComponent:
+        base_url: https://air-quality-api.open-meteo.com/v1/air-quality
+        poll_interval_seconds: 1800
+        request_timeout_seconds: 10
+        max_retries: 2
+        stale_after_seconds: 2700
+  faults:
+    RiskyTemperature:
+      name: Niebezpieczna temperatura
+      level: 2
+      shadows:
+      - RiskyTemperatureForecast
+      related_sms:
+      - sm_tc_1
+      - sm_tc_3
+    RiskyTemperatureForecast:
+      name: Prognoza niebezpiecznej temperatury
+      level: 3
+      related_sms:
+      - sm_tc_2
+      - sm_tc_4
+    SafetyDoorOpenTimeout:
+      name: Zbyt długo otwarte drzwi lub brama
+      level: 2
+      related_sms:
+      - sm_safety_door_open_timeout
+    ExternalWeatherExposure:
+      name: Narażenie domu na zagrożenie pogodowe
+      level: 2
+      related_sms:
+      - sm_ext_weather_exposure
+    OutdoorAirQualityExposure:
+      name: Narażenie domu na zanieczyszczone powietrze
+      level: 3
+      related_sms:
+      - sm_ext_outdoor_air_quality_exposure
+    ExternalHazardDataUnavailable:
+      name: Brak danych o zagrożeniach zewnętrznych
+      level: 3
+      related_sms:
+      - sm_ext_provider_unavailable
+runtime_defaults:
+  notification:
+    mobile:
+      profiles:
+        1:
+          color: '#FF0000'
+          notification_icon: mdi:exit-run
+          android_channel: Safety critical
+          android_importance: max
+          android_priority: high
+          android_ttl: 0
+          vibration_pattern: 100, 1000, 100, 1000, 100
+          ios_interruption_level: time-sensitive
+          ios_critical_sound: false
+        2:
+          color: '#FFA500'
+          notification_icon: mdi:hazard-lights
+          android_channel: Safety hazards
+          android_importance: high
+          android_priority: high
+          android_ttl: 0
+          vibration_pattern: 100, 500, 100, 500
+          ios_interruption_level: time-sensitive
+          ios_critical_sound: false
+        3:
+          color: '#FFFF00'
+          notification_icon: mdi:home-alert
+          android_channel: Safety warnings
+          android_importance: default
+          android_priority: normal
+          android_ttl: 0
+          vibration_pattern: null
+          ios_interruption_level: active
+          ios_critical_sound: false
+    retry:
+      max_attempts: 3
+      base_delay_seconds: 5
+      max_delay_seconds: 60
+      deadlines_seconds:
+        1: 10
+        2: 30
+        3: 30
+    level_one_repeat:
+      enabled: true
+      interval_seconds: 60
+      max_repeats: 3
+    persistence:
+      enabled: true
+      state_file: /config/appdaemon/notification_state.json
+  recovery:
+    persistence:
+      enabled: true
+      state_file: /config/appdaemon/recovery_state.json
+  localization:
+    entity_names:
+      sensor.safety_app_health: Stan aplikacji bezpieczeństwa
+      sensor.notification_delivery_health: Stan dostarczania powiadomień
+      sensor.safetysystem_state: Stan systemu bezpieczeństwa
+      sensor.fault_riskytemperature: Niebezpieczna temperatura
+      sensor.fault_riskytemperatureforecast: Prognoza niebezpiecznej temperatury
+      sensor.fault_safetydooropentimeout: Zbyt długo otwarte drzwi lub brama
+      sensor.fault_externalweatherexposure: Narażenie domu na zagrożenie pogodowe
+      sensor.fault_outdoorairqualityexposure: Narażenie domu na zanieczyszczone powietrze
+      sensor.fault_externalhazarddataunavailable: Brak danych o zagrożeniach zewnętrznych
+      sensor.external_hazard_state: Zagrożenia zewnętrzne
+      sensor.external_provider_open_meteo_weather: Dane pogodowe Open-Meteo
+      sensor.external_provider_imgw_warnings: Ostrzeżenia IMGW
+      sensor.external_provider_open_meteo_air_quality: Jakość powietrza Open-Meteo
+      sensor.entity_health_smart_heating_app_health: Stan aplikacji ogrzewania
+      sensor.entity_health_garage_door_app_health: Stan sterownika bramy garażowej
+      sensor.entity_health_external_gate_app_health: Stan sterownika bramy zewnętrznej
+      sensor.safety_door_garagegate: Brama garażowa
+      sensor.safety_door_externalgate: Brama zewnętrzna
+      sensor.safety_door_livingroomterracedoor: Drzwi tarasowe w salonie
+      sensor.safety_door_garagedoor: Drzwi do garażu
+  api_components:
+    OpenMeteoWeatherApiComponent:
+      enabled: true
+    ImgwWarningsApiComponent:
+      enabled: true
+    OpenMeteoAirQualityApiComponent:
+      enabled: true
+  mqtt:
+    discovery_prefix: homeassistant
+    base_topic: safety_component
+    availability_topic: safety_component/status
+    device_identifier: safety_component
+    device_name: Safety Component
+    retain_discovery: true
+    retain_state: false
+    clear_retained_state_on_start: true
+    qos: 0
+    heartbeat_seconds: 60
+    expire_after: 180
+  safety_components:
+    EntityMonitorComponent:
+      explicit_entities:
+        SmartHeatingAppHealth:
+          entity_id: sensor.sh_health
+          description: Stan aplikacji AppDaemon SmartHeating
+          detection_budget_seconds: 30
+          checks:
+            allowed_values:
+              target: state
+              values:
+              - running
+        GarageDoorAppHealth:
+          entity_id: sensor.garage_door_health
+          description: Stan aplikacji AppDaemon sterującej bramą garażową
+          detection_budget_seconds: 30
+          checks:
+            allowed_values:
+              target: state
+              values:
+              - healthy
+        ExternalGateAppHealth:
+          entity_id: sensor.external_gate_health
+          description: Stan aplikacji AppDaemon sterującej bramą zewnętrzną
+          detection_budget_seconds: 30
+          checks:
+            allowed_values:
+              target: state
+              values:
+              - healthy
+    ExternalHazardComponent:
+      openings:
+        BathroomWindow:
+          hazards:
+          - frost
+          - wind
+          - rain
+          - storm
+          - outdoor_air_pollution
+        BedroomLeftWindow:
+          hazards:
+          - frost
+          - wind
+          - rain
+          - storm
+          - outdoor_air_pollution
+        BedroomRightWindow:
+          hazards:
+          - frost
+          - wind
+          - rain
+          - storm
+          - outdoor_air_pollution
+        KidsRoomWindow:
+          hazards:
+          - frost
+          - wind
+          - rain
+          - storm
+          - outdoor_air_pollution
+        KitchenWindow:
+          hazards:
+          - frost
+          - wind
+          - rain
+          - storm
+          - outdoor_air_pollution
+        LivingRoomTerraceDoor:
+          hazards:
+          - frost
+          - wind
+          - rain
+          - storm
+          - outdoor_air_pollution
+        LivingRoomWindow:
+          hazards:
+          - frost
+          - wind
+          - rain
+          - storm
+          - outdoor_air_pollution
+        OfficeWindow:
+          hazards:
+          - frost
+          - wind
+          - rain
+          - storm
+          - outdoor_air_pollution
+        EntranceDoor:
+          hazards:
+          - frost
+          - wind
+          - rain
+          - storm
+          - outdoor_air_pollution
+        UpperBathroomWindow:
+          hazards:
+          - frost
+          - wind
+          - rain
+          - storm
+          - outdoor_air_pollution
+    SafetyDoorsComponent:
+      defaults:
+        timeout_seconds: 120
+      doors:
+        GarageGate:
+          timeout_seconds: 300
+        ExternalGate:
+          timeout_seconds: 600
+        LivingRoomTerraceDoor:
+          condition:
+            pass_states:
+            - empty
+            blocked_states:
+            - occupied
+        GarageDoor:
+          timeout_seconds: 900
+    TemperatureComponent:
+      defaults:
+        CAL_LOW_TEMP_THRESHOLD: 18.0
+        CAL_HIGH_TEMP_THRESHOLD: 28.0
+        CAL_FORECAST_TIMESPAN: 2.0
+      rooms:
+        Office: {}
+        Bedroom: {}
+        Livingroom: {}
+        Kitchen: {}
+        Entrance: {}
+        Garage:
+          CAL_LOW_TEMP_THRESHOLD: 10.0
+          CAL_HIGH_TEMP_THRESHOLD: 28.0
+          CAL_FORECAST_TIMESPAN: 2.0
+        Kidsroom: {}
+        Upperbathroom: {}

@@ -157,8 +157,9 @@ fault and shall not prevent later quiet content refreshes.
 
 ### 4.4 Fault clear and shadow
 
-A cleared fault publishes a friendly resolved message with the same tag and
-removes the active record. A shadowed fault sends the Companion
+A cleared fault publishes a friendly resolved message with a dedicated
+localized clear title and the same tag, then removes the active record. A
+shadowed fault sends the Companion
 `clear_notification` command with the same tag. Pending attempts and scheduled
 repeats for that tag are removed in both cases.
 

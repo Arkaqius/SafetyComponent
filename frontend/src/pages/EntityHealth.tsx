@@ -148,16 +148,16 @@ function MonitoredView({
             ]}
           />
           <SelectFilter
-            label='Grupa'
+            label='Pochodzenie'
             onChange={value => {
               setSource(value as typeof source);
               setPage(1);
             }}
             value={source}
             options={[
-              ['all', 'A i B'],
-              ['explicit', 'A — wskazane'],
-              ['component', 'B — komponenty'],
+              ['all', 'Użytkownika i systemu'],
+              ['explicit', 'Wskazane przez użytkownika'],
+              ['component', 'Ochrona działania systemu'],
             ]}
           />
           <SelectFilter
@@ -210,7 +210,9 @@ function MonitoredView({
                       </td>
                       <td>{entity.areaName ?? 'Nieprzypisana'}</td>
                       <td>
-                        {entity.sourceGroups.map(sourceCode => (sourceCode === 'explicit' ? 'A — wskazana' : 'B — komponent')).join(' · ')}
+                        {entity.sourceGroups
+                          .map(sourceCode => (sourceCode === 'explicit' ? 'Wskazana przez użytkownika' : 'Ochrona działania systemu'))
+                          .join(' · ')}
                       </td>
                       <td>{localizedEntityState(entity.entityId, entity.currentState)}</td>
                       <td>
@@ -411,7 +413,7 @@ function InventoryView({
         )}
         {mode === 'entities' && (
           <SelectFilter
-            label='Źródło'
+            label='Pochodzenie'
             onChange={value => {
               setSource(value as typeof source);
               setPage(1);
@@ -419,9 +421,9 @@ function InventoryView({
             value={source}
             options={[
               ['all', 'Wszystkie'],
-              ['explicit', 'A — wskazane'],
-              ['component', 'B — komponenty'],
-              ['informational', 'C — informacyjne'],
+              ['explicit', 'Wskazane przez użytkownika'],
+              ['component', 'Ochrona działania systemu'],
+              ['informational', 'Pozostałe encje informacyjne'],
             ]}
           />
         )}
@@ -515,8 +517,10 @@ function InventoryEntityTable({
                   <small>{entity.entityId}</small>
                   <StatusBadge tone={entity.monitored ? 'info' : 'muted'}>
                     {entity.monitored
-                      ? `Monitorowana ${entity.monitored.sourceGroups.map(group => (group === 'explicit' ? 'A' : 'B')).join('/')}`
-                      : 'C — informacyjna'}
+                      ? entity.monitored.sourceGroups
+                          .map(group => (group === 'explicit' ? 'Wskazana przez użytkownika' : 'Ochrona działania systemu'))
+                          .join(' / ')
+                      : 'Pozostała encja informacyjna'}
                   </StatusBadge>
                 </button>
               </td>
@@ -727,7 +731,11 @@ function EntityDetails({ entity }: { entity: MonitoredEntityView }) {
       <dl className='entity-detail-grid'>
         <div>
           <dt>Źródło</dt>
-          <dd>{entity.sourceGroups.map(source => (source === 'explicit' ? 'A — wskazana' : 'B — komponent')).join(' · ')}</dd>
+          <dd>
+            {entity.sourceGroups
+              .map(source => (source === 'explicit' ? 'Wskazana przez użytkownika' : 'Ochrona działania systemu'))
+              .join(' · ')}
+          </dd>
         </div>
         <div>
           <dt>Właściciel</dt>

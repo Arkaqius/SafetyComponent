@@ -438,7 +438,7 @@ class NotificationManager:
             self._queue_delivery(
                 tag=tag,
                 level=level,
-                title=self._title(level),
+                title=self.localizer.text("notification.title.cleared"),
                 message=self._format_cleared_message(display_name, additional_info),
                 kind="resolved",
             )

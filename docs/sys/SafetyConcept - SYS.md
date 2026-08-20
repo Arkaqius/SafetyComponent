@@ -190,42 +190,38 @@ This chapter defines **notification levels and vectors** used by the Safety Syst
 - Dashboard “Main Safety Card” shows **current level badge** (HAZARD/WARNING/INFO) and supports **acknowledge** for L1–L3. Acknowledgement does **not** clear hazards; it silences repeats.
 - Lights used for signaling should restore to previous state when the event clears.
 
-### 4.5 Configuration Hooks (`backend/app_cfg.yaml`)
+### 4.5 Configuration sources and generated contract
 
-`backend/app_cfg.yaml` is the deployable configuration contract. It is rooted
-at the AppDaemon application name and separates application policy from
-installation bindings:
+`backend/config/system_config.yml` owns software policy, calibration, stable
+fault-to-Safety-Mechanism mappings, provider lifecycle, MQTT behavior, and
+system health checks. `backend/config/user_config.yml` owns only installation
+bindings and operator choices. `backend/build_app_config.py` merges both sources
+into the deployable `backend/app_cfg.yaml` contract:
 
 ```yaml
-SafetyFunctions:
-  app_config:
-    faults:
-      ExampleFault:
-        name: "Human-readable fault name"
-        level: 3
-        related_sms:
-          - "sm_example"
+app_config:
+  faults:
+    ExampleFault:
+      name: "Human-readable fault name"
+      level: 3
+      related_sms:
+        - "sm_example"
 
-  user_config:
-    notification:
-      mobile:
-        services:
-          - "notify/all_phones"
-        default_url: "https://ha.kojbito.org/5c36e1c9_hakit"
-      local:
-        light_entity: "light.info"
-      retry:
-        max_attempts: 3
-        base_delay_seconds: 5
-        max_delay_seconds: 60
-        deadlines_seconds: {1: 10, 2: 30, 3: 30}
-      level_one_repeat:
-        enabled: true
-        interval_seconds: 60
-        max_repeats: 3
-    localization:
-      language: "pl"
+user_config:
+  notification:
+    mobile:
+      services:
+        - "notify/all_phones"
+      default_url: "https://ha.kojbito.org/5c36e1c9_hakit"
+    local:
+      light_entity: "light.info"
+  localization:
+    language: "pl"
 ```
+
+The generated file shall not be edited directly. API credentials or other
+secrets shall remain in the deployment platform's secret store and shall not be
+committed to either source file.
 
 Every component section in §8 defines its exact `app_config` and `user_config`
 bindings. Configuration fields that are not represented by a validated schema
@@ -596,6 +592,9 @@ temperature.
 - Forecast-mechanism debounce and derivative sampling:
   `SM_TC_2_DEBOUNCE_LIMIT`, `SM_TC_2_REEVAL_DELAY_SECONDS`, and
   `SM_TC_2_DERIVATIVE_SAMPLE_MINUTES`.
+- Plausibility bounds: `SM_TC_MIN_VALID_TEMPERATURE_C`,
+  `SM_TC_MAX_VALID_TEMPERATURE_C`, `SM_TC_MAX_ABS_RATE_C_PER_MIN`, and
+  `SM_TC_MAX_FORECAST_DELTA_C`.
 
 #### 8.2.4 Runtime identifier contract
 
@@ -621,10 +620,11 @@ temperature.
 - **SYS-SR-TEMP-002:** Direct mechanisms shall compare the current numeric room
   temperature with the configured low or high threshold using strict `<` and
   `>` comparisons.
-- **SYS-SR-TEMP-003:** Forecast mechanisms shall calculate a projection from the
-  current temperature, `<temperature_sensor>_rate`, the configured forecast
-  timespan, and derivative sampling interval. No confidence input or confidence
-  gate is part of this mechanism contract.
+- **SYS-SR-TEMP-003:** Forecast mechanisms shall calculate a linear projection
+  from current temperature, the first derivative expressed in degrees Celsius
+  per minute, and the configured forecast timespan. The projection shall be
+  rejected when its rate, delta, or resulting temperature exceeds calibrated
+  plausibility bounds.
 - **SYS-SR-TEMP-004:** Missing, non-numeric, non-finite, `unknown`,
   `unavailable`, or otherwise invalid temperature or derivative input shall not
   constitute positive evidence to set or clear an active temperature symptom.
@@ -1000,7 +1000,8 @@ entity is safety-relevant through Group A or B.
 #### 8.5.2 Inputs and outputs
 
 - **IR-009 Home Assistant Entity Health** state and registry metadata.
-- Group A configuration supplied by the installation.
+- Group A configuration supplied by system calibration for explicitly selected
+  installation dependencies, including health outputs from other applications.
 - Group B dependency contracts registered by Safety Components and the
   application core, including every configured `common_entities` binding.
 - Per-entity diagnostic MQTT sensors and an aggregate C-ENT summary for Groups
@@ -1027,9 +1028,9 @@ entity is safety-relevant through Group A or B.
   exceed the detection budget allocated from its applicable FTTI. When
   freshness is enabled, freshness timeout plus failure debounce shall also fit
   that budget.
-- Calibration is per entity for Group A and per dependency contract for Group
-  B. Global defaults may reduce repetition but shall not override a more
-  specific policy.
+- Calibration is per entity for Group A and per stable dependency key for Group
+  B. A Group B override may replace debounce, detection budget, and optional
+  check thresholds without changing the component-owned entity binding.
 
 #### 8.5.4 Runtime identifier contract
 
@@ -1056,6 +1057,10 @@ entity is safety-relevant through Group A or B.
 - **SYS-SR-ENT-003:** Group B shall be derived from validated component and core
   dependency declarations, including all configured common entities, without
   duplicating those entity IDs in installation configuration.
+- **SYS-SR-ENT-003A:** System calibration shall support a validated override by
+  stable Group B dependency key for failure debounce, recovery debounce,
+  detection budget, and optional check thresholds; unknown keys shall invalidate
+  startup configuration.
 - **SYS-SR-ENT-004:** Availability shall be evaluated for every Group A and
   Group B entity. Freshness shall be evaluated only when the applicable
   calibration declares a trustworthy heartbeat or timestamp source and

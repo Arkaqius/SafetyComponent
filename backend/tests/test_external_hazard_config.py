@@ -37,11 +37,11 @@ def test_external_hazard_config_normalizes_all_three_independent_providers() -> 
         "OpenMeteoAirQualityApiComponent",
         "OpenMeteoWeatherApiComponent",
     ]
-    assert len(external["openings"]) == 12
-    assert external["openings"]["GarageGate"]["actuator_entity_id"] == (
-        "cover.brama_garazowa"
+    assert len(external["openings"]) == 10
+    assert all(
+        opening["actuator_entity_id"] is None
+        for opening in external["openings"].values()
     )
-    assert external["openings"]["ExternalGate"]["actuator_entity_id"] == "cover.gate"
 
 
 def test_enabled_external_hazard_rejects_a_missing_provider_binding() -> None:
@@ -54,9 +54,12 @@ def test_enabled_external_hazard_rejects_a_missing_provider_binding() -> None:
 
 def test_external_hazard_rejects_unconfirmed_or_non_cover_actuation() -> None:
     config = copy.deepcopy(_production_config())
-    config["user_config"]["safety_components"]["ExternalHazardComponent"][
-        "openings"
-    ]["GarageGate"]["actuator_entity_id"] = (
+    opening = config["user_config"]["safety_components"][
+        "ExternalHazardComponent"
+    ]["openings"]["BathroomWindow"]
+    opening["kind"] = "garage_door"
+    opening["execution_policy"] = "user_confirmed"
+    opening["actuator_entity_id"] = (
         "button.garaz_przekaznik_bramy_garazowej_garage_gate_pulse"
     )
 

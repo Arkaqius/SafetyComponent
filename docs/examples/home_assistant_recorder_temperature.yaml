@@ -1,0 +1,13 @@
+# Merge these explicit entities into the existing recorder configuration.
+# Do not replace unrelated include/exclude rules in configuration.yaml.
+recorder:
+  include:
+    entities:
+      - sensor.office_climatesensor_temperature
+      - sensor.bedroom_climatesensor_temperature
+      - sensor.livingroom_climatesensor_temperature
+      - sensor.thermostat_hc1_current_room_temperature_2
+      - sensor.entrance_climatesensor_temperature
+      - sensor.garage_climatesensor_temperature
+      - sensor.kidsroom_climatesensor_temperature
+      - sensor.upperbathroom_climatesensor_temperature

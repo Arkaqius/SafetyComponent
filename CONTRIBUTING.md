@@ -17,7 +17,8 @@ an agent must use the `technical-documentation` skill in brownfield mode.
    - SYS for system/component requirements;
    - SSRD for software requirements;
    - feature architecture for detailed component/provider contracts;
-   - `backend/app_cfg.yaml`, code, and tests for current runtime evidence.
+   - `backend/config/system_config.yml`, `backend/config/user_config.yml`, the
+     generated `backend/app_cfg.yaml`, code, and tests for runtime evidence.
 4. Ask before changing stable fault keys, Safety Mechanism IDs, MQTT topics,
    entity IDs, raw state codes, configuration contracts, or actuator behavior.
 
@@ -72,8 +73,9 @@ When a safety contract changes:
 1. update HARA when the hazard, classification, or safety goal changes;
 2. update SYS component allocation and traceability;
 3. update SSRD and feature architecture as applicable;
-4. update `backend/app_cfg.yaml` examples and schemas together when the
-   deployable configuration contract changes;
+4. update both configuration sources, their example, the generated
+   `backend/app_cfg.yaml`, and schemas together when the deployable contract
+   changes;
 5. update tests and README navigation;
 6. verify every changed link, identifier, path, table, and command.
 
