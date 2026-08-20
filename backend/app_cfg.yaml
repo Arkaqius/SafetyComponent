@@ -33,11 +33,11 @@ SafetyFunctions:
           TemperatureKitchen:
             failure_debounce_seconds: 15
             recovery_debounce_seconds: 60
-            detection_budget_seconds: 1815
+            detection_budget_seconds: 7215
             checks:
               freshness:
                 timestamp_source: last_updated
-                max_silence_seconds: 1800
+                max_silence_seconds: 7200
     external_hazard_policy:
       actuation_mode: manual_and_user_confirmed
       decision_timeout_seconds: 1
