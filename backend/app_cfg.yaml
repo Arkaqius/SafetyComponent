@@ -224,7 +224,7 @@ SafetyFunctions:
                 values:
                 - running
           GarageDoorAppHealth:
-            entity_id: sensor.garage_door_health
+            entity_id: sensor.garage_door_health_2
             description: Stan aplikacji AppDaemon sterującej bramą garażową
             detection_budget_seconds: 30
             checks:
@@ -233,7 +233,7 @@ SafetyFunctions:
                 values:
                 - healthy
           ExternalGateAppHealth:
-            entity_id: sensor.external_gate_health
+            entity_id: sensor.external_gate_health_2
             description: Stan aplikacji AppDaemon sterującej bramą zewnętrzną
             detection_budget_seconds: 30
             checks:

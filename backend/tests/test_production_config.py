@@ -47,6 +47,6 @@ def test_other_appdaemon_health_entities_are_explicitly_monitored() -> None:
 
     assert {
         "SmartHeatingAppHealth": "sensor.sh_health",
-        "GarageDoorAppHealth": "sensor.garage_door_health",
-        "ExternalGateAppHealth": "sensor.external_gate_health",
+        "GarageDoorAppHealth": "sensor.garage_door_health_2",
+        "ExternalGateAppHealth": "sensor.external_gate_health_2",
     } == {key: value["entity_id"] for key, value in entities.items()}
