@@ -30,11 +30,11 @@ app_config:
         TemperatureKitchen:
           failure_debounce_seconds: 15
           recovery_debounce_seconds: 60
-          detection_budget_seconds: 7215
+          detection_budget_seconds: 14415
           checks:
             freshness:
               timestamp_source: last_updated
-              max_silence_seconds: 7200
+              max_silence_seconds: 14400
   external_hazard_policy:
     actuation_mode: manual_and_user_confirmed
     decision_timeout_seconds: 1

@@ -664,3 +664,21 @@ def test_polish_copy_and_acknowledgement_action_are_localized() -> None:
     assert sent["message"] == (
         "Wymaga uwagi: Niebezpieczna temperatura.\nLokalizacja: Biuro"
     )
+
+
+def test_polish_freshness_notification_labels_elapsed_time() -> None:
+    hass = make_hass()
+    manager = NotificationManager(hass, {}, localizer=Localizer({"language": "pl"}))
+
+    manager.notify(
+        "EntityHealthTemperatureKitchen",
+        3,
+        FaultState.SET,
+        {"freshness_age": "4 h 0 min 16 s"},
+        "freshness-pl",
+        friendly_name="Problem z encją: Termostat HC1",
+    )
+
+    sent = notify_calls(hass)[-1].kwargs
+    assert "Czas od ostatniej aktualizacji: 4 h 0 min 16 s" in sent["message"]
+    assert "Wartość zmierzona lub prognozowana" not in sent["message"]

@@ -658,14 +658,13 @@ class EntityMonitorComponent(SafetyComponent):
     def _symptom_context(
         self, runtime: EntityRuntime, check_name: str, state: CheckRuntime
     ) -> dict[str, Any]:
-        return {
+        context = {
             "entity_id": runtime.dependency.entity_id,
             "entity_key": runtime.dependency.key,
             "friendly_name": self._friendly_name(runtime.snapshot, runtime.dependency),
             "area_name": runtime.dependency.area_name or "",
             "failed_check": check_name,
             "reason": state.reason,
-            "observed_value": state.observed_value,
             "current_value": (runtime.snapshot or {}).get("state"),
             "last_valid_value": runtime.last_valid_value,
             "last_valid_at": (
@@ -678,6 +677,28 @@ class EntityMonitorComponent(SafetyComponent):
             ),
             "evaluated_at": state.evaluated_at.isoformat() if state.evaluated_at else "",
         }
+        if check_name == "freshness":
+            context["freshness_age"] = self._format_duration_seconds(
+                state.observed_value
+            )
+        else:
+            context["observed_value"] = state.observed_value
+        return context
+
+    @staticmethod
+    def _format_duration_seconds(value: Any) -> str:
+        """Format a diagnostic age without presenting seconds as a measurement."""
+
+        try:
+            seconds = float(value)
+        except (TypeError, ValueError):
+            return str(value)
+        if not math.isfinite(seconds):
+            return str(value)
+        total_seconds = max(0, int(round(seconds)))
+        hours, remainder = divmod(total_seconds, 3600)
+        minutes, remaining_seconds = divmod(remainder, 60)
+        return f"{hours} h {minutes} min {remaining_seconds} s"
 
     def _merge_dependencies(self, raw_dependencies: list[dict[str, Any]]) -> list[EntityDependency]:
         grouped: dict[str, list[dict[str, Any]]] = {}

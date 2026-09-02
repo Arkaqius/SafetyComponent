@@ -270,3 +270,19 @@ def test_entity_monitor_merges_memberships_for_same_entity(mocked_hass_app_basic
         "TemperatureComponent",
         "ExternalHazardComponent",
     )
+
+
+def test_freshness_fault_context_formats_age_as_duration(mocked_hass_app_basic):
+    app, _, component = _component(mocked_hass_app_basic)
+    now = datetime(2026, 8, 13, 10, 0, tzinfo=timezone.utc)
+    app.get_state = MagicMock(return_value=_snapshot("21.5", now))
+    component.get_symptoms_data({"EntityMonitorComponent": component}, _config())
+    runtime = component._entities["TemperatureOffice"]
+    state = runtime.checks["freshness"]
+    state.reason = "freshness_expired"
+    state.observed_value = 7222.761
+
+    context = component._symptom_context(runtime, "freshness", state)
+
+    assert context["freshness_age"] == "2 h 0 min 23 s"
+    assert "observed_value" not in context

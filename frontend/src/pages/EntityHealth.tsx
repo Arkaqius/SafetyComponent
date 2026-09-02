@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import Icon from '../components/Icon';
 import StatusBadge from '../components/StatusBadge';
 import {
+  formatEntityCheckObservation,
   type EntityCheckView,
   type EntityHealth as EntityHealthState,
   type InventoryDeviceView,
@@ -816,7 +817,7 @@ function CheckRow({ check }: { check: EntityCheckView }) {
     <article className='check-row'>
       <div>
         <strong>{checkLabel(check.check)}</strong>
-        <span>{reasonLabel(check.reason, check.observedValue)}</span>
+        <span>{reasonLabel(check.check, check.reason, check.observedValue)}</span>
       </div>
       <StatusBadge tone={tone}>{resultLabel(check.result)}</StatusBadge>
       <small>{Object.keys(check.calibration).length ? calibrationLabel(check.calibration) : 'Kontrola podstawowa'}</small>
@@ -936,7 +937,7 @@ function resultLabel(value: string): string {
     )[value] ?? value
   );
 }
-function reasonLabel(reason: string, value: unknown): string {
+function reasonLabel(check: string, reason: string, value: unknown): string {
   const labels: Record<string, string> = {
     entity_available: 'Encja odpowiada',
     entity_unavailable: 'Encja zgłasza brak dostępności',
@@ -960,7 +961,8 @@ function reasonLabel(reason: string, value: unknown): string {
     target_unavailable: 'Brak wartości do oceny',
     unsupported_check: 'Nieobsługiwany rodzaj kontroli',
   };
-  const observed = value === null || value === undefined ? '' : ` · odczyt: ${String(value)}`;
+  const observation = formatEntityCheckObservation(check, value);
+  const observed = observation ? ` · ${observation}` : '';
   return `${labels[reason] ?? reason}${observed}`;
 }
 function calibrationLabel(calibration: Record<string, unknown>): string {
