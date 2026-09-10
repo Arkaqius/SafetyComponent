@@ -98,8 +98,10 @@ Each entry has a stable installation key and contains:
 - failure and recovery debounce;
 - an enabled/disabled flag that preserves the stable key.
 
-Group A configuration is installation-specific and belongs under
-`user_config.safety_components.EntityMonitorComponent`.
+Group A selection belongs to `system_config.yml` under
+`runtime_defaults.safety_components.EntityMonitorComponent`; generated runtime
+configuration places the validated entries under `EntityMonitorComponent`.
+This keeps health-policy thresholds out of the end-user binding file.
 
 ### 4.2 Group B - component dependencies
 
@@ -117,8 +119,9 @@ contains:
 - optional area/device context.
 
 All entries in `user_config.common_entities` are registered as Group B records.
-Component schemas or core policy own the calibration; an installation shall not
-have to repeat the same entity in Group A.
+Component schemas or core policy own defaults. System calibration may override
+failure/recovery debounce, detection budget, and check thresholds by stable
+dependency key; an installation shall not repeat the same entity in Group A.
 
 Examples of Group B dependencies include temperature inputs registered by
 `TemperatureComponent`, door contacts registered by `SafetyDoorsComponent`,
@@ -468,9 +471,11 @@ virtualization or pagination, and collapsed device groups bound rendering cost.
 
 ## 14. Configuration contract
 
-Global policy belongs in `app_config.calibration.entity_monitor`. Explicit
-installation selection belongs in
-`user_config.safety_components.EntityMonitorComponent`.
+Global policy and component-dependency overrides belong in
+`system_config.yml` under `app_config.calibration.entity_monitor`. Explicit
+installation health dependencies belong in the same system-owned source under
+`runtime_defaults.safety_components.EntityMonitorComponent`. The end-user file
+only selects whether the component is enabled.
 
 The following is a structural example; the entity ID is illustrative rather
 than an installation mapping:
@@ -482,32 +487,33 @@ app_config:
       startup_grace_seconds: 60
       default_failure_debounce_seconds: 15
       default_recovery_debounce_seconds: 60
-
-user_config:
-  components_enabled:
-    EntityMonitorComponent: true
-
-  safety_components:
-    EntityMonitorComponent:
-      explicit_entities:
-        BedroomTrv:
-          entity_id: "climate.bedroom_radiator"
-          area_id: "bedroom"
-          description: "Heating dependency used by the bedroom automation"
-          detection_budget_seconds: 120
-          failure_debounce_seconds: 15
-          recovery_debounce_seconds: 60
+      component_overrides:
+        TemperatureBedroom:
+          detection_budget_seconds: 615
           checks:
             freshness:
               timestamp_source: "last_updated"
-              max_silence_seconds: 45
+              max_silence_seconds: 600
+
+runtime_defaults:
+  safety_components:
+    EntityMonitorComponent:
+      explicit_entities:
+        HeatingAppHealth:
+          entity_id: "sensor.heating_app_health"
+          description: "Health output of another AppDaemon application"
+          detection_budget_seconds: 30
+          failure_debounce_seconds: 15
+          recovery_debounce_seconds: 60
+          checks:
             allowed_values:
               target: "state"
-              values: ["heat", "off", "auto"]
+              values: ["running"]
 ```
 
-Group B declarations are created from already validated component configuration
-and code-owned contracts. They are not copied into this user configuration.
+Group B declarations are created from already validated component bindings and
+code-owned defaults. Their thresholds may be overridden only by stable key in
+the system-owned calibration source; they are not copied into user config.
 
 Strict validation rejects:
 

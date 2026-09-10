@@ -1038,9 +1038,10 @@ def test_recovery_performed_callback(mocked_hass_app_with_temp_component):
     # Mock the `_recovery_clear` method to track if it is called
     recovery_manager._recovery_clear = Mock()
 
-    # Define the symptom that will be passed in `cb_args`
+    # Define the symptom resolved from the stable callback identifier.
     symptom = Mock()
     symptom.name = "TestSymptom"
+    recovery_manager.fm.symptoms[symptom.name] = symptom
 
     # Call `_recovery_performed` directly with the mock callback arguments
     recovery_manager._pending_recovery_confirmations[symptom.name] = {
@@ -1048,7 +1049,7 @@ def test_recovery_performed_callback(mocked_hass_app_with_temp_component):
     }
     recovery_manager.hass_app.get_state = Mock(return_value="on")
     cb_args = {
-        "symptom": symptom,
+        "symptom_name": symptom.name,
         "confirmation_entity": "sensor.test",
         "expected_state": "on",
     }
@@ -1118,6 +1119,7 @@ def test_recovery_waits_for_all_postconditions(
 
     symptom = Mock()
     symptom.name = "MultiConfirmation"
+    recovery_manager.fm.symptoms[symptom.name] = symptom
     recovery_manager._pending_recovery_confirmations[symptom.name] = {
         "binary_sensor.window_a": "off",
         "binary_sensor.window_b": "off",
@@ -1135,7 +1137,7 @@ def test_recovery_waits_for_all_postconditions(
         None,
         None,
         "off",
-        symptom=symptom,
+        symptom_name=symptom.name,
         confirmation_entity="binary_sensor.window_a",
         expected_state="off",
     )
@@ -1147,7 +1149,7 @@ def test_recovery_waits_for_all_postconditions(
         None,
         None,
         "off",
-        symptom=symptom,
+        symptom_name=symptom.name,
         confirmation_entity="binary_sensor.window_b",
         expected_state="off",
     )
@@ -1164,6 +1166,7 @@ def test_stale_listener_cannot_clear_retriggered_recovery(
 
     symptom = Mock()
     symptom.name = "Retriggered"
+    recovery_manager.fm.symptoms[symptom.name] = symptom
     recovery_manager._pending_recovery_confirmations[symptom.name] = {
         "cover.office_window": "open"
     }
@@ -1173,7 +1176,7 @@ def test_stale_listener_cannot_clear_retriggered_recovery(
         None,
         None,
         "closed",
-        symptom=symptom,
+        symptom_name=symptom.name,
         confirmation_entity="cover.office_window",
         expected_state="closed",
     )
@@ -1192,6 +1195,7 @@ def test_delayed_callback_does_not_replace_current_entity_state(
 
     symptom = Mock()
     symptom.name = "DelayedCallback"
+    recovery_manager.fm.symptoms[symptom.name] = symptom
     recovery_manager._pending_recovery_confirmations[symptom.name] = {
         "cover.office_window": "closed"
     }
@@ -1201,7 +1205,7 @@ def test_delayed_callback_does_not_replace_current_entity_state(
         None,
         None,
         "closed",
-        symptom=symptom,
+        symptom_name=symptom.name,
         confirmation_entity="cover.office_window",
         expected_state="closed",
     )
@@ -1229,7 +1233,7 @@ def test_actuator_only_cover_waits_for_closed_state(
         recovery_manager._recovery_performed,
         "cover.office_window",
         new="closed",
-        symptom=symptom,
+        symptom_name=symptom.name,
         confirmation_entity="cover.office_window",
         expected_state="closed",
     )
@@ -1252,6 +1256,7 @@ def test_recovery_listeners_remain_active_until_all_postconditions_match(
 
     symptom = Mock()
     symptom.name = "PersistentConfirmation"
+    recovery_manager.fm.symptoms[symptom.name] = symptom
     recovery_manager._listen_to_changes(
         symptom,
         {
@@ -1273,7 +1278,7 @@ def test_recovery_listeners_remain_active_until_all_postconditions_match(
         None,
         None,
         "off",
-        symptom=symptom,
+        symptom_name=symptom.name,
         confirmation_entity="binary_sensor.window_b",
         expected_state="off",
     )

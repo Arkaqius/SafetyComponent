@@ -220,6 +220,7 @@ class NotificationConfig(StrictBaseModel):
             "source_time",
             "valid_to",
             "freshness",
+            "freshness_age",
             "source_reference",
             "severity",
             "confirmation",

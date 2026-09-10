@@ -1,5 +1,4 @@
 import Icon from '../components/Icon';
-import ActionsList from '../components/ActionsList';
 import StatusBadge from '../components/StatusBadge';
 import {
   formatRelativeTime,
@@ -11,10 +10,7 @@ import {
 import { useSafetyEntities } from '../hooks/useSafetyEntities';
 
 export default function ExternalHazards() {
-  const { externalHazards, recoveries } = useSafetyEntities();
-  const externalRecoveries = recoveries.filter(
-    recovery => recovery.proposalId.startsWith('ExternalWeatherExposure') || recovery.proposalId.startsWith('OutdoorAirQualityExposure')
-  );
+  const { externalHazards } = useSafetyEntities();
   const presentation = hazardPresentation(externalHazards.status);
   const healthyProviders = externalHazards.providers.filter(provider => provider.status === 'ok').length;
 
@@ -37,8 +33,6 @@ export default function ExternalHazards() {
           <small>Ocena {formatRelativeTime(externalHazards.lastEvaluatedAt ?? externalHazards.lastUpdated)}</small>
         </div>
       </section>
-
-      <ActionsList recoveries={externalRecoveries} />
 
       <section aria-label='Podsumowanie zagrożeń zewnętrznych' className='metric-strip'>
         <Metric

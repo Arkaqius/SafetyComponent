@@ -290,6 +290,9 @@ class SafetyFunctions(hass.Hass):
             return
         failure_debounce = int(monitor_cfg["default_failure_debounce_seconds"])
         recovery_debounce = int(monitor_cfg["default_recovery_debounce_seconds"])
+        component_overrides = monitor_cfg.get("component_overrides", {})
+        if not isinstance(component_overrides, Mapping):
+            raise ValueError("Entity Monitor component_overrides must be a mapping")
         dependencies: list[dict[str, Any]] = []
         for component_name, component_cls in get_registered_components().items():
             if component_name == "EntityMonitorComponent":
@@ -299,13 +302,12 @@ class SafetyFunctions(hass.Hass):
                 continue
             for dependency in component_cls.get_entity_dependencies(component_cfg):
                 dependencies.append(
-                    {
-                        **dependency,
-                        "source": "component",
-                        "fault_owner": "entity_monitor",
-                        "failure_debounce_seconds": failure_debounce,
-                        "recovery_debounce_seconds": recovery_debounce,
-                    }
+                    self._calibrate_component_dependency(
+                        dependency,
+                        component_overrides,
+                        failure_debounce,
+                        recovery_debounce,
+                    )
                 )
         for key, entity_id in self.common_entities_cfg.items():
             checks = (
@@ -320,7 +322,8 @@ class SafetyFunctions(hass.Hass):
                 else {}
             )
             dependencies.append(
-                {
+                self._calibrate_component_dependency(
+                    {
                     "key": "Common" + "".join(
                         part.capitalize() for part in str(key).split("_")
                     ),
@@ -331,23 +334,34 @@ class SafetyFunctions(hass.Hass):
                     "detection_budget_seconds": (
                         3615 if key == "outside_temp" else 30
                     ),
-                    "source": "component",
-                    "fault_owner": "entity_monitor",
-                    "failure_debounce_seconds": failure_debounce,
-                    "recovery_debounce_seconds": recovery_debounce,
-                }
+                    },
+                    component_overrides,
+                    failure_debounce,
+                    recovery_debounce,
+                )
+            )
+        dependency_keys = {str(item["key"]) for item in dependencies}
+        unknown_overrides = sorted(set(component_overrides) - dependency_keys)
+        if unknown_overrides:
+            raise ValueError(
+                "Entity Monitor component_overrides reference unknown dependencies: "
+                + ", ".join(unknown_overrides)
             )
         for dependency in dependencies:
             budget = dependency.get("detection_budget_seconds")
             if budget is None:
                 continue
-            if failure_debounce > int(budget):
+            dependency_failure_debounce = int(
+                dependency["failure_debounce_seconds"]
+            )
+            if dependency_failure_debounce > int(budget):
                 raise ValueError(
                     f"{dependency['key']} availability debounce exceeds detection budget"
                 )
             freshness = dependency.get("checks", {}).get("freshness")
             if freshness and (
-                int(freshness["max_silence_seconds"]) + failure_debounce
+                int(freshness["max_silence_seconds"])
+                + dependency_failure_debounce
                 > int(budget)
             ):
                 raise ValueError(
@@ -355,6 +369,47 @@ class SafetyFunctions(hass.Hass):
                     "exceed detection budget"
                 )
         monitor_cfg["component_entities"] = dependencies
+
+    @staticmethod
+    def _calibrate_component_dependency(
+        dependency: Mapping[str, Any],
+        overrides: Mapping[str, Any],
+        default_failure_debounce: int,
+        default_recovery_debounce: int,
+    ) -> dict[str, Any]:
+        """Apply the system calibration for one Group B dependency."""
+
+        calibrated = {
+            **dependency,
+            "source": "component",
+            "fault_owner": "entity_monitor",
+            "failure_debounce_seconds": default_failure_debounce,
+            "recovery_debounce_seconds": default_recovery_debounce,
+        }
+        override = overrides.get(str(dependency["key"]), {})
+        if not isinstance(override, Mapping):
+            raise ValueError(
+                f"Entity Monitor override for {dependency['key']} must be a mapping"
+            )
+        override_checks = override.get("checks")
+        if override_checks is not None:
+            if not isinstance(override_checks, Mapping):
+                raise ValueError(
+                    f"Entity Monitor checks override for {dependency['key']} "
+                    "must be a mapping"
+                )
+            calibrated["checks"] = {
+                **dict(calibrated.get("checks", {})),
+                **dict(override_checks),
+            }
+        for key in (
+            "failure_debounce_seconds",
+            "recovery_debounce_seconds",
+            "detection_budget_seconds",
+        ):
+            if key in override:
+                calibrated[key] = override[key]
+        return calibrated
 
     def _initialize_mqtt(self) -> bool:
         """Validate MQTT settings and initialize discovery in an offline state."""

@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { Link } from 'react-router-dom';
 import ActionsList from '../components/ActionsList';
+import AverageTemperatureDialog from '../components/AverageTemperatureDialog';
 import DoorLastActivity from '../components/DoorLastActivity';
 import EntityDetailsDialog from '../components/EntityDetailsDialog';
 import FaultSection from '../components/FaultSection';
@@ -19,6 +20,7 @@ import { ENTITY_MONITOR_SUMMARY_ID } from '../domain/entityHealth';
 
 export default function Dashboard() {
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
+  const [averageDialogOpen, setAverageDialogOpen] = useState(false);
   const closeEntityDetails = useCallback(() => setSelectedEntityId(null), []);
   const { entities, entityMonitorSummary, externalHazards, faults, recoveries, safetyDoors, summary, systemEntity, temperatures } =
     useSafetyEntities();
@@ -114,6 +116,7 @@ export default function Dashboard() {
           label='Średnia temperatura'
           tone={average === null ? 'muted' : 'info'}
           value={temperatureValue(average)}
+          onClick={() => setAverageDialogOpen(true)}
         />
         <SummaryCard
           detail={minimum?.roomName ?? 'Brak dostępnego pomiaru'}
@@ -237,6 +240,13 @@ export default function Dashboard() {
           )}
         </section>
       </div>
+      <AverageTemperatureDialog
+        average={average}
+        onClose={() => setAverageDialogOpen(false)}
+        onSelectEntity={setSelectedEntityId}
+        open={averageDialogOpen}
+        temperatures={temperatures}
+      />
       <EntityDetailsDialog entities={entities} entityId={selectedEntityId} onClose={closeEntityDetails} />
     </div>
   );

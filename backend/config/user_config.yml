@@ -1,0 +1,129 @@
+# Installation-owned values. Copy this file and replace only values
+# belonging to the Home Assistant instance. Do not add policy here.
+user_config:
+  components_enabled:
+    TemperatureComponent: true
+    SafetyDoorsComponent: true
+    ExternalHazardComponent: true
+    EntityMonitorComponent: true
+  common_entities:
+    outside_temp: sensor.dom_temperature
+  site:
+    latitude: 50.01253611215521
+    longitude: 20.116336941719055
+    timezone: Europe/Warsaw
+    country_code: PL
+    teryt_codes:
+    - '1219'
+  notification:
+    mobile:
+      services:
+      - notify/all_phones
+      default_url: https://ha.kojbito.org/5c36e1c9_hakit
+    local: {}
+    wan_entity: null
+  localization:
+    language: pl
+  safety_components:
+    ExternalHazardComponent:
+      openings:
+        BathroomWindow:
+          area_id: bathroom
+          entity_id: binary_sensor.bathroom_window_contact_contact
+          friendly_name: Okno łazienki
+          kind: window
+        BedroomLeftWindow:
+          area_id: 45dba350035011ebb7723b97d0dd3541
+          entity_id: binary_sensor.bedroom_windowleft_sensor_contact
+          friendly_name: Lewe okno sypialni
+          kind: window
+        BedroomRightWindow:
+          area_id: 45dba350035011ebb7723b97d0dd3541
+          entity_id: binary_sensor.bedroom_windowright_sensor_contact_contact
+          friendly_name: Prawe okno sypialni
+          kind: window
+        KidsRoomWindow:
+          area_id: kids_room
+          entity_id: binary_sensor.kidsroom_window_contact_contact
+          friendly_name: Okno pokoju dzieci
+          kind: window
+        KitchenWindow:
+          area_id: 45db9126035011ebb67629f8118eef32
+          entity_id: binary_sensor.kitchen_window_contact_contact
+          friendly_name: Okno kuchni
+          kind: window
+        LivingRoomTerraceDoor:
+          area_id: 45db77f4035011eb9a3115c8afedaa08
+          entity_id: binary_sensor.livingroom_door_contact_contact
+          friendly_name: Drzwi tarasowe salonu
+          kind: door
+        LivingRoomWindow:
+          area_id: 45db77f4035011eb9a3115c8afedaa08
+          entity_id: binary_sensor.livingroom_window_contact_contact
+          friendly_name: Okno salonu
+          kind: window
+        OfficeWindow:
+          area_id: office
+          entity_id: binary_sensor.office_window_contact_contact
+          friendly_name: Okno biura
+          kind: window
+        EntranceDoor:
+          area_id: entryway
+          entity_id: binary_sensor.entrance_door_contact_contact
+          friendly_name: Drzwi wejściowe
+          kind: door
+        UpperBathroomWindow:
+          area_id: upper_bathroom
+          entity_id: binary_sensor.upperbathroom_window_contact_contact
+          friendly_name: Okno górnej łazienki
+          kind: window
+    SafetyDoorsComponent:
+      doors:
+        GarageGate:
+          area_id: garage
+          entity_id: binary_sensor.garage_gatedoorlow_contact_contact
+        ExternalGate:
+          area_id: frontyard
+          entity_id: binary_sensor.frontyard_externalgate_contact_contact
+        LivingRoomTerraceDoor:
+          area_id: 45db77f4035011eb9a3115c8afedaa08
+          entity_id: binary_sensor.livingroom_door_contact_contact
+          condition:
+            entity_id: sensor.home_monitor_occupancy
+        GarageDoor:
+          area_id: garage
+          entity_id: binary_sensor.garage_door_contact_contact
+    TemperatureComponent:
+      rooms:
+        Office:
+          area_id: office
+          temperature_sensor: sensor.office_climatesensor_temperature
+          window_sensor: binary_sensor.office_window_contact_contact
+        Bedroom:
+          area_id: 45dba350035011ebb7723b97d0dd3541
+          temperature_sensor: sensor.bedroom_climatesensor_temperature
+          window_sensor: binary_sensor.bedroom_windowleft_sensor_contact
+        Livingroom:
+          area_id: 45db77f4035011eb9a3115c8afedaa08
+          temperature_sensor: sensor.livingroom_climatesensor_temperature
+          window_sensor: binary_sensor.livingroom_door_contact_contact
+        Kitchen:
+          area_id: 45db9126035011ebb67629f8118eef32
+          temperature_sensor: sensor.thermostat_hc1_current_room_temperature_2
+          window_sensor: binary_sensor.kitchen_window_contact_contact
+        Entrance:
+          area_id: entryway
+          temperature_sensor: sensor.entrance_climatesensor_temperature
+          window_sensor: null
+        Garage:
+          area_id: garage
+          temperature_sensor: sensor.garage_climatesensor_temperature
+          window_sensor: binary_sensor.garage_gatedoorlow_contact_contact
+        Kidsroom:
+          area_id: kids_room
+          temperature_sensor: sensor.kidsroom_climatesensor_temperature
+          window_sensor: binary_sensor.kidsroom_window_contact_contact
+        Upperbathroom:
+          area_id: upper_bathroom
+          temperature_sensor: sensor.upperbathroom_climatesensor_temperature
+          window_sensor: binary_sensor.upperbathroom_window_contact_contact

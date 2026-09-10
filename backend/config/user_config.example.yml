@@ -1,0 +1,53 @@
+# Copy to user_config.yml and replace only Home Assistant installation values.
+# Safety thresholds, fault mappings, provider policy, MQTT behavior, and
+# Entity Monitor system checks belong to system_config.yml.
+user_config:
+  components_enabled:
+    TemperatureComponent: true
+    SafetyDoorsComponent: true
+    ExternalHazardComponent: true
+    EntityMonitorComponent: true
+
+  localization:
+    language: pl
+
+  notification:
+    mobile:
+      services:
+        - notify/all_phones
+      default_url: https://home-assistant.example/local/SafetyHome/
+    local: {}
+    wan_entity: null
+
+  common_entities:
+    outside_temp: sensor.outdoor_temperature
+
+  site:
+    latitude: 50.0
+    longitude: 20.0
+    timezone: Europe/Warsaw
+    country_code: PL
+    teryt_codes:
+      - "0000"
+
+  safety_components:
+    TemperatureComponent:
+      rooms:
+        LivingRoom:
+          area_id: living_room
+          temperature_sensor: sensor.living_room_temperature
+          window_sensor: binary_sensor.living_room_window
+
+    SafetyDoorsComponent:
+      doors:
+        EntranceDoor:
+          area_id: entryway
+          entity_id: binary_sensor.entrance_door
+
+    ExternalHazardComponent:
+      openings:
+        LivingRoomWindow:
+          area_id: living_room
+          entity_id: binary_sensor.living_room_window
+          friendly_name: Okno w salonie
+          kind: window

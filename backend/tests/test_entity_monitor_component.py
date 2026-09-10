@@ -142,6 +142,64 @@ def test_entity_monitor_debounces_failure_and_recovery(mocked_hass_app_basic):
     assert runtime.last_valid_at == clock["now"]
 
 
+def test_entity_monitor_recovery_dry_run_has_no_runtime_side_effects(
+    mocked_hass_app_basic,
+):
+    app, event_bus, component = _component(mocked_hass_app_basic)
+    now = datetime(2026, 8, 13, 10, 0, tzinfo=timezone.utc)
+    component._now = lambda: now  # type: ignore[method-assign]
+    app.get_state = MagicMock(return_value=_snapshot("21.5", now))
+    events: list[dict] = []
+    event_bus.subscribe("symptom", lambda **event: events.append(event))
+    symptoms, _ = component.get_symptoms_data(
+        {"EntityMonitorComponent": component}, _config()
+    )
+    for symptom in symptoms.values():
+        assert component.init_safety_mechanism(
+            symptom.sm_name, symptom.name, symptom.parameters
+        )
+        assert component.enable_safety_mechanism(symptom.name, SMState.ENABLED)
+
+    availability = component.safety_mechanisms[
+        "EntityHealthFailureTemperatureOfficeAvailability"
+    ]
+    runtime = component._entities["TemperatureOffice"]
+    runtime_before = (
+        runtime.snapshot,
+        runtime.last_valid_value,
+        runtime.last_valid_at,
+        dict(runtime.samples),
+    )
+    mqtt_calls_before = list(app.call_service.call_args_list)
+
+    assert (
+        component._evaluate_mechanism(
+            availability,
+            {"sensor.office_temperature": "unavailable"},
+        )
+        is True
+    )
+    finite_number = component.safety_mechanisms[
+        "EntityHealthFailureTemperatureOfficeFiniteNumber"
+    ]
+    assert (
+        component._evaluate_mechanism(
+            finite_number,
+            {"sensor.office_temperature": "nan"},
+        )
+        is True
+    )
+
+    assert (
+        runtime.snapshot,
+        runtime.last_valid_value,
+        runtime.last_valid_at,
+        runtime.samples,
+    ) == runtime_before
+    assert app.call_service.call_args_list == mqtt_calls_before
+    assert events == []
+
+
 def test_entity_monitor_publishes_stable_diagnostics_only_on_change(
     mocked_hass_app_basic,
 ):
@@ -212,3 +270,19 @@ def test_entity_monitor_merges_memberships_for_same_entity(mocked_hass_app_basic
         "TemperatureComponent",
         "ExternalHazardComponent",
     )
+
+
+def test_freshness_fault_context_formats_age_as_duration(mocked_hass_app_basic):
+    app, _, component = _component(mocked_hass_app_basic)
+    now = datetime(2026, 8, 13, 10, 0, tzinfo=timezone.utc)
+    app.get_state = MagicMock(return_value=_snapshot("21.5", now))
+    component.get_symptoms_data({"EntityMonitorComponent": component}, _config())
+    runtime = component._entities["TemperatureOffice"]
+    state = runtime.checks["freshness"]
+    state.reason = "freshness_expired"
+    state.observed_value = 7222.761
+
+    context = component._symptom_context(runtime, "freshness", state)
+
+    assert context["freshness_age"] == "2 h 0 min 23 s"
+    assert "observed_value" not in context

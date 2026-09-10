@@ -222,7 +222,7 @@ def test_recovery_manager_sets_recovery_state_and_actuator_entities(
         app_instance.reco_man._recovery_performed,
         "sensor.office_window_contact_contact",
         new="off",
-        symptom=symptom,
+        symptom_name=symptom.name,
         confirmation_entity="sensor.office_window_contact_contact",
         expected_state="off",
     )

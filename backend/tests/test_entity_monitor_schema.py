@@ -85,3 +85,38 @@ def test_entity_monitor_rejects_timing_outside_detection_budget():
                 }
             }
         )
+
+
+def test_entity_monitor_normalizes_component_dependency_overrides():
+    runtime = validate_entity_monitor_config(
+        {"explicit_entities": {}},
+        calibration={
+            "component_overrides": {
+                "TemperatureOffice": {
+                    "failure_debounce_seconds": 10,
+                    "recovery_debounce_seconds": 45,
+                    "detection_budget_seconds": 610,
+                    "checks": {
+                        "freshness": {
+                            "timestamp_source": "last_updated",
+                            "max_silence_seconds": 600,
+                        },
+                        "numeric_range": {
+                            "target": "state",
+                            "minimum": -40,
+                            "maximum": 80,
+                        },
+                    },
+                }
+            }
+        },
+    )
+
+    override = runtime["component_overrides"]["TemperatureOffice"]
+    assert override["failure_debounce_seconds"] == 10
+    assert override["recovery_debounce_seconds"] == 45
+    assert override["checks"]["numeric_range"] == {
+        "target": "state",
+        "minimum": -40.0,
+        "maximum": 80.0,
+    }

@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildDeviceInventory, buildEntityInventory, getEntityMonitorSummary, getMonitoredEntities } from './entityHealth.js';
+import {
+  buildDeviceInventory,
+  buildEntityInventory,
+  formatEntityCheckObservation,
+  getEntityMonitorSummary,
+  getMonitoredEntities,
+} from './entityHealth.js';
 import type { EntityMap } from './safety.js';
 
 test('normalizes monitored diagnostics and summary', () => {
@@ -57,6 +63,11 @@ test('accepts the legacy entity_id attribute as a fallback', () => {
   });
 
   assert.equal(monitored[0]?.entityId, 'sensor.office_temperature');
+});
+
+test('formats freshness age as elapsed time instead of a sensor reading', () => {
+  assert.equal(formatEntityCheckObservation('freshness', 7222.761), 'czas od ostatniej aktualizacji: 2 godz. 0 min 23 s');
+  assert.equal(formatEntityCheckObservation('numeric_range', 23.5), 'odczyt: 23.5');
 });
 
 test('joins Home Assistant entity, device, area, and monitoring records', () => {

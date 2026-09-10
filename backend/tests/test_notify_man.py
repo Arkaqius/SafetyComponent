@@ -217,6 +217,7 @@ def test_cleared_fault_uses_same_tag_and_resolved_quiet_profile() -> None:
     manager.notify("Fault", 3, FaultState.CLEARED, None, "tag-resolved")
 
     sent = hass.call_service.call_args
+    assert sent.kwargs["title"] == "Safety issue resolved"
     assert sent.kwargs["message"] == "Good news - Fault is no longer active."
     assert sent.kwargs["data"]["tag"] == "tag-resolved"
     assert sent.kwargs["data"]["persistent"] is False
@@ -663,3 +664,21 @@ def test_polish_copy_and_acknowledgement_action_are_localized() -> None:
     assert sent["message"] == (
         "Wymaga uwagi: Niebezpieczna temperatura.\nLokalizacja: Biuro"
     )
+
+
+def test_polish_freshness_notification_labels_elapsed_time() -> None:
+    hass = make_hass()
+    manager = NotificationManager(hass, {}, localizer=Localizer({"language": "pl"}))
+
+    manager.notify(
+        "EntityHealthTemperatureKitchen",
+        3,
+        FaultState.SET,
+        {"freshness_age": "4 h 0 min 16 s"},
+        "freshness-pl",
+        friendly_name="Problem z encją: Termostat HC1",
+    )
+
+    sent = notify_calls(hass)[-1].kwargs
+    assert "Czas od ostatniej aktualizacji: 4 h 0 min 16 s" in sent["message"]
+    assert "Wartość zmierzona lub prognozowana" not in sent["message"]

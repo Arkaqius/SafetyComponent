@@ -15,6 +15,19 @@ export interface EntityCheckView {
   calibration: Record<string, unknown>;
 }
 
+export function formatEntityCheckObservation(check: string, value: unknown): string {
+  if (value === null || value === undefined || value === '') return '';
+  if (check !== 'freshness') return `odczyt: ${String(value)}`;
+
+  const seconds = Number(value);
+  if (!Number.isFinite(seconds)) return `czas od ostatniej aktualizacji: ${String(value)}`;
+  const totalSeconds = Math.max(0, Math.round(seconds));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const remainingSeconds = totalSeconds % 60;
+  return `czas od ostatniej aktualizacji: ${hours} godz. ${minutes} min ${remainingSeconds} s`;
+}
+
 export interface MonitoredEntityView {
   diagnosticEntityId: string;
   entityId: string;

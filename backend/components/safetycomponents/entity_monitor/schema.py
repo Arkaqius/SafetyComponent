@@ -31,6 +31,7 @@ class EntityMonitorCalibration(StrictBaseModel):
     default_recovery_debounce_seconds: int = Field(default=60, ge=0)
     evaluation_interval_seconds: int = Field(default=5, ge=1)
     unhealthy_summary_limit: int = Field(default=32, ge=1, le=128)
+    component_overrides: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
 
 class TargetCheck(StrictBaseModel):
@@ -125,6 +126,17 @@ class EntityChecks(StrictBaseModel):
     rate_of_change: RateOfChangeCheck | None = None
 
 
+class ComponentEntityOverride(StrictBaseModel):
+    """System calibration override for one component-owned dependency."""
+
+    model_config = ConfigDict(extra="allow")
+
+    failure_debounce_seconds: int | None = Field(default=None, ge=0)
+    recovery_debounce_seconds: int | None = Field(default=None, ge=0)
+    detection_budget_seconds: int | None = Field(default=None, ge=1)
+    checks: EntityChecks | None = None
+
+
 class ExplicitEntityConfig(StrictBaseModel):
     """Installation-owned Group A dependency."""
 
@@ -172,6 +184,12 @@ def validate_entity_monitor_config(
         policy = EntityMonitorCalibration.model_validate(
             calibration or {}, context={"strict_validation": strict_validation}
         )
+        component_overrides = {
+            key: ComponentEntityOverride.model_validate(
+                value, context={"strict_validation": strict_validation}
+            ).model_dump(exclude_none=True)
+            for key, value in policy.component_overrides.items()
+        }
         if not strict_validation:
             base = f"user_config.safety_components.{COMPONENT_NAME}"
             log_extra_keys(validated, log, base)
@@ -219,8 +237,10 @@ def validate_entity_monitor_config(
                 )
         explicit.append(item)
 
+    policy_values = policy.model_dump()
+    policy_values["component_overrides"] = component_overrides
     return {
         "explicit_entities": explicit,
         "component_entities": [],
-        **policy.model_dump(),
+        **policy_values,
     }

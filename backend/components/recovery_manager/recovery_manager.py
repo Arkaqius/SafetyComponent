@@ -942,7 +942,7 @@ class RecoveryManager:
                 self._recovery_performed,
                 entity_id,
                 new=str(expected_state),
-                symptom=symptom,
+                symptom_name=symptom.name,
                 confirmation_entity=entity_id,
                 expected_state=str(expected_state),
             )
@@ -1006,10 +1006,17 @@ class RecoveryManager:
             __ (Any): Placeholder for the second callback argument (not used).
             ___ (Any): Placeholder for the third callback argument (not used).
             ____ (Any): Placeholder for the fourth callback argument (not used).
-            **cb_args (Any): AppDaemon callback arguments, including the symptom
-                and expected confirmation state.
+            **cb_args (Any): AppDaemon callback arguments, including the stable
+                symptom name and expected confirmation state.
         """
-        symptom: Symptom = cb_args["symptom"]
+        symptom_name = str(cb_args["symptom_name"])
+        symptom = self.fm.symptoms.get(symptom_name)
+        if symptom is None:
+            self.hass_app.log(
+                f"Ignoring recovery confirmation for unknown symptom {symptom_name}",
+                level="WARNING",
+            )
+            return
         expected_state = cb_args["expected_state"]
         if str(new) != expected_state:
             return

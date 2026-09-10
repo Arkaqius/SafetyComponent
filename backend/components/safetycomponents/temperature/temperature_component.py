@@ -77,6 +77,11 @@ class TemperatureComponent(SafetyComponent):
                                 "max_silence_seconds": 3600,
                             },
                             "finite_number": {"target": "state"},
+                            "numeric_range": {
+                                "target": "state",
+                                "minimum": data["SM_TC_MIN_VALID_TEMPERATURE_C"],
+                                "maximum": data["SM_TC_MAX_VALID_TEMPERATURE_C"],
+                            },
                         },
                         "detection_budget_seconds": 3615,
                         "area_id": data.get("area_id"),
@@ -248,6 +253,14 @@ class TemperatureComponent(SafetyComponent):
             self.hass_app.log(f"Unknown safety mechanism {sm_name}", level="ERROR")
             return False
 
+        required_keys.extend(
+            [
+                "SM_TC_MIN_VALID_TEMPERATURE_C",
+                "SM_TC_MAX_VALID_TEMPERATURE_C",
+                "SM_TC_MAX_ABS_RATE_C_PER_MIN",
+                "SM_TC_MAX_FORECAST_DELTA_C",
+            ]
+        )
         return self._init_sm(name, parameters, sm_method, required_keys)
 
     def enable_safety_mechanism(self, name: str, state: SMState) -> bool:
@@ -310,6 +323,8 @@ class TemperatureComponent(SafetyComponent):
         )
         if temperature is None:
             return SafetyMechanismResult(False, None)
+        if not self._is_valid_temperature(temperature, sm):
+            return SafetyMechanismResult(False, None)
 
         sm_result: bool = temperature < cold_threshold
         additional_info: dict[str, str] = {"location": location}
@@ -355,13 +370,21 @@ class TemperatureComponent(SafetyComponent):
 
         if temperature is None or temperature_rate is None:
             return SafetyMechanismResult(False, None)
+        if not self._is_valid_temperature(temperature, sm):
+            return SafetyMechanismResult(False, None)
 
         forecasted_temperature = self.forecast_temperature(
             temperature,
             temperature_rate,
             forecast_span,
             sampling_minutes,
+            max_abs_rate_c_per_min=sm.sm_args["max_abs_rate_c_per_min"],
+            max_forecast_delta_c=sm.sm_args["max_forecast_delta_c"],
+            minimum_temperature_c=sm.sm_args["minimum_temperature_c"],
+            maximum_temperature_c=sm.sm_args["maximum_temperature_c"],
         )
+        if forecasted_temperature is None:
+            return SafetyMechanismResult(False, None)
 
         sm_result: bool = forecasted_temperature < cold_threshold
         additional_info: dict[str, str] = {"location": location}
@@ -385,6 +408,8 @@ class TemperatureComponent(SafetyComponent):
             temperature_sensor, entities_changes
         )
         if temperature is None:
+            return SafetyMechanismResult(False, None)
+        if not self._is_valid_temperature(temperature, sm):
             return SafetyMechanismResult(False, None)
 
         sm_result: bool = temperature > hot_threshold
@@ -416,13 +441,21 @@ class TemperatureComponent(SafetyComponent):
 
         if temperature is None or temperature_rate is None:
             return SafetyMechanismResult(False, None)
+        if not self._is_valid_temperature(temperature, sm):
+            return SafetyMechanismResult(False, None)
 
         forecasted_temperature = self.forecast_temperature(
             temperature,
             temperature_rate,
             forecast_span,
             sampling_minutes,
+            max_abs_rate_c_per_min=sm.sm_args["max_abs_rate_c_per_min"],
+            max_forecast_delta_c=sm.sm_args["max_forecast_delta_c"],
+            minimum_temperature_c=sm.sm_args["minimum_temperature_c"],
+            maximum_temperature_c=sm.sm_args["maximum_temperature_c"],
         )
+        if forecasted_temperature is None:
+            return SafetyMechanismResult(False, None)
 
         sm_result: bool = forecasted_temperature > hot_threshold
         additional_info: dict[str, str] = {"location": location}
@@ -435,33 +468,66 @@ class TemperatureComponent(SafetyComponent):
         dT: float,
         forecast_timespan_hours: float,
         sampling_minutes: float,
-    ) -> float:
+        *,
+        max_abs_rate_c_per_min: float = 0.25,
+        max_forecast_delta_c: float = 6.0,
+        minimum_temperature_c: float = -40.0,
+        maximum_temperature_c: float = 80.0,
+    ) -> float | None:
         """
-        Forecast the temperature using an exponential decay model.
+        Forecast temperature from a bounded linear trend in °C/min.
 
         Parameters:
         - initial_temperature (float): The initial temperature in degrees Celsius (T_0).
-        - dT (float): The temperature drop per sampling interval (initial rate).
+        - dT (float): The first derivative in degrees Celsius per minute.
         - forecast_timespan_hours (float): The timespan for the forecast in hours.
         - sampling_minutes (float): The sampling interval in minutes.
 
         Returns:
-        - float: The forecasted temperature after the given timespan.
+        - float | None: A plausible forecast, or ``None`` for invalid input.
         """
-        # Convert forecast timespan from hours to minutes
-        forecast_timespan_in_minutes = forecast_timespan_hours * 60
-
-        # Calculate decay constant k based on the initial rate of temperature change
-        k: float = -math.log(
-            (initial_temperature + dT / sampling_minutes) / initial_temperature
+        values = (
+            initial_temperature,
+            dT,
+            forecast_timespan_hours,
+            sampling_minutes,
+            max_abs_rate_c_per_min,
+            max_forecast_delta_c,
+            minimum_temperature_c,
+            maximum_temperature_c,
         )
+        if not all(math.isfinite(value) for value in values):
+            return None
+        if sampling_minutes <= 0 or forecast_timespan_hours <= 0:
+            return None
+        if not minimum_temperature_c <= initial_temperature <= maximum_temperature_c:
+            return None
+        if abs(dT) > max_abs_rate_c_per_min:
+            return None
 
-        # Calculate forecasted temperature for the specified timespan using exponential decay
-        forecasted_temperature: float = initial_temperature * math.exp(
-            -k * forecast_timespan_in_minutes
-        )
-
+        forecast_delta = dT * forecast_timespan_hours * 60.0
+        if abs(forecast_delta) > max_forecast_delta_c:
+            return None
+        forecasted_temperature = initial_temperature + forecast_delta
+        if not minimum_temperature_c <= forecasted_temperature <= maximum_temperature_c:
+            return None
         return forecasted_temperature
+
+    def _is_valid_temperature(
+        self, temperature: float, sm: SafetyMechanism
+    ) -> bool:
+        """Reject non-finite or physically implausible room measurements."""
+
+        minimum = float(sm.sm_args["minimum_temperature_c"])
+        maximum = float(sm.sm_args["maximum_temperature_c"])
+        valid = math.isfinite(temperature) and minimum <= temperature <= maximum
+        if not valid:
+            self.hass_app.log(
+                f"Ignoring implausible temperature for {sm.name}: {temperature}; "
+                f"valid range is {minimum}..{maximum} °C.",
+                level="WARNING",
+            )
+        return valid
 
     def sm_recalled(self, **kwargs: dict) -> None:
         """
@@ -725,11 +791,12 @@ class TemperatureComponent(SafetyComponent):
                 sampling_minutes = extracted_params[
                     "SM_TC_2_DERIVATIVE_SAMPLE_MINUTES"
                 ]
+                maximum_rate = extracted_params["SM_TC_MAX_ABS_RATE_C_PER_MIN"]
                 self.derivative_monitor.register_entity(
                     sensor_id,
                     sampling_minutes * 60,
-                    -2,
-                    2,
+                    -maximum_rate,
+                    maximum_rate,
                 )
 
         return True
@@ -784,6 +851,8 @@ class TemperatureComponent(SafetyComponent):
             "temperature_sensor": params["temperature_sensor"],
             "location": params["location"],
             "actuator": params["actuator"],
+            "minimum_temperature_c": params["SM_TC_MIN_VALID_TEMPERATURE_C"],
+            "maximum_temperature_c": params["SM_TC_MAX_VALID_TEMPERATURE_C"],
         }
 
         if sm_method in (self.sm_tc_1, self.sm_tc_2):
@@ -799,6 +868,12 @@ class TemperatureComponent(SafetyComponent):
                     "re_eval_delay_seconds": params["SM_TC_2_REEVAL_DELAY_SECONDS"],
                     "derivative_sample_minutes": params[
                         "SM_TC_2_DERIVATIVE_SAMPLE_MINUTES"
+                    ],
+                    "max_abs_rate_c_per_min": params[
+                        "SM_TC_MAX_ABS_RATE_C_PER_MIN"
+                    ],
+                    "max_forecast_delta_c": params[
+                        "SM_TC_MAX_FORECAST_DELTA_C"
                     ],
                 }
             )
