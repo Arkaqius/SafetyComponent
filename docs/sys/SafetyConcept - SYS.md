@@ -96,6 +96,9 @@ _Note: the data **providers** are external; the **interfaces** and how we use th
 - Heating-system supervision by C-HVAC across room heat need, controller
   request, boiler response, and heat delivery, independent of normal heating
   control and of C-TEMP room-temperature hazard decisions.
+- Internal environmental monitoring through one component implementing the
+  smoke/gas/CO C-ALARM allocation and indoor PM2.5 C-AQ allocation, with separate
+  environmental alarm and detector-health state.
 
 **Responsibilities (internal):**
 
@@ -154,6 +157,14 @@ Elements **outside** the boundary that we rely on and for which we define assump
 ### 3.4 Invariants (apply in all modes)
 
 - Life‑safety hazards (Fire/Gas/CO) may **actuate siren and emergency lights** regardless of mode.
+- Such outputs shall be explicitly approved for the hazard and installation;
+  flammable-gas incidents shall not cause unapproved electrical switching,
+  including shared-light activation or restoration. Generic severity-based
+  output selection shall not bypass this eligibility rule.
+- Once required detector bindings are validated, a valid asserted smoke/gas/CO
+  alarm shall bypass M1 observation grace and M3/M5 quiet policies. Invalid
+  configuration shall still follow the application initialization contract;
+  autonomous detector protection remains independent of application readiness.
 - Evidence logging remains active; failures to log **must not** block safety decisions.
 - Read‑back verification follows each actuation; on mismatch → retry → escalate per requirement.
 
@@ -302,8 +313,8 @@ When **WAN is down** (see §3, M4 Local‑Only), prefer delivery vectors that do
 | **SG‑004** | Prevent sustained **overheating** (> **T_max**) for longer than **T_crit_hot** in occupied rooms.                        | HZ‑OVERTEMP‑01                         | **ASIL B**                  | **5 min**         | **SS‑1:** Emergency cooling/ventilation + L2/L3        |
 | **SG‑005** | Maintain acceptable **indoor air quality**; detect/forecast breach and mitigate.                                         | HZ‑AQ‑01                               | **ASIL A**                  | **10 min**        | **SS‑1:** Ventilate/purify + L2                        |
 | **SG‑006** | Detect **smoke/fire** promptly; alert occupants; enter alarm safe state.                                                 | HZ‑FIRE‑01                             | **ASIL C**                  | **10 s**          | **SS‑Alarm:** Siren/lighting + L1                      |
-| **SG‑007** | Detect **flammable gas** accumulation; alert and ventilate safely.                                                       | HZ‑GAS‑01                              | **ASIL C**                  | **10 s**          | **SS‑Alarm:** Ventilate + L1                           |
-| **SG‑008** | Detect **CO** accumulation; alert and ventilate; escalate alarms.                                                        | HZ‑CO‑01                               | **ASIL C**                  | **10 s**          | **SS‑Alarm:** Ventilate + L1                           |
+| **SG‑007** | Detect **flammable gas** accumulation; alert and apply separately validated hazard-specific emergency response. | HZ‑GAS‑01 | **ASIL C** | **10 s** | **SS‑Alarm:** L1 + approved emergency response |
+| **SG‑008** | Detect **CO** accumulation; alert and provide hazard-specific emergency guidance. | HZ‑CO‑01 | **ASIL C** | **10 s** | **SS‑Alarm:** L1 + approved emergency response |
 | **SG‑009** | Detect **water leak/flood**; alert and shut off supply if available.                                                     | HZ‑WATER‑01                            | **QM/ASIL A**               | **60 s**          | **SS‑3:** Close valve + L2                             |
 | **SG‑010** | Detect **HVAC failures** affecting temperature control; prompt maintenance before exposure.                              | HZ‑HVAC‑01                             | **QM/ASIL A**               | **30 min**        | **SS‑4:** Degraded mode + L3                           |
 | **SG‑011** | Warn about **weather ingress** via open windows/doors during rain/storm.                                                | HZ‑WEATHER‑01                          | **QM**                      | **120 s after usable input** | **SS‑5:** Prompt manual secure closure + L2      |
@@ -337,15 +348,26 @@ _Interfaces turn §2 elements into **testable contracts**: freshness, latency, a
 - **Latency:** alarm edge visible **≤ 1 s**; **freshness:** heartbeat or supervised link **≤ 60 s**.
 - **Self‑test:** capability or maintenance reminder interval **≤ 6 months**.
 - **Verification:** inject alarm → L1 notify path triggered; evidence contains `rule_id=SYS‑SR‑120`.
+- Alarm and detector-health channels shall have separate typed mappings. A
+  valid alarm assertion shall not wait for a second detector, a numeric reading
+  or healthy ancillary diagnostics. Startup retained state shall be identified
+  as historical/unverified until authoritative source confirmation.
+- `SYS-SR-IEHM-003` shall provide the smoke-alarm requirement; the existing
+  `SYS‑SR‑120` evidence identifier shall remain a compatibility alias.
 
 **IR-003 Gas Detector**
 
-- Same structure as IR‑002; **ventilation** actuation must be possible (see OR‑003).
+- Same structure as IR‑002; the equipment profile shall identify the detected
+  flammable gas and current alarm semantics. Any OR-003 emergency response shall
+  require a separate hazard-specific installation approval; detection shall
+  not depend on actuator availability.
 - **Latency:** alarm edge **≤ 1 s**.
 
 **IR-004 CO Detector**
 
 - Same structure as IR‑002; **Latency:** alarm edge **≤ 1 s**; bedroom entities flagged for repeat policy.
+- CO shall remain distinct from CO2 and combustible-gas channels. Numeric ppm
+  telemetry shall supplement, not replace or gate, the detector's alarm output.
 
 **IR-005 Leak Sensor**
 
@@ -361,6 +383,12 @@ _Interfaces turn §2 elements into **testable contracts**: freshness, latency, a
 
 - **Accuracy:** CO₂ ±(50 ppm + 3%); PM2.5 per sensor spec; VOC relative index.
 - **Rate:** **≥ 0.2 Hz**; **freshness:** drop if `age > 120 s`.
+- Indoor PM2.5 shall use µg/m³ with identified indoor location, observation and
+  receipt times, quality and sensor/profile identity. AQI, PM10, CO2, VOC and
+  outdoor model values shall not be accepted as equivalent PM2.5 inputs.
+- Concentration averages shall declare their period, actual covered duration,
+  maximum gaps and sample provenance; absent data shall not contribute zeros.
+  Source-health timeouts shall be tighter where required by SG-003.
 
 **IR-008 Boiler Signals/Measurements**
 
@@ -472,6 +500,11 @@ _Interfaces turn §2 elements into **testable contracts**: freshness, latency, a
 **OR-003 Ventilation / Gas Valve**
 
 - Commands: `vent_on/off`; `gas_valve_open/close`; **Latency:** **≤ 5 s** close valve; verify end‑state.
+- These are separately allocated emergency-response capabilities, not outputs
+  of internal environmental monitoring. Eligibility shall be assessed for the
+  specific hazard and equipment; a gas alarm shall not automatically energize
+  an ordinary fan, light or relay. A source clear shall not automatically reopen
+  a gas valve or approve re-entry.
 
 **OR-004 Water Shutoff Valve**
 
@@ -1207,9 +1240,62 @@ architecture defines allocation examples and timing tests.
 
 ---
 
-**Other component allocations:** Fire/CO/Gas is owned by C-ALARM, Water Leak by
-C-LEAK, Indoor Air Quality by C-AQ, intrusion/lock
-security by C-SEC, Privacy by C-PRIV, and Network/Platform Health by C-NET.
+### 8.7 Internal Environmental Hazard Monitoring (C-ALARM and C-AQ)
+
+`InternalEnvironmentalHazardMonitorComponent` shall implement smoke,
+flammable-gas and CO alarm supervision under C-ALARM and measured indoor PM2.5
+supervision under C-AQ. Logical allocations and SG identifiers shall remain
+distinct even though they share one component. Other C-AQ pollutants and
+outdoor exposure policy shall retain separate scope.
+
+The component shall consume IR-002/003/004/007 and C-ENT dependency quality,
+emit symptoms to FaultManager, and supply notification/diagnostic evidence.
+It shall observe and notify without registering recovery actions or controlling
+detectors, fans, purifiers, valves, openings, locks or HVAC. Shared notification
+outputs shall obey the same hazard-specific eligibility boundary.
+See the [Internal Environmental Hazard Monitoring architecture](<../features/Internal Environmental Hazard Monitoring - Architecture.md>).
+
+| ID | Requirement |
+| --- | --- |
+| SYS-SR-IEHM-001 | The component shall keep smoke, flammable gas, CO, indoor PM2.5 and detector health as separate semantic channels, each bound to an identified detector and indoor area. |
+| SYS-SR-IEHM-002 | All enabled inputs shall be Group B dependencies with explicit state/unit/quality contracts and compatible fault ownership. An asserted alarm shall not be modeled as a generic required-value failure or suppressed by another sensor's clear state. |
+| SYS-SR-IEHM-003 | A fresh valid smoke alarm shall immediately assert its detector symptom and the L1 smoke fault without averaging, multi-detector voting or general availability debounce. |
+| SYS-SR-IEHM-004 | A fresh valid flammable-gas alarm shall immediately assert a distinct L1 fault, retain gas identity and use hazard-specific emergency guidance and output eligibility. |
+| SYS-SR-IEHM-005 | A fresh valid CO alarm shall immediately assert a distinct L1 fault without substituting generic software ppm thresholds for manufacturer alarm logic. |
+| SYS-SR-IEHM-006 | PM2.5 checks shall validate concentration units and input quality, apply declared short-window concentration policy and recovery hysteresis, and optionally report separately defined long-term exposure. Neither PM2.5 nor an AQI shall be interpreted as smoke, CO or flammable gas. |
+| SYS-SR-IEHM-007 | Averaging shall be time-aware, bounded and explicit about sample coverage, skew, gaps and source age. Long-term reference values shall retain their averaging periods and shall not become instantaneous emergency thresholds. |
+| SYS-SR-IEHM-008 | Detector trouble, expired required heartbeat, missing channels and invalid/saturated measurements shall expose lost or degraded coverage separately from environmental alarms. Valid alarm assertions shall remain actionable despite ancillary battery/trouble faults. |
+| SYS-SR-IEHM-009 | A single detector shall suffice to activate its hazard fault; all contributing detector symptoms shall be retained. One detector clearing or going offline shall not clear another detector's active symptom or the aggregate hazard. |
+| SYS-SR-IEHM-010 | SET shall persist until fresh authoritative clear evidence satisfies the rule-specific recovery duration. Acknowledgement, unknown/unavailable inputs, removal of a configured detector, restart, hush/test state or receipt of old data shall not constitute HEAL. |
+| SYS-SR-IEHM-011 | Binary alarm interface response shall fit the 10 s SG-006/007/008 budget, including reception, component processing and notification allocation; default 10 s transport allowance shall not be added after another 10 s of detection. Intrinsic detector response to physical exposure and absent transport shall remain explicit assurance limits. |
+| SYS-SR-IEHM-012 | Required supervision paths shall fit SG-003's 60 s budget and short-window PM response shall fit SG-005's 10 min budget. Sampling, averaging, qualification, scheduler latency, decision and notification shall be included; long-term exposure diagnostics shall not substitute for the short-window path. |
+| SYS-SR-IEHM-013 | Active incident identity, contributing symptoms, qualifying evidence, authoritative clear ordering and consumed deadlines shall survive reload/restart in bounded atomic storage. Retained assertions shall be reconciled on startup, reconnect and coverage recovery. Corruption, clock uncertainty or missing state shall produce explicit unknown/degraded supervision rather than an authoritative clear. |
+| SYS-SR-IEHM-014 | Alarm, PM exposure, detector health and per-rule evaluability shall be separately visible in SafetyHome. Missing coverage shall not be labeled safe air or no hazard; cleared alarm presentation shall not imply permission to re-enter. |
+| SYS-SR-IEHM-015 | SET/HEAL notifications shall carry localizable hazard/detector/area names, timestamps, evidence, thresholds where applicable and incident correlation. Existing raw fault and journal states, bounded per-target attempts and HA-acceptance semantics shall remain unchanged. |
+| SYS-SR-IEHM-016 | Hazard-specific advice shall prioritize life safety and avoid generic ventilation/purifier/open-window instructions during smoke/gas/CO incidents or unresolved life-safety evidence. Optional PM ventilation advice shall require compatible current outdoor-hazard policy. |
+| SYS-SR-IEHM-017 | Neither the component nor shared notification adapters shall switch unapproved electrical outputs during a flammable-gas incident, including light restoration after another fault clears. A separately persisted switching-inhibition latch shall survive detector HEAL and require explicit authorized clearance under a reviewed installation policy. Native alarms shall remain independent; approved local annunciation shall remain independent of mobile delivery. |
+| SYS-SR-IEHM-018 | System policy shall own alarm profiles, calibration, severity, timers, evidence limits and output eligibility; installation configuration shall own detector/entity/area bindings and equipment profile selection. Incomplete or timing-incompatible enabled contracts shall be rejected. |
+| SYS-SR-IEHM-019 | User-facing text shall have EN/PL/DE parity, preserving machine IDs and raw states. Simulated fixtures and explicit test reports shall remain distinguishable from live alarms; maintenance mode shall not suppress an unambiguously live alarm. |
+| SYS-SR-IEHM-020 | Provider I/O, averaging, storage and delivery shall be isolated from the immediate alarm path, bounded and deterministic; the component shall register no recovery actions or actuator/reset calls. |
+
+The component shall map smoke/gas/CO to L1, short-window PM2.5 hazard to L2,
+optional long-term PM exposure to L3 and detector supervision loss to L3.
+Fault severity shall not be inferred from a health state or silently reduced
+by an unrelated active fault. C-ALARM and C-AQ contributions do not establish
+completion of separately allocated ventilation, evacuation or gas cutoff.
+
+HARA IEHM-H01..07 shall trace to SYS-SR-IEHM-001..020 and SWR-IEHM-001..025.
+Verification shall cover immediate independent alarms, source quality,
+PM units/windows, multi-detector latches, positive HEAL, restart/time faults,
+bounded deadlines, guidance/output conflicts, persistence and notification/UI
+contracts as detailed in the feature architecture.
+
+---
+
+**Other component allocations:** Water Leak is owned by C-LEAK; C-AQ retains
+indoor-air-quality responsibilities beyond the PM2.5 allocation above;
+intrusion/lock security by C-SEC, Privacy by C-PRIV, and Network/Platform Health
+by C-NET.
 
 ## 9 Non‑Functional Requirements (NFR)
 

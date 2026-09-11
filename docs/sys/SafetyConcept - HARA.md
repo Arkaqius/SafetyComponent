@@ -225,6 +225,9 @@ _High:_ These hazards can be easily mitigated if residents are notified in time,
 #### 1.3.3 Fire
 
 - The system shall actively detect the presence of smoke.
+- A valid smoke-detector alarm shall independently trigger an L1 notification
+  through `InternalEnvironmentalHazardMonitorComponent`; normal readings from
+  other detectors or air-quality sensors shall not suppress it.
 - The system shall promptly alert the occupants in the event of a fire.
 - The system shall schedule and issue reminders for maintenance of fire sensors.
 - The system shall unlock external doors to expedite evacuation in case of fire.
@@ -233,11 +236,20 @@ _High:_ These hazards can be easily mitigated if residents are notified in time,
 
 - The system shall alert the occupants promptly upon detection of a gas leak.
 - The system shall automatically disengage the main gas supply when a gas leak is detected.
+- Flammable-gas detection shall be distinct from carbon monoxide, CO2 and VOC
+  measurements. The internal monitor shall report the detector's alarm without
+  controlling ventilation, gas valves, relays or ordinary lights. Gas cutoff
+  and any safe ventilation response shall have a separate installation-approved
+  emergency-response allocation; the monitoring allocation does not execute it.
 - The system shall schedule and issue reminders for maintenance of gas sensors.
 
 #### 1.3.5 Carbon Monoxide Poisoning
 
 - The system shall alert occupants when hazardous levels of carbon monoxide are detected.
+- The internal monitor shall propagate the CO detector's asserted alarm without
+  replacing its manufacturer concentration/time alarm logic with a generic
+  software threshold. An absent numeric CO measurement shall not inhibit a
+  valid binary CO alarm.
 - The system shall schedule and issue reminders for maintenance of CO sensors.
 
 #### 1.3.6 Water Leak/Flood
@@ -254,6 +266,55 @@ _High:_ These hazards can be easily mitigated if residents are notified in time,
 - The system shall promptly notify residents when the air quality within the home deteriorates below a predefined standard.
 - The system shall anticipate potential deterioration of indoor air quality and take preventive actions.
 - The system shall interface with air purifiers within the home to maintain air quality.
+- Indoor PM2.5 shall be monitored independently from smoke, flammable gas and CO
+  alarms. Concentration thresholds shall identify their units, averaging period,
+  coverage, persistence and recovery hysteresis. Long-term exposure guidelines
+  shall not be treated as instantaneous emergency alarm thresholds.
+- Purification or ventilation advice shall account for concurrent life-safety
+  incidents and outdoor hazards. The internal monitor shall not actuate an air
+  purifier, fan or opening; mitigation execution shall be separately allocated.
+
+#### 1.3.8.1 Internal environmental hazard monitoring allocation
+
+`InternalEnvironmentalHazardMonitorComponent` shall implement the logical
+C-ALARM allocation for smoke, flammable gas and CO, and the indoor PM2.5 subset
+of C-AQ. It shall create independent per-detector symptoms and aggregate faults
+per hazard. Monitoring loss shall be separate from a detected environmental
+hazard. These functions support SG-003 and SG-005..008 without claiming that
+Home Assistant replaces an autonomous alarm or its native protection.
+
+| Scenario | Hazardous sequence | Required supervision |
+| --- | --- | --- |
+| IEHM-H01 | Smoke is detected but transport, processing or a quiet mode delays the warning | Propagate one valid alarm immediately; preserve L1 priority and all contributing detectors |
+| IEHM-H02 | Flammable gas is detected and generic automation switches electrical equipment | Emit an L1 gas-specific warning; prohibit unapproved switching, including through shared notification adapters |
+| IEHM-H03 | CO is detected but software waits for a numeric threshold or confuses CO with CO2 | Use the detector's independent alarm output; retain distinct pollutant and hazard identities |
+| IEHM-H04 | Elevated indoor PM2.5 is missed, averaged across missing data, or confused with a fire alarm | Use validated time-aware concentration policy with coverage and separate fault identity; do not infer smoke or CO from PM2.5 |
+| IEHM-H05 | Detector malfunction, silence, warmup or missing input is reported as no hazard | Expose supervision loss and affected coverage; never treat invalid input as positive clear evidence |
+| IEHM-H06 | A second healthy sensor, acknowledgement, restart or brief clear closes an active incident | Preserve per-detector latches and incident state; require positive recovery evidence for every active contributor |
+| IEHM-H07 | Generic ventilation/purification advice conflicts with fire, gas, CO or external hazards | Apply hazard-specific advice and output eligibility; life-safety incidents take precedence over comfort/PM guidance |
+
+- Binary alarm processing shall bypass slow availability debounce and PM
+  averaging. Ten-second interface response budgets shall account for reception,
+  processing and notification, while detector intrinsic response to physical
+  exposure shall remain a separately verified assumption.
+- A fresh valid alarm shall remain actionable despite a simultaneous detector
+  trouble or battery warning. One detector shall suffice; healthy peers shall
+  not vote away another detector's alarm.
+- Alarm clearance shall mean only that the applicable detector/concentration
+  condition has cleared. It shall not authorize re-entry or assert that a room
+  is safe. Acknowledgement shall not clear the hazard or remotely silence/reset
+  its detector.
+- Automatic annunciation shall use only outputs assessed for the specific
+  hazard and installation. Unapproved ordinary lights, fans or relays shall
+  not be switched on, off or restored during a flammable-gas incident, including
+  unresolved incidents awaiting fresh evidence.
+- Gas switching inhibition shall remain independently latched after detector
+  clearance until a reviewed installation policy accepts explicit authorized
+  output-clearance evidence; alarm HEAL alone shall not release it.
+
+Traceability: [SYS section 8.7](<SafetyConcept - SYS.md#87-internal-environmental-hazard-monitoring-c-alarm-and-c-aq>),
+[SSRD section 4.11](<SafetyComponent - SSRD.md#411-internal-environmental-hazard-monitoring>),
+and [Internal Environmental Hazard Monitoring architecture](<../features/Internal Environmental Hazard Monitoring - Architecture.md>).
 
 #### 1.3.9 Unsafe Cold Exposure
 
@@ -416,7 +477,7 @@ For risks that need further mitigation, you'll need to develop a risk mitigation
 | Unauthorized Access       | High (3)   | Low (1)    | Low (3)         | (2x3)x1x3 = 18 | Level 2 |
 | Cybersecurity             | High (3)   | Medium (2) | High (1)        | (2x3)x2x1 = 12 | Level 3 |
 | Fire                      | High (3)   | Low (1)    | Low (3)         | (2x3)x1x3 = 18 | Level 2 |
-| Gas Leak                  | High (3)   | Low (1)    | Medium (2)      | (2x3)x1x2 = 12 | Level 3 |
+| Gas Leak                  | High (3)   | Low (1)    | Medium (2)      | (2x3)x1x2 = 12 | Level 2 |
 | Carbon Monoxide Poisoning | High (3)   | Low (1)    | Low (3)         | (2x3)x1x3 = 18 | Level 2 |
 | Electrical Shock          | High (3)   | Low (1)    | Low (3)         | (2x3)x1x3 = 18 | Level 2 |
 | Poor Air Quality          | Low (1)    | Medium (2) | High (1)        | (2x1)x2x1 = 4  | Level 4 |
@@ -477,7 +538,7 @@ The following table provides audit-ready traceability from each hazard through s
 | Unauthorized Access     | 1.3.1            | Alerts, door/window lock enforcement, security link | Door/lock sensors, intrusion logs, audit reports       | Level 1             | Level 2            |
 | Cybersecurity           | 1.3.2            | Authentication, encryption, patches, RBAC           | Network activity logs, vulnerability scans, audit logs | Level 2             | Level 3            |
 | Fire\*                  | 1.3.3            | Smoke detection, alerts, evacuation support         | Smoke sensor status, maintenance reminders             | Level 2             | Level 2            |
-| Gas Leak\*              | 1.3.4            | Automatic gas cutoff, alerts, maintenance           | Gas sensor diagnostics, maintenance logs               | Level 2             | Level 3            |
+| Gas Leak\*              | 1.3.4            | Hazard-specific alerts, separately allocated gas cutoff, maintenance | Independent alarm and detector-health diagnostics | Level 2 | Level 2 |
 | CO Poisoning\*          | 1.3.5            | CO detection, alerts, maintenance reminders         | CO sensor logs, periodic calibration                   | Level 2             | Level 2            |
 | Water Leak/Flood        | 1.3.6            | Automatic water cutoff, alerts                      | Water sensor status, usage logs                        | Level 1             | Level 3            |
 | Electrical Shock\*      | 1.3.7            | RCD maintenance reminders                           | RCD self-test logs, inspection intervals               | Level 1             | Level 2            |

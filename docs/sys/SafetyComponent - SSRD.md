@@ -2,7 +2,7 @@
 
 **Document ID:** SAF-SWR-SSRD
 
-**Version:** 0.5.0
+**Version:** 0.6.0
 
 **Status:** Software requirements baseline
 
@@ -19,7 +19,7 @@ system requirements and hazards described in:
 - the deployed configuration in `backend/app_cfg.yaml`.
 
 The software in scope includes configuration validation, component lifecycle,
-temperature, heating-system, safety-door, and external-hazard monitoring, fault aggregation,
+temperature, heating-system, internal-environmental, safety-door, and external-hazard monitoring, fault aggregation,
 notification and recovery handling, MQTT discovery/state publication,
 localization metadata, and backend verification. The web frontend consumes the
 published contract but does not implement safety decisions.
@@ -51,6 +51,9 @@ The implementation assumes:
 | `HeatingSystemMonitorComponent` (C-HVAC) | Supervise heating need, controller request, boiler response and heat delivery; own heating incidents without issuing heating commands. |
 | Heating telemetry adapter | Normalize provider/model signals, timestamps and current error-code classifications; expose communication and interpretation quality. |
 | `HeatingMonitorStateStore` | Persist bounded heating incident, symptom and timing state independently of notification delivery persistence. |
+| `InternalEnvironmentalHazardMonitorComponent` | Implement C-ALARM smoke/gas/CO and C-AQ indoor PM2.5 monitoring, per-detector symptoms and incident evidence. |
+| Internal environmental input adapters | Normalize detector-specific alarm/trouble states, timestamps and pollutant units independently of household policy. |
+| `InternalEnvironmentStateStore` | Persist alarm/PM symptom latches, incident correlation and timing independently of notification transport state. |
 | `SafetyDoorsComponent` | Per-door open-duration monitoring with optional state gating. |
 | `ExternalHazardComponent` | Correlate normalized external hazards with configured openings, create close recommendations, and maintain advice-inhibition state. |
 | External API Components | One isolated component per remote API; validate and normalize provider data without creating faults or actions. |
@@ -302,6 +305,41 @@ shall retain their separate responsibilities.
 | SWR-HSM-025 | Component/adapters shall register no heating recovery and shall issue no heating actuator or reset service calls, including while recovering from communication failure or replaying persisted state. | negative-actuation boundary |
 | SWR-HSM-026 | Evaluation and sample retention shall be bounded; slow provider reads, notification failures and persistence failures shall not block other mechanisms. Shadow evaluation shall remain explicitly non-operational coverage and shall not count as an active safety path. | runtime isolation and coverage reporting |
 
+### 4.11 Internal Environmental Hazard Monitoring
+
+This component shall refine [SYS section 8.7](<SafetyConcept - SYS.md#87-internal-environmental-hazard-monitoring-c-alarm-and-c-aq>)
+and [HARA section 1.3.8.1](<SafetyConcept - HARA.md#1381-internal-environmental-hazard-monitoring-allocation>).
+The [Internal Environmental Hazard Monitoring architecture](<../features/Internal Environmental Hazard Monitoring - Architecture.md>)
+defines mechanism/fault identities, inputs, lifecycle, timing and verification.
+
+| ID | Requirement | Responsible element |
+| --- | --- | --- |
+| SWR-IEHM-001 | The registered component shall maintain independent configured detector/pollutant subjects with stable keys, area metadata and typed hazard identity; logical C-ALARM and C-AQ responsibilities shall remain distinct. | component registration and models |
+| SWR-IEHM-002 | Input adapters shall explicitly normalize alarm/clear/trouble/test/hush states, units, source/receipt times, sequence and quality. CO, CO2, combustible gas, smoke, PM2.5 and AQI shall not share interchangeable mappings. | provider/profile adapters |
+| SWR-IEHM-003 | The component shall declare Group B dependencies for enabled channels, preserving shared owner/check compatibility. Component-owned health symptoms shall suppress duplicate C-ENT faults without modeling an asserted hazard as a failed required-clear entity check. | dependency integration |
+| SWR-IEHM-004 | A fresh valid smoke assertion shall SET `InternalSmokeDetected` through `sm_iehm_smoke` without startup/availability debounce, numeric measurement gating or peer voting. | smoke mechanism |
+| SWR-IEHM-005 | A fresh valid combustible-gas assertion shall SET `InternalFlammableGasDetected` through `sm_iehm_flammable_gas`, retaining the equipment's gas identity and output restrictions. | flammable-gas mechanism |
+| SWR-IEHM-006 | A fresh valid CO assertion shall SET `InternalCarbonMonoxideDetected` through `sm_iehm_carbon_monoxide`; absent or low numeric telemetry shall not override the detector's alarm state. | CO mechanism |
+| SWR-IEHM-007 | Alarm edges shall be captured before slower averaging/persistence work so an observed short assertion cannot disappear through a later snapshot. A simultaneous fresh alarm and separate low-battery/trouble condition shall preserve both hazard and diagnostic evidence. | event ingestion and alarm latch |
+| SWR-IEHM-008 | PM2.5 shall require indoor concentration in µg/m³, finite nonnegative values, known sensor range and saturation semantics; invalid or unrecognized saturated data shall not be clamped into normal measurements or clear an active PM symptom. | PM adapter and quality checks |
+| SWR-IEHM-009 | Short-window PM policy shall define threshold, averaging period, minimum covered duration/sample count, maximum gap and source age, failure persistence and a lower recovery threshold/duration; it shall assert the L2 `InternalParticulateMatterHigh` fault. | `sm_iehm_pm25_high` |
+| SWR-IEHM-010 | Time-weighted PM averages shall use actual valid elapsed coverage with bounded hold between samples, excluding gaps, duplicates and replay. Partial windows shall expose coverage and shall not be reported as complete. | PM sample buffer and integration |
+| SWR-IEHM-011 | Optional long-term PM exposure shall use a separately named averaging/coverage policy and L3 `InternalParticulateMatterExposure`; it shall not replace the short-window path or represent WHO daily/annual guidance as an instantaneous alarm. | `sm_iehm_pm25_exposure` |
+| SWR-IEHM-012 | Required-channel loss, detector fault/end-of-life, warmup beyond allowance and uncertain input interpretation shall create per-detector supervision symptoms; ancillary diagnostics shall not gate fresh alarm processing. Each supervision symptom shall retain all failed causes until all recover. | `sm_iehm_detector_health` |
+| SWR-IEHM-013 | Hazard symptoms shall remain independent per detector; FaultManager shall aggregate all contributors and clear only after every related symptom clears. No cross-hazard shadowing shall conceal smoke/gas/CO alarms. | symptom/FaultManager integration |
+| SWR-IEHM-014 | Binary HEAL shall require explicit authoritative clear state confirmed throughout a validated clear interval by the detector's event/heartbeat contract. Unknown, test/hush, offline, acknowledgement, removed configuration and cached historical state shall not satisfy recovery. | binary recovery state machine |
+| SWR-IEHM-015 | PM HEAL shall require a sufficiently covered valid recovery window below its clear threshold for its clear duration; invalid data shall cancel pending recovery, preserve the active latch and expose lost coverage. | PM recovery state machine |
+| SWR-IEHM-016 | Timing validation shall budget reception, component decision, queue/scheduler delays and delivery against the 10 s binary interface path, 60 s supervision path and 600 s short-window PM path. Timers shall expose onset and deadline; repeated restart/gaps shall not reset unresolved detection budgets. | validators and deterministic clock |
+| SWR-IEHM-017 | Bounded versioned atomic `InternalEnvironmentStateStore` outside the deployment tree shall retain active symptom/incident IDs, cause ledger, channel clear-order watermarks, gas switching-inhibition state, pending evidence and timing debt. Source history shall remain historical after restore, and downtime shall not count as observed healthy samples. | component persistence |
+| SWR-IEHM-018 | Reload, reconnect, resubscription and coverage recovery shall reconcile retained assertions and active notification/incident state. Unconfirmed positive retained alarm evidence shall be labeled unverified and handled conservatively; replay rejection shall require a persisted authoritative clear watermark with profile-defined source epoch/order. Corruption/clock uncertainty shall not fabricate HEAL or fully monitored safe state. | source-session reconciliation |
+| SWR-IEHM-019 | Evidence shall identify incident, hazard, detector, area, source/receipt/transition times, values/units, alarm or threshold policy, coverage, quality and positive clear basis using a bounded versioned allowlist. | incident evidence builder |
+| SWR-IEHM-020 | NotificationManager shall preserve stable tags, quiet updates, acknowledgement/retry semantics and the latest-100 target-attempt journal while adding compatible incident correlation. Raw `Set`/`Cleared` and `SET`/`CLEARED` states shall be retained; HA acceptance shall not imply phone delivery or environmental safety. | notification integration and history |
+| SWR-IEHM-021 | Hazard-specific guidance shall avoid generic ventilation, purifier or opening instructions for smoke/gas/CO. PM advice shall consult current outdoor/advice-conflict policy and shall be inhibited while relevant life-safety incidents or unresolved evidence are present. | guidance policy integration |
+| SWR-IEHM-022 | Shared LocalAnnunciator activation, level changes and restoration shall check hazard/installation output eligibility across all active incidents and a separately persisted gas switching-inhibition latch. That latch shall precede gas notification dispatch, survive HEAL/restart and require explicit authorized clearance under the reviewed installation policy. Blocking unapproved outputs shall not block mobile delivery or autonomous detectors. | NotificationManager and LocalAnnunciator policy |
+| SWR-IEHM-023 | MQTT/SafetyHome shall separately expose alarm, PM result, detector health, evaluated coverage, input ages and recovery reasons. EN/PL/DE messages shall retain equivalent meaning; HEAL wording shall not assert safe re-entry. | diagnostics and localization |
+| SWR-IEHM-024 | System configuration shall own rules, profiles, thresholds, timing, severities and output policy; user configuration shall own detector/entity/area bindings and selection. Validation shall reject incomplete channels, contradictory state sets, wrong pollutant units, unsafe timing and unreviewed gas-output policy. | compiler and configuration schema |
+| SWR-IEHM-025 | The component shall register no recovery and make no detector hush/reset, fan, purifier, valve, lock, cover or HVAC call. Bounded isolated adapters shall keep binary alarms responsive during PM load or storage failures; tests/maintenance shall not downgrade live alarms. | lifecycle, isolation and negative-actuation tests |
+
 ## 5. Non-functional requirements
 
 | ID | Requirement |
@@ -341,6 +379,9 @@ valid measure of safety-logic verification.
 | SG-004 Unsafe Heat Exposure | `SYS-SR-TEMP-001/002/003/004/005/006/007/008/010` | `SWR-TEMP-*` |
 | SG-003 Heating supervision contribution | `SYS-SR-HSM-002/003/005/011/012/013` | `SWR-HSM-002/003/004/012/014/017/018/019/020` |
 | SG-010/012 Heating-system health and loss of heating | `SYS-SR-HSM-001..018` | `SWR-HSM-001..026`; HARA scenarios `HSM-H01..07` |
+| SG-003 Internal detector supervision | `SYS-SR-IEHM-002/008/010/012/013` | `SWR-IEHM-002/003/012/014/016/017/018` |
+| SG-005 Indoor PM2.5 | `SYS-SR-IEHM-006/007/010/012/014/016` | `SWR-IEHM-008/009/010/011/015/016/021/023` |
+| SG-006/007/008 Smoke, flammable gas and CO | `SYS-SR-IEHM-001..005/008..020` | `SWR-IEHM-001..007/012..025`; HARA scenarios `IEHM-H01..07` |
 | SG-015 Door/Gate Open-Duration Contribution | `SYS-SR-DOOR-001..011` | `SWR-DOOR-*` |
 | SG-011/017/018 External Weather Exposure | `SYS-SR-EXT-001..005/010..013/040..043/050..052` | `SWR-EXT-*` |
 | SG-019 Outdoor Pollution Exposure | `SYS-SR-EXT-001..005/020..023/040..043/050..052` | `SWR-EXT-*` |
@@ -358,6 +399,7 @@ valid measure of safety-logic verification.
 | SWR-EXT-* | provider contract tests, external hazard policy tests, EventBus/FaultManager/notification integration tests, negative-actuation tests |
 | SWR-ENT-* | entity health registry/check/state-machine tests, component dependency and common-entity integration tests, FaultManager/MQTT tests, frontend inventory/filter tests, negative-actuation tests |
 | SWR-HSM-* | normalized telemetry/code-profile tests, independent-need and phase tests, thermal/distribution/counter rules, timing/restart/clock tests, C-ENT/FaultManager integration, SET/HEAL correlation, frontend diagnostics/localization and negative-actuation tests; detailed mapping in the Heating System Monitoring architecture |
+| SWR-IEHM-* | detector/profile fixtures, binary alarm edge/latch tests, PM unit/window/coverage tests, health ownership, timing/restart/corruption tests, hazard-specific output/advice conflicts, incident/journal/UI/localization and negative-actuation tests; detailed mapping in the Internal Environmental Hazard Monitoring architecture |
 | SWR-NFR-005 | pytest-cov application-code report |
 
 ## 8. Assurance boundary
