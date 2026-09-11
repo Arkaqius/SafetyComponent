@@ -139,6 +139,15 @@ def test_availability_cleanup_and_remove_sensor():
     assert legacy_health_call.kwargs["retain"] is True
 
     for topic in (
+        "homeassistant/sensor/safety_component_safety_app_health/config",
+        "safety_component/state/safety_app_health",
+        "safety_component/attributes/safety_app_health",
+    ):
+        cleanup_call = _mqtt_calls(hass_app, topic)[0]
+        assert cleanup_call.kwargs["payload"] == ""
+        assert cleanup_call.kwargs["retain"] is True
+
+    for topic in (
         "homeassistant/sensor/safety_component_test/config",
         "homeassistant/sensor/test/config",
         "safety_component/state/test",
