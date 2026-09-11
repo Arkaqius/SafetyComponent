@@ -216,6 +216,18 @@ SafetyFunctions:
       - sensor.recovery_closeexternalopeninggaragegate
       - sensor.fault_entityhealthtemperaturewindowupperbathroom
       - sensor.entity_health_temperature_window_upperbathroom
+      - sensor.fault_entityhealthtemperaturewindowbedroom
+      - sensor.entity_health_temperature_window_bedroom
+      - sensor.fault_entityhealthtemperaturewindowkidsroom
+      - sensor.entity_health_temperature_window_kidsroom
+      - sensor.fault_entityhealthtemperaturewindowkitchen
+      - sensor.entity_health_temperature_window_kitchen
+      - sensor.fault_entityhealthtemperaturewindowlivingroom
+      - sensor.entity_health_temperature_window_livingroom
+      - sensor.fault_entityhealthtemperaturewindowoffice
+      - sensor.entity_health_temperature_window_office
+      - sensor.fault_entityhealthtemperaturewindowgarage
+      - sensor.entity_health_temperature_window_garage
     safety_components:
       EntityMonitorComponent:
         explicit_entities:
@@ -246,10 +258,34 @@ SafetyFunctions:
                 target: state
                 values:
                 - healthy
+          ExternalOpeningBedroomLeftWindow:
+            entity_id: binary_sensor.bedroom_windowleft_sensor_contact
+            area_id: 45dba350035011ebb7723b97d0dd3541
+            description: Krańcówka lewego okna sypialni
+          ExternalOpeningKidsRoomWindow:
+            entity_id: binary_sensor.kidsroom_window_contact_contact
+            area_id: kids_room
+            description: Krańcówka okna pokoju dzieci
+          ExternalOpeningKitchenWindow:
+            entity_id: binary_sensor.kitchen_window_contact_contact
+            area_id: 45db9126035011ebb67629f8118eef32
+            description: Krańcówka okna kuchni
+          ExternalOpeningLivingRoomTerraceDoor:
+            entity_id: binary_sensor.livingroom_door_contact_contact
+            area_id: 45db77f4035011eb9a3115c8afedaa08
+            description: Krańcówka drzwi tarasowych salonu
+          ExternalOpeningOfficeWindow:
+            entity_id: binary_sensor.office_window_contact_contact
+            area_id: office
+            description: Krańcówka okna biura
           ExternalOpeningUpperBathroomWindow:
             entity_id: binary_sensor.upperbathroom_window_contact_contact
             area_id: upper_bathroom
             description: Krańcówka okna górnej łazienki
+          SafetyDoorGarageGate:
+            entity_id: binary_sensor.garage_gatedoorlow_contact_contact
+            area_id: garage
+            description: Dolna krańcówka bramy garażowej
       ExternalHazardComponent:
         openings:
           BathroomWindow:

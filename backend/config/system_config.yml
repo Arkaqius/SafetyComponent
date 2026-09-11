@@ -206,6 +206,18 @@ runtime_defaults:
     - sensor.recovery_closeexternalopeninggaragegate
     - sensor.fault_entityhealthtemperaturewindowupperbathroom
     - sensor.entity_health_temperature_window_upperbathroom
+    - sensor.fault_entityhealthtemperaturewindowbedroom
+    - sensor.entity_health_temperature_window_bedroom
+    - sensor.fault_entityhealthtemperaturewindowkidsroom
+    - sensor.entity_health_temperature_window_kidsroom
+    - sensor.fault_entityhealthtemperaturewindowkitchen
+    - sensor.entity_health_temperature_window_kitchen
+    - sensor.fault_entityhealthtemperaturewindowlivingroom
+    - sensor.entity_health_temperature_window_livingroom
+    - sensor.fault_entityhealthtemperaturewindowoffice
+    - sensor.entity_health_temperature_window_office
+    - sensor.fault_entityhealthtemperaturewindowgarage
+    - sensor.entity_health_temperature_window_garage
   safety_components:
     EntityMonitorComponent:
       explicit_entities:
