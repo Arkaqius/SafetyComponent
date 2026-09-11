@@ -540,8 +540,13 @@ def test_diagnostics_distinguish_ha_acceptance_from_device_delivery() -> None:
     manager.start()
     manager.notify("Fault", 3, FaultState.SET, None, "diag-tag")
 
-    _, state = mqtt.publish_sensor_state.call_args.args
-    attributes = mqtt.publish_sensor_state.call_args.kwargs["attributes"]
+    diagnostic_call = next(
+        item
+        for item in reversed(mqtt.publish_sensor_state.call_args_list)
+        if item.args[0] == "sensor.notification_delivery_health"
+    )
+    _, state = diagnostic_call.args
+    attributes = diagnostic_call.kwargs["attributes"]
     assert state == "healthy"
     assert attributes["last_result"] == "accepted_by_home_assistant"
     assert attributes["delivery_confirmation"] == (
@@ -569,7 +574,12 @@ def test_channel_diagnostics_show_partial_target_failure() -> None:
 
     manager.notify("Fault", 2, FaultState.SET, None, "channel-tag")
 
-    attributes = mqtt.publish_sensor_state.call_args.kwargs["attributes"]
+    diagnostic_call = next(
+        item
+        for item in reversed(mqtt.publish_sensor_state.call_args_list)
+        if item.args[0] == "sensor.notification_delivery_health"
+    )
+    attributes = diagnostic_call.kwargs["attributes"]
     assert attributes["channels"]["notify/phone_one"]["status"] == (
         "accepted_by_home_assistant"
     )

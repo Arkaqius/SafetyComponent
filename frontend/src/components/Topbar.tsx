@@ -18,7 +18,7 @@ const pageLabels: Record<string, { eyebrow: string; title: string }> = {
   '/safety-doors': { eyebrow: 'Wejścia do domu', title: 'Drzwi i bramy' },
   '/external-hazards': { eyebrow: 'Otoczenie domu', title: 'Zagrożenia zewnętrzne' },
   '/entities': { eyebrow: 'Diagnostyka danych', title: 'Encje i urządzenia' },
-  '/history': { eyebrow: 'Diagnostyka', title: 'Historia stanów' },
+  '/history': { eyebrow: 'Diagnostyka', title: 'Historia powiadomień i stanów' },
 };
 
 export default function Topbar({ menuButtonRef, navigationOpen, onMenuClick }: TopbarProps) {

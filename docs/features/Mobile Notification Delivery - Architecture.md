@@ -26,7 +26,7 @@ flowchart LR
     NotificationManager --> DeliveryScheduler
     MobilePushProvider -->|configured notify services| HomeAssistant
     HomeAssistant -->|mobile_app_notification_action| NotificationManager
-    NotificationManager -->|health and counters| MqttEntityManager
+    NotificationManager -->|health, counters, and attempt history| MqttEntityManager
 ```
 
 ### 2.1 `NotificationManager`
@@ -39,7 +39,8 @@ flowchart LR
   acknowledgement and L1 repeat policy where applicable;
 - owns acknowledgement state without clearing the underlying fault;
 - queues failed or WAN-blocked deliveries and applies retry policy;
-- records deadline telemetry and transport results;
+- records deadline telemetry, transport results, and a bounded history of
+  individual target submissions;
 - persists all state needed to resume safely after a restart.
 
 ### 2.2 `MobilePushProvider`
@@ -72,7 +73,7 @@ mobile notify services.
 
 - writes a versioned JSON snapshot atomically;
 - restores active records, acknowledgements, pending deliveries, repeat state,
-  counters, and last transport result;
+  counters, last transport result, and submission history;
 - retains restored active records until a current fault event confirms SET,
   CLEARED, or SHADOWED, and reconciles an authoritative clear even when the
   fresh FaultManager lifecycle would otherwise suppress a duplicate clear;
@@ -96,6 +97,55 @@ attributes include active/acknowledged/queued counts, accepted and failed
 attempt counters, deadline misses, last attempt/result/error, per-service
 status/time/error, and the explicit statement that device delivery is not
 confirmed.
+
+### 2.7 Notification history
+
+The manager shall retain the latest 100 individual target submission attempts,
+including successful Home Assistant acceptance and failed submissions. Each
+retry shall produce a separate entry only for the targets actually attempted.
+Waiting for WAN recovery shall not create a submission-history entry.
+
+`sensor.notification_history` shall expose the retained entry count as its
+state, with a versioned history payload, a retention limit of 100, and entries
+ordered newest first. The manager shall publish this separate sensor when it
+starts and after submission attempts, without rebuilding the journal on idle
+scheduler ticks. The shared MQTT heartbeat shall refresh its cached state and
+attributes to preserve availability and recover after MQTT restarts.
+The journal shall use the existing notification state snapshot and persistence
+configuration. A compatible snapshot without history shall restore an empty
+journal without discarding active or pending notification state.
+
+Each entry shall contain:
+
+| Field | Meaning |
+| --- | --- |
+| `id` | Unique UUID for this target attempt. |
+| `tag` | Stable fault notification tag for correlation. |
+| `kind`, `fault_state` | Submission purpose and associated fault lifecycle state. |
+| `title`, `message` | Notification content, each bounded to 2048 characters. |
+| `text_truncated` | Whether the stored title or message was shortened to its bound. |
+| `level` | Notification severity level. |
+| `created_at` | UTC ISO timestamp when this delivery was created. |
+| `attempted_at` | UTC ISO timestamp recorded on completion of the submission attempt. |
+| `attempt` | Attempt number within this delivery. |
+| `service` | Actual configured Home Assistant notify service attempted. |
+| `result` | `accepted_by_home_assistant` or `failed`. |
+| `deadline_missed` | Whether this delivery exceeded its severity deadline. |
+
+Kinds `new`, `update`, and `repeat` shall record `SET`; `resolved` shall record
+`CLEARED`; `clear` shall record `SHADOWED`. Shadowing removes a notification and
+shall not be presented as a healed fault. The journal shall not expose raw
+transport exception text, unfiltered fault events, or inferred group members.
+Failure details in the history UI shall use a generic diagnostic explanation;
+existing transport-health diagnostics retain their separate error contract.
+
+The SafetyHome History page shall present this notification list before entity
+history. Each item shall show its date and time, lifecycle state, target
+service, and submission outcome. Selecting it shall reveal its content and
+diagnostic fields. Dates and times shall be presented in the browser's local
+time zone. A notify group shall be identified by its configured service: the
+frontend shall not infer which person or device received a group notification.
+Home Assistant acceptance shall remain distinct from confirmed device delivery.
 
 ## 3. Configuration contract
 
@@ -180,6 +230,11 @@ Automated tests shall cover exact L1-L3 new and quiet payloads, explicit target
 routing, correct clear commands, partial failures, retry bounds, WAN queue and
 flush, deadlines, acknowledgement, controlled repeats, restart restoration,
 allowlist filtering, local-annunciator separation, and diagnostic publication.
+History tests shall cover SET and CLEARED entries, distinct shadow removal,
+per-target failures and retries, retention bounds, restart restoration and
+compatible snapshots without history, content bounds, and publication only on
+startup or attempts. Frontend tests shall cover lifecycle labels, date/time and
+target presentation, diagnostic details, and empty or unavailable history.
 
 Live verification shall not trigger a household fault, siren, warning light,
 or unsolicited phone notification. Production delivery requires a separately

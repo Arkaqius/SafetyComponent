@@ -31,7 +31,32 @@ npm run dev:mock
 Tryb demonstracyjny działa tylko przy deweloperskim buildzie Vite i jest jawnie oznaczony w nagłówku. Produkcyjny build
 zawsze korzysta z rzeczywistych encji Home Assistanta.
 
-## Historia temperatur
+## Historia powiadomień i encji
+
+Na stronie **Historia** lista powiadomień znajduje się nad historią encji.
+Pokazuje najnowsze próby przekazania powiadomień do Home Assistanta: aktywację
+problemu (`SET`), jego aktualizacje i ponowienia, a także ustąpienie
+(`CLEARED`). Usunięcie powiadomienia wskutek przesłonięcia problemu
+(`SHADOWED`) jest osobnym zdarzeniem i nie oznacza, że problem ustąpił.
+
+Każdy wpis pokazuje datę i godzinę w lokalnej strefie przeglądarki, usługę
+odbiorcy oraz wynik próby. Kliknij wpis, aby zobaczyć treść, poziom pilności,
+czas utworzenia i próby, numer próby, informację o przekroczeniu terminu oraz
+identyfikatory diagnostyczne. Przyjęcie przez Home Assistanta nie jest
+potwierdzeniem dostarczenia na telefon. Dla grupy, np. `notify/all_phones`,
+lista pokazuje nazwę usługi; nie ustala jej członków ani konkretnych osób,
+które otrzymały wiadomość.
+
+Dziennik pochodzi z `sensor.notification_history`, obejmuje ostatnie 100 prób
+dla poszczególnych usług i wyświetla najnowsze wpisy na początku. Nieudana
+próba i jej ponowienie mają osobne wpisy. Samo oczekiwanie na odzyskanie
+Internetu nie jest próbą wysłania. Historia korzysta z istniejącego zapisu
+stanu powiadomień i przy włączonej persystencji przetrwa restart AppDaemona;
+wcześniejszy zapis bez dziennika rozpoczyna historię od pustej listy.
+Rejestrator Home Assistanta nie jest wymagany do odczytu tej listy.
+Historia encji pozostaje poniżej i korzysta z Rejestratora.
+
+### Historia temperatur
 
 Popupy temperatur pobierają historię na żądanie z Rejestratora Home Assistanta.
 Repozytorium zawiera wąski przykład allowlisty obejmujący wyłącznie osiem

@@ -11,6 +11,12 @@ import appdaemon.plugins.hass.hassapi as hass  # type: ignore
 
 from components.core.localization import Localizer
 from components.core.types_common import FaultState
+from components.notification_manager.history import (
+    HISTORY_ENTITY_ID,
+    HISTORY_LIMIT,
+    restore_history,
+    submission_entry,
+)
 from components.notification_manager.local_annunciator import LocalAnnunciator
 from components.notification_manager.mobile_push_provider import MobilePushProvider
 from components.notification_manager.models import PendingDelivery
@@ -70,6 +76,7 @@ class NotificationManager:
         self._clock = clock or time.time
         self.active_notification: dict[str, dict[str, Any]] = {}
         self.pending_deliveries: dict[str, PendingDelivery] = {}
+        self.notification_history: list[dict[str, Any]] = []
         self.wan_online: bool | None = (
             None if self.notification_config.get("wan_entity") else True
         )
@@ -103,6 +110,12 @@ class NotificationManager:
         self._started = True
         if self.mqtt_entities is not None:
             self.mqtt_entities.register_sensor(
+                HISTORY_ENTITY_ID,
+                self.localizer.text("entity.notification_history"),
+                icon="mdi:message-text-clock-outline",
+                entity_category="diagnostic",
+            )
+            self.mqtt_entities.register_sensor(
                 self.notification_config["diagnostics_sensor_id"],
                 "Notification Delivery Health",
                 icon="mdi:message-alert-outline",
@@ -120,6 +133,7 @@ class NotificationManager:
             listen_event(self.handle_mobile_action, "mobile_app_notification_action")
         self.hass_app.run_every(self.tick, "now", 1)
         self._publish_diagnostics()
+        self._publish_history()
 
     def stop(self) -> None:
         """Persist lifecycle state during a controlled shutdown."""
@@ -560,11 +574,15 @@ class NotificationManager:
         self._counters["accepted_attempts"] += accepted_count
         self._counters["failed_attempts"] += len(result.failed_services)
         for target in result.targets:
+            self.notification_history.append(
+                submission_entry(delivery, target, completed_at)
+            )
             self._channel_status[target.service] = {
                 "status": target.disposition.value,
                 "last_attempt_at": completed_at,
                 "last_error": target.error or "",
             }
+        self.notification_history = self.notification_history[-HISTORY_LIMIT:]
         if result.completed:
             self.pending_deliveries.pop(delivery.delivery_id, None)
             if result.accepted:
@@ -592,6 +610,23 @@ class NotificationManager:
             self._last_error = result.error
         self._persist_state()
         self._publish_diagnostics()
+
+        self._publish_history()
+
+    def _publish_history(self) -> None:
+        """Publish the journal only on startup or actual submission attempts."""
+
+        if self.mqtt_entities is None:
+            return
+        self.mqtt_entities.publish_sensor_state(
+            HISTORY_ENTITY_ID,
+            len(self.notification_history),
+            attributes={
+                "version": 1,
+                "limit": HISTORY_LIMIT,
+                "entries": list(reversed(self.notification_history)),
+            },
+        )
 
     def _drop_pending_for_tag(self, tag: str) -> None:
         for delivery_id, delivery in list(self.pending_deliveries.items()):
@@ -668,6 +703,7 @@ class NotificationManager:
         snapshot = {
             "version": _STATE_VERSION,
             "active_notifications": self.active_notification,
+            "notification_history": self.notification_history,
             "pending_deliveries": [
                 delivery.to_dict() for delivery in self.pending_deliveries.values()
             ],
@@ -699,6 +735,9 @@ class NotificationManager:
                 return
             if int(snapshot.get("version", -1)) != _STATE_VERSION:
                 raise ValueError("Unsupported notification state version")
+            self.notification_history = restore_history(
+                snapshot.get("notification_history", [])
+            )
             active = snapshot.get("active_notifications", {})
             if not isinstance(active, dict):
                 raise ValueError("active_notifications must be an object")
