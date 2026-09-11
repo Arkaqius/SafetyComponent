@@ -47,6 +47,9 @@ This could be caused by a lack of ventilation, leading to a buildup of pollutant
 **Loss of Heating/Cooling:**
 
 This could occur if the HVAC system fails, leading to uncomfortable or even dangerous indoor temperatures.
+For heating, failure can occur at any stage between room heat need, controller
+request, boiler response, and heat distribution. A running controller or an
+available temperature entity alone does not establish delivery of heat.
 
 **Failure of Safety or Monitoring Devices:**
 
@@ -284,6 +287,52 @@ _High:_ These hazards can be easily mitigated if residents are notified in time,
 - The system shall continuously monitor the current flow temperature and compare it against the expected temperature range to detect any potential heater errors or anomalies.
 - The system shall provide proactive measures such as alerts, redundancy mechanisms, or automated failover strategies to maintain safe temperatures.
 
+Heating supervision shall be allocated to `HeatingSystemMonitorComponent`
+(C-HVAC), with entity input quality supplied by C-ENT and independent room
+temperature hazard detection retained by C-TEMP. The heating allocation supports
+SG-010 and SG-012 and shall not replace the shorter response requirements for
+room cold/heat exposure or sensor failures. Cooling-system supervision remains
+outside this heating-specific allocation.
+
+| Scenario | Hazardous sequence / operating context | Required monitoring and response |
+| --- | --- | --- |
+| HSM-H01 | Room heating is permitted and needed, but controller failure prevents a heat request | Compare independently established room need with controller demand; warn about missing demand without using boiler activity as the gate |
+| HSM-H02 | A valid heat request is present, but the boiler does not start or delivers insufficient heat | Observe bounded startup, flow-temperature rise, and tracking of the requested flow temperature; issue a loss-of-heating warning |
+| HSM-H03 | Boiler communication, input quality, or interpretation is lost while heating cannot be assessed | Report loss of supervision, retain active incidents, and inhibit only conclusions that require the lost evidence |
+| HSM-H04 | Burner/pump operation or the flow/return response suggests impaired heat distribution | Detect mode-dependent inconsistencies and sustained room cooling; report observed effects without asserting an unmeasured mechanical cause |
+| HSM-H05 | Flow temperature exceeds a mode-specific or manufacturer absolute limit | Distinguish central heating, domestic hot water (DHW), hysteresis, and overrun; report excess temperature independently of heating-demand gating |
+| HSM-H06 | Normal standby, DHW priority, anti-cycle inhibition, or pump overrun is misclassified, or prolonged inhibition conceals heating loss | Recognize valid operating phases, bound permissible inhibition, and preserve a total heating-loss deadline |
+| HSM-H07 | Restart, stale observations, acknowledgement, or vanished demand falsely resolves an existing incident | Preserve incident identity and deadlines; require fresh rule-specific recovery evidence before HEAL |
+
+- Heating supervision shall distinguish room heat need, controller request,
+  boiler operating response, and room heat delivery using independently
+  identified inputs and installation-specific applicability conditions.
+- C-HVAC shall observe and notify; it shall not reset the boiler, alter
+  setpoints, force pumps, bypass interlocks, or register heating recovery
+  actions. Any system-level backup/failover strategy shall have a separate
+  explicit safety allocation and authorization. An alert shall not be claimed
+  as proof that room temperature has recovered.
+- Entity quality failures shall remain visible per entity while C-HVAC
+  correlates their impact into heating incidents without duplicate C-ENT
+  notifications for the same owned failure.
+- Manufacturer thermal limits, hydraulic configuration, operating modes, and
+  calibrated timing shall constrain heating checks. Diagnostics such as
+  short cycling shall not be used as substitutes for heating-loss detection.
+- HSM-H05 shall produce an L2 excess-temperature warning using a reviewed
+  equipment-specific allocation `HSM-H05/<EquipmentProfileKey>` that records
+  thermal limits, maximum response time and supporting manufacturer/hydraulic
+  evidence. It shall not inherit the heating-loss 30-minute budget or the
+  occupied-room overheating budget. Native thermal protection shall remain
+  independent of this supervisory warning.
+- A cleared heating incident shall require evidence of restored capability;
+  absent demand or unavailable inputs shall not be positive recovery evidence.
+- Boiler telemetry shall not substitute for independent smoke, gas, CO, leak,
+  or room-temperature safety monitoring or for the boiler's native protection.
+
+Traceability: [SYS section 8.6](<SafetyConcept - SYS.md#86-heating-system-monitoring-component-c-hvac>),
+[SSRD section 4.10](<SafetyComponent - SSRD.md#410-heating-system-monitoring>),
+and [Heating System Monitoring architecture](<../features/Heating System Monitoring - Architecture.md>).
+
 #### 1.3.13 Privacy Invasion
 
 - The system shall notify residents when cameras or microphones are accessed outside of expected usage times.
@@ -436,7 +485,7 @@ The following table provides audit-ready traceability from each hazard through s
 | Unsafe Cold Exposure    | 1.3.9            | Alerts, heating integration, proactive prevention   | Temperature logs, HVAC health monitoring               | Level 1             | Level 4            |
 | Unsafe Heat Exposure    | 1.3.10           | Alerts, cooling integration, proactive prevention   | Temperature logs, AC system diagnostics                | Level 1             | Level 4            |
 | System Failure          | 1.3.11           | Backup power, self-checks, diagnostics              | Safety-entity freshness, device uptime, network health monitoring | Level 2             | Level 2            |
-| Loss of Heating/Cooling | 1.3.12           | Alerts, redundancy, automated failover              | Heating/cooling performance logs, failover tests       | Level 3             | Level 3            |
+| Loss of Heating/Cooling | 1.3.12           | C-HVAC heating warnings; separately allocated backup/failover measures | Need/request/response/delivery, communication, thermal limits, and positive recovery evidence | Level 3 | Level 3 |
 | Privacy Invasion        | 1.3.13           | Secure auth/encryption, disable/mask options        | Access logs, AV device monitoring                      | Level 1             | Level 4            |
 | Rain Entering Window    | 1.3.14           | Weather-based manual closure warning                 | Weather forecasts/warnings, contact states, event logs | Level 3             | Level 4            |
 | Frost Exposure Through Openings | 1.3.15 | Manual closure warning | Weather observations/forecasts, contact states, event logs | Level 3 | Level 4 |

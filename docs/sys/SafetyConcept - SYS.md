@@ -93,6 +93,9 @@ _Note: the data **providers** are external; the **interfaces** and how we use th
 - Entity-health registry and evaluation for explicit safety dependencies,
   component-declared dependencies, and the information-only Home Assistant
   inventory.
+- Heating-system supervision by C-HVAC across room heat need, controller
+  request, boiler response, and heat delivery, independent of normal heating
+  control and of C-TEMP room-temperature hazard decisions.
 
 **Responsibilities (internal):**
 
@@ -364,6 +367,24 @@ _Interfaces turn §2 elements into **testable contracts**: freshness, latency, a
 - Expose flow temperature, burner state, error codes.
 - **Rate:** flow temp **≥ 0.2 Hz**; **freshness:** drop if `age > 120 s`.
 - **Semantics:** discrete errors as enumerations with code table.
+- Every enabled C-HVAC rule shall identify its required signals: flow/return
+  temperatures, requested flow temperature, burner/pump state, central heating
+  (CH)/domestic hot water (DHW) mode,
+  permitted inhibition, and active device codes as applicable. Optional
+  maintenance and cycle counters shall declare their own quality contracts.
+- Boiler communication shall be evidenced by a trustworthy device-observation
+  timestamp or sequence/heartbeat and transport state. HA entity availability,
+  unchanged `last_updated`, and a retained `connected` value alone shall not
+  establish recent receipt of boiler measurements.
+- The adapter shall normalize units, quality, observation time, receipt time,
+  source identity, and model-specific codes. Last-error history shall remain
+  separate from active error state. Unmapped codes shall be explicitly unknown.
+- Room heating permission/need and controller demand shall use independently
+  identified inputs, including effective room targets and declared schedule or
+  inhibition state; they shall not be inferred solely from burner activity.
+- Freshness and total fault-detection budgets shall be distinct. C-HVAC
+  calibration shall allocate sampling, timeout, evaluation and debounce so
+  detection meets the applicable SG budget; IR-008 does not relax SG-003.
 
 **IR-009 Home Assistant Entity Health**
 
@@ -1108,8 +1129,86 @@ entity is safety-relevant through Group A or B.
 
 ---
 
+### 8.6 Heating System Monitoring Component (C-HVAC)
+
+**Allocation:** `HeatingSystemMonitorComponent` shall own heating-system
+supervision under SG-010 and SG-012, contribute to SG-003 input supervision,
+and supply evidence to room cold/heat exposure diagnosis without replacing
+C-TEMP. HARA section 1.3.12 defines scenarios HSM-H01 through HSM-H07.
+The detailed contract is defined in the
+[Heating System Monitoring architecture](<../features/Heating System Monitoring - Architecture.md>).
+
+#### 8.6.1 Boundaries and interfaces
+
+C-HVAC shall consume normalized IR-008 measurements, room need/controller
+demand evidence, and C-ENT quality for its declared Group B dependencies.
+The EMS-ESP adapter shall own provider/model interpretation and communication
+health; C-HVAC shall own household policy and incidents. SmartHeating and the
+boiler controller shall retain normal control. C-TEMP shall retain existing
+room-temperature mechanisms and faults.
+
+C-HVAC shall publish per-installation phase, supervision coverage, rule
+results, heating faults and bounded diagnostic evidence through the existing
+fault/MQTT/notification interfaces. It shall not perform boiler, pump, climate,
+gas-valve or other heating actuator calls or register recovery actions.
+
+#### 8.6.2 Functional requirements
+
+| ID | Requirement |
+| --- | --- |
+| SYS-SR-HSM-001 | C-HVAC shall distinguish independent room heat need, controller request, boiler response, and room heat delivery; a failed controller request shall not gate off need-to-request monitoring. |
+| SYS-SR-HSM-002 | C-HVAC shall register all enabled-rule inputs as component dependencies with entity identity, owner, purpose, units, quality, freshness source where trustworthy, and failure ownership. Shared inputs shall retain every consumer and its applicable contract. |
+| SYS-SR-HSM-003 | The adapter shall normalize telemetry and model-specific current codes separately from historical errors; unknown code meanings and inconsistent signals shall produce explicit interpretation/coverage diagnostics rather than a fabricated healthy or faulty boiler state. |
+| SYS-SR-HSM-004 | Operating phase shall be one of `idle`, `starting`, `heating`, `dhw`, `pump_overrun`, `inhibited`, or `unknown`, separate from supervision health and fault lifecycle; phase transitions shall use fresh coherent evidence and bounded mode-specific delays. |
+| SYS-SR-HSM-005 | Communication loss, invalid required measurements, or unavailable phase interpretation shall diagnose loss of supervision. C-HVAC-owned failures shall not create duplicate C-ENT faults; only dependent performance checks shall become unevaluable. |
+| SYS-SR-HSM-006 | C-HVAC shall detect permitted room heating need without controller demand, and controller demand without boiler response, accounting for effective targets, explicit schedule/inhibition and bounded DHW priority and anti-cycle delays. |
+| SYS-SR-HSM-007 | With valid heating demand and suitable operating conditions, C-HVAC shall detect insufficient flow-temperature rise and sustained failure to track the requested flow temperature using calibrated sample coverage, startup allowance, tolerances and durations. |
+| SYS-SR-HSM-008 | C-HVAC shall detect configured pump-state and flow/return inconsistencies and sustained room cooling despite requested heat delivery; it shall describe evidence as a suspected distribution problem rather than prove a particular failed mechanical part. |
+| SYS-SR-HSM-009 | C-HVAC shall detect excess temperature against validated mode-specific limits and manufacturer absolute limits independently of heating-demand gating for the absolute-limit rule. Normal hysteresis, DHW and overrun shall not be treated as excess CH temperature. Enablement shall require the reviewed `HSM-H05/<EquipmentProfileKey>` thermal response allocation; plausibility checks shall not mask valid dangerous temperatures. |
+| SYS-SR-HSM-010 | Active blocking/device faults shall be classified using a versioned manufacturer/model code table; maintenance and short-cycling diagnostics shall remain distinct from current device faults and heating-loss incidents. |
+| SYS-SR-HSM-011 | Each rule shall expose applicability, input quality, pending/active/recovering state and reasons. Missing evidence, removed demand, mode changes, acknowledgement and restart shall not positively clear active faults; HEAL shall require fresh rule-specific evidence. |
+| SYS-SR-HSM-012 | Detection, decision and notification budgets shall meet SG-003 (60 s for allocated sensor/communication failures) and SG-010/012 (30 min for heating loss). Startup, freshness, evaluation cadence, observation, debounce, allowed inhibition and notification allowance shall be budgeted without double counting parallel intervals; repeated inhibition or restart shall not indefinitely postpone detection. Notification acceptance shall not establish thermal recovery. |
+| SYS-SR-HSM-013 | C-HVAC shall preserve active incident IDs, qualifying onset/deadlines and evidence across restart using bounded versioned atomic storage. Untrusted persistence or a clock discontinuity shall expose degraded supervision and shall not reset an active incident into healthy state. |
+| SYS-SR-HSM-014 | Each incident shall use stable fault/mechanism identities, retain all contributing symptoms and distinguish observations from inferred causes. Communication recovery shall not clear performance faults; independent room-temperature alarms shall remain eligible. |
+| SYS-SR-HSM-015 | SET and HEAL shall include dated evidence, installation/room identity, phase, demand, relevant measurements, thresholds, elapsed duration, code interpretation and recovery evidence. Notification attempts shall preserve configured target/result semantics, quiet updates and bounded history; acceptance by HA shall not be represented as confirmed phone delivery. |
+| SYS-SR-HSM-016 | SafetyHome shall display phase, coverage, active faults, failed and unevaluable checks, evidence ages and reason-specific inhibition. History shall correlate SET/HEAL evidence with actual notification attempts. EN/PL/DE presentation shall preserve language-independent raw codes and IDs. |
+| SYS-SR-HSM-017 | Software calibration shall own thresholds, timings, code profiles, severities and rule enablement; installation configuration shall own entity/area bindings and equipment identity. Validation shall reject incomplete enabled rules, ambiguous hydraulics/code profiles, invalid recovery bands and timing combinations outside allocated budgets. |
+| SYS-SR-HSM-018 | C-HVAC shall be observation-only, with deterministic bounded evaluation and no boiler reset, heating setpoint writes, pump forcing, safety interlock bypass or recovery actions. Any backup/failover function shall require its own allocation and authorization. |
+
+#### 8.6.3 Severity, timing and safe-state contribution
+
+Heating-loss, device-fault and supervision-loss incidents shall contribute L3
+warnings. Excess temperature shall contribute L2. Maintenance and cycling shall
+contribute L4 information. Native boiler protection and independent C-TEMP,
+C-ALARM and C-LEAK decisions shall retain their own authority and severity.
+
+C-HVAC's contribution to SS-4 is explicit degraded supervision/operation and
+timely notification with manual guidance. Its timing evidence shall establish
+this contribution; it shall not assert that manual intervention or restored
+room temperature occurred within the notification deadline. The broader
+SG-012 backup/failover objective shall remain separately allocated.
+
+SG-003 supervision paths shall use a tighter timeout than the IR-008 maximum
+sample age where required to meet the 60 s total budget. Slow-provider paths
+shall expose unmet coverage rather than silently enlarge that budget. The
+architecture defines allocation examples and timing tests.
+
+#### 8.6.4 Traceability and verification
+
+- HSM-H01/H02: SYS-SR-HSM-001/006/007/012.
+- HSM-H03: SYS-SR-HSM-002/003/005/012/013.
+- HSM-H04/H05: SYS-SR-HSM-004/008/009/010.
+- HSM-H06/H07: SYS-SR-HSM-004/011/012/013/014.
+- Cross-cutting delivery, presentation and boundary: SYS-SR-HSM-015..018.
+- Verification shall cover signal/counter normalization, independent need,
+  normal phases, prolonged inhibition, false-clear prevention, code profiles,
+  transient and sustained failures, timing boundaries, restart/clock faults,
+  C-ENT fault ownership, notification correlation and zero heating actuation.
+
+---
+
 **Other component allocations:** Fire/CO/Gas is owned by C-ALARM, Water Leak by
-C-LEAK, Indoor Air Quality by C-AQ, HVAC Health by C-HVAC, intrusion/lock
+C-LEAK, Indoor Air Quality by C-AQ, intrusion/lock
 security by C-SEC, Privacy by C-PRIV, and Network/Platform Health by C-NET.
 
 ## 9 Non‑Functional Requirements (NFR)
