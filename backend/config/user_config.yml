@@ -25,6 +25,12 @@ user_config:
   localization:
     language: pl
   safety_components:
+    EntityMonitorComponent:
+      explicit_entities:
+        ExternalOpeningUpperBathroomWindow:
+          entity_id: binary_sensor.upperbathroom_window_contact_contact
+          area_id: upper_bathroom
+          description: Krańcówka okna górnej łazienki
     ExternalHazardComponent:
       openings:
         BathroomWindow:

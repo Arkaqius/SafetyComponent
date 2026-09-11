@@ -211,6 +211,11 @@ SafetyFunctions:
       qos: 0
       heartbeat_seconds: 60
       expire_after: 180
+      legacy_discovery_entity_ids:
+      - sensor.recovery_closeexternalopeningexternalgate
+      - sensor.recovery_closeexternalopeninggaragegate
+      - sensor.fault_entityhealthtemperaturewindowupperbathroom
+      - sensor.entity_health_temperature_window_upperbathroom
     safety_components:
       EntityMonitorComponent:
         explicit_entities:
@@ -241,6 +246,10 @@ SafetyFunctions:
                 target: state
                 values:
                 - healthy
+          ExternalOpeningUpperBathroomWindow:
+            entity_id: binary_sensor.upperbathroom_window_contact_contact
+            area_id: upper_bathroom
+            description: Krańcówka okna górnej łazienki
       ExternalHazardComponent:
         openings:
           BathroomWindow:

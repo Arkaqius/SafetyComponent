@@ -49,4 +49,22 @@ def test_other_appdaemon_health_entities_are_explicitly_monitored() -> None:
         "SmartHeatingAppHealth": "sensor.sh_health",
         "GarageDoorAppHealth": "sensor.garage_door_health_2",
         "ExternalGateAppHealth": "sensor.external_gate_health_2",
+        "ExternalOpeningUpperBathroomWindow": (
+            "binary_sensor.upperbathroom_window_contact_contact"
+        ),
     } == {key: value["entity_id"] for key, value in entities.items()}
+
+
+def test_production_mqtt_cleanup_removes_replaced_entities() -> None:
+    legacy_entities = set(
+        _production_config()["user_config"]["mqtt"][
+            "legacy_discovery_entity_ids"
+        ]
+    )
+
+    assert {
+        "sensor.recovery_closeexternalopeningexternalgate",
+        "sensor.recovery_closeexternalopeninggaragegate",
+        "sensor.fault_entityhealthtemperaturewindowupperbathroom",
+        "sensor.entity_health_temperature_window_upperbathroom",
+    } <= legacy_entities

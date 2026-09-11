@@ -201,6 +201,11 @@ runtime_defaults:
     qos: 0
     heartbeat_seconds: 60
     expire_after: 180
+    legacy_discovery_entity_ids:
+    - sensor.recovery_closeexternalopeningexternalgate
+    - sensor.recovery_closeexternalopeninggaragegate
+    - sensor.fault_entityhealthtemperaturewindowupperbathroom
+    - sensor.entity_health_temperature_window_upperbathroom
   safety_components:
     EntityMonitorComponent:
       explicit_entities:
