@@ -32,9 +32,9 @@ def test_gas_alarm_reaches_l1_fault_without_co_consensus(tmp_path) -> None:
     service_calls: list[tuple[str, dict[str, Any]]] = []
 
     def fake_state(entity_id: str, **_: Any) -> Any:
-        if entity_id == "binary_sensor.bathroom_gasleak_detector":
+        if entity_id == "binary_sensor.bathroom_gasleak_detector_gas":
             return "on"
-        if entity_id == "binary_sensor.bathroom_carbonoxide_detector":
+        if entity_id == "binary_sensor.bathroom_carbonoxide_detector_carbon_monoxide":
             return "off"
         return None
 

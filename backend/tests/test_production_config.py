@@ -112,7 +112,7 @@ def test_production_internal_hazard_bindings_are_distinct_binary_channels() -> N
     ] is True
     assert detectors["BathroomFlammableGas"] == {
         "area_id": "bathroom",
-        "entity_id": "binary_sensor.bathroom_gasleak_detector",
+        "entity_id": "binary_sensor.bathroom_gasleak_detector_gas",
         "friendly_name": "Czujnik gazu w łazience",
         "hazard": "flammable_gas",
         "profile": "home_assistant_binary_alarm",
@@ -120,7 +120,7 @@ def test_production_internal_hazard_bindings_are_distinct_binary_channels() -> N
     }
     assert detectors["BathroomCarbonMonoxide"] == {
         "area_id": "bathroom",
-        "entity_id": "binary_sensor.bathroom_carbonoxide_detector",
+        "entity_id": "binary_sensor.bathroom_carbonoxide_detector_carbon_monoxide",
         "friendly_name": "Czujnik tlenku węgla w łazience",
         "hazard": "carbon_monoxide",
         "profile": "home_assistant_binary_alarm",
