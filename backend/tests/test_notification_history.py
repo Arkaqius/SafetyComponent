@@ -182,3 +182,20 @@ def test_l1_repeat_and_exhaustion_remain_distinguishable() -> None:
     manager.notify("Fault", 2, FaultState.SET, None, "tag")
     assert manager.notification_history[-1]["result"] == "failed"
     assert manager.pending_deliveries == {}
+
+
+def test_acknowledgement_refresh_is_recorded_as_active_fault_submission() -> None:
+    manager = make_manager()
+    manager.notify("Fault", 2, FaultState.SET, None, "tag")
+
+    manager.handle_mobile_action(
+        "mobile_app_notification_action",
+        {"action": "SAFETY_ACK_tag"},
+        {},
+    )
+
+    assert [entry["kind"] for entry in manager.notification_history] == [
+        "new",
+        "acknowledged",
+    ]
+    assert manager.notification_history[-1]["fault_state"] == "SET"

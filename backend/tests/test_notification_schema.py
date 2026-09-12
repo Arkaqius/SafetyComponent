@@ -11,7 +11,7 @@ def test_defaults_use_explicit_all_phones_and_hakit_url() -> None:
     config = validate_notification_config({})
 
     assert config["mobile"]["services"] == ["notify/all_phones"]
-    assert config["mobile"]["default_url"] == ("https://ha.kojbito.org/5c36e1c9_hakit")
+    assert config["mobile"]["default_url"] == "/5c36e1c9_hakit"
     assert set(config["mobile"]["profiles"]) == {1, 2, 3}
 
 
@@ -24,6 +24,13 @@ def test_dot_notation_service_is_rejected() -> None:
     with pytest.raises(ValueError, match="domain/service format"):
         validate_notification_config(
             {"mobile": {"services": ["notify.mobile_app_phone"]}}
+        )
+
+
+def test_absolute_notification_url_is_rejected_to_keep_companion_navigation() -> None:
+    with pytest.raises(ValueError, match="HA-relative path"):
+        validate_notification_config(
+            {"mobile": {"default_url": "https://ha.example/dashboard"}}
         )
 
 

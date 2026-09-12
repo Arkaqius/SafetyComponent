@@ -212,7 +212,7 @@ user_config:
     mobile:
       services:
         - "notify/all_phones"
-      default_url: "https://ha.kojbito.org/5c36e1c9_hakit"
+      default_url: "/5c36e1c9_hakit"
     local:
       light_entity: "light.info"
   localization:

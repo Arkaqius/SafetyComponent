@@ -56,6 +56,7 @@ class MobilePushProvider:
         acknowledgement_title: str,
         quiet: bool = False,
         resolved: bool = False,
+        acknowledged: bool = False,
         services: tuple[str, ...] | None = None,
     ) -> DeliveryBatchResult:
         """Submit one notification to every configured service."""
@@ -66,6 +67,7 @@ class MobilePushProvider:
             acknowledgement_title=acknowledgement_title,
             quiet=quiet,
             resolved=resolved,
+            acknowledged=acknowledged,
         )
         return self._submit(
             title=title, message=message, data=payload, services=services
@@ -91,6 +93,7 @@ class MobilePushProvider:
         acknowledgement_title: str,
         quiet: bool,
         resolved: bool,
+        acknowledged: bool = False,
     ) -> dict[str, Any]:
         """Build one cross-platform Companion payload."""
 
@@ -106,11 +109,12 @@ class MobilePushProvider:
             "channel": profile["android_channel"],
             "importance": profile["android_importance"],
         }
-        if not resolved:
+        if not resolved and not acknowledged:
             data["actions"] = [
                 {
                     "action": f"SAFETY_ACK_{tag}",
                     "title": acknowledgement_title,
+                    "action_data": {"tag": tag},
                 }
             ]
 

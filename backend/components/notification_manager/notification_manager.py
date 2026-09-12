@@ -194,24 +194,49 @@ class NotificationManager:
             )
 
     def handle_mobile_action(
-        self, event_name: str, data: Mapping[str, Any], **_: Any
+        self,
+        event_name: str,
+        data: Mapping[str, Any],
+        callback_kwargs: Mapping[str, Any] | None = None,
+        **_: Any,
     ) -> None:
-        """Acknowledge the matching fault without clearing it."""
+        """Acknowledge the matching fault and visibly refresh its notification."""
 
-        del event_name
+        del event_name, callback_kwargs
         action = str(data.get("action", ""))
         if not action.startswith(_ACK_PREFIX):
             return
         tag = action[len(_ACK_PREFIX) :]
         record = self.active_notification.get(tag)
-        if record is None:
+        if record is None or record.get("acknowledged") is True:
             return
         record["acknowledged"] = True
         record["acknowledged_at"] = self._clock()
         record["next_repeat_at"] = None
         self.pending_deliveries.pop(f"{tag}:repeat", None)
-        self._persist_state()
-        self._publish_diagnostics()
+        level = int(record["level"])
+        if level in (1, 2, 3):
+            record["data"] = self.mobile_provider.build_payload(
+                level=level,
+                tag=tag,
+                acknowledgement_title=self.localizer.text(
+                    "notification.action.ack"
+                ),
+                quiet=True,
+                resolved=False,
+                acknowledged=True,
+            )
+            self._persist_state()
+            self._queue_delivery(
+                tag=tag,
+                level=level,
+                title=str(record["title"]),
+                message=str(record["message"]),
+                kind="acknowledged",
+            )
+        else:
+            self._persist_state()
+            self._publish_diagnostics()
         self.hass_app.log(
             f"Notification acknowledged for tag '{tag}'; repeats suppressed",
             level="INFO",
@@ -404,6 +429,7 @@ class NotificationManager:
                 acknowledgement_title=self.localizer.text("notification.action.ack"),
                 quiet=not should_alert,
                 resolved=False,
+                acknowledged=bool(record["acknowledged"]),
             )
         if is_escalation:
             self._drop_pending_for_tag(tag)
@@ -549,14 +575,19 @@ class NotificationManager:
                 delivery.tag, services=delivery.target_services
             )
         else:
+            active_record = self.active_notification.get(delivery.tag, {})
+            acknowledged = delivery.kind == "acknowledged" or bool(
+                active_record.get("acknowledged", False)
+            )
             result = self.mobile_provider.send(
                 level=delivery.level,
                 title=delivery.title,
                 message=delivery.message,
                 tag=delivery.tag,
                 acknowledgement_title=self.localizer.text("notification.action.ack"),
-                quiet=delivery.kind in {"update", "resolved"},
+                quiet=delivery.kind in {"update", "acknowledged", "resolved"},
                 resolved=delivery.kind == "resolved",
+                acknowledged=acknowledged,
                 services=delivery.target_services,
             )
 

@@ -68,15 +68,21 @@ def test_l1_uses_explicit_group_and_exact_cross_platform_profile() -> None:
     )
     assert service_call.kwargs["data"] == {
         "tag": "tag-l1",
-        "url": "https://ha.kojbito.org/5c36e1c9_hakit",
-        "clickAction": "https://ha.kojbito.org/5c36e1c9_hakit",
+        "url": "/5c36e1c9_hakit",
+        "clickAction": "/5c36e1c9_hakit",
         "persistent": True,
         "sticky": True,
         "color": "#FF0000",
         "notification_icon": "mdi:exit-run",
         "channel": "Safety critical",
         "importance": "max",
-        "actions": [{"action": "SAFETY_ACK_tag-l1", "title": "Acknowledge"}],
+        "actions": [
+            {
+                "action": "SAFETY_ACK_tag-l1",
+                "title": "Acknowledge",
+                "action_data": {"tag": "tag-l1"},
+            }
+        ],
         "priority": "high",
         "ttl": 0,
         "vibrationPattern": "100, 1000, 100, 1000, 100",
@@ -389,13 +395,58 @@ def test_acknowledgement_suppresses_l1_repeats_without_clearing_fault() -> None:
     manager.handle_mobile_action(
         "mobile_app_notification_action",
         {"action": "SAFETY_ACK_ack-tag"},
+        {},
     )
     call_count = len(notify_calls(hass))
+    acknowledgement = notify_calls(hass)[-1].kwargs
     clock.advance(120)
     manager.tick()
 
     assert len(notify_calls(hass)) == call_count
     assert manager.active_notification["ack-tag"]["acknowledged"] is True
+    assert acknowledgement["data"]["alert_once"] is True
+    assert "actions" not in acknowledgement["data"]
+
+
+def test_duplicate_or_unknown_acknowledgement_does_not_send_an_update() -> None:
+    hass = make_hass()
+    manager = NotificationManager(hass, {})
+    manager.notify("Fault", 2, FaultState.SET, None, "ack-tag")
+
+    manager.handle_mobile_action(
+        "mobile_app_notification_action",
+        {"action": "SAFETY_ACK_ack-tag"},
+        {},
+    )
+    call_count = len(notify_calls(hass))
+    manager.handle_mobile_action(
+        "mobile_app_notification_action",
+        {"action": "SAFETY_ACK_ack-tag"},
+        {},
+    )
+    manager.handle_mobile_action(
+        "mobile_app_notification_action",
+        {"action": "SAFETY_ACK_missing"},
+        {},
+    )
+
+    assert len(notify_calls(hass)) == call_count
+
+
+def test_later_fault_refresh_does_not_restore_acknowledgement_action() -> None:
+    hass = make_hass()
+    manager = NotificationManager(hass, {})
+    manager.notify("Fault", 2, FaultState.SET, None, "ack-tag")
+    manager.handle_mobile_action(
+        "mobile_app_notification_action",
+        {"action": "SAFETY_ACK_ack-tag"},
+        {},
+    )
+
+    manager.notify("Fault", 2, FaultState.SET, {"location": "Kitchen"}, "ack-tag")
+
+    assert manager.active_notification["ack-tag"]["acknowledged"] is True
+    assert "actions" not in notify_calls(hass)[-1].kwargs["data"]
 
 
 def test_l1_repeats_are_bounded() -> None:
