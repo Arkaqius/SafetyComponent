@@ -1,4 +1,4 @@
-import type { StatusTone } from '../domain/safety';
+import type { StatusTone } from '../domain/safety.js';
 
 interface StatusBadgeProps {
   children: React.ReactNode;

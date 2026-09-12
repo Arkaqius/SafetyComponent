@@ -280,6 +280,7 @@ class FaultManager:
 
             # Prepare the attributes for the state update
             attributes: dict = info_to_send if info_to_send else {}
+            attributes["notification_tag"] = fault_tag
 
             # Set HA entity
             self._set_internal_entity(
@@ -524,6 +525,7 @@ class FaultManager:
                     entity_id, additional_info, FaultState.CLEARED
                 )
             attributes = info_to_send if info_to_send else {}
+            attributes["notification_tag"] = fault_tag
 
             self._set_internal_entity(entity_id, "Set", attributes)
 

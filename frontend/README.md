@@ -56,6 +56,15 @@ wcześniejszy zapis bez dziennika rozpoczyna historię od pustej listy.
 Rejestrator Home Assistanta nie jest wymagany do odczytu tej listy.
 Historia encji pozostaje poniżej i korzysta z Rejestratora.
 
+### Potwierdzanie powiadomień
+
+Rozwinięta karta aktywnej usterki poziomu L1–L3 na pulpicie zawiera przycisk
+**Potwierdź powiadomienie**. SafetyHome przesyła stabilny tag przez
+uwierzytelnione zdarzenie Home Assistanta. Potwierdzenie zatrzymuje kolejne
+powtórzenia alarmu, ale nie usuwa usterki. Stan **Potwierdzono** pochodzi z
+`sensor.notification_delivery_health` i pozostaje widoczny po odświeżeniu
+strony. Ta sama operacja jest dostępna w powiadomieniu aplikacji Companion.
+
 ### Historia temperatur
 
 Popupy temperatur pobierają historię na żądanie z Rejestratora Home Assistanta.

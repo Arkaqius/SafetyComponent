@@ -1,6 +1,15 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { notificationRecipient, notificationState, readNotificationHistory, type NotificationEntry } from './notificationHistory.js';
+import {
+  filterNotificationHistory,
+  notificationKind,
+  notificationAcknowledgementEvent,
+  notificationRecipient,
+  notificationState,
+  readAcknowledgedNotificationTags,
+  readNotificationHistory,
+  type NotificationEntry,
+} from './notificationHistory.js';
 
 const entry: NotificationEntry = {
   id: 'first',
@@ -49,4 +58,34 @@ test('renders recipient groups without inventing a person and distinguishes shad
   assert.equal(notificationRecipient('notify/mobile_app_test_phone'), 'test phone');
   assert.equal(notificationState('SHADOWED'), 'Usterka przesłonięta');
   assert.equal(notificationState('CLEARED'), 'Usterka ustąpiła');
+  assert.equal(notificationKind('acknowledged'), 'Potwierdzenie użytkownika');
+});
+
+test('filters attempts independently by result and fault state', () => {
+  const failed = { ...entry, id: 'failed', result: 'failed' as const };
+  const healed = { ...entry, id: 'healed', kind: 'resolved' as const, fault_state: 'CLEARED' as const };
+  const entries = [entry, failed, healed];
+
+  assert.deepEqual(filterNotificationHistory(entries, 'failed', 'all'), [failed]);
+  assert.deepEqual(filterNotificationHistory(entries, 'all', 'CLEARED'), [healed]);
+  assert.deepEqual(filterNotificationHistory(entries, 'accepted_by_home_assistant', 'SET'), [entry]);
+});
+
+test('reads bounded acknowledged tags from delivery diagnostics', () => {
+  assert.deepEqual(
+    readAcknowledgedNotificationTags({
+      state: 'healthy',
+      attributes: { acknowledged_tags: ['one', '', 2, 'two'] },
+    }),
+    ['one', 'two']
+  );
+  assert.deepEqual(readAcknowledgedNotificationTags(), []);
+});
+
+test('builds the authenticated Home Assistant acknowledgement event', () => {
+  assert.deepEqual(notificationAcknowledgementEvent('fault-tag'), {
+    type: 'fire_event',
+    event_type: 'safety_notification_acknowledge',
+    event_data: { tag: 'fault-tag' },
+  });
 });

@@ -11,7 +11,8 @@ def test_defaults_use_explicit_all_phones_and_hakit_url() -> None:
     config = validate_notification_config({})
 
     assert config["mobile"]["services"] == ["notify/all_phones"]
-    assert config["mobile"]["default_url"] == ("https://ha.kojbito.org/5c36e1c9_hakit")
+    assert config["mobile"]["default_url"] == "/5c36e1c9_hakit"
+    assert config["mobile"]["hass_timeout_seconds"] == 5
     assert set(config["mobile"]["profiles"]) == {1, 2, 3}
 
 
@@ -24,6 +25,21 @@ def test_dot_notation_service_is_rejected() -> None:
     with pytest.raises(ValueError, match="domain/service format"):
         validate_notification_config(
             {"mobile": {"services": ["notify.mobile_app_phone"]}}
+        )
+
+
+def test_absolute_notification_url_is_rejected_to_keep_companion_navigation() -> None:
+    with pytest.raises(ValueError, match="HA-relative path"):
+        validate_notification_config(
+            {"mobile": {"default_url": "https://ha.example/dashboard"}}
+        )
+
+
+@pytest.mark.parametrize("timeout", [0, 31])
+def test_mobile_home_assistant_timeout_is_bounded(timeout: int) -> None:
+    with pytest.raises(ValueError):
+        validate_notification_config(
+            {"mobile": {"hass_timeout_seconds": timeout}}
         )
 
 

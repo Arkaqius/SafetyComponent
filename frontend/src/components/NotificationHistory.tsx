@@ -1,7 +1,14 @@
 import { useState } from 'react';
-import { notificationKind, notificationRecipient, notificationState, readNotificationHistory } from '../domain/notificationHistory';
-import type { EntitySnapshot } from '../domain/safety';
-import StatusBadge from './StatusBadge';
+import {
+  filterNotificationHistory,
+  formatNotificationTime,
+  notificationKind,
+  notificationRecipient,
+  notificationState,
+  readNotificationHistory,
+} from '../domain/notificationHistory.js';
+import type { EntitySnapshot } from '../domain/safety.js';
+import StatusBadge from './StatusBadge.js';
 
 export default function NotificationHistory({ entity, connected }: { entity?: EntitySnapshot; connected: boolean }) {
   const [result, setResult] = useState('accepted_by_home_assistant');
@@ -12,9 +19,7 @@ export default function NotificationHistory({ entity, connected }: { entity?: En
     !['unavailable', 'unknown'].includes(entity.state) &&
     entity.attributes.version === 1 &&
     Array.isArray(entity.attributes.entries);
-  const visible = entries.filter(
-    entry => (result === 'all' || entry.result === result) && (state === 'all' || entry.fault_state === state)
-  );
+  const visible = filterNotificationHistory(entries, result, state);
 
   return (
     <section aria-labelledby='notification-history-title' className='panel notification-history'>
@@ -66,7 +71,7 @@ export default function NotificationHistory({ entity, connected }: { entity?: En
                     : entry.message.split('\n')[0]}
                 </span>
                 <span>Do: {notificationRecipient(entry.service)}</span>
-                <time dateTime={entry.attempted_at}>{formatTime(entry.attempted_at)}</time>
+                <time dateTime={entry.attempted_at}>{formatNotificationTime(entry.attempted_at)}</time>
               </span>
               <span className='notification-item-badges'>
                 <StatusBadge tone={entry.fault_state === 'CLEARED' ? 'safe' : entry.fault_state === 'SET' ? 'danger' : 'muted'}>
@@ -98,11 +103,11 @@ export default function NotificationHistory({ entity, connected }: { entity?: En
                 </div>
                 <div>
                   <dt>Utworzono wiadomość</dt>
-                  <dd>{formatTime(entry.created_at)}</dd>
+                  <dd>{formatNotificationTime(entry.created_at)}</dd>
                 </div>
                 <div>
                   <dt>Zakończono próbę wysyłki</dt>
-                  <dd>{formatTime(entry.attempted_at)}</dd>
+                  <dd>{formatNotificationTime(entry.attempted_at)}</dd>
                 </div>
                 <div>
                   <dt>Poziom usterki</dt>
@@ -152,8 +157,4 @@ export default function NotificationHistory({ entity, connected }: { entity?: En
       </p>
     </section>
   );
-}
-
-function formatTime(timestamp: string): string {
-  return new Date(timestamp).toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'medium' });
 }

@@ -21,6 +21,7 @@ class MobilePushProvider:
         self.hass_app = hass_app
         self.services = tuple(str(service) for service in config["services"])
         self.default_url = str(config["default_url"])
+        self.hass_timeout_seconds = int(config["hass_timeout_seconds"])
         self.profiles = {
             int(level): dict(profile) for level, profile in config["profiles"].items()
         }
@@ -56,6 +57,7 @@ class MobilePushProvider:
         acknowledgement_title: str,
         quiet: bool = False,
         resolved: bool = False,
+        acknowledged: bool = False,
         services: tuple[str, ...] | None = None,
     ) -> DeliveryBatchResult:
         """Submit one notification to every configured service."""
@@ -66,6 +68,7 @@ class MobilePushProvider:
             acknowledgement_title=acknowledgement_title,
             quiet=quiet,
             resolved=resolved,
+            acknowledged=acknowledged,
         )
         return self._submit(
             title=title, message=message, data=payload, services=services
@@ -91,6 +94,7 @@ class MobilePushProvider:
         acknowledgement_title: str,
         quiet: bool,
         resolved: bool,
+        acknowledged: bool = False,
     ) -> dict[str, Any]:
         """Build one cross-platform Companion payload."""
 
@@ -106,7 +110,7 @@ class MobilePushProvider:
             "channel": profile["android_channel"],
             "importance": profile["android_importance"],
         }
-        if not resolved:
+        if not resolved and not acknowledged:
             data["actions"] = [
                 {
                     "action": f"SAFETY_ACK_{tag}",
@@ -148,13 +152,23 @@ class MobilePushProvider:
             if title is not None:
                 kwargs["title"] = title
             try:
-                response = self.hass_app.call_service(service, **kwargs)
-                if isinstance(response, Mapping) and response.get("success") is False:
+                response = self.hass_app.call_service(
+                    service,
+                    return_result=True,
+                    timeout=self.hass_timeout_seconds,
+                    hass_timeout=self.hass_timeout_seconds,
+                    **kwargs,
+                )
+                if not isinstance(response, Mapping) or response.get("success") is not True:
                     results.append(
                         TargetDeliveryResult(
                             service,
                             DeliveryDisposition.FAILED,
-                            str(response.get("error") or response),
+                            (
+                                str(response.get("error") or response)
+                                if isinstance(response, Mapping)
+                                else "Home Assistant service result was not returned"
+                            ),
                         )
                     )
                 else:

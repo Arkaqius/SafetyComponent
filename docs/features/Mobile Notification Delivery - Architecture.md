@@ -26,6 +26,8 @@ flowchart LR
     NotificationManager --> DeliveryScheduler
     MobilePushProvider -->|configured notify services| HomeAssistant
     HomeAssistant -->|mobile_app_notification_action| NotificationManager
+    SafetyHome -->|safety_notification_acknowledge| HomeAssistant
+    HomeAssistant -->|authenticated event| NotificationManager
     NotificationManager -->|health, counters, and attempt history| MqttEntityManager
 ```
 
@@ -54,8 +56,9 @@ flowchart LR
   platform limitation;
 - sends the Companion command `message: clear_notification` with the stable
   tag when a notification must be removed;
-- requests a Home Assistant service result and reports each configured service
-  as `accepted` or `failed`; a missing result is a retryable failure.
+- requests a Home Assistant service result with bounded AppDaemon and Home
+  Assistant timeouts and reports each configured service as `accepted` or
+  `failed`; a missing result is a retryable failure.
 
 The provider shall never fall back to `notify.notify`. Installation routing
 shall use an explicit group such as `notify/all_phones` or an explicit list of
@@ -110,7 +113,8 @@ from fault state. Its state is one of `healthy`, `degraded`, or `queued` and its
 attributes include active/acknowledged/queued counts, accepted and failed
 attempt counters, deadline misses, last attempt/result/error, per-service
 status/time/error, and the explicit statement that device delivery is not
-confirmed.
+confirmed. `acknowledged_tags` lists stable tags for currently active,
+acknowledged notifications so SafetyHome can retain button state after reload.
 
 ### 2.7 Notification history
 
@@ -146,9 +150,10 @@ Each entry shall contain:
 | `result` | `accepted_by_home_assistant` or `failed`. |
 | `deadline_missed` | Whether this delivery exceeded its severity deadline. |
 
-Kinds `new`, `update`, and `repeat` shall record `SET`; `resolved` shall record
-`CLEARED`; `clear` shall record `SHADOWED`. Shadowing removes a notification and
-shall not be presented as a healed fault. The journal shall not expose raw
+Kinds `new`, `update`, `repeat`, and `acknowledged` shall record `SET`;
+`resolved` shall record `CLEARED`; `clear` shall record `SHADOWED`.
+Acknowledgement therefore remains visibly distinct from healing. Shadowing
+removes a notification and shall not be presented as a healed fault. The journal shall not expose raw
 transport exception text, unfiltered fault events, or inferred group members.
 Failure details in the history UI shall use a generic diagnostic explanation;
 existing transport-health diagnostics retain their separate error contract.
@@ -166,17 +171,18 @@ Home Assistant acceptance shall remain distinct from confirmed device delivery.
 The installation config owns:
 
 - `mobile.services`: explicit AppDaemon service names in `domain/service` form;
-- `mobile.default_url`: destination opened from the notification;
-- severity profiles for Android and iOS;
-- retry limits and backoff;
-- L1 repeat interval and maximum repeat count;
+- `mobile.default_url`: Home Assistant-relative destination opened in the
+  Companion app from the notification;
 - optional WAN-state entity and its online states;
-- persistent state-file path;
-- additional-info allowlist;
 - optional local annunciator entities.
 
-The production default destination is
-`https://ha.kojbito.org/5c36e1c9_hakit` and the production default transport is
+System configuration owns the bounded `mobile.hass_timeout_seconds`, severity
+profiles, retry limits and backoff, L1 repeat policy, persistence path, and
+additional-info allowlist. Runtime requires AppDaemon 4.5 or newer so
+`return_result`, `timeout`, and `hass_timeout` are available.
+
+The production default destination is `/5c36e1c9_hakit`; the relative path
+keeps notification navigation inside the Companion app. The default transport is
 `notify/all_phones`.
 
 Default new-alert profiles are:
@@ -187,7 +193,7 @@ Default new-alert profiles are:
 | L2 | `Safety hazards` | `high` / `high`, TTL `0` | shorter warning pattern | `time-sensitive` |
 | L3 | `Safety warnings` | `default` / `normal`, TTL `0` | none | `active` |
 
-Quiet updates and resolved messages override these alert properties with
+Quiet updates, acknowledgement refreshes, and resolved messages override these alert properties with
 Android `alert_once`/normal priority and iOS `passive` interruption.
 
 ## 4. Lifecycle
@@ -214,10 +220,15 @@ the new-alert submission receive the quiet refresh.
 
 ### 4.3 Acknowledgement
 
-The action identifier contains the stable fault tag. A matching
-`mobile_app_notification_action` event marks the active record acknowledged,
-persists it, and cancels future repeats. Acknowledgement shall not clear the
-fault and shall not prevent later quiet content refreshes.
+The Companion action identifier contains the stable fault tag. A matching
+`mobile_app_notification_action` event, or an authenticated SafetyHome
+`safety_notification_acknowledge` event carrying that exact tag, marks the
+active record acknowledged. The manager persists it, cancels all superseded
+pending submissions for that tag, and quietly replaces the phone notification
+without the acknowledgement action. The acknowledgement submission is retained
+in notification history. Acknowledgement shall not clear the fault and shall not
+prevent later quiet content refreshes. SafetyHome reads the tag from the active
+fault entity and the acknowledgement state from notification diagnostics.
 
 ### 4.4 Fault clear and shadow
 
@@ -237,6 +248,9 @@ repeats for that tag are removed in both cases.
   state becomes one of the configured online states.
 - Mobile transport failure shall not block FaultManager, recovery policy, MQTT
   fault state, or local annunciators.
+- A newer lifecycle state or content update for a stable tag shall replace
+  superseded queued submissions for that tag. A retry shall never restore older
+  notification content or a previous resolved state.
 
 ## 6. Verification contract
 
@@ -247,7 +261,9 @@ allowlist filtering, local-annunciator separation, and diagnostic publication.
 History tests shall cover SET and CLEARED entries, distinct shadow removal,
 per-target failures and retries, retention bounds, restart restoration and
 compatible snapshots without history, content bounds, and publication only on
-startup or attempts. Frontend tests shall cover lifecycle labels, date/time and
+startup or attempts. Retry tests shall cover failed acknowledgement followed by
+newer content and a new SET following a failed resolved submission. Frontend
+domain and component tests shall cover lifecycle labels, filtering, date/time,
 target presentation, diagnostic details, and empty or unavailable history.
 
 Live verification shall not trigger a household fault, siren, warning light,

@@ -16,6 +16,7 @@ _STATES = {
     "new": "SET",
     "update": "SET",
     "repeat": "SET",
+    "acknowledged": "SET",
     "resolved": "CLEARED",
     "clear": "SHADOWED",
 }

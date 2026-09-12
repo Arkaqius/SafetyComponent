@@ -18,7 +18,7 @@ from components.notification_manager.state_store import JsonNotificationStateSto
 def make_manager(**kwargs: Any) -> NotificationManager:
     """Create a manager whose mobile calls never leave the test process."""
     app = Mock()
-    app.call_service.return_value = None
+    app.call_service.return_value = {"success": True, "result": {}}
     return NotificationManager(app, kwargs.pop("config", {}), **kwargs)
 
 
@@ -52,9 +52,9 @@ def test_partial_failure_and_retry_record_only_actual_target_attempts() -> None:
         clock=clock, config={"mobile": {"services": ["notify/one", "notify/two"]}}
     )
     manager.hass_app.call_service.side_effect = [
-        None,
+        {"success": True},
         RuntimeError("private transport details"),
-        None,
+        {"success": True},
     ]
     manager.notify("Fault", 3, FaultState.SET, None, "tag")
     clock.return_value = 1060.0
@@ -182,3 +182,20 @@ def test_l1_repeat_and_exhaustion_remain_distinguishable() -> None:
     manager.notify("Fault", 2, FaultState.SET, None, "tag")
     assert manager.notification_history[-1]["result"] == "failed"
     assert manager.pending_deliveries == {}
+
+
+def test_acknowledgement_refresh_is_recorded_as_active_fault_submission() -> None:
+    manager = make_manager()
+    manager.notify("Fault", 2, FaultState.SET, None, "tag")
+
+    manager.handle_mobile_action(
+        "mobile_app_notification_action",
+        {"action": "SAFETY_ACK_tag"},
+        {},
+    )
+
+    assert [entry["kind"] for entry in manager.notification_history] == [
+        "new",
+        "acknowledged",
+    ]
+    assert manager.notification_history[-1]["fault_state"] == "SET"

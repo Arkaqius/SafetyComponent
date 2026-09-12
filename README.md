@@ -63,7 +63,7 @@ and [`Internal Environmental Hazard Monitoring`](docs/features/Internal%20Enviro
 
 ## Backend quick start
 
-Use Python 3.10 or newer:
+Use Python 3.10 or newer with AppDaemon 4.5 or newer:
 
 ```powershell
 python -m venv .venv

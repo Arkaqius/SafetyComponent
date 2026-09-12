@@ -166,7 +166,8 @@ SafetyFunctions:
             ios_critical_sound: false
         services:
         - notify/all_phones
-        default_url: https://ha.kojbito.org/5c36e1c9_hakit
+        default_url: /5c36e1c9_hakit
+        hass_timeout_seconds: 5
       retry:
         max_attempts: 3
         base_delay_seconds: 5

@@ -156,7 +156,10 @@ def test_set_fault(fault_manager, mocked_hass_app, fault):
     fault_manager.mqtt_entities.publish_sensor_state.assert_any_call(
         "sensor.fault_RiskyTemperature",
         "Set",
-        attributes={"Location": "Kitchen, Office"}
+        attributes={
+            "Location": "Kitchen, Office",
+            "notification_tag": "mocked_fault_tag",
+        },
     )
     fault_manager.notify_spy.assert_any_call(
         "RiskyTemperature",
@@ -265,7 +268,10 @@ def test_fault_manager_multiple_symptoms(fault_manager, mocked_hass_app, fault):
     fault_manager.mqtt_entities.publish_sensor_state.assert_any_call(
         "sensor.fault_RiskyTemperature",
         "Set",
-        attributes={"Location": "Living Room, Office"},
+        attributes={
+            "Location": "Living Room, Office",
+            "notification_tag": "mocked_fault_tag",
+        },
     )
     fault_manager.notify_spy.assert_any_call(
         "RiskyTemperature",
@@ -287,7 +293,10 @@ def test_fault_manager_multiple_symptoms(fault_manager, mocked_hass_app, fault):
     fault_manager.mqtt_entities.publish_sensor_state.assert_any_call(
         "sensor.fault_RiskyTemperature",
         "Set",
-        attributes={"Location": "Living Room, Kitchen"}, # In normal system shall be also included Office but we dont have HA during tests
+        attributes={
+            "Location": "Living Room, Kitchen",
+            "notification_tag": "mocked_fault_tag",
+        },  # In normal system shall be also included Office but we dont have HA during tests
     )
     fault_manager.notify_spy.assert_any_call(
         "RiskyTemperature",

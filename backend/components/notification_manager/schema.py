@@ -82,7 +82,8 @@ class MobilePushConfig(StrictBaseModel):
     """Explicit Home Assistant Companion notification routing."""
 
     services: list[str] = Field(default_factory=lambda: ["notify/all_phones"])
-    default_url: str = "https://ha.kojbito.org/5c36e1c9_hakit"
+    default_url: str = "/5c36e1c9_hakit"
+    hass_timeout_seconds: int = Field(default=5, ge=1, le=30)
     profiles: dict[int, MobileProfile] = Field(default_factory=_default_profiles)
 
     @field_validator("services")
@@ -110,9 +111,9 @@ class MobilePushConfig(StrictBaseModel):
     @field_validator("default_url")
     @classmethod
     def _validate_url(cls, value: str) -> str:
-        if not value.startswith(("https://", "http://", "/")):
+        if not value.startswith("/") or value.startswith("//"):
             raise ValueError(
-                "Notification URL must be HTTPS, HTTP, or an HA-relative path"
+                "Notification URL must be an HA-relative path beginning with one slash"
             )
         return value
 
