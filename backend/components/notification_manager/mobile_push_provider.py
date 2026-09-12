@@ -114,7 +114,6 @@ class MobilePushProvider:
                 {
                     "action": f"SAFETY_ACK_{tag}",
                     "title": acknowledgement_title,
-                    "action_data": {"tag": tag},
                 }
             ]
 

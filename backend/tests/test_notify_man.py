@@ -80,7 +80,6 @@ def test_l1_uses_explicit_group_and_exact_cross_platform_profile() -> None:
             {
                 "action": "SAFETY_ACK_tag-l1",
                 "title": "Acknowledge",
-                "action_data": {"tag": "tag-l1"},
             }
         ],
         "priority": "high",
