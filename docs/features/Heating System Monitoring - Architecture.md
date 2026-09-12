@@ -21,7 +21,7 @@ monitoring remains the independent C-ALARM responsibility.
 
 The controlling documents are:
 
-- [HARA section 1.3.12](<../sys/SafetyConcept - HARA.md#1312-loss-of-heatingcooling>), scenarios HSM-H01..07;
+- [HARA section 1.3.12](<../sys/SafetyConcept - HARA.md#1312-loss-of-heatingcooling>), HZ‑HVAC‑01 / HZ‑HVAC‑LOSS‑01 and SG‑010 / SG‑012;
 - [SYS section 8.6](<../sys/SafetyConcept - SYS.md#86-heating-system-monitoring-component-c-hvac>), SYS-SR-HSM-001..018;
 - [SSRD section 4.10](<../sys/SafetyComponent - SSRD.md#410-heating-system-monitoring>), SWR-HSM-001..026.
 

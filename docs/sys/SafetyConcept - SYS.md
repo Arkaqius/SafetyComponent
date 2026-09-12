@@ -1167,7 +1167,8 @@ entity is safety-relevant through Group A or B.
 **Allocation:** `HeatingSystemMonitorComponent` shall own heating-system
 supervision under SG-010 and SG-012, contribute to SG-003 input supervision,
 and supply evidence to room cold/heat exposure diagnosis without replacing
-C-TEMP. HARA section 1.3.12 defines scenarios HSM-H01 through HSM-H07.
+C-TEMP. HARA section 1.3.12 defines the stakeholder-level
+loss-of-heating/cooling safety goal.
 The detailed contract is defined in the
 [Heating System Monitoring architecture](<../features/Heating System Monitoring - Architecture.md>).
 
@@ -1228,10 +1229,10 @@ architecture defines allocation examples and timing tests.
 
 #### 8.6.4 Traceability and verification
 
-- HSM-H01/H02: SYS-SR-HSM-001/006/007/012.
-- HSM-H03: SYS-SR-HSM-002/003/005/012/013.
-- HSM-H04/H05: SYS-SR-HSM-004/008/009/010.
-- HSM-H06/H07: SYS-SR-HSM-004/011/012/013/014.
+- HZ‑HVAC‑01 and HZ‑HVAC‑LOSS‑01 / SG‑010 and SG‑012:
+  SYS-SR-HSM-001..018.
+- HZ‑SYSTEM‑FAIL‑01 / SG‑003 supervision contribution:
+  SYS-SR-HSM-002/003/005/011/012/013.
 - Cross-cutting delivery, presentation and boundary: SYS-SR-HSM-015..018.
 - Verification shall cover signal/counter normalization, independent need,
   normal phases, prolonged inhibition, false-clear prevention, code profiles,
@@ -1284,7 +1285,9 @@ Fault severity shall not be inferred from a health state or silently reduced
 by an unrelated active fault. C-ALARM and C-AQ contributions do not establish
 completion of separately allocated ventilation, evacuation or gas cutoff.
 
-HARA IEHM-H01..07 shall trace to SYS-SR-IEHM-001..020 and SWR-IEHM-001..025.
+HARA HZ‑FIRE‑01 / SG‑006, HZ‑GAS‑01 / SG‑007, HZ‑CO‑01 / SG‑008,
+HZ‑AQ‑01 / SG‑005 and HZ‑SYSTEM‑FAIL‑01 / SG‑003 shall trace to
+SYS-SR-IEHM-001..020 and SWR-IEHM-001..025.
 Verification shall cover immediate independent alarms, source quality,
 PM units/windows, multi-detector latches, positive HEAL, restart/time faults,
 bounded deadlines, guidance/output conflicts, persistence and notification/UI

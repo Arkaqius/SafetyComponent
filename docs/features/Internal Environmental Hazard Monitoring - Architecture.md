@@ -14,10 +14,11 @@ detector-health and evidence-quality state. It shall not infer that a home is
 safe merely because no detector currently reports an alarm.
 
 The controlling contracts are
-[HARA section 1.3.8.1](<../sys/SafetyConcept - HARA.md#1381-internal-environmental-hazard-monitoring-allocation>),
+[HARA section 1.3](<../sys/SafetyConcept - HARA.md#13-safety-goals>),
 [SYS section 8.7](<../sys/SafetyConcept - SYS.md#87-internal-environmental-hazard-monitoring-c-alarm-and-c-aq>)
 and [SSRD section 4.11](<../sys/SafetyComponent - SSRD.md#411-internal-environmental-hazard-monitoring>).
-HARA scenarios IEHM-H01..07 refine SG-003 and SG-005..008. One component shall
+HARA hazards HZ‑FIRE‑01, HZ‑GAS‑01, HZ‑CO‑01, HZ‑AQ‑01 and
+HZ‑SYSTEM‑FAIL‑01 establish SG‑003 and SG‑005..008. One component shall
 implement the two logical allocations without merging their safety priorities.
 
 Autonomous detector sounders and manufacturer alarm algorithms shall remain
@@ -429,13 +430,13 @@ cleared, without a safe-re-entry statement. Technical codes shall remain stable.
 | SYS-SR-IEHM-019 | SWR-IEHM-002/023/025 |
 | SYS-SR-IEHM-020 | SWR-IEHM-025 |
 
-HARA IEHM-H01 maps to immediate alarm/timing; H02 to gas/output safety; H03 to
-CO interpretation; H04 to PM metrics; H05 to health/coverage; H06 to lifecycle;
-H07 to guidance/output conflict tests. Verification shall use synthetic
-provider fixtures, controlled clocks and the bundled AppDaemon stub; no live
-smoke, gas, CO release or household routine shall be triggered for software or
-documentation validation. Hardware capability and passive source timing shall
-be assessed separately and shall not be claimed from unit-test success.
+Verification shall cover the HARA fire, flammable-gas, carbon-monoxide, indoor
+air-quality and monitoring-loss hazards, including cross-hazard guidance and
+output conflicts. It shall use synthetic provider fixtures, controlled clocks
+and the bundled AppDaemon stub; no live smoke, gas, CO release or household
+routine shall be triggered for software or documentation validation. Hardware
+capability and passive source timing shall be assessed separately and shall not
+be claimed from unit-test success.
 
 ## 10. Related contracts and source interpretation
 

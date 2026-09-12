@@ -74,6 +74,7 @@ import components.safetycomponents.temperature.temperature_component  # noqa: F4
 import components.safetycomponents.safety_doors.safety_doors_component  # noqa: F401 - component registration
 import components.safetycomponents.external_hazard.external_hazard_component  # noqa: F401 - component registration
 import components.safetycomponents.entity_monitor.entity_monitor_component  # noqa: F401 - component registration
+import components.safetycomponents.internal_environmental_hazard.internal_environmental_hazard_monitor_component  # noqa: F401 - component registration
 from components.core.types_common import Symptom, RecoveryAction
 
 DEBUG = False
@@ -222,6 +223,11 @@ class SafetyFunctions(hass.Hass):
             state_store=notification_state_store,
             mqtt_entities=self.mqtt_entities,
         )
+        for component in self.sm_modules.values():
+            get_inhibitions = getattr(component, "get_output_inhibitions", None)
+            if callable(get_inhibitions):
+                for reason in get_inhibitions():
+                    self.notify_man.inhibit_local_switching(str(reason))
 
         # Create the recovery orchestration manager.
         recovery_persistence_cfg = self.args["user_config"].get(
@@ -382,7 +388,7 @@ class SafetyFunctions(hass.Hass):
         calibrated = {
             **dependency,
             "source": "component",
-            "fault_owner": "entity_monitor",
+            "fault_owner": dependency.get("fault_owner", "entity_monitor"),
             "failure_debounce_seconds": default_failure_debounce,
             "recovery_debounce_seconds": default_recovery_debounce,
         }

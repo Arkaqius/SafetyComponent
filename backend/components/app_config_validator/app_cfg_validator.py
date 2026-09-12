@@ -32,6 +32,10 @@ from components.safetycomponents.entity_monitor.schema import (
     COMPONENT_NAME as ENTITY_MONITOR_COMPONENT_NAME,
     validate_entity_monitor_config,
 )
+from components.safetycomponents.internal_environmental_hazard.schema import (
+    COMPONENT_NAME as INTERNAL_ENVIRONMENTAL_HAZARD_COMPONENT_NAME,
+    validate_internal_environmental_hazard_config,
+)
 from components.safetycomponents.safety_doors.schema import (
     COMPONENT_NAME as SAFETY_DOORS_COMPONENT_NAME,
     validate_safety_doors_config,
@@ -193,6 +197,26 @@ def _collect_entity_ids(runtime_cfg: Dict[str, Any]) -> list[tuple[str, str]]:
                         )
                     )
 
+    internal_hazard_cfg = components_cfg.get(
+        INTERNAL_ENVIRONMENTAL_HAZARD_COMPONENT_NAME
+    )
+    if isinstance(internal_hazard_cfg, dict):
+        detectors = internal_hazard_cfg.get("detectors", {})
+        if isinstance(detectors, dict):
+            for detector_key, detector_cfg in detectors.items():
+                if not isinstance(detector_cfg, dict):
+                    continue
+                entity_id = detector_cfg.get("entity_id")
+                if isinstance(entity_id, str):
+                    entity_ids.append(
+                        (
+                            "user_config.safety_components."
+                            f"{INTERNAL_ENVIRONMENTAL_HAZARD_COMPONENT_NAME}."
+                            f"detectors.{detector_key}.entity_id",
+                            entity_id,
+                        )
+                    )
+
     return entity_ids
 
 
@@ -275,6 +299,27 @@ def _resolve_area_names(runtime_cfg: Dict[str, Any], hass: Any) -> None:
                     hass,
                     area_id,
                     config_path,
+                )
+
+    internal_hazard_cfg = components.get(
+        INTERNAL_ENVIRONMENTAL_HAZARD_COMPONENT_NAME
+    )
+    if isinstance(internal_hazard_cfg, dict):
+        detectors = internal_hazard_cfg.get("detectors", {})
+        if isinstance(detectors, dict):
+            for detector_key, detector_cfg in detectors.items():
+                if not isinstance(detector_cfg, dict):
+                    continue
+                area_id = detector_cfg.get("area_id")
+                if not isinstance(area_id, str):
+                    continue
+                path = (
+                    "user_config.safety_components."
+                    f"{INTERNAL_ENVIRONMENTAL_HAZARD_COMPONENT_NAME}."
+                    f"detectors.{detector_key}.area_id"
+                )
+                detector_cfg["area_name"] = _resolve_area_name(
+                    hass, area_id, path
                 )
 
     external_cfg = components.get(EXTERNAL_HAZARD_COMPONENT_NAME)
@@ -413,6 +458,14 @@ def _to_runtime(
                 calibration=cfg.app_config.calibration.entity_monitor.model_dump(),
                 strict_validation=strict_validation,
                 log=log,
+            )
+        elif name == INTERNAL_ENVIRONMENTAL_HAZARD_COMPONENT_NAME:
+            runtime_components[name] = (
+                validate_internal_environmental_hazard_config(
+                    component_cfg,
+                    strict_validation=strict_validation,
+                    log=log,
+                )
             )
         else:
             runtime_components[name] = component_cfg

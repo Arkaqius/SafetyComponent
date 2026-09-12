@@ -64,6 +64,7 @@ def compile_config(
     merged_components = merged_user_config.get("safety_components", {})
     collection_names = {
         "ExternalHazardComponent": "openings",
+        "InternalEnvironmentalHazardMonitorComponent": "detectors",
         "SafetyDoorsComponent": "doors",
         "TemperatureComponent": "rooms",
     }

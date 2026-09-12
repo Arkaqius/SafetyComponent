@@ -308,7 +308,7 @@ shall retain their separate responsibilities.
 ### 4.11 Internal Environmental Hazard Monitoring
 
 This component shall refine [SYS section 8.7](<SafetyConcept - SYS.md#87-internal-environmental-hazard-monitoring-c-alarm-and-c-aq>)
-and [HARA section 1.3.8.1](<SafetyConcept - HARA.md#1381-internal-environmental-hazard-monitoring-allocation>).
+and [HARA section 1.3](<SafetyConcept - HARA.md#13-safety-goals>).
 The [Internal Environmental Hazard Monitoring architecture](<../features/Internal Environmental Hazard Monitoring - Architecture.md>)
 defines mechanism/fault identities, inputs, lifecycle, timing and verification.
 
@@ -378,10 +378,10 @@ valid measure of safety-logic verification.
 | SG-003 Sensor/Communication Fault Detection | `SYS-SR-ENT-001..009/012/014` plus component-specific unavailable-input requirements | `SWR-ENT-*`, `SWR-TEMP-004`, `SWR-DOOR-004/006`, `SWR-EXT-009` |
 | SG-004 Unsafe Heat Exposure | `SYS-SR-TEMP-001/002/003/004/005/006/007/008/010` | `SWR-TEMP-*` |
 | SG-003 Heating supervision contribution | `SYS-SR-HSM-002/003/005/011/012/013` | `SWR-HSM-002/003/004/012/014/017/018/019/020` |
-| SG-010/012 Heating-system health and loss of heating | `SYS-SR-HSM-001..018` | `SWR-HSM-001..026`; HARA scenarios `HSM-H01..07` |
+| SG-010/012 Heating-system health and loss of heating | `SYS-SR-HSM-001..018` | `SWR-HSM-001..026` |
 | SG-003 Internal detector supervision | `SYS-SR-IEHM-002/008/010/012/013` | `SWR-IEHM-002/003/012/014/016/017/018` |
 | SG-005 Indoor PM2.5 | `SYS-SR-IEHM-006/007/010/012/014/016` | `SWR-IEHM-008/009/010/011/015/016/021/023` |
-| SG-006/007/008 Smoke, flammable gas and CO | `SYS-SR-IEHM-001..005/008..020` | `SWR-IEHM-001..007/012..025`; HARA scenarios `IEHM-H01..07` |
+| SG-006/007/008 Smoke, flammable gas and CO | `SYS-SR-IEHM-001..005/008..020` | `SWR-IEHM-001..007/012..025` |
 | SG-015 Door/Gate Open-Duration Contribution | `SYS-SR-DOOR-001..011` | `SWR-DOOR-*` |
 | SG-011/017/018 External Weather Exposure | `SYS-SR-EXT-001..005/010..013/040..043/050..052` | `SWR-EXT-*` |
 | SG-019 Outdoor Pollution Exposure | `SYS-SR-EXT-001..005/020..023/040..043/050..052` | `SWR-EXT-*` |
