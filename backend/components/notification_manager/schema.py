@@ -83,6 +83,7 @@ class MobilePushConfig(StrictBaseModel):
 
     services: list[str] = Field(default_factory=lambda: ["notify/all_phones"])
     default_url: str = "/5c36e1c9_hakit"
+    hass_timeout_seconds: int = Field(default=5, ge=1, le=30)
     profiles: dict[int, MobileProfile] = Field(default_factory=_default_profiles)
 
     @field_validator("services")

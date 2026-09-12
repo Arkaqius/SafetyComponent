@@ -29,6 +29,7 @@ from components.notification_manager.state_store import (
 
 _STATE_VERSION = 1
 _ACK_PREFIX = "SAFETY_ACK_"
+_UI_ACK_EVENT = "safety_notification_acknowledge"
 
 
 class NotificationManager:
@@ -131,6 +132,7 @@ class NotificationManager:
         listen_event = getattr(self.hass_app, "listen_event", None)
         if callable(listen_event):
             listen_event(self.handle_mobile_action, "mobile_app_notification_action")
+            listen_event(self.handle_ui_acknowledgement, _UI_ACK_EVENT)
         self.hass_app.run_every(self.tick, "now", 1)
         self._publish_diagnostics()
         self._publish_history()
@@ -206,14 +208,32 @@ class NotificationManager:
         action = str(data.get("action", ""))
         if not action.startswith(_ACK_PREFIX):
             return
-        tag = action[len(_ACK_PREFIX) :]
+        self._acknowledge_tag(action[len(_ACK_PREFIX) :])
+
+    def handle_ui_acknowledgement(
+        self,
+        event_name: str,
+        data: Mapping[str, Any],
+        callback_kwargs: Mapping[str, Any] | None = None,
+        **_: Any,
+    ) -> None:
+        """Acknowledge a notification requested by authenticated SafetyHome."""
+
+        del event_name, callback_kwargs
+        self._acknowledge_tag(str(data.get("tag", "")))
+
+    def _acknowledge_tag(self, tag: str) -> None:
+        """Persist one active acknowledgement and replace superseded deliveries."""
+
+        if not tag:
+            return
         record = self.active_notification.get(tag)
         if record is None or record.get("acknowledged") is True:
             return
         record["acknowledged"] = True
         record["acknowledged_at"] = self._clock()
         record["next_repeat_at"] = None
-        self.pending_deliveries.pop(f"{tag}:repeat", None)
+        self._drop_pending_for_tag(tag)
         level = int(record["level"])
         if level in (1, 2, 3):
             record["data"] = self.mobile_provider.build_payload(
@@ -431,7 +451,7 @@ class NotificationManager:
                 resolved=False,
                 acknowledged=bool(record["acknowledged"]),
             )
-        if is_escalation:
+        if is_new or is_escalation:
             self._drop_pending_for_tag(tag)
         self.active_notification[tag] = record
         self._persist_state()
@@ -534,6 +554,9 @@ class NotificationManager:
                     self._publish_diagnostics()
                     return
                 delivery_key = f"{tag}:update"
+            for pending_id, pending in list(self.pending_deliveries.items()):
+                if pending.tag == tag and pending_id != f"{tag}:active":
+                    del self.pending_deliveries[pending_id]
         delivery = PendingDelivery(
             delivery_id=delivery_key,
             tag=tag,
@@ -838,6 +861,11 @@ class NotificationManager:
             "acknowledged_count": sum(
                 1
                 for record in self.active_notification.values()
+                if record.get("acknowledged")
+            ),
+            "acknowledged_tags": sorted(
+                tag
+                for tag, record in self.active_notification.items()
                 if record.get("acknowledged")
             ),
             "queued_count": pending_count,

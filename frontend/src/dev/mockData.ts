@@ -71,6 +71,9 @@ export const MOCK_ENTITIES: EntityMap = {
       },
     ],
   }),
+  'sensor.notification_delivery_health': entity('healthy', 'Stan dostarczania powiadomień', {
+    acknowledged_tags: [],
+  }),
   'sensor.safety_app_health': entity('running', 'Safety app health', {}, 1),
   'binary_sensor.garage_gatedoorlow_contact_contact': entity('on', 'Brama garażowa', {}, 1),
   'binary_sensor.frontyard_externalgate_contact_contact': entity('off', 'Brama zewnętrzna', {}, 2),
@@ -186,6 +189,7 @@ export const MOCK_ENTITIES: EntityMap = {
       description: 'Temperatura przekroczyła bezpieczny zakres.',
       level: 'level_2',
       location: 'Office',
+      notification_tag: 'demo-active-temperature',
     },
     4
   ),

@@ -63,6 +63,7 @@ def _install_stateful_hass(app_instance: Any, mock_behaviors: list[MockBehavior]
     state_store = _StatefulHassState(mock_behaviors)
     app_instance.get_state = MagicMock(side_effect=state_store.get_state)
     app_instance.set_state = MagicMock(side_effect=state_store.set_state)
+    app_instance.call_service.return_value = {"success": True, "result": {}}
     return state_store
 
 

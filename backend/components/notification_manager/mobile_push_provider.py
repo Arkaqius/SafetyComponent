@@ -21,6 +21,7 @@ class MobilePushProvider:
         self.hass_app = hass_app
         self.services = tuple(str(service) for service in config["services"])
         self.default_url = str(config["default_url"])
+        self.hass_timeout_seconds = int(config["hass_timeout_seconds"])
         self.profiles = {
             int(level): dict(profile) for level, profile in config["profiles"].items()
         }
@@ -151,13 +152,23 @@ class MobilePushProvider:
             if title is not None:
                 kwargs["title"] = title
             try:
-                response = self.hass_app.call_service(service, **kwargs)
-                if isinstance(response, Mapping) and response.get("success") is False:
+                response = self.hass_app.call_service(
+                    service,
+                    return_result=True,
+                    timeout=self.hass_timeout_seconds,
+                    hass_timeout=self.hass_timeout_seconds,
+                    **kwargs,
+                )
+                if not isinstance(response, Mapping) or response.get("success") is not True:
                     results.append(
                         TargetDeliveryResult(
                             service,
                             DeliveryDisposition.FAILED,
-                            str(response.get("error") or response),
+                            (
+                                str(response.get("error") or response)
+                                if isinstance(response, Mapping)
+                                else "Home Assistant service result was not returned"
+                            ),
                         )
                     )
                 else:

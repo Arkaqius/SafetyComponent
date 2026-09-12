@@ -110,6 +110,7 @@ app_config:
 runtime_defaults:
   notification:
     mobile:
+      hass_timeout_seconds: 5
       profiles:
         1:
           color: '#FF0000'

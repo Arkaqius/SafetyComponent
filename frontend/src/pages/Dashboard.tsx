@@ -17,6 +17,7 @@ import {
 } from '../domain/safety';
 import { useSafetyEntities } from '../hooks/useSafetyEntities';
 import { ENTITY_MONITOR_SUMMARY_ID } from '../domain/entityHealth';
+import { NOTIFICATION_DELIVERY_HEALTH_ID, readAcknowledgedNotificationTags } from '../domain/notificationHistory';
 
 export default function Dashboard() {
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
@@ -49,6 +50,7 @@ export default function Dashboard() {
           : externalHazards.status === 'clear'
             ? 'safe'
             : 'muted';
+  const acknowledgedNotificationTags = new Set(readAcknowledgedNotificationTags(entities[NOTIFICATION_DELIVERY_HEALTH_ID]));
 
   return (
     <div className='page-stack'>
@@ -145,7 +147,7 @@ export default function Dashboard() {
       </section>
 
       <div className='dashboard-columns'>
-        <FaultSection compact faults={faults} onSelectEntity={setSelectedEntityId} />
+        <FaultSection acknowledgedTags={acknowledgedNotificationTags} compact faults={faults} onSelectEntity={setSelectedEntityId} />
         <ActionsList onSelectEntity={setSelectedEntityId} recoveries={recoveries} />
       </div>
 

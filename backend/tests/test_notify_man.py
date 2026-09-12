@@ -28,8 +28,7 @@ class Clock:
 
 def make_hass() -> Mock:
     hass = Mock()
-    # AppDaemon normally returns None after a service call completes without error.
-    hass.call_service = Mock(return_value=None)
+    hass.call_service = Mock(return_value={"success": True, "result": {}})
     hass.get_state = Mock(return_value=None)
     hass.listen_state = Mock()
     hass.listen_event = Mock()
@@ -61,7 +60,9 @@ def test_l1_uses_explicit_group_and_exact_cross_platform_profile() -> None:
 
     service_call = notify_calls(hass)[-1]
     assert service_call.args == ("notify/all_phones",)
-    assert "return_result" not in service_call.kwargs
+    assert service_call.kwargs["return_result"] is True
+    assert service_call.kwargs["timeout"] == 5
+    assert service_call.kwargs["hass_timeout"] == 5
     assert service_call.kwargs["title"] == "Immediate action needed"
     assert service_call.kwargs["message"] == (
         "Smoke alarm needs your attention.\nLocation: Kitchen"
@@ -207,6 +208,9 @@ def test_shadowed_fault_uses_companion_clear_command() -> None:
 
     hass.call_service.assert_called_once_with(
         "notify/all_phones",
+        return_result=True,
+        timeout=5,
+        hass_timeout=5,
         message="clear_notification",
         data={"tag": "tag-clear"},
     )
@@ -448,6 +452,66 @@ def test_later_fault_refresh_does_not_restore_acknowledgement_action() -> None:
     assert "actions" not in notify_calls(hass)[-1].kwargs["data"]
 
 
+def test_failed_acknowledgement_retry_cannot_overwrite_newer_fault_content() -> None:
+    hass = make_hass()
+    clock = Clock()
+    manager = NotificationManager(hass, {}, clock=clock)
+    manager.notify("Fault", 2, FaultState.SET, {"location": "Old"}, "ack-tag")
+    hass.call_service.side_effect = [RuntimeError("temporary"), {"success": True}]
+
+    manager.handle_mobile_action(
+        "mobile_app_notification_action",
+        {"action": "SAFETY_ACK_ack-tag"},
+        {},
+    )
+    assert "ack-tag:acknowledged" in manager.pending_deliveries
+
+    manager.notify("Fault", 2, FaultState.SET, {"location": "New"}, "ack-tag")
+    assert manager.pending_deliveries == {}
+    clock.advance(5)
+    manager.tick()
+
+    messages = [call.kwargs["message"] for call in notify_calls(hass)]
+    assert messages[-1].endswith("Location: New")
+    assert all(not message.endswith("Location: Old") for message in messages[2:])
+
+
+def test_ui_acknowledgement_uses_same_lifecycle_and_cancels_stale_delivery() -> None:
+    hass = make_hass()
+    hass.call_service.side_effect = [RuntimeError("temporary"), {"success": True}]
+    manager = NotificationManager(hass, {})
+    manager.notify("Fault", 1, FaultState.SET, None, "ui-tag")
+    assert "ui-tag:active" in manager.pending_deliveries
+
+    manager.handle_ui_acknowledgement(
+        "safety_notification_acknowledge", {"tag": "ui-tag"}, {}
+    )
+
+    assert manager.active_notification["ui-tag"]["acknowledged"] is True
+    assert manager.active_notification["ui-tag"]["next_repeat_at"] is None
+    assert manager.pending_deliveries == {}
+    assert "actions" not in notify_calls(hass)[-1].kwargs["data"]
+
+
+def test_reopened_fault_cancels_retry_of_previous_resolved_notification() -> None:
+    hass = make_hass()
+    clock = Clock()
+    manager = NotificationManager(hass, {}, clock=clock)
+    manager.notify("Fault", 2, FaultState.SET, {"location": "Old"}, "tag")
+    hass.call_service.side_effect = [RuntimeError("temporary"), {"success": True}]
+
+    manager.notify("Fault", 2, FaultState.CLEARED, None, "tag")
+    assert "tag:resolved" in manager.pending_deliveries
+    manager.notify("Fault", 2, FaultState.SET, {"location": "New"}, "tag")
+    assert manager.pending_deliveries == {}
+    clock.advance(5)
+    manager.tick()
+
+    messages = [call.kwargs["message"] for call in notify_calls(hass)]
+    assert messages[-1].endswith("Location: New")
+    assert len(messages) == 3
+
+
 def test_l1_repeats_are_bounded() -> None:
     hass = make_hass()
     clock = Clock()
@@ -535,18 +599,18 @@ def test_restored_retry_uses_current_explicit_service_configuration() -> None:
     )
 
 
-def test_appdaemon_none_result_is_accepted_without_retry() -> None:
+def test_missing_appdaemon_result_is_retried_as_transport_failure() -> None:
     hass = make_hass()
     hass.call_service.return_value = None
     manager = NotificationManager(hass, {})
 
     manager.notify("Fault", 3, FaultState.SET, None, "legacy-tag")
 
-    assert manager.pending_deliveries == {}
-    assert manager._last_result == "accepted_by_home_assistant"
-    assert manager._counters["accepted_attempts"] == 1
-    assert manager._counters["failed_attempts"] == 0
-    assert manager._last_success_at is not None
+    assert "legacy-tag:active" in manager.pending_deliveries
+    assert manager._last_result == "failed_retry_scheduled"
+    assert manager._counters["accepted_attempts"] == 0
+    assert manager._counters["failed_attempts"] == 1
+    assert manager._last_success_at is None
 
 
 def test_start_rejects_configured_service_missing_from_registry() -> None:
@@ -560,6 +624,34 @@ def test_start_rejects_configured_service_missing_from_registry() -> None:
 
     with pytest.raises(ValueError, match="unavailable: notify/missing_phone"):
         manager.start()
+
+
+def test_start_registers_companion_and_safetyhome_acknowledgement_events() -> None:
+    hass = make_hass()
+    manager = NotificationManager(hass, {})
+
+    manager.start()
+
+    assert call(
+        manager.handle_mobile_action, "mobile_app_notification_action"
+    ) in hass.listen_event.call_args_list
+    assert call(
+        manager.handle_ui_acknowledgement, "safety_notification_acknowledge"
+    ) in hass.listen_event.call_args_list
+
+
+def test_start_registers_mobile_and_safetyhome_acknowledgement_events() -> None:
+    hass = make_hass()
+    manager = NotificationManager(hass, {})
+
+    manager.start()
+
+    assert call(
+        manager.handle_mobile_action, "mobile_app_notification_action"
+    ) in hass.listen_event.call_args_list
+    assert call(
+        manager.handle_ui_acknowledgement, "safety_notification_acknowledge"
+    ) in hass.listen_event.call_args_list
 
 
 def test_local_annunciator_ownership_restores_with_manager_state() -> None:
@@ -599,6 +691,7 @@ def test_diagnostics_distinguish_ha_acceptance_from_device_delivery() -> None:
     attributes = diagnostic_call.kwargs["attributes"]
     assert state == "healthy"
     assert attributes["last_result"] == "accepted_by_home_assistant"
+    assert attributes["acknowledged_tags"] == []
     assert attributes["delivery_confirmation"] == (
         "Home Assistant acceptance only; device delivery is not confirmed"
     )
@@ -607,6 +700,26 @@ def test_diagnostics_distinguish_ha_acceptance_from_device_delivery() -> None:
         "last_attempt_at": manager._last_attempt_at,
         "last_error": "",
     }
+
+
+def test_diagnostics_publish_acknowledged_tags_for_safetyhome() -> None:
+    hass = make_hass()
+    mqtt = Mock()
+    manager = NotificationManager(hass, {}, mqtt_entities=mqtt)
+    manager.notify("Fault", 2, FaultState.SET, None, "diag-tag")
+
+    manager.handle_ui_acknowledgement(
+        "safety_notification_acknowledge", {"tag": "diag-tag"}, {}
+    )
+
+    diagnostic_call = next(
+        item
+        for item in reversed(mqtt.publish_sensor_state.call_args_list)
+        if item.args[0] == "sensor.notification_delivery_health"
+    )
+    assert diagnostic_call.kwargs["attributes"]["acknowledged_tags"] == [
+        "diag-tag"
+    ]
 
 
 def test_channel_diagnostics_show_partial_target_failure() -> None:

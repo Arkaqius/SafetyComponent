@@ -36,6 +36,7 @@ export interface FaultView {
   level: number | null;
   state: string;
   status: FaultStatus;
+  notificationTag: string;
   lastChanged?: string;
 }
 
@@ -285,6 +286,7 @@ export function getFaults(entities: EntityMap): FaultView[] {
       level: getFaultLevel(entity),
       state: entity.state,
       status: getFaultStatus(entity.state),
+      notificationTag: stringAttribute(entity, 'notification_tag'),
       lastChanged: entity.last_changed,
     }))
     .sort(

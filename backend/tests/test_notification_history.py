@@ -18,7 +18,7 @@ from components.notification_manager.state_store import JsonNotificationStateSto
 def make_manager(**kwargs: Any) -> NotificationManager:
     """Create a manager whose mobile calls never leave the test process."""
     app = Mock()
-    app.call_service.return_value = None
+    app.call_service.return_value = {"success": True, "result": {}}
     return NotificationManager(app, kwargs.pop("config", {}), **kwargs)
 
 
@@ -52,9 +52,9 @@ def test_partial_failure_and_retry_record_only_actual_target_attempts() -> None:
         clock=clock, config={"mobile": {"services": ["notify/one", "notify/two"]}}
     )
     manager.hass_app.call_service.side_effect = [
-        None,
+        {"success": True},
         RuntimeError("private transport details"),
-        None,
+        {"success": True},
     ]
     manager.notify("Fault", 3, FaultState.SET, None, "tag")
     clock.return_value = 1060.0

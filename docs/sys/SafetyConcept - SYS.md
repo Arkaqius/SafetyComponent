@@ -187,7 +187,10 @@ This chapter defines **notification levels and vectors** used by the Safety Syst
 
 ### 4.4 UI/UX Rules
 
-- Dashboard “Main Safety Card” shows **current level badge** (HAZARD/WARNING/INFO) and supports **acknowledge** for L1–L3. Acknowledgement does **not** clear hazards; it silences repeats.
+- Dashboard shows the **current level badge** (HAZARD/WARNING/INFO), and each
+  active L1–L3 fault card supports **acknowledge** through the authenticated
+  Home Assistant connection. Acknowledgement does **not** clear hazards; it
+  silences repeats.
 - Lights used for signaling should restore to previous state when the event clears.
 
 ### 4.5 Configuration sources and generated contract
@@ -478,14 +481,17 @@ _Interfaces turn §2 elements into **testable contracts**: freshness, latency, a
   `notify.notify` shall not be used as a safety-delivery target.
 - **Result semantics:** distinguish acceptance by Home Assistant from confirmed
   display or delivery by an individual phone.
+- **Submission confirmation:** wait for a bounded Home Assistant service result;
+  missing, failed, or timed-out results enter the retry policy.
 - **Lifecycle:** a new alarm may alert; same-fault context changes shall refresh
   quietly; shadowing shall use the Companion `clear_notification` command.
 - **Persistence:** active, acknowledged, repeated, and queued delivery state
   shall survive AppDaemon reload and restart.
 
-**OR-021 Dashboard Main Safety Card**
+**OR-021 Dashboard Safety Status and Fault Cards**
 
-- Must support **HAZARD/WARNING/INFO** badges; **acknowledge** action that silences repeats but does not clear fault.
+- Must support **HAZARD/WARNING/INFO** badges and a per-fault **acknowledge**
+  action that silences repeats but does not clear the fault.
 
 **OR-022 User Action Scheduler/Prompts**
 
