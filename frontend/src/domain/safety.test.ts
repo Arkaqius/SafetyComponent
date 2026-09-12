@@ -113,6 +113,7 @@ test('discovers faults from MQTT entity IDs and orders active faults first', () 
       friendly_name: 'Safety Component Fault: RiskyTemperature',
       level: 'level_2',
       location: 'Office, Bedroom',
+      notification_tag: 'fault-tag',
     }),
   };
 
@@ -121,6 +122,7 @@ test('discovers faults from MQTT entity IDs and orders active faults first', () 
   assert.equal(faults[0].entityId, 'sensor.fault_hazard');
   assert.equal(faults[0].level, 2);
   assert.deepEqual(faults[0].locations, ['Biuro', 'Sypialnia']);
+  assert.equal(faults[0].notificationTag, 'fault-tag');
 });
 
 test('only TO_PERFORM recovery states are actionable', () => {

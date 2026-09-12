@@ -39,7 +39,7 @@ const menuItems: Array<{ title: string; path: string; icon: IconName; descriptio
     title: 'Historia',
     path: '/history',
     icon: 'history',
-    description: 'Zmiany stanu encji bezpieczeństwa',
+    description: 'Powiadomienia i zmiany stanów',
   },
 ];
 

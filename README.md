@@ -61,7 +61,7 @@ and [`Entity Health Monitoring`](docs/features/Entity%20Health%20Monitoring%20-%
 
 ## Backend quick start
 
-Use Python 3.10 or newer:
+Use Python 3.10 or newer with AppDaemon 4.5 or newer:
 
 ```powershell
 python -m venv .venv

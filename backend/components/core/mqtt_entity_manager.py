@@ -160,9 +160,9 @@ class MqttEntityManager:
         self._prepared_entities: set[str] = set()
 
     def cleanup_legacy_discovery_topics(self) -> None:
-        """Remove explicitly configured legacy retained discovery messages."""
+        """Remove explicitly configured retired sensors and discovery messages."""
         for entity_id in self.settings.legacy_discovery_entity_ids:
-            self._publish(self.legacy_discovery_topic(entity_id), "", retain=True)
+            self.remove_sensor(entity_id, remove_legacy_topic=True)
 
     def publish_availability(self, online: bool = True) -> None:
         """Publish app availability to the configured MQTT availability topic."""

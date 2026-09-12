@@ -40,7 +40,7 @@ def test_production_localization_and_area_references_are_explicit() -> None:
     )
 
 
-def test_other_appdaemon_health_entities_are_explicitly_monitored() -> None:
+def test_production_entity_health_keys_are_explicitly_monitored() -> None:
     entities = _production_config()["user_config"]["safety_components"][
         "EntityMonitorComponent"
     ]["explicit_entities"]
@@ -49,4 +49,52 @@ def test_other_appdaemon_health_entities_are_explicitly_monitored() -> None:
         "SmartHeatingAppHealth": "sensor.sh_health",
         "GarageDoorAppHealth": "sensor.garage_door_health_2",
         "ExternalGateAppHealth": "sensor.external_gate_health_2",
+        "ExternalOpeningBedroomLeftWindow": (
+            "binary_sensor.bedroom_windowleft_sensor_contact"
+        ),
+        "ExternalOpeningKidsRoomWindow": (
+            "binary_sensor.kidsroom_window_contact_contact"
+        ),
+        "ExternalOpeningKitchenWindow": (
+            "binary_sensor.kitchen_window_contact_contact"
+        ),
+        "ExternalOpeningLivingRoomTerraceDoor": (
+            "binary_sensor.livingroom_door_contact_contact"
+        ),
+        "ExternalOpeningOfficeWindow": (
+            "binary_sensor.office_window_contact_contact"
+        ),
+        "ExternalOpeningUpperBathroomWindow": (
+            "binary_sensor.upperbathroom_window_contact_contact"
+        ),
+        "SafetyDoorGarageGate": (
+            "binary_sensor.garage_gatedoorlow_contact_contact"
+        ),
     } == {key: value["entity_id"] for key, value in entities.items()}
+
+
+def test_production_mqtt_cleanup_removes_replaced_entities() -> None:
+    legacy_entities = set(
+        _production_config()["user_config"]["mqtt"][
+            "legacy_discovery_entity_ids"
+        ]
+    )
+
+    assert {
+        "sensor.recovery_closeexternalopeningexternalgate",
+        "sensor.recovery_closeexternalopeninggaragegate",
+        "sensor.fault_entityhealthtemperaturewindowupperbathroom",
+        "sensor.entity_health_temperature_window_upperbathroom",
+        "sensor.fault_entityhealthtemperaturewindowbedroom",
+        "sensor.entity_health_temperature_window_bedroom",
+        "sensor.fault_entityhealthtemperaturewindowkidsroom",
+        "sensor.entity_health_temperature_window_kidsroom",
+        "sensor.fault_entityhealthtemperaturewindowkitchen",
+        "sensor.entity_health_temperature_window_kitchen",
+        "sensor.fault_entityhealthtemperaturewindowlivingroom",
+        "sensor.entity_health_temperature_window_livingroom",
+        "sensor.fault_entityhealthtemperaturewindowoffice",
+        "sensor.entity_health_temperature_window_office",
+        "sensor.fault_entityhealthtemperaturewindowgarage",
+        "sensor.entity_health_temperature_window_garage",
+    } <= legacy_entities

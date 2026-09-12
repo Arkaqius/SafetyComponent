@@ -110,6 +110,7 @@ app_config:
 runtime_defaults:
   notification:
     mobile:
+      hass_timeout_seconds: 5
       profiles:
         1:
           color: '#FF0000'
@@ -201,6 +202,23 @@ runtime_defaults:
     qos: 0
     heartbeat_seconds: 60
     expire_after: 180
+    legacy_discovery_entity_ids:
+    - sensor.recovery_closeexternalopeningexternalgate
+    - sensor.recovery_closeexternalopeninggaragegate
+    - sensor.fault_entityhealthtemperaturewindowupperbathroom
+    - sensor.entity_health_temperature_window_upperbathroom
+    - sensor.fault_entityhealthtemperaturewindowbedroom
+    - sensor.entity_health_temperature_window_bedroom
+    - sensor.fault_entityhealthtemperaturewindowkidsroom
+    - sensor.entity_health_temperature_window_kidsroom
+    - sensor.fault_entityhealthtemperaturewindowkitchen
+    - sensor.entity_health_temperature_window_kitchen
+    - sensor.fault_entityhealthtemperaturewindowlivingroom
+    - sensor.entity_health_temperature_window_livingroom
+    - sensor.fault_entityhealthtemperaturewindowoffice
+    - sensor.entity_health_temperature_window_office
+    - sensor.fault_entityhealthtemperaturewindowgarage
+    - sensor.entity_health_temperature_window_garage
   safety_components:
     EntityMonitorComponent:
       explicit_entities:

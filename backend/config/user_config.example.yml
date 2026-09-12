@@ -15,7 +15,7 @@ user_config:
     mobile:
       services:
         - notify/all_phones
-      default_url: https://home-assistant.example/local/SafetyHome/
+      default_url: /local/SafetyHome/
     local: {}
     wan_entity: null
 

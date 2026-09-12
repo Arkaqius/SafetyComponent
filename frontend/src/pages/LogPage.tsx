@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import Icon, { type IconName } from '../components/Icon';
 import StatusBadge from '../components/StatusBadge';
+import NotificationHistory from '../components/NotificationHistory';
+import { NOTIFICATION_HISTORY_ENTITY_ID } from '../domain/notificationHistory';
 import {
   FAULT_PREFIX,
   HEALTH_ENTITY_ID,
@@ -35,7 +37,7 @@ const categoryLabels: Record<HistoryCategory, string> = {
 };
 
 export default function LogPage() {
-  const { entities } = useSafetyEntities();
+  const { entities, connection } = useSafetyEntities();
   const [category, setCategory] = useState<HistoryCategory>('all');
   const [hours, setHours] = useState<HistoryHours>(24);
 
@@ -55,6 +57,7 @@ export default function LogPage() {
 
   return (
     <div className='page-stack'>
+      <NotificationHistory entity={entities[NOTIFICATION_HISTORY_ENTITY_ID]} connected={connection.ready && !connection.cannotConnect} />
       <section className='page-introduction'>
         <div>
           <span className='section-kicker'>Historia systemu</span>

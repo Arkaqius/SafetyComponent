@@ -26,7 +26,9 @@ flowchart LR
     NotificationManager --> DeliveryScheduler
     MobilePushProvider -->|configured notify services| HomeAssistant
     HomeAssistant -->|mobile_app_notification_action| NotificationManager
-    NotificationManager -->|health and counters| MqttEntityManager
+    SafetyHome -->|safety_notification_acknowledge| HomeAssistant
+    HomeAssistant -->|authenticated event| NotificationManager
+    NotificationManager -->|health, counters, and attempt history| MqttEntityManager
 ```
 
 ### 2.1 `NotificationManager`
@@ -39,7 +41,8 @@ flowchart LR
   acknowledgement and L1 repeat policy where applicable;
 - owns acknowledgement state without clearing the underlying fault;
 - queues failed or WAN-blocked deliveries and applies retry policy;
-- records deadline telemetry and transport results;
+- records deadline telemetry, transport results, and a bounded history of
+  individual target submissions;
 - persists all state needed to resume safely after a restart.
 
 ### 2.2 `MobilePushProvider`
@@ -53,8 +56,9 @@ flowchart LR
   platform limitation;
 - sends the Companion command `message: clear_notification` with the stable
   tag when a notification must be removed;
-- requests a Home Assistant service result and reports each configured service
-  as `accepted` or `failed`; a missing result is a retryable failure.
+- requests a Home Assistant service result with bounded AppDaemon and Home
+  Assistant timeouts and reports each configured service as `accepted` or
+  `failed`; a missing result is a retryable failure.
 
 The provider shall never fall back to `notify.notify`. Installation routing
 shall use an explicit group such as `notify/all_phones` or an explicit list of
@@ -72,7 +76,7 @@ mobile notify services.
 
 - writes a versioned JSON snapshot atomically;
 - restores active records, acknowledgements, pending deliveries, repeat state,
-  counters, and last transport result;
+  counters, last transport result, and submission history;
 - retains restored active records until a current fault event confirms SET,
   CLEARED, or SHADOWED, and reconciles an authoritative clear even when the
   fresh FaultManager lifecycle would otherwise suppress a duplicate clear;
@@ -95,24 +99,76 @@ from fault state. Its state is one of `healthy`, `degraded`, or `queued` and its
 attributes include active/acknowledged/queued counts, accepted and failed
 attempt counters, deadline misses, last attempt/result/error, per-service
 status/time/error, and the explicit statement that device delivery is not
-confirmed.
+confirmed. `acknowledged_tags` lists stable tags for currently active,
+acknowledged notifications so SafetyHome can retain button state after reload.
+
+### 2.7 Notification history
+
+The manager shall retain the latest 100 individual target submission attempts,
+including successful Home Assistant acceptance and failed submissions. Each
+retry shall produce a separate entry only for the targets actually attempted.
+Waiting for WAN recovery shall not create a submission-history entry.
+
+`sensor.notification_history` shall expose the retained entry count as its
+state, with a versioned history payload, a retention limit of 100, and entries
+ordered newest first. The manager shall publish this separate sensor when it
+starts and after submission attempts, without rebuilding the journal on idle
+scheduler ticks. The shared MQTT heartbeat shall refresh its cached state and
+attributes to preserve availability and recover after MQTT restarts.
+The journal shall use the existing notification state snapshot and persistence
+configuration. A compatible snapshot without history shall restore an empty
+journal without discarding active or pending notification state.
+
+Each entry shall contain:
+
+| Field | Meaning |
+| --- | --- |
+| `id` | Unique UUID for this target attempt. |
+| `tag` | Stable fault notification tag for correlation. |
+| `kind`, `fault_state` | Submission purpose and associated fault lifecycle state. |
+| `title`, `message` | Notification content, each bounded to 2048 characters. |
+| `text_truncated` | Whether the stored title or message was shortened to its bound. |
+| `level` | Notification severity level. |
+| `created_at` | UTC ISO timestamp when this delivery was created. |
+| `attempted_at` | UTC ISO timestamp recorded on completion of the submission attempt. |
+| `attempt` | Attempt number within this delivery. |
+| `service` | Actual configured Home Assistant notify service attempted. |
+| `result` | `accepted_by_home_assistant` or `failed`. |
+| `deadline_missed` | Whether this delivery exceeded its severity deadline. |
+
+Kinds `new`, `update`, `repeat`, and `acknowledged` shall record `SET`;
+`resolved` shall record `CLEARED`; `clear` shall record `SHADOWED`.
+Acknowledgement therefore remains visibly distinct from healing. Shadowing
+removes a notification and shall not be presented as a healed fault. The journal shall not expose raw
+transport exception text, unfiltered fault events, or inferred group members.
+Failure details in the history UI shall use a generic diagnostic explanation;
+existing transport-health diagnostics retain their separate error contract.
+
+The SafetyHome History page shall present this notification list before entity
+history. Each item shall show its date and time, lifecycle state, target
+service, and submission outcome. Selecting it shall reveal its content and
+diagnostic fields. Dates and times shall be presented in the browser's local
+time zone. A notify group shall be identified by its configured service: the
+frontend shall not infer which person or device received a group notification.
+Home Assistant acceptance shall remain distinct from confirmed device delivery.
 
 ## 3. Configuration contract
 
 The installation config owns:
 
 - `mobile.services`: explicit AppDaemon service names in `domain/service` form;
-- `mobile.default_url`: destination opened from the notification;
-- severity profiles for Android and iOS;
-- retry limits and backoff;
-- L1 repeat interval and maximum repeat count;
+- `mobile.default_url`: Home Assistant-relative destination opened in the
+  Companion app from the notification;
 - optional WAN-state entity and its online states;
-- persistent state-file path;
-- additional-info allowlist;
 - optional local annunciator entities.
 
-The production default destination is
-`https://ha.kojbito.org/5c36e1c9_hakit` and the production default transport is
+System configuration owns the bounded `mobile.hass_timeout_seconds`, severity
+profiles, retry limits and backoff, L1 repeat policy, persistence path, and
+additional-info allowlist. Runtime requires AppDaemon 4.5 or newer so
+`return_result`, `timeout`, and `hass_timeout` are available.
+
+The production default destination is `/5c36e1c9_hakit`; the relative path
+keeps notification navigation inside the Companion app. The default transport is
 `notify/all_phones`.
 
 Default new-alert profiles are:
@@ -123,7 +179,7 @@ Default new-alert profiles are:
 | L2 | `Safety hazards` | `high` / `high`, TTL `0` | shorter warning pattern | `time-sensitive` |
 | L3 | `Safety warnings` | `default` / `normal`, TTL `0` | none | `active` |
 
-Quiet updates and resolved messages override these alert properties with
+Quiet updates, acknowledgement refreshes, and resolved messages override these alert properties with
 Android `alert_once`/normal priority and iOS `passive` interruption.
 
 ## 4. Lifecycle
@@ -150,10 +206,15 @@ the new-alert submission receive the quiet refresh.
 
 ### 4.3 Acknowledgement
 
-The action identifier contains the stable fault tag. A matching
-`mobile_app_notification_action` event marks the active record acknowledged,
-persists it, and cancels future repeats. Acknowledgement shall not clear the
-fault and shall not prevent later quiet content refreshes.
+The Companion action identifier contains the stable fault tag. A matching
+`mobile_app_notification_action` event, or an authenticated SafetyHome
+`safety_notification_acknowledge` event carrying that exact tag, marks the
+active record acknowledged. The manager persists it, cancels all superseded
+pending submissions for that tag, and quietly replaces the phone notification
+without the acknowledgement action. The acknowledgement submission is retained
+in notification history. Acknowledgement shall not clear the fault and shall not
+prevent later quiet content refreshes. SafetyHome reads the tag from the active
+fault entity and the acknowledgement state from notification diagnostics.
 
 ### 4.4 Fault clear and shadow
 
@@ -173,6 +234,9 @@ repeats for that tag are removed in both cases.
   state becomes one of the configured online states.
 - Mobile transport failure shall not block FaultManager, recovery policy, MQTT
   fault state, or local annunciators.
+- A newer lifecycle state or content update for a stable tag shall replace
+  superseded queued submissions for that tag. A retry shall never restore older
+  notification content or a previous resolved state.
 
 ## 6. Verification contract
 
@@ -180,6 +244,13 @@ Automated tests shall cover exact L1-L3 new and quiet payloads, explicit target
 routing, correct clear commands, partial failures, retry bounds, WAN queue and
 flush, deadlines, acknowledgement, controlled repeats, restart restoration,
 allowlist filtering, local-annunciator separation, and diagnostic publication.
+History tests shall cover SET and CLEARED entries, distinct shadow removal,
+per-target failures and retries, retention bounds, restart restoration and
+compatible snapshots without history, content bounds, and publication only on
+startup or attempts. Retry tests shall cover failed acknowledgement followed by
+newer content and a new SET following a failed resolved submission. Frontend
+domain and component tests shall cover lifecycle labels, filtering, date/time,
+target presentation, diagnostic details, and empty or unavailable history.
 
 Live verification shall not trigger a household fault, siren, warning light,
 or unsolicited phone notification. Production delivery requires a separately

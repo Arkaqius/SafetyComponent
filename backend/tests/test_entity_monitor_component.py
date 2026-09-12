@@ -272,6 +272,35 @@ def test_entity_monitor_merges_memberships_for_same_entity(mocked_hass_app_basic
     )
 
 
+def test_explicit_dependency_controls_stable_key_for_merged_entity(
+    mocked_hass_app_basic,
+):
+    app, _, component = _component(mocked_hass_app_basic)
+    now = datetime(2026, 8, 13, 10, 0, tzinfo=timezone.utc)
+    app.get_state = MagicMock(return_value=_snapshot("on", now))
+    config = _config("binary_sensor.upper_bathroom_window")
+    config["explicit_entities"] = [
+        {
+            "key": "ExternalOpeningUpperBathroomWindow",
+            "entity_id": "binary_sensor.upper_bathroom_window",
+            "owner": "installation",
+            "purpose": "Upper bathroom window contact",
+            "source": "explicit",
+            "fault_owner": "entity_monitor",
+            "failure_debounce_seconds": 10,
+            "recovery_debounce_seconds": 10,
+            "checks": {},
+        }
+    ]
+
+    component.get_symptoms_data({"EntityMonitorComponent": component}, config)
+
+    assert set(component._entities) == {"ExternalOpeningUpperBathroomWindow"}
+    assert set(component.get_fault_definitions()) == {
+        "EntityHealthExternalOpeningUpperBathroomWindow"
+    }
+
+
 def test_freshness_fault_context_formats_age_as_duration(mocked_hass_app_basic):
     app, _, component = _component(mocked_hass_app_basic)
     now = datetime(2026, 8, 13, 10, 0, tzinfo=timezone.utc)

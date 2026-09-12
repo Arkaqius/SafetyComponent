@@ -11,6 +11,12 @@ import appdaemon.plugins.hass.hassapi as hass  # type: ignore
 
 from components.core.localization import Localizer
 from components.core.types_common import FaultState
+from components.notification_manager.history import (
+    HISTORY_ENTITY_ID,
+    HISTORY_LIMIT,
+    restore_history,
+    submission_entry,
+)
 from components.notification_manager.local_annunciator import LocalAnnunciator
 from components.notification_manager.mobile_push_provider import MobilePushProvider
 from components.notification_manager.models import PendingDelivery
@@ -23,6 +29,7 @@ from components.notification_manager.state_store import (
 
 _STATE_VERSION = 1
 _ACK_PREFIX = "SAFETY_ACK_"
+_UI_ACK_EVENT = "safety_notification_acknowledge"
 
 
 class NotificationManager:
@@ -70,6 +77,7 @@ class NotificationManager:
         self._clock = clock or time.time
         self.active_notification: dict[str, dict[str, Any]] = {}
         self.pending_deliveries: dict[str, PendingDelivery] = {}
+        self.notification_history: list[dict[str, Any]] = []
         self.wan_online: bool | None = (
             None if self.notification_config.get("wan_entity") else True
         )
@@ -103,6 +111,12 @@ class NotificationManager:
         self._started = True
         if self.mqtt_entities is not None:
             self.mqtt_entities.register_sensor(
+                HISTORY_ENTITY_ID,
+                self.localizer.text("entity.notification_history"),
+                icon="mdi:message-text-clock-outline",
+                entity_category="diagnostic",
+            )
+            self.mqtt_entities.register_sensor(
                 self.notification_config["diagnostics_sensor_id"],
                 "Notification Delivery Health",
                 icon="mdi:message-alert-outline",
@@ -118,8 +132,10 @@ class NotificationManager:
         listen_event = getattr(self.hass_app, "listen_event", None)
         if callable(listen_event):
             listen_event(self.handle_mobile_action, "mobile_app_notification_action")
+            listen_event(self.handle_ui_acknowledgement, _UI_ACK_EVENT)
         self.hass_app.run_every(self.tick, "now", 1)
         self._publish_diagnostics()
+        self._publish_history()
 
     def stop(self) -> None:
         """Persist lifecycle state during a controlled shutdown."""
@@ -180,24 +196,67 @@ class NotificationManager:
             )
 
     def handle_mobile_action(
-        self, event_name: str, data: Mapping[str, Any], **_: Any
+        self,
+        event_name: str,
+        data: Mapping[str, Any],
+        callback_kwargs: Mapping[str, Any] | None = None,
+        **_: Any,
     ) -> None:
-        """Acknowledge the matching fault without clearing it."""
+        """Acknowledge the matching fault and visibly refresh its notification."""
 
-        del event_name
+        del event_name, callback_kwargs
         action = str(data.get("action", ""))
         if not action.startswith(_ACK_PREFIX):
             return
-        tag = action[len(_ACK_PREFIX) :]
+        self._acknowledge_tag(action[len(_ACK_PREFIX) :])
+
+    def handle_ui_acknowledgement(
+        self,
+        event_name: str,
+        data: Mapping[str, Any],
+        callback_kwargs: Mapping[str, Any] | None = None,
+        **_: Any,
+    ) -> None:
+        """Acknowledge a notification requested by authenticated SafetyHome."""
+
+        del event_name, callback_kwargs
+        self._acknowledge_tag(str(data.get("tag", "")))
+
+    def _acknowledge_tag(self, tag: str) -> None:
+        """Persist one active acknowledgement and replace superseded deliveries."""
+
+        if not tag:
+            return
         record = self.active_notification.get(tag)
-        if record is None:
+        if record is None or record.get("acknowledged") is True:
             return
         record["acknowledged"] = True
         record["acknowledged_at"] = self._clock()
         record["next_repeat_at"] = None
-        self.pending_deliveries.pop(f"{tag}:repeat", None)
-        self._persist_state()
-        self._publish_diagnostics()
+        self._drop_pending_for_tag(tag)
+        level = int(record["level"])
+        if level in (1, 2, 3):
+            record["data"] = self.mobile_provider.build_payload(
+                level=level,
+                tag=tag,
+                acknowledgement_title=self.localizer.text(
+                    "notification.action.ack"
+                ),
+                quiet=True,
+                resolved=False,
+                acknowledged=True,
+            )
+            self._persist_state()
+            self._queue_delivery(
+                tag=tag,
+                level=level,
+                title=str(record["title"]),
+                message=str(record["message"]),
+                kind="acknowledged",
+            )
+        else:
+            self._persist_state()
+            self._publish_diagnostics()
         self.hass_app.log(
             f"Notification acknowledged for tag '{tag}'; repeats suppressed",
             level="INFO",
@@ -390,8 +449,9 @@ class NotificationManager:
                 acknowledgement_title=self.localizer.text("notification.action.ack"),
                 quiet=not should_alert,
                 resolved=False,
+                acknowledged=bool(record["acknowledged"]),
             )
-        if is_escalation:
+        if is_new or is_escalation:
             self._drop_pending_for_tag(tag)
         self.active_notification[tag] = record
         self._persist_state()
@@ -494,6 +554,9 @@ class NotificationManager:
                     self._publish_diagnostics()
                     return
                 delivery_key = f"{tag}:update"
+            for pending_id, pending in list(self.pending_deliveries.items()):
+                if pending.tag == tag and pending_id != f"{tag}:active":
+                    del self.pending_deliveries[pending_id]
         delivery = PendingDelivery(
             delivery_id=delivery_key,
             tag=tag,
@@ -535,14 +598,19 @@ class NotificationManager:
                 delivery.tag, services=delivery.target_services
             )
         else:
+            active_record = self.active_notification.get(delivery.tag, {})
+            acknowledged = delivery.kind == "acknowledged" or bool(
+                active_record.get("acknowledged", False)
+            )
             result = self.mobile_provider.send(
                 level=delivery.level,
                 title=delivery.title,
                 message=delivery.message,
                 tag=delivery.tag,
                 acknowledgement_title=self.localizer.text("notification.action.ack"),
-                quiet=delivery.kind in {"update", "resolved"},
+                quiet=delivery.kind in {"update", "acknowledged", "resolved"},
                 resolved=delivery.kind == "resolved",
+                acknowledged=acknowledged,
                 services=delivery.target_services,
             )
 
@@ -560,11 +628,15 @@ class NotificationManager:
         self._counters["accepted_attempts"] += accepted_count
         self._counters["failed_attempts"] += len(result.failed_services)
         for target in result.targets:
+            self.notification_history.append(
+                submission_entry(delivery, target, completed_at)
+            )
             self._channel_status[target.service] = {
                 "status": target.disposition.value,
                 "last_attempt_at": completed_at,
                 "last_error": target.error or "",
             }
+        self.notification_history = self.notification_history[-HISTORY_LIMIT:]
         if result.completed:
             self.pending_deliveries.pop(delivery.delivery_id, None)
             if result.accepted:
@@ -592,6 +664,23 @@ class NotificationManager:
             self._last_error = result.error
         self._persist_state()
         self._publish_diagnostics()
+
+        self._publish_history()
+
+    def _publish_history(self) -> None:
+        """Publish the journal only on startup or actual submission attempts."""
+
+        if self.mqtt_entities is None:
+            return
+        self.mqtt_entities.publish_sensor_state(
+            HISTORY_ENTITY_ID,
+            len(self.notification_history),
+            attributes={
+                "version": 1,
+                "limit": HISTORY_LIMIT,
+                "entries": list(reversed(self.notification_history)),
+            },
+        )
 
     def _drop_pending_for_tag(self, tag: str) -> None:
         for delivery_id, delivery in list(self.pending_deliveries.items()):
@@ -668,6 +757,7 @@ class NotificationManager:
         snapshot = {
             "version": _STATE_VERSION,
             "active_notifications": self.active_notification,
+            "notification_history": self.notification_history,
             "pending_deliveries": [
                 delivery.to_dict() for delivery in self.pending_deliveries.values()
             ],
@@ -699,6 +789,9 @@ class NotificationManager:
                 return
             if int(snapshot.get("version", -1)) != _STATE_VERSION:
                 raise ValueError("Unsupported notification state version")
+            self.notification_history = restore_history(
+                snapshot.get("notification_history", [])
+            )
             active = snapshot.get("active_notifications", {})
             if not isinstance(active, dict):
                 raise ValueError("active_notifications must be an object")
@@ -768,6 +861,11 @@ class NotificationManager:
             "acknowledged_count": sum(
                 1
                 for record in self.active_notification.values()
+                if record.get("acknowledged")
+            ),
+            "acknowledged_tags": sorted(
+                tag
+                for tag, record in self.active_notification.items()
                 if record.get("acknowledged")
             ),
             "queued_count": pending_count,

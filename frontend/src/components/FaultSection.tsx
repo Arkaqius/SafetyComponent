@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useHass } from '@hakit/core';
 import {
   LEVEL_PRESENTATION,
   formatRelativeTime,
@@ -9,11 +10,13 @@ import {
 } from '../domain/safety';
 import Icon from './Icon';
 import StatusBadge from './StatusBadge';
+import { notificationAcknowledgementEvent } from '../domain/notificationHistory';
 
 type FaultFilter = 'attention' | 'set' | 'shadowed' | 'all';
 
 interface FaultSectionProps {
   faults: FaultView[];
+  acknowledgedTags?: ReadonlySet<string>;
   compact?: boolean;
   onSelectEntity?: (entityId: string) => void;
 }
@@ -34,7 +37,7 @@ const filters: Array<{ value: FaultFilter; label: string }> = [
   { value: 'all', label: 'Wszystkie' },
 ];
 
-export default function FaultSection({ faults, compact = false, onSelectEntity }: FaultSectionProps) {
+export default function FaultSection({ acknowledgedTags = new Set(), faults, compact = false, onSelectEntity }: FaultSectionProps) {
   const [filter, setFilter] = useState<FaultFilter>('attention');
   const [query, setQuery] = useState('');
 
@@ -93,7 +96,14 @@ export default function FaultSection({ faults, compact = false, onSelectEntity }
 
       <div aria-live='polite' className='fault-list'>
         {filteredFaults.length > 0 ? (
-          filteredFaults.map(fault => <FaultCard fault={fault} key={fault.entityId} onSelectEntity={onSelectEntity} />)
+          filteredFaults.map(fault => (
+            <FaultCard
+              acknowledged={acknowledgedTags.has(fault.notificationTag)}
+              fault={fault}
+              key={fault.entityId}
+              onSelectEntity={onSelectEntity}
+            />
+          ))
         ) : (
           <div className='empty-state'>
             <div className='empty-state-icon'>
@@ -112,9 +122,44 @@ export default function FaultSection({ faults, compact = false, onSelectEntity }
   );
 }
 
-function FaultCard({ fault, onSelectEntity }: { fault: FaultView; onSelectEntity?: (entityId: string) => void }) {
+function FaultCard({
+  acknowledged,
+  fault,
+  onSelectEntity,
+}: {
+  acknowledged: boolean;
+  fault: FaultView;
+  onSelectEntity?: (entityId: string) => void;
+}) {
   const status = statusPresentation[fault.status];
   const level = fault.level ? LEVEL_PRESENTATION[fault.level] : undefined;
+  const { useStore } = useHass();
+  const connection = useStore(store => store.connection);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState('');
+  const canAcknowledge = fault.status === 'set' && Boolean(fault.notificationTag) && Boolean(fault.level && fault.level <= 3);
+
+  useEffect(() => {
+    if (!acknowledged) setSubmitted(false);
+  }, [acknowledged, fault.notificationTag]);
+
+  const acknowledgeFault = async (): Promise<void> => {
+    if (!connection || !fault.notificationTag) {
+      setError('Brak połączenia z Home Assistantem.');
+      return;
+    }
+    setSubmitting(true);
+    setError('');
+    try {
+      await connection.sendMessagePromise<unknown>(notificationAcknowledgementEvent(fault.notificationTag));
+      setSubmitted(true);
+    } catch {
+      setError('Nie udało się wysłać potwierdzenia. Spróbuj ponownie.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <details className={`fault-card fault-${status.tone}`} open={fault.status === 'set'}>
@@ -147,6 +192,20 @@ function FaultCard({ fault, onSelectEntity }: { fault: FaultView; onSelectEntity
             <dd>{formatRelativeTime(fault.lastChanged)}</dd>
           </div>
         </dl>
+        {canAcknowledge && (
+          <div className='fault-acknowledgement'>
+            <button
+              className='fault-acknowledge-button'
+              disabled={acknowledged || submitted || submitting}
+              onClick={acknowledgeFault}
+              type='button'
+            >
+              {acknowledged ? 'Potwierdzono' : submitted ? 'Potwierdzenie wysłane' : submitting ? 'Wysyłanie…' : 'Potwierdź powiadomienie'}
+            </button>
+            <small>Potwierdzenie wycisza ponowienia, ale nie usuwa aktywnej usterki.</small>
+          </div>
+        )}
+        {error && <small className='recovery-error'>{error}</small>}
         {onSelectEntity && (
           <button className='text-button fault-details-button' onClick={() => onSelectEntity(fault.entityId)} type='button'>
             Pełne szczegóły i historia <Icon name='history' size={15} />
