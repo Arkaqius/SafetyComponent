@@ -24,6 +24,12 @@ const menuItems: Array<{ title: string; path: string; icon: IconName; descriptio
     description: 'Czas otwarcia drzwi i bram',
   },
   {
+    title: 'Zagrożenia wewnętrzne',
+    path: '/internal-hazards',
+    icon: 'alert',
+    description: 'Dym, gaz palny i tlenek węgla',
+  },
+  {
     title: 'Zagrożenia zewnętrzne',
     path: '/external-hazards',
     icon: 'environment',

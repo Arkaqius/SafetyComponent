@@ -215,6 +215,7 @@ function entityCategory(entityId: string): string {
   if (entityId.startsWith(FAULT_PREFIX)) return 'Usterka SafetyComponent';
   if (entityId.startsWith(RECOVERY_PREFIX)) return 'Działanie naprawcze';
   if (entityId.startsWith('binary_sensor.')) return 'Czujnik binarny';
+  if (entityId.startsWith('sensor.internal_environment_')) return 'Monitoring zagrożeń wewnętrznych';
   if (entityId.startsWith('sensor.entity_health_')) return 'Diagnostyka monitorowanej encji';
   if (entityId.startsWith('sensor.external_provider_')) return 'Zewnętrzne źródło danych';
   return 'Encja Home Assistanta';
