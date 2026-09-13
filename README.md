@@ -125,6 +125,7 @@ the [frontend README](frontend/README.md).
 - [Mobile Notification Delivery architecture](<docs/features/Mobile Notification Delivery - Architecture.md>)
 - [External Hazard Monitoring architecture](<docs/features/External Hazard Monitoring - Architecture.md>)
 - [Entity Health Monitoring architecture](<docs/features/Entity Health Monitoring - Architecture.md>)
+- [Safety monitoring responsibility boundaries](<docs/features/Safety Monitoring Responsibility Boundaries.md>)
 - [Backend coding standards](backend/README.md)
 - [Contribution workflow](CONTRIBUTING.md)
 - [Agent instructions](AGENTS.md)
