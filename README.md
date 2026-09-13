@@ -158,6 +158,7 @@ the [frontend README](frontend/README.md).
 - [Entity Health Monitoring architecture](<docs/features/Entity Health Monitoring - Architecture.md>)
 - [Heating System Monitoring architecture](<docs/features/Heating System Monitoring - Architecture.md>)
 - [Internal Environmental Hazard Monitoring architecture](<docs/features/Internal Environmental Hazard Monitoring - Architecture.md>)
+- [Safety monitoring responsibility boundaries](<docs/features/Safety Monitoring Responsibility Boundaries.md>)
 - [Backend coding standards](backend/README.md)
 - [Contribution workflow](CONTRIBUTING.md)
 - [Agent instructions](AGENTS.md)
