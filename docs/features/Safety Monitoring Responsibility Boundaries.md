@@ -7,7 +7,29 @@ decision and notification. Not every part of that path can be supervised by
 SafetyFunctions itself. Monitoring responsibility should remain with the layer
 that can still observe and report a failure when the monitored layer is down.
 
-## Proposed allocation
+## Diagnostic domains
+
+The monitoring design should use separate domain monitors rather than one
+central component that owns every diagnostic decision:
+
+| Domain | Suggested owner | Diagnostic scope |
+| --- | --- | --- |
+| Home Assistant safety inputs | `EntityMonitorComponent` | Availability, freshness, type, finite values, plausible ranges, rate of change, and required or allowed states for inputs declared by the installation, Safety Components, or application core. |
+| External data providers | Each external API adapter and its consuming Safety Component | HTTP and schema result, source and retrieval freshness, last attempt, last success, consecutive failures, and provider-independent cache health. |
+| MQTT transport | A dedicated MQTT transport monitor, supported by broker and Home Assistant diagnostics | Connection and session state, observable publish failures, reconnects, queue pressure, message age, and an end-to-end or loopback heartbeat where the installation can provide one. |
+| Home Assistant and AppDaemon runtime | A runtime-platform monitor plus Home Assistant Supervisor | Home Assistant connectivity, AppDaemon add-on state, application process restarts, event-loop delay, missed evaluation deadlines, and component lifecycle failures. |
+| Host resources | Host/platform integrations or an external supervisor | Sustained CPU load, memory and swap pressure, disk space, host temperature and throttling, clock synchronization, and restart counters. |
+| SafetyFunctions self-diagnostics | An application self-monitor | Configuration validation, component initialization, scheduler progress, exception counters, persistence health, queue or worker liveness, and completion of safety-evaluation cycles. |
+| Platform and add-on updates | Home Assistant Supervisor, with an optional SafetyFunctions consumer | Update availability, installed and offered versions, advisory severity, information freshness, and excessive update age. Installation and restart remain outside monitoring logic. |
+| Notification path | `NotificationManager` and channel-specific diagnostics | Home Assistant service acceptance, per-target attempts, retries, and observable channel errors without presenting acceptance as confirmed delivery to a physical phone. |
+
+These monitors may use a common diagnostic state model and evidence format, but
+each channel retains its own lifecycle, calibration, and fault ownership. A
+Safety Component declares which channels it depends on and decides how lost
+coverage affects its safety function; it does not take ownership of the
+underlying broker, host, provider, or Supervisor lifecycle.
+
+## Execution and recovery allocation
 
 | Layer | Primary responsibility |
 | --- | --- |
