@@ -321,6 +321,16 @@ def test_group_b_dependencies_are_diagnostic_only_and_keep_stable_fault_owner() 
     assert {item["detection_budget_seconds"] for item in dependencies} == {60}
 
 
+def test_unconfigured_hazard_fault_is_inactive() -> None:
+    now = datetime(2026, 9, 13, 10, 0, tzinfo=timezone.utc)
+    component, _hass_app, _events = _build_component(
+        {GAS_ENTITY: _snapshot("off", now), CO_ENTITY: _snapshot("off", now)},
+        now=now,
+    )
+
+    assert component.get_inactive_fault_names() == {"InternalSmokeDetected"}
+
+
 def test_diagnostic_payload_keeps_alarm_and_health_separate() -> None:
     now = datetime(2026, 9, 13, 10, 0, tzinfo=timezone.utc)
     states = {

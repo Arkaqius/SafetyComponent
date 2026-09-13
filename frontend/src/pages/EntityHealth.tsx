@@ -11,6 +11,7 @@ import {
 } from '../domain/entityHealth';
 import { formatRelativeTime, localizedEntityState, type StatusTone } from '../domain/safety';
 import { useEntityAudit } from '../hooks/useEntityAudit';
+import type { RegistryStatus } from '../hooks/useEntityAudit';
 import { useEntityHistory } from '../hooks/useEntityHistory';
 
 type MainView = 'monitored' | 'inventory';
@@ -28,7 +29,7 @@ const healthPresentation: Record<EntityHealthState, { label: string; tone: Statu
 };
 
 export default function EntityHealth() {
-  const { monitored, summary, inventory, devices, registriesAvailable } = useEntityAudit();
+  const { monitored, summary, inventory, devices, registryStatus } = useEntityAudit();
   const [view, setView] = useState<MainView>('monitored');
 
   return (
@@ -71,7 +72,7 @@ export default function EntityHealth() {
       {view === 'monitored' ? (
         <MonitoredView monitored={monitored} summary={summary} />
       ) : (
-        <InventoryView devices={devices} inventory={inventory} registriesAvailable={registriesAvailable} />
+        <InventoryView devices={devices} inventory={inventory} registryStatus={registryStatus} />
       )}
     </div>
   );
@@ -242,11 +243,11 @@ function MonitoredView({
 function InventoryView({
   inventory,
   devices,
-  registriesAvailable,
+  registryStatus,
 }: {
   inventory: InventoryEntityView[];
   devices: InventoryDeviceView[];
-  registriesAvailable: boolean;
+  registryStatus: RegistryStatus;
 }) {
   const [mode, setMode] = useState<InventoryMode>('entities');
   const [query, setQuery] = useState('');
@@ -305,9 +306,7 @@ function InventoryView({
           <span>Dane audytowe nie tworzą usterek ani alarmów.</span>
         </div>
       </div>
-      {!registriesAvailable && (
-        <p className='registry-notice'>Rejestry urządzeń i pomieszczeń pojawią się po zestawieniu pełnego połączenia z Home Assistantem.</p>
-      )}
+      {registryStatus !== 'ready' && <RegistryNotice status={registryStatus} />}
       <div className='view-tabs compact-tabs' role='tablist' aria-label='Sposób grupowania'>
         <button
           aria-selected={mode === 'entities'}
@@ -484,6 +483,17 @@ function InventoryView({
       ) : null}
     </section>
   );
+}
+
+function RegistryNotice({ status }: { status: RegistryStatus }) {
+  if (status === 'ready') return null;
+  const copy = {
+    disconnected: 'Brak pełnego połączenia z Home Assistantem. Lista stanów pozostaje dostępna, ale urządzeń nie można teraz powiązać.',
+    loading: 'Pobieranie rejestrów encji, urządzeń i pomieszczeń z Home Assistanta…',
+    error:
+      'Nie udało się pobrać rejestrów Home Assistanta. Encje są widoczne ze stanów bieżących, ale urządzenia i ich powiązania mogą być niepełne.',
+  }[status];
+  return <p className='registry-notice'>{copy}</p>;
 }
 
 function InventoryEntityTable({

@@ -33,6 +33,9 @@ test('keeps detector alarm and technical health as separate states', () => {
       alarm_active: false,
       health_fault_active: false,
     }),
+    'sensor.entity_health_internal_environment_bathroom_carbon_monoxide': entity('healthy', {
+      source_entity_id: 'binary_sensor.bathroom_carbonoxide_detector_carbon_monoxide',
+    }),
   };
 
   const view = getInternalEnvironmentMonitoring(entities);
@@ -43,6 +46,7 @@ test('keeps detector alarm and technical health as separate states', () => {
   assert.equal(view.detectors[0]?.status, 'alarm');
   assert.equal(view.detectors[0]?.healthFaultActive, false);
   assert.equal(view.detectors[1]?.status, 'healthy');
+  assert.equal(view.detectors[1]?.healthEntityId, 'sensor.entity_health_internal_environment_bathroom_carbon_monoxide');
 });
 
 test('falls back to detector diagnostics when the summary is absent', () => {

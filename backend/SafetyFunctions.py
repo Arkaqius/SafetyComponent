@@ -122,6 +122,7 @@ class SafetyFunctions(hass.Hass):
         self.api_modules: dict = {}
         self.symptoms: dict[str, Symptom] = {}
         self.recovery_actions: dict[str, RecoveryAction] = {}
+        inactive_fault_names: set[str] = set()
         self.derivative_monitor = DerivativeMonitor(self, self.mqtt_entities)
         self.event_bus = EventBus()
 
@@ -190,6 +191,9 @@ class SafetyFunctions(hass.Hass):
 
                 self.symptoms.update(symptoms_data)
                 self.recovery_actions.update(recovery_data)
+                inactive_fault_names.update(
+                    component_instance.get_inactive_fault_names()
+                )
                 fault_definitions = getattr(
                     component_instance, "get_fault_definitions", None
                 )
@@ -200,6 +204,12 @@ class SafetyFunctions(hass.Hass):
                                 f"Duplicate fault definition: {fault_name}"
                             )
                         self.fault_dict[fault_name] = fault_config
+
+        for fault_name in inactive_fault_names:
+            if self.fault_dict.pop(fault_name, None) is not None:
+                self.mqtt_entities.remove_sensor(
+                    f"sensor.fault_{fault_name}", remove_legacy_topic=True
+                )
 
         # Build fault models from the validated fault configuration.
         self.faults = cfg_pr.get_faults(self.fault_dict)

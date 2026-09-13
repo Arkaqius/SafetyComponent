@@ -48,6 +48,10 @@ def test_gas_alarm_reaches_l1_fault_without_co_consensus(tmp_path) -> None:
 
     assert app.fm.check_fault("InternalFlammableGasDetected") == FaultState.SET
     assert app.fm.check_fault("InternalCarbonMonoxideDetected") != FaultState.SET
+    assert "InternalSmokeDetected" not in app.faults
+    assert "sensor.fault_internalsmokedetected" not in (
+        app.mqtt_entities.discovered_entities
+    )
     assert app.faults["InternalFlammableGasDetected"].level == 1
     assert any(service == "notify/all_phones" for service, _kwargs in service_calls)
     assert "InternalEnvironmentBathroomFlammableGas" in app.sm_modules[

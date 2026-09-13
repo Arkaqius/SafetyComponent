@@ -130,6 +130,7 @@ export default function InternalHazards() {
 
 function DetectorCard({ detector, onSelectEntity }: { detector: InternalDetectorView; onSelectEntity: (entityId: string) => void }) {
   const presentation = detectorPresentation[detector.status];
+  const healthEntityId = detector.healthEntityId;
   return (
     <article className={`internal-detector-card detector-${presentation.tone}`}>
       <header>
@@ -183,6 +184,11 @@ function DetectorCard({ detector, onSelectEntity }: { detector: InternalDetector
         {detector.sourceEntityId && (
           <button className='text-button' onClick={() => onSelectEntity(detector.sourceEntityId)} type='button'>
             Encja źródłowa
+          </button>
+        )}
+        {healthEntityId && (
+          <button className='text-button' onClick={() => onSelectEntity(healthEntityId)} type='button'>
+            Stan monitorowania
           </button>
         )}
       </div>

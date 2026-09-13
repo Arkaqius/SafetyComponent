@@ -38,6 +38,11 @@ _HAZARD_LABELS = {
     "flammable_gas": "flammable gas",
     "carbon_monoxide": "carbon monoxide",
 }
+_HAZARD_FAULTS = {
+    "smoke": "InternalSmokeDetected",
+    "flammable_gas": "InternalFlammableGasDetected",
+    "carbon_monoxide": "InternalCarbonMonoxideDetected",
+}
 
 
 @dataclass
@@ -186,6 +191,18 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
         ):
             return ("active_or_unresolved_flammable_gas",)
         return ()
+
+    def get_inactive_fault_names(self) -> set[str]:
+        """Omit alarm faults for hazard channels not installed at this site."""
+
+        configured_hazards = {
+            str(runtime.config["hazard"]) for runtime in self._detectors.values()
+        }
+        return {
+            fault_name
+            for hazard, fault_name in _HAZARD_FAULTS.items()
+            if hazard not in configured_hazards
+        }
 
     def init_safety_mechanism(
         self, sm_name: str, name: str, parameters: dict[str, Any]

@@ -8,6 +8,7 @@ export type InternalDetectorStatus = 'alarm' | 'healthy' | 'degraded' | 'unavail
 
 export interface InternalDetectorView {
   entityId: string;
+  healthEntityId?: string;
   sourceEntityId: string;
   name: string;
   areaName: string;
@@ -45,6 +46,8 @@ export function getInternalEnvironmentMonitoring(entities: EntityMap): InternalE
       const alarmActive = booleanAttribute(entity.attributes.alarm_active);
       const healthFaultActive = booleanAttribute(entity.attributes.health_fault_active);
       const classification = stringAttribute(entity.attributes.classification) || 'unknown';
+      const sourceEntityId = stringAttribute(entity.attributes.source_entity_id);
+      const healthEntityId = findHealthEntityId(entities, sourceEntityId);
       const status: InternalDetectorStatus = alarmActive
         ? 'alarm'
         : healthFaultActive
@@ -55,7 +58,8 @@ export function getInternalEnvironmentMonitoring(entities: EntityMap): InternalE
 
       return {
         entityId,
-        sourceEntityId: stringAttribute(entity.attributes.source_entity_id),
+        healthEntityId,
+        sourceEntityId,
         name: stringAttribute(entity.attributes.friendly_name) || friendlyFallback(entityId),
         areaName: stringAttribute(entity.attributes.area_name) || stringAttribute(entity.attributes.area_id) || 'Brak lokalizacji',
         hazard: stringAttribute(entity.attributes.hazard) || 'unknown',
@@ -92,6 +96,15 @@ export function getInternalEnvironmentMonitoring(entities: EntityMap): InternalE
     persistenceError: optionalStringAttribute(summary?.attributes.persistence_error),
     lastUpdated: summary?.last_updated ?? latestDetectorUpdate(detectors),
   };
+}
+
+function findHealthEntityId(entities: EntityMap, sourceEntityId: string): string | undefined {
+  if (!sourceEntityId) return undefined;
+  return Object.entries(entities).find(
+    ([entityId, entity]) =>
+      entityId.startsWith('sensor.entity_health_internal_environment_') &&
+      stringAttribute(entity.attributes.source_entity_id) === sourceEntityId
+  )?.[0];
 }
 
 function internalEnvironmentStatus(
