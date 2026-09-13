@@ -101,7 +101,7 @@ class SafetyFunctions(hass.Hass):
             return
 
         try:
-            self.args: Dict[str, Any] = AppCfgValidator.validate(
+            self.runtime_config: Dict[str, Any] = AppCfgValidator.validate(
                 self.args, hass=self, log=self.log
             )
         except AppCfgValidationError as exc:
@@ -126,14 +126,20 @@ class SafetyFunctions(hass.Hass):
         self.event_bus = EventBus()
 
         # Extract the validated configuration sections used at runtime.
-        self.fault_dict: dict = self.args["app_config"]["faults"]
-        self.safety_components_cfg: dict = self.args["user_config"]["safety_components"]
-        self.notification_cfg: dict = self.args["user_config"]["notification"]
-        self.common_entities_cfg: dict = self.args["user_config"]["common_entities"]
-        self.api_components_cfg: dict = self.args["user_config"].get(
+        self.fault_dict: dict = self.runtime_config["app_config"]["faults"]
+        self.safety_components_cfg: dict = self.runtime_config["user_config"][
+            "safety_components"
+        ]
+        self.notification_cfg: dict = self.runtime_config["user_config"][
+            "notification"
+        ]
+        self.common_entities_cfg: dict = self.runtime_config["user_config"][
+            "common_entities"
+        ]
+        self.api_components_cfg: dict = self.runtime_config["user_config"].get(
             "api_components", {}
         )
-        self.site_cfg: dict = self.args["user_config"].get("site", {})
+        self.site_cfg: dict = self.runtime_config["user_config"].get("site", {})
 
         # Create access to installation-wide Home Assistant entities.
         self.common_entities: CommonEntities = CommonEntities(
@@ -230,7 +236,7 @@ class SafetyFunctions(hass.Hass):
                     self.notify_man.inhibit_local_switching(str(reason))
 
         # Create the recovery orchestration manager.
-        recovery_persistence_cfg = self.args["user_config"].get(
+        recovery_persistence_cfg = self.runtime_config["user_config"].get(
             "recovery", {}
         ).get("persistence", {})
         recovery_state_store = (
