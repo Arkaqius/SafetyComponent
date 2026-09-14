@@ -12,7 +12,6 @@ import appdaemon.plugins.hass.hassapi as hass  # type: ignore
 from components.core.localization import Localizer
 from components.core.types_common import FaultState
 from components.notification_manager.history import (
-    HISTORY_ENTITY_ID,
     HISTORY_LIMIT,
     restore_history,
     submission_entry,
@@ -111,12 +110,6 @@ class NotificationManager:
         self._started = True
         if self.mqtt_entities is not None:
             self.mqtt_entities.register_sensor(
-                HISTORY_ENTITY_ID,
-                self.localizer.text("entity.notification_history"),
-                icon="mdi:message-text-clock-outline",
-                entity_category="diagnostic",
-            )
-            self.mqtt_entities.register_sensor(
                 self.notification_config["diagnostics_sensor_id"],
                 "Notification Delivery Health",
                 icon="mdi:message-alert-outline",
@@ -135,7 +128,6 @@ class NotificationManager:
             listen_event(self.handle_ui_acknowledgement, _UI_ACK_EVENT)
         self.hass_app.run_every(self.tick, "now", 1)
         self._publish_diagnostics()
-        self._publish_history()
 
     def stop(self) -> None:
         """Persist lifecycle state during a controlled shutdown."""
@@ -664,23 +656,6 @@ class NotificationManager:
             self._last_error = result.error
         self._persist_state()
         self._publish_diagnostics()
-
-        self._publish_history()
-
-    def _publish_history(self) -> None:
-        """Publish the journal only on startup or actual submission attempts."""
-
-        if self.mqtt_entities is None:
-            return
-        self.mqtt_entities.publish_sensor_state(
-            HISTORY_ENTITY_ID,
-            len(self.notification_history),
-            attributes={
-                "version": 1,
-                "limit": HISTORY_LIMIT,
-                "entries": list(reversed(self.notification_history)),
-            },
-        )
 
     def _drop_pending_for_tag(self, tag: str) -> None:
         for delivery_id, delivery in list(self.pending_deliveries.items()):

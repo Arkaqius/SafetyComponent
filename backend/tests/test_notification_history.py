@@ -10,7 +10,7 @@ from unittest.mock import Mock
 import pytest
 
 from components.core.types_common import FaultState
-from components.notification_manager.history import HISTORY_ENTITY_ID, HISTORY_LIMIT
+from components.notification_manager.history import HISTORY_LIMIT
 from components.notification_manager.notification_manager import NotificationManager
 from components.notification_manager.state_store import JsonNotificationStateStore
 
@@ -150,23 +150,23 @@ def test_legacy_snapshot_without_history_remains_valid(tmp_path: Path) -> None:
     assert restored.notification_history == []
 
 
-def test_journal_published_newest_first_on_start_and_send_but_not_idle_tick() -> None:
+def test_journal_is_persisted_but_not_published_as_an_mqtt_entity() -> None:
     mqtt = Mock()
     manager = make_manager(mqtt_entities=mqtt)
     manager.start()
     manager.notify("Fault", 2, FaultState.SET, None, "tag")
     manager.notify("Fault", 2, FaultState.CLEARED, None, "tag")
-    calls = [
-        c
-        for c in mqtt.publish_sensor_state.call_args_list
-        if c.args[0] == HISTORY_ENTITY_ID
+    assert [entry["fault_state"] for entry in manager.notification_history] == [
+        "SET",
+        "CLEARED",
     ]
-    assert len(calls) == 3
-    assert calls[-1].kwargs["attributes"]["entries"][0]["fault_state"] == "CLEARED"
-    mqtt.reset_mock()
-    manager.tick()
     assert not any(
-        c.args[0] == HISTORY_ENTITY_ID for c in mqtt.publish_sensor_state.call_args_list
+        call.args and call.args[0] == "sensor.notification_history"
+        for call in mqtt.register_sensor.call_args_list
+    )
+    assert not any(
+        call.args and call.args[0] == "sensor.notification_history"
+        for call in mqtt.publish_sensor_state.call_args_list
     )
 
 

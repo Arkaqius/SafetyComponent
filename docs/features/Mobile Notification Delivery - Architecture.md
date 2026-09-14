@@ -24,11 +24,16 @@ flowchart LR
     NotificationManager --> LocalAnnunciator
     NotificationManager --> NotificationStateStore
     NotificationManager --> DeliveryScheduler
+    NotificationManager -->|read-only history provider| SafetyHomeApiGateway
     MobilePushProvider -->|configured notify services| HomeAssistant
     HomeAssistant -->|mobile_app_notification_action| NotificationManager
     SafetyHome -->|safety_notification_acknowledge| HomeAssistant
     HomeAssistant -->|authenticated event| NotificationManager
-    NotificationManager -->|health, counters, and attempt history| MqttEntityManager
+    SafetyHome -->|paged history request| HomeAssistant
+    HomeAssistant -->|authenticated event| SafetyHomeApiGateway
+    SafetyHomeApiGateway -->|bounded correlated response| HomeAssistant
+    HomeAssistant -->|history response| SafetyHome
+    NotificationManager -->|health and counters| MqttEntityManager
 ```
 
 ### 2.1 `NotificationManager`
@@ -102,19 +107,38 @@ status/time/error, and the explicit statement that device delivery is not
 confirmed. `acknowledged_tags` lists stable tags for currently active,
 acknowledged notifications so SafetyHome can retain button state after reload.
 
-### 2.7 Notification history
+### 2.7 `SafetyHomeApiGateway`
+
+`SafetyHomeApiGateway` is a read-only application-data boundary between the
+AppDaemon backend and SafetyHome. It shall expose notification history through
+the authenticated Home Assistant event connection without publishing the
+journal in Home Assistant entity attributes. The gateway shall not expose
+configuration read or write operations, notification routing changes, fault
+state changes, or actuator commands.
+
+SafetyHome requests a page by firing
+`safetyhome_notification_history_request` with a correlation `request_id`, an
+optional `cursor` and `revision`, and a requested `limit`. The gateway responds
+on `safetyhome_notification_history_response`. The default page size is 20,
+the maximum accepted size is 25, and the serialized response shall not exceed
+12 KiB. Entries are ordered newest first. The revision identifies the newest
+entry in the snapshot; a revision or cursor invalidated by a concurrent update
+shall produce an explicit error instead of mixing snapshots.
+
+These request and response event types transport application data rather than
+audit evidence and shall be excluded from Home Assistant Recorder using the
+installation fragment in
+[`home_assistant_recorder_safetyhome_api.yaml`](../examples/home_assistant_recorder_safetyhome_api.yaml).
+The retired `sensor.notification_history` MQTT discovery and retained state
+shall be removed during startup migration.
+
+### 2.8 Notification history
 
 The manager shall retain the latest 100 individual target submission attempts,
 including successful Home Assistant acceptance and failed submissions. Each
 retry shall produce a separate entry only for the targets actually attempted.
 Waiting for WAN recovery shall not create a submission-history entry.
 
-`sensor.notification_history` shall expose the retained entry count as its
-state, with a versioned history payload, a retention limit of 100, and entries
-ordered newest first. The manager shall publish this separate sensor when it
-starts and after submission attempts, without rebuilding the journal on idle
-scheduler ticks. The shared MQTT heartbeat shall refresh its cached state and
-attributes to preserve availability and recover after MQTT restarts.
 The journal shall use the existing notification state snapshot and persistence
 configuration. A compatible snapshot without history shall restore an empty
 journal without discarding active or pending notification state.
@@ -144,13 +168,16 @@ transport exception text, unfiltered fault events, or inferred group members.
 Failure details in the history UI shall use a generic diagnostic explanation;
 existing transport-health diagnostics retain their separate error contract.
 
-The SafetyHome History page shall present this notification list before entity
-history. Each item shall show its date and time, lifecycle state, target
-service, and submission outcome. Selecting it shall reveal its content and
-diagnostic fields. Dates and times shall be presented in the browser's local
-time zone. A notify group shall be identified by its configured service: the
-frontend shall not infer which person or device received a group notification.
-Home Assistant acceptance shall remain distinct from confirmed device delivery.
+The SafetyHome History page shall load the complete retained journal through
+bounded gateway pages and present the notification list before entity history.
+Each item shall show its date and time, lifecycle state, target service, and
+submission outcome. Selecting it shall reveal its content and diagnostic
+fields. Dates and times shall be presented in the browser's local time zone. A
+notify group shall be identified by its configured service: the frontend shall
+not infer which person or device received a group notification. Home Assistant
+acceptance shall remain distinct from confirmed device delivery. A temporary
+read-only fallback may consume the retired entity during migration, but no new
+backend shall publish it.
 
 ## 3. Configuration contract
 
@@ -245,12 +272,15 @@ routing, correct clear commands, partial failures, retry bounds, WAN queue and
 flush, deadlines, acknowledgement, controlled repeats, restart restoration,
 allowlist filtering, local-annunciator separation, and diagnostic publication.
 History tests shall cover SET and CLEARED entries, distinct shadow removal,
-per-target failures and retries, retention bounds, restart restoration and
-compatible snapshots without history, content bounds, and publication only on
-startup or attempts. Retry tests shall cover failed acknowledgement followed by
-newer content and a new SET following a failed resolved submission. Frontend
-domain and component tests shall cover lifecycle labels, filtering, date/time,
-target presentation, diagnostic details, and empty or unavailable history.
+per-target failures and retries, retention bounds, restart restoration,
+compatible snapshots without history, and content bounds. Gateway tests shall
+cover correlation, newest-first pagination, snapshot revision, invalid or
+stale cursors, response-size bounds, listener lifecycle, and removal of the
+retired MQTT entity. Retry tests shall cover failed acknowledgement followed
+by newer content and a new SET following a failed resolved submission.
+Frontend domain and component tests shall cover request and response contracts,
+lifecycle labels, filtering, date/time, target presentation, diagnostic
+details, refresh, and empty or unavailable history.
 
 Live verification shall not trigger a household fault, siren, warning light,
 or unsolicited phone notification. Production delivery requires a separately

@@ -4,10 +4,12 @@ import {
   filterNotificationHistory,
   notificationKind,
   notificationAcknowledgementEvent,
+  notificationHistoryRequest,
   notificationRecipient,
   notificationState,
   readAcknowledgedNotificationTags,
   readNotificationHistory,
+  readNotificationHistoryResponse,
   type NotificationEntry,
 } from './notificationHistory.js';
 
@@ -88,4 +90,33 @@ test('builds the authenticated Home Assistant acknowledgement event', () => {
     event_type: 'safety_notification_acknowledge',
     event_data: { tag: 'fault-tag' },
   });
+});
+
+test('builds a bounded correlated history request without configuration data', () => {
+  assert.deepEqual(notificationHistoryRequest('request-1', 'cursor-1', 'revision-1'), {
+    type: 'fire_event',
+    event_type: 'safetyhome_notification_history_request',
+    event_data: {
+      request_id: 'request-1',
+      limit: 20,
+      cursor: 'cursor-1',
+      revision: 'revision-1',
+    },
+  });
+});
+
+test('accepts only a correlated and valid notification history response', () => {
+  const response = {
+    version: 1,
+    status: 'ok',
+    request_id: 'request-1',
+    revision: 'first',
+    total: 1,
+    entries: [entry],
+    next_cursor: null,
+  };
+
+  assert.deepEqual(readNotificationHistoryResponse(response, 'request-1'), response);
+  assert.equal(readNotificationHistoryResponse(response, 'different'), null);
+  assert.equal(readNotificationHistoryResponse({ ...response, entries: [{ ...entry, attempted_at: 'bad' }] }, 'request-1'), null);
 });

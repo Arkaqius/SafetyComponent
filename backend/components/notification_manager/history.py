@@ -9,7 +9,6 @@ from uuid import uuid4
 from components.notification_manager.models import PendingDelivery, TargetDeliveryResult
 
 
-HISTORY_ENTITY_ID = "sensor.notification_history"
 HISTORY_LIMIT = 100
 TEXT_LIMIT = 2048
 _STATES = {

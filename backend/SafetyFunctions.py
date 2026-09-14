@@ -67,6 +67,7 @@ from components.recovery_manager.state_store import (
     InMemoryRecoveryStateStore,
     JsonRecoveryStateStore,
 )
+from components.safetyhome_api import SafetyHomeApiGateway
 from components.safetycomponents.core.safety_component import (
     get_registered_components,
 )
@@ -222,6 +223,10 @@ class SafetyFunctions(hass.Hass):
             state_store=notification_state_store,
             mqtt_entities=self.mqtt_entities,
         )
+        self.safetyhome_api = SafetyHomeApiGateway(
+            self,
+            lambda: tuple(self.notify_man.notification_history),
+        )
 
         # Create the recovery orchestration manager.
         recovery_persistence_cfg = self.args["user_config"].get(
@@ -259,6 +264,7 @@ class SafetyFunctions(hass.Hass):
         # Publish system and fault entities before mechanisms begin evaluation.
         self.register_entities()
         self.notify_man.start()
+        self.safetyhome_api.start()
         self.reco_man.start()
 
         # Initialize state listeners and timers for every safety mechanism.
@@ -492,6 +498,15 @@ class SafetyFunctions(hass.Hass):
             except Exception as exc:
                 self.log(
                     f"Unable to persist notification manager state: {exc}",
+                    level="ERROR",
+                )
+        safetyhome_api = getattr(self, "safetyhome_api", None)
+        if safetyhome_api is not None:
+            try:
+                safetyhome_api.stop()
+            except Exception as exc:
+                self.log(
+                    f"Unable to stop SafetyHome API gateway: {exc}",
                     level="ERROR",
                 )
         recovery_manager = getattr(self, "reco_man", None)
