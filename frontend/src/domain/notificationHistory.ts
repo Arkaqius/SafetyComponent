@@ -3,6 +3,9 @@ import type { EntitySnapshot } from './safety.js';
 export const NOTIFICATION_HISTORY_ENTITY_ID = 'sensor.notification_history';
 export const NOTIFICATION_DELIVERY_HEALTH_ID = 'sensor.notification_delivery_health';
 export const NOTIFICATION_ACK_EVENT = 'safety_notification_acknowledge';
+export const NOTIFICATION_HISTORY_REQUEST_EVENT = 'safetyhome_notification_history_request';
+export const NOTIFICATION_HISTORY_RESPONSE_EVENT = 'safetyhome_notification_history_response';
+export const NOTIFICATION_HISTORY_PAGE_SIZE = 20;
 
 export interface NotificationEntry {
   id: string;
@@ -20,6 +23,27 @@ export interface NotificationEntry {
   result: 'accepted_by_home_assistant' | 'failed';
   deadline_missed: boolean;
 }
+
+export interface NotificationHistoryPage {
+  version: 1;
+  status: 'ok';
+  request_id: string;
+  revision: string;
+  total: number;
+  entries: NotificationEntry[];
+  next_cursor: string | null;
+}
+
+export interface NotificationHistoryError {
+  version: 1;
+  status: 'error';
+  request_id: string;
+  error: string;
+  revision?: string;
+}
+
+export type NotificationHistoryResponse = NotificationHistoryPage | NotificationHistoryError;
+export type NotificationHistoryStatus = 'loading' | 'ready' | 'disconnected' | 'error';
 
 const states: Record<NotificationEntry['kind'], NotificationEntry['fault_state']> = {
   new: 'SET',
@@ -50,6 +74,44 @@ export function notificationAcknowledgementEvent(tag: string) {
     event_type: NOTIFICATION_ACK_EVENT,
     event_data: { tag },
   };
+}
+
+export function notificationHistoryRequest(requestId: string, cursor?: string, revision?: string) {
+  return {
+    type: 'fire_event' as const,
+    event_type: NOTIFICATION_HISTORY_REQUEST_EVENT,
+    event_data: {
+      request_id: requestId,
+      limit: NOTIFICATION_HISTORY_PAGE_SIZE,
+      ...(cursor ? { cursor } : {}),
+      ...(revision ? { revision } : {}),
+    },
+  };
+}
+
+export function readNotificationHistoryResponse(data: unknown, expectedRequestId: string): NotificationHistoryResponse | null {
+  if (!data || typeof data !== 'object') return null;
+  const response = data as Record<string, unknown>;
+  const nextCursor = response.next_cursor;
+  if (response.version !== 1 || response.request_id !== expectedRequestId) return null;
+  if (response.status === 'error') {
+    if (typeof response.error !== 'string' || response.error.length === 0) return null;
+    if (response.revision !== undefined && typeof response.revision !== 'string') return null;
+    return response as unknown as NotificationHistoryError;
+  }
+  if (
+    response.status !== 'ok' ||
+    typeof response.revision !== 'string' ||
+    !Number.isInteger(response.total) ||
+    Number(response.total) < 0 ||
+    !Array.isArray(response.entries) ||
+    (nextCursor !== undefined && nextCursor !== null && typeof nextCursor !== 'string')
+  ) {
+    return null;
+  }
+  const entries = response.entries.filter(isNotificationEntry);
+  if (entries.length !== response.entries.length || entries.length > 20) return null;
+  return { ...response, entries, next_cursor: nextCursor ?? null } as unknown as NotificationHistoryPage;
 }
 
 export function filterNotificationHistory(entries: NotificationEntry[], result: string, state: string): NotificationEntry[] {

@@ -51,6 +51,10 @@ class Hass:
         self.run_every = getattr(ad, "run_every", self.run_every)  # type: ignore
         self.listen_state = getattr(ad, "listen_state", self.listen_state)  # type: ignore
         self.listen_event = getattr(ad, "listen_event", self.listen_event)  # type: ignore
+        self.fire_event = getattr(ad, "fire_event", self.fire_event)  # type: ignore
+        self.cancel_listen_event = getattr(  # type: ignore
+            ad, "cancel_listen_event", self.cancel_listen_event
+        )
         self.render_template = getattr(ad, "render_template", self.render_template)  # type: ignore
 
     def log(self, msg: str, *args: Any, **kwargs: Any) -> None:
@@ -111,6 +115,14 @@ class Hass:
         """Return a dummy Home Assistant event-listener handle."""
 
         return (callback, event, kwargs)
+
+    def fire_event(self, event: str, **kwargs: Any) -> None:
+        """Publish a Home Assistant event in tests without external side effects."""
+
+        return None
+
+    def cancel_listen_event(self, handle: Any) -> None:
+        return None
 
     def cancel_timer(self, handle: Any) -> None:
         return None

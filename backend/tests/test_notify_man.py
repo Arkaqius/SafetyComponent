@@ -613,6 +613,64 @@ def test_missing_appdaemon_result_is_retried_as_transport_failure() -> None:
     assert manager._last_success_at is None
 
 
+def test_unsupported_return_result_switches_to_compatibility_mode() -> None:
+    hass = make_hass()
+    hass.call_service.side_effect = [
+        {
+            "success": False,
+            "error": {
+                "code": "invalid_format",
+                "message": "not a valid option at 'return_result'",
+            },
+        },
+        None,
+        None,
+    ]
+    manager = NotificationManager(hass, {})
+
+    manager.notify("Fault", 3, FaultState.SET, None, "compatibility-tag-one")
+    manager.notify("Fault", 3, FaultState.SET, None, "compatibility-tag-two")
+
+    calls = notify_calls(hass)
+    assert len(calls) == 3
+    assert calls[0].kwargs["return_result"] is True
+    assert "return_result" not in calls[1].kwargs
+    assert "timeout" not in calls[1].kwargs
+    assert "hass_timeout" not in calls[1].kwargs
+    assert "return_result" not in calls[2].kwargs
+    assert manager.pending_deliveries == {}
+    assert manager._last_result == "accepted_by_home_assistant"
+    assert manager._counters["accepted_attempts"] == 2
+    assert manager._counters["failed_attempts"] == 0
+    hass.log.assert_any_call(
+        "AppDaemon does not support notify return_result; "
+        "using compatibility submission mode",
+        level="WARNING",
+    )
+
+
+def test_compatibility_mode_preserves_reported_transport_failure() -> None:
+    hass = make_hass()
+    hass.call_service.side_effect = [
+        {
+            "success": False,
+            "error": {
+                "code": "invalid_format",
+                "message": "not a valid option at 'return_result'",
+            },
+        },
+        {"success": False, "error": "offline"},
+    ]
+    manager = NotificationManager(hass, {})
+
+    manager.notify("Fault", 3, FaultState.SET, None, "compatibility-failure")
+
+    assert "compatibility-failure:active" in manager.pending_deliveries
+    assert manager._last_result == "failed_retry_scheduled"
+    assert manager._counters["accepted_attempts"] == 0
+    assert manager._counters["failed_attempts"] == 1
+
+
 def test_start_rejects_configured_service_missing_from_registry() -> None:
     hass = make_hass()
     hass.list_services.return_value = [

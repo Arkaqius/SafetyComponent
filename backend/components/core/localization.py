@@ -20,7 +20,6 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "entity.safety_system_state": "Safety system state",
         "entity.entity_monitor_summary": "Monitored entities",
         "entity.notification_delivery_health": "Notification delivery health",
-        "entity.notification_history": "Notification history",
         "entity.recovery_window": "Window recovery: {location}",
         "entity.temperature_low_threshold": "Low temperature limit: {location}",
         "entity.temperature_high_threshold": "High temperature limit: {location}",
@@ -95,7 +94,6 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "entity.safety_system_state": "Stan systemu bezpieczeństwa",
         "entity.entity_monitor_summary": "Monitorowane encje",
         "entity.notification_delivery_health": "Stan dostarczania powiadomień",
-        "entity.notification_history": "Historia powiadomień",
         "entity.recovery_window": "Działanie naprawcze: okna — {location}",
         "entity.temperature_low_threshold": "Dolny próg temperatury — {location}",
         "entity.temperature_high_threshold": "Górny próg temperatury — {location}",
@@ -170,7 +168,6 @@ _TRANSLATIONS: dict[str, dict[str, str]] = {
         "entity.safety_system_state": "Status des Sicherheitssystems",
         "entity.entity_monitor_summary": "Überwachte Entitäten",
         "entity.notification_delivery_health": "Status der Benachrichtigungszustellung",
-        "entity.notification_history": "Benachrichtigungsverlauf",
         "entity.recovery_window": "Fenstermaßnahme – {location}",
         "entity.temperature_low_threshold": "Untere Temperaturgrenze – {location}",
         "entity.temperature_high_threshold": "Obere Temperaturgrenze – {location}",
@@ -308,7 +305,6 @@ class Localizer:
             "sensor.safetysystem_state": "entity.safety_system_state",
             "sensor.entity_monitor_summary": "entity.entity_monitor_summary",
             "sensor.notification_delivery_health": "entity.notification_delivery_health",
-            "sensor.notification_history": "entity.notification_history",
         }
         key = built_in_keys.get(normalized_id)
         return self.text(key) if key else fallback
