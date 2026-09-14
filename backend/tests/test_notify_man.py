@@ -791,6 +791,70 @@ def test_local_annunciator_runs_before_blocking_mobile_submission() -> None:
     )
 
 
+def test_flammable_gas_fault_persistently_inhibits_local_switching() -> None:
+    hass = make_hass()
+    hass.get_state.return_value = {"state": "off", "attributes": {}}
+    store = InMemoryNotificationStateStore()
+    manager = NotificationManager(
+        hass,
+        {
+            "local": {
+                "light_entity": "light.warning",
+                "alarm_entity": "alarm_control_panel.siren",
+            }
+        },
+        state_store=store,
+    )
+
+    manager.handle_fault_event(
+        fault_name="InternalFlammableGasDetected",
+        fault_friendly_name="Flammable gas",
+        level=1,
+        fault_state=FaultState.SET,
+        additional_info={"hazard": "flammable gas"},
+        fault_tag="gas-tag",
+    )
+    manager.handle_fault_event(
+        fault_name="OtherHazard",
+        fault_friendly_name="Other hazard",
+        level=2,
+        fault_state=FaultState.SET,
+        additional_info=None,
+        fault_tag="other-tag",
+    )
+    manager.handle_fault_event(
+        fault_name="InternalFlammableGasDetected",
+        fault_friendly_name="Flammable gas",
+        level=1,
+        fault_state=FaultState.CLEARED,
+        additional_info={"hazard": "flammable gas"},
+        fault_tag="gas-tag",
+    )
+
+    local_services = [
+        item.args[0]
+        for item in hass.call_service.call_args_list
+        if item.args[0].startswith(("light/", "alarm_control_panel/"))
+    ]
+    assert local_services == []
+    assert manager.local_annunciator.snapshot()["switching_inhibited"] is True
+    assert manager.local_annunciator.snapshot()["inhibition_reason"] == (
+        "active_or_unresolved_flammable_gas"
+    )
+
+    restarted_hass = make_hass()
+    restarted = NotificationManager(
+        restarted_hass,
+        {"local": {"light_entity": "light.warning"}},
+        state_store=store,
+    )
+    restarted.notify("Another hazard", 2, FaultState.SET, None, "restart-tag")
+    assert not any(
+        item.args[0].startswith("light/")
+        for item in restarted_hass.call_service.call_args_list
+    )
+
+
 def test_non_local_l3_fault_does_not_block_l2_light_restore() -> None:
     hass = make_hass()
     hass.get_state.return_value = {

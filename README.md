@@ -57,7 +57,9 @@ Feature architecture documents include
 [`Mobile Notification Delivery`](docs/features/Mobile%20Notification%20Delivery%20-%20Architecture.md),
 [`Recommended Actions and Recovery`](docs/features/Recommended%20Actions%20and%20Recovery%20-%20Architecture.md),
 [`External Hazard Monitoring`](docs/features/External%20Hazard%20Monitoring%20-%20Architecture.md),
-and [`Entity Health Monitoring`](docs/features/Entity%20Health%20Monitoring%20-%20Architecture.md).
+[`Entity Health Monitoring`](docs/features/Entity%20Health%20Monitoring%20-%20Architecture.md),
+[`Heating System Monitoring`](docs/features/Heating%20System%20Monitoring%20-%20Architecture.md),
+and [`Internal Environmental Hazard Monitoring`](docs/features/Internal%20Environmental%20Hazard%20Monitoring%20-%20Architecture.md).
 
 ## Backend quick start
 
@@ -125,6 +127,8 @@ the [frontend README](frontend/README.md).
 - [Mobile Notification Delivery architecture](<docs/features/Mobile Notification Delivery - Architecture.md>)
 - [External Hazard Monitoring architecture](<docs/features/External Hazard Monitoring - Architecture.md>)
 - [Entity Health Monitoring architecture](<docs/features/Entity Health Monitoring - Architecture.md>)
+- [Heating System Monitoring architecture](<docs/features/Heating System Monitoring - Architecture.md>)
+- [Internal Environmental Hazard Monitoring architecture](<docs/features/Internal Environmental Hazard Monitoring - Architecture.md>)
 - [Backend coding standards](backend/README.md)
 - [Contribution workflow](CONTRIBUTING.md)
 - [Agent instructions](AGENTS.md)

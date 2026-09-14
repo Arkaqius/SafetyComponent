@@ -9,70 +9,81 @@ By assessing the system, components, and external factors, all hazards are ident
 This involves examining security vulnerabilities, safety concerns, environmental factors, and system malfunctions.
 Identified hazards inform risk assessment and guide the development of safety measures.
 
+This document defines hazards, risk classifications, and stakeholder-level
+safety goals. Component allocations, interface contracts, algorithms, runtime
+identifiers, and software behavior are refined in the SYS, SSRD, and feature
+architecture documents.
+
 ---
 
 #### 1.1.1 Identified hazards
 
 ---
 
-**Unauthorized Access:**
+**Unauthorized Access (HZ‑UNAUTH‑01):**
 
 This could occur if a door or window is left open or unlocked, or if a security system is disabled.
 
-**Fire:**
+**Cybersecurity Compromise (HZ‑CYBER‑SPOOF‑01 / HZ‑CYBER‑DENIAL‑01):**
+
+Unauthorized manipulation, denial of service, or loss of trustworthy data could
+prevent a safety function from detecting, warning about, or responding to a
+hazard.
+
+**Fire (HZ‑FIRE‑01):**
 
 This could be caused by a malfunctioning device, such as a heater, stove, or electrical equipment.
 
-**Gas Leak:**
+**Gas Leak (HZ‑GAS‑01):**
 
 Gas appliances could leak, leading to potential poisoning or explosion.
 
-**Carbon Monoxide Poisoning:**
+**Carbon Monoxide Poisoning (HZ‑CO‑01):**
 
 This is another risk associated with gas appliances, particularly if they are not properly
 ventilated.
 
-**Water Leak/Flood:**
+**Water Leak/Flood (HZ‑WATER‑01):**
 
 This could occur if a pipe bursts or a faucet is left running.
 
-**Electrical Shock:**
+**Electrical Shock (HZ‑ELECT‑01):**
 
 This could be caused by a faulty device, or by water coming into contact with electrical equipment.
 
-**Poor Air Quality:**
+**Poor Air Quality (HZ‑AQ‑01):**
 
 This could be caused by a lack of ventilation, leading to a buildup of pollutants or allergens.
 
-**Loss of Heating/Cooling:**
+**Loss of Heating/Cooling (HZ‑HVAC‑01 / HZ‑HVAC‑LOSS‑01):**
 
 This could occur if the HVAC system fails, leading to uncomfortable or even dangerous indoor temperatures.
+A heating or cooling system may appear operational while still failing to
+deliver the indoor conditions needed to protect occupants.
 
-**Failure of Safety or Monitoring Devices:**
-
-Devices like smoke detectors, CO detectors, or security cameras could fail to operate correctly.
-
-**Privacy Invasion:**
+**Privacy Invasion (HZ‑PRIV‑01):**
 
 Unauthorized access to the system could lead to privacy concerns, such as surveillance through security cameras.
 
-**System Failure:**
+**System Failure (HZ‑SYSTEM‑FAIL‑01):**
 
-A failure in the home automation system itself could lead to various problems, such as lights not working, doors not unlocking, etc.
+A failure of the home automation system or a safety-relevant monitoring device
+could prevent hazard detection, warning, or an authorized protective response.
 
-**Unsafe Cold Exposure:**
+**Unsafe Cold Exposure (HZ‑UNDERTEMP‑01 / HZ‑UNDERTEMP‑02):**
 
 This can occur if a room's temperature falls below the safe threshold for the situation or occupants. For example, the bathroom temperature might need to be at least 22°C during a child's bath.
 
-**Unsafe Heat Exposure:**
+**Unsafe Heat Exposure (HZ‑OVERTEMP‑01):**
 
 Similarly, a room's temperature could rise above the safe threshold for the situation or occupants. For example, the living room might become uncomfortably or unsafely hot during a summer heatwave if the cooling system isn't functioning properly.
 
-**Rain Entering Window:**
+**Rain Entering Window (HZ‑WEATHER‑01):**
 
-This hazard arises when rain enters through an open window, potentially causing water damage to the home's interior and electrical systems. The system monitors weather and warns residents; automatic closure is outside the scope of External Hazard Monitoring.
+This hazard arises when rain enters through an open window or door, potentially
+causing water damage to the home's interior and electrical systems.
 
-**Frost Exposure Through Openings:**
+**Frost Exposure Through Openings (HZ‑EXT‑FROST‑01):**
 
 An external door or window left open during frost can cause rapid heat loss,
 localized freezing, increased energy consumption, and in extreme cases damage
@@ -80,19 +91,17 @@ to water-bearing installations. This is distinct from unsafe occupant cold
 exposure because the initiating condition is an external hazard combined with
 an open building aperture.
 
-**Wind Damage to Openings:**
+**Wind Damage to Openings (HZ‑EXT‑WIND‑01):**
 
 Strong wind or gusts can slam or damage an open window or door and can carry
-rain or debris into the building. Forecast wind alone is advisory; an official
-warning or current/forecast gust threshold combined with an open aperture
-creates the monitored exposure condition.
+rain or debris into the building. The hazardous exposure occurs when damaging
+wind coincides with an open building aperture.
 
-**Outdoor Air Pollution Entering the Home:**
+**Outdoor Air Pollution Entering the Home (HZ‑EXT‑AQ‑01):**
 
 Opening windows or external doors while outdoor particulate or gaseous
 pollution is elevated can worsen indoor air quality and can conflict with
-otherwise valid ventilation advice from indoor temperature or air-quality
-mechanisms.
+otherwise valid ventilation or comfort advice.
 
 ---
 
@@ -173,12 +182,12 @@ _High:_ These hazards can be easily mitigated if residents are notified in time,
 | Gas Leak                  | High (3)   | Low (1)    | Low (3)         | (2x3)x1x3 = 18 | Level 2 |
 | Carbon Monoxide Poisoning | High (3)   | Low (1)    | Low (3)         | (2x3)x1x3 = 18 | Level 2 |
 | Electrical Shock          | High (3)   | Medium (2) | Low (3)         | (2x3)x2x3 = 36 | Level 1 |
-| Poor Air Quality          | Low (1)    | High (3)   | Medium (2)      | (2x1)x3x2 = 12 | Level 3 |
+| Poor Air Quality          | Low (1)    | High (3)   | Medium (2)      | (2x1)x3x2 = 12 | Level 2 |
 | Unsafe Cold Exposure      | Medium (2) | High (3)   | Medium (2)      | (2x2)x3x2 = 24 | Level 1 |
 | Unsafe Heat Exposure      | Medium (2) | High (3)   | Medium (2)      | (2x2)x3x2 = 24 | Level 1 |
 | System Failure            | High (3)   | Low (1)    | Low (3)         | (2x3)x1x3 = 18 | Level 2 |
 | Water Leak/Flood          | Medium (2) | High (3)   | Medium (2)      | (2x2)x3x2 = 24 | Level 1 |
-| Loss of Heating/Cooling   | Medium (2) | Low (1)    | Low (3)         | (2x2)x1x3 = 12 | Level 3 |
+| Loss of Heating/Cooling   | Medium (2) | Low (1)    | Low (3)         | (2x2)x1x3 = 12 | Level 2 |
 | Privacy Invasion          | Medium (2) | Medium (2) | Low (3)         | (2x2)x2x3 = 24 | Level 1 |
 | Rain Entering Window      | Medium (2) | Medium (2) | High (1)        | (2x2)x2x1 = 8  | Level 3 |
 | Frost Exposure Through Openings | Medium (2) | Medium (2) | High (1) | (2x2)x2x1 = 8 | Level 3 |
@@ -192,148 +201,166 @@ _High:_ These hazards can be easily mitigated if residents are notified in time,
 
 ### 1.3 Safety goals
 
+The goals below state the required safety outcomes without allocating them to a
+particular component, interface, or implementation. Corresponding system
+safety-goal IDs are referenced in the traceability matrix.
+
+Safety monitoring supplements rather than replaces autonomous device
+protection. An acknowledgement does not establish that a hazard has cleared or
+that re-entry is safe.
+
 #### 1.3.1 Unauthorized Access
 
 - The system shall continuously monitor for indications of unauthorized access or unexpected movement when the home is declared unoccupied.
 - The system shall immediately issue alerts to the occupants upon detection of unauthorized access or unexpected movement.
-- The system shall communicate an alert signal to a pre-defined security company upon detection of unauthorized access or unexpected movement.
-- The system shall monitor configured doors and gates for continuous open
-  duration under an optional installation-defined condition such as household
-  occupancy.
-- The system shall warn occupants when a configured door or gate remains open
-  beyond its applicable timeout; this monitoring shall not automatically close
-  or lock the opening.
-- Open-duration monitoring alone shall not be treated as evidence of intrusion,
-  unexpected entry, or lock integrity.
-- The system shall ascertain the closure of critical windows in the absence of occupants or presence of minors.
-- The system shall ensure external doors are locked when the house is unoccupied or all occupants are asleep.
-- The system shall ensure critical windows are closed when the house is unoccupied or all occupants are asleep.
+- The system shall support escalation appropriate to the household's security
+  policy.
+- The system shall warn occupants when an opening or lock state is inconsistent
+  with the security needs of the current household situation.
+- An opening remaining open shall not by itself be treated as proof of
+  intrusion, unexpected entry, or lock integrity.
+- Any automatic securing action shall be separately assessed and authorized.
 
 #### 1.3.2 Cybersecurity
 
-- The system shall enforce secure authentication (multi-factor where possible) for all users and administrators.
-- The system shall ensure all data in transit and at rest is encrypted using industry-standard protocols.
-- The system shall perform regular integrity checks and vulnerability scans.
-- The system shall monitor for suspicious login attempts and unusual network activity, alerting administrators of potential breaches.
-- The system shall provide automatic security updates and patches to all connected components.
-- The system shall implement role-based access control to limit exposure of sensitive functions.
-- The system shall maintain audit logs for all administrative and remote access actions.
+- The system shall prevent unauthorized access to or manipulation of
+  safety-relevant functions and information.
+- The system shall preserve the confidentiality, integrity, authenticity, and
+  availability required for safety-relevant operation.
+- The system shall detect and report suspected compromise of safety-relevant
+  functions.
+- Security maintenance and recovery shall not introduce an unacceptable loss of
+  safety capability.
 
 #### 1.3.3 Fire
 
 - The system shall actively detect the presence of smoke.
 - The system shall promptly alert the occupants in the event of a fire.
-- The system shall schedule and issue reminders for maintenance of fire sensors.
-- The system shall unlock external doors to expedite evacuation in case of fire.
+- A valid alarm from any smoke detector shall remain effective and shall not be
+  suppressed by unrelated normal observations.
+- The system shall support maintenance of effective fire detection.
+- The system shall support safe evacuation without creating a conflicting
+  security hazard.
 
 #### 1.3.4 Gas Leak
 
+- The system shall distinguish a flammable-gas hazard from carbon monoxide and
+  general air-quality conditions.
 - The system shall alert the occupants promptly upon detection of a gas leak.
-- The system shall automatically disengage the main gas supply when a gas leak is detected.
-- The system shall schedule and issue reminders for maintenance of gas sensors.
+- The system shall not initiate a response that could introduce an ignition
+  source during a flammable-gas hazard.
+- Automatic gas isolation or ventilation shall be used only when the response
+  has been separately assessed and approved for the installation.
+- The system shall support maintenance of effective gas detection.
 
 #### 1.3.5 Carbon Monoxide Poisoning
 
 - The system shall alert occupants when hazardous levels of carbon monoxide are detected.
-- The system shall schedule and issue reminders for maintenance of CO sensors.
+- The system shall preserve the authority of a valid carbon-monoxide detector
+  alarm and shall not suppress it because supplementary measurements are absent
+  or contradictory.
+- The system shall support maintenance of effective carbon-monoxide detection.
 
 #### 1.3.6 Water Leak/Flood
 
 - The system shall promptly alert the occupants upon detecting a leak.
-- The system shall disengage the water supply upon detection of a leak.
+- The system shall support separately assessed measures that limit water damage.
 
 #### 1.3.7 Electrical Shock
 
-- The system shall schedule and notify for maintenance of the Residual Current Device (RCD).
+- The system shall reduce the risk of electrical shock and warn occupants when
+  required electrical protection is unavailable or requires attention.
 
 #### 1.3.8 Poor Air Quality
 
 - The system shall promptly notify residents when the air quality within the home deteriorates below a predefined standard.
-- The system shall anticipate potential deterioration of indoor air quality and take preventive actions.
-- The system shall interface with air purifiers within the home to maintain air quality.
+- The system shall provide timely information that enables occupants to prevent
+  or limit harmful indoor air-quality exposure.
+- The system shall support separately assessed air-quality mitigation measures.
+- The system shall distinguish poor indoor air quality from smoke, flammable
+  gas, and carbon-monoxide hazards.
+- Air-quality mitigation and advice shall not conflict with a concurrent
+  life-safety hazard or unsafe outdoor conditions.
 
 #### 1.3.9 Unsafe Cold Exposure
 
-- The system shall alert the occupants if the temperature drops below a certain threshold.
-- The system shall interface with the home heating system to mitigate cold exposure hazards.
-- The system shall perform proactive actions and issue user notifications based on available data to prevent cold exposure and maintain comfortable indoor conditions.
+- The system shall prevent prolonged occupant exposure to unsafe indoor cold.
+- The system shall warn occupants early enough to take protective action.
+- Any automatic mitigation shall be separately assessed for the installation.
 
 #### 1.3.10 Unsafe Heat Exposure
 
-- The system shall alert the occupants if the temperature rises above a certain threshold.
-- The system shall interface with the home heating system and AC to mitigate heat exposure hazards.
-- The system shall take proactive actions and issue notifications to prevent heat exposure and maintain comfortable conditions.
+- The system shall prevent prolonged occupant exposure to unsafe indoor heat.
+- The system shall warn occupants early enough to take protective action.
+- Any automatic mitigation shall be separately assessed for the installation.
 
 #### 1.3.11 System Failure
 
-- The system shall consistently monitor the activity of all sensors and actuators to detect timeouts and failures.
-- The system shall monitor explicitly selected safety-relevant Home Assistant
-  entities and every entity dependency declared by a Safety Component, including
-  shared entities consumed across components.
-- The system shall distinguish safety-relevant entity-health failures from an
-  informational inventory of other Home Assistant entities and devices.
-- The system shall remind the users about updates periodically.
-- The system shall provide a backup power supply to ensure continuous operation in the event of a power outage.
-- The system shall perform regular self-checks or diagnostics to identify and alert users to potential failures or malfunctions.
-- The system shall monitor network connectivity and performance, including Ethernet port status, system latency, and packet loss.
-- The system shall monitor the health of the Zigbee network.
-- The system shall integrate with the existing Home Automation (HA) fault manager.
+- The system shall supervise safety-relevant sensors, actuators, communication,
+  and processing functions for loss or degradation.
+- Loss of safety monitoring shall be reported separately from the absence of a
+  detected hazard.
+- The system shall retain an appropriate safe capability during reasonably
+  foreseeable power or communication failures.
+- The system shall support maintenance and periodic verification of its
+  safety-relevant capabilities.
 
 #### 1.3.12 Loss of Heating/Cooling
 
-- The system shall continuously monitor the current flow temperature and compare it against the expected temperature range to detect any potential heater errors or anomalies.
-- The system shall provide proactive measures such as alerts, redundancy mechanisms, or automated failover strategies to maintain safe temperatures.
+- The system shall detect loss or degradation of heating or cooling when it
+  could result in an unsafe indoor temperature.
+- The system shall warn occupants and support separately assessed measures for
+  maintaining safe indoor temperatures.
+- Loss of monitoring shall not be presented as normal operation, and restoration
+  shall not be reported without current evidence of restored capability.
 
 #### 1.3.13 Privacy Invasion
 
-- The system shall notify residents when cameras or microphones are accessed outside of expected usage times.
-- The system shall log and alert users of any remote access attempts to cameras or microphones.
-- The system shall enforce secure authentication and encryption for all audio-visual devices.
-- The system shall provide the option to disable or mask cameras/microphones when not in use.
+- The system shall prevent unauthorized observation or recording of occupants.
+- The system shall notify occupants of suspected unauthorized access to
+  audio-visual monitoring functions.
+- Occupants shall be able to place audio-visual monitoring functions into an
+  appropriate privacy-preserving state.
 
 #### 1.3.14 Rain Entering Window
 
 - The system shall monitor weather data and predict potential rain events.
 - The system shall alert occupants when windows or external doors are left open during rain, a storm, or an applicable official warning.
-- External Hazard Monitoring shall not automatically close an opening. It may
-  command an explicitly configured garage or external gate cover only after an
-  authenticated resident confirms the current close proposal in SafetyHome.
-- The system shall log open/close events for audit and maintenance purposes.
+- The system shall not automatically close an ordinary window or door solely
+  because of advisory environmental information. Any automatic closure shall
+  require a separately assessed and authorized safety response.
 
 #### 1.3.15 Frost Exposure Through Openings
 
 - The system shall monitor current and forecast external temperature.
-- The system shall alert occupants when a configured window or external door is
-  open while the frost warning policy is met.
-- The alert shall identify the affected openings, current/forecast temperature,
-  source, source timestamp, and recommended manual action.
-- External Hazard Monitoring shall not actuate windows, ordinary doors, heating,
-  or ventilation. Gate closure requires the resident-confirmation boundary.
+- The system shall alert occupants when an open window or external door creates
+  hazardous frost exposure.
+- The warning shall provide enough context for occupants to identify the
+  affected opening and take appropriate action.
+- Advisory frost information alone shall not authorize automatic control of
+  openings, heating, or ventilation.
 
 #### 1.3.16 Wind Damage to Openings
 
 - The system shall monitor current and forecast wind gusts and applicable
   official wind or storm warnings.
-- The system shall alert occupants when a configured window or external door is
-  open while the wind warning policy is met.
-- The alert shall identify the affected openings, gust value or warning level,
-  validity interval, source, and recommended manual action.
-- External Hazard Monitoring shall not actuate windows, ordinary doors, or
-  blinds. An allowlisted gate may close only after resident confirmation and
-  shall be verified from its configured contact.
+- The system shall alert occupants when an open window or external door is
+  exposed to damaging wind.
+- The warning shall provide enough context for occupants to identify the
+  affected opening and take appropriate action.
+- Advisory wind information alone shall not authorize automatic control of
+  openings or blinds.
 
 #### 1.3.17 Outdoor Air Pollution Ingress
 
-- The system shall monitor current outdoor air quality using
-  independent provider inputs.
-- The system shall alert occupants when a configured window or external door is
-  open while outdoor air quality exceeds the configured policy threshold.
-- Outdoor pollution shall inhibit conflicting manual advice to open windows;
-  External Hazard Monitoring shall not control ventilation or air purifiers.
-- Any garage or external gate close proposal shall remain non-actuating until a
-  resident confirms it in SafetyHome.
-- The system shall report the current measurement or model input controlling
-  the decision and preserve its provider semantics.
+- The system shall monitor current and forecast outdoor air quality.
+- The system shall alert occupants when an open window or external door creates
+  hazardous outdoor-pollution exposure.
+- Outdoor pollution warnings shall prevent conflicting advice to open windows.
+- Advisory air-quality information alone shall not authorize automatic control
+  of openings, ventilation, or air purifiers.
+- The warning shall provide enough context for occupants to understand the
+  hazardous condition and take appropriate action.
 
 ---
 
@@ -365,18 +392,18 @@ For risks that need further mitigation, you'll need to develop a risk mitigation
 | Hazard                    | Severity   | Exposure   | Controllability | Risk Score     | Level   |
 | ------------------------- | ---------- | ---------- | --------------- | -------------- | ------- |
 | Unauthorized Access       | High (3)   | Low (1)    | Low (3)         | (2x3)x1x3 = 18 | Level 2 |
-| Cybersecurity             | High (3)   | Medium (2) | High (1)        | (2x3)x2x1 = 12 | Level 3 |
+| Cybersecurity             | High (3)   | Medium (2) | High (1)        | (2x3)x2x1 = 12 | Level 2 |
 | Fire                      | High (3)   | Low (1)    | Low (3)         | (2x3)x1x3 = 18 | Level 2 |
-| Gas Leak                  | High (3)   | Low (1)    | Medium (2)      | (2x3)x1x2 = 12 | Level 3 |
+| Gas Leak                  | High (3)   | Low (1)    | Medium (2)      | (2x3)x1x2 = 12 | Level 2 |
 | Carbon Monoxide Poisoning | High (3)   | Low (1)    | Low (3)         | (2x3)x1x3 = 18 | Level 2 |
 | Electrical Shock          | High (3)   | Low (1)    | Low (3)         | (2x3)x1x3 = 18 | Level 2 |
 | Poor Air Quality          | Low (1)    | Medium (2) | High (1)        | (2x1)x2x1 = 4  | Level 4 |
-| Unsafe Cold Exposure      | Medium (2) | Medium (2) | High (1)        | (2x2)x2x1 = 8  | Level 4 |
-| Unsafe Heat Exposure      | Medium (2) | Medium (2) | High (1)        | (2x2)x2x1 = 8  | Level 4 |
+| Unsafe Cold Exposure      | Medium (2) | Medium (2) | High (1)        | (2x2)x2x1 = 8  | Level 3 |
+| Unsafe Heat Exposure      | Medium (2) | Medium (2) | High (1)        | (2x2)x2x1 = 8  | Level 3 |
 | System Failure            | High (3)   | Low (1)    | Low (3)         | (2x3)x1x3 = 18 | Level 2 |
-| Water Leak/Flood          | Medium (2) | Medium (2) | Medium (2)      | (2x2)x2x2 = 16 | Level 3 |
-| Loss of Heating/Cooling   | Medium (2) | Low (1)    | Low (3)         | (2x2)x1x3 = 12 | Level 3 |
-| Privacy Invasion          | Medium (2) | Low (1)    | Medium (2)      | (2x2)x1x2 = 8  | Level 4 |
+| Water Leak/Flood          | Medium (2) | Medium (2) | Medium (2)      | (2x2)x2x2 = 16 | Level 2 |
+| Loss of Heating/Cooling   | Medium (2) | Low (1)    | Low (3)         | (2x2)x1x3 = 12 | Level 2 |
+| Privacy Invasion          | Medium (2) | Low (1)    | Medium (2)      | (2x2)x1x2 = 8  | Level 3 |
 | Rain Entering Window      | Medium (2) | Low (1)    | High (1)        | (2x2)x1x1 = 4  | Level 4 |
 | Frost Exposure Through Openings | Medium (2) | Low (1) | High (1)     | (2x2)x1x1 = 4  | Level 4 |
 | Wind Damage to Openings   | Medium (2) | Low (1)    | High (1)        | (2x2)x1x1 = 4  | Level 4 |
@@ -386,61 +413,42 @@ For risks that need further mitigation, you'll need to develop a risk mitigation
 
 ### 1.6 Risk Monitoring
 
-To ensure the effectiveness of mitigation measures and detect emerging risks, the system shall implement continuous risk monitoring across all hazards:
+Residual risk and the effectiveness of the safety goals shall be reviewed
+periodically using evidence appropriate to each hazard. The review shall cover
+warning timeliness, missed and unnecessary warnings, availability of
+safety-relevant devices, maintenance status, and the outcomes of authorized
+mitigation.
 
-#### 1.6.1 KPIs & Metrics
-
-- Track mean time to detect (MTTD) and mean time to respond (MTTR) for all hazards.
-- Monitor number of false alarms vs. true hazard detections.
-- Record uptime and availability of all critical safety devices.
-
-#### 1.6.2 Maintenance Intervals
-
-- Schedule regular testing of sensors (smoke, gas, CO, water leak, motion) at least every 6 months.
-- Enforce periodic calibration of temperature, humidity, and air quality sensors.
-- Verify cybersecurity updates and patches monthly.
-- Test system backups and failover power supplies quarterly.
-
-#### 1.6.3 Automated Logging & Alerts
-
-- Maintain detailed logs of hazard detections, mitigation actions, and user responses.
-- Provide automated user notifications for overdue maintenance or repeated anomalies.
-- Enable secure remote diagnostics and reporting to administrators.
-
-#### 1.6.4 Adaptive Monitoring
-
-- Adjust thresholds dynamically based on user behavior and seasonal/environmental patterns.
-- Integrate anomaly detection using machine learning for early identification of new hazards.
-
-#### 1.6.5 Audit & Compliance
-
-- Generate periodic reports for stakeholders on safety performance and risk status.
-- Ensure traceability from hazards → safety goals → mitigations → monitoring results.
-
-This monitoring framework applies to **all hazards** (physical, environmental, system, and cybersecurity).
+Maintenance, calibration, audit, and evidence-retention intervals shall be
+defined in the system and installation requirements. Any change to detection
+criteria or automatic mitigation shall undergo a safety-impact assessment
+before use. Traceability from hazards through safety goals to verification
+evidence shall be maintained throughout the system lifecycle.
 
 ## 2. Traceability Matrix
 
-The following table provides audit-ready traceability from each hazard through safety goals, mitigation strategies, monitoring activities, and risk levels.
+The table assigns stable hazard and safety-goal identifiers shared with the SYS
+and SSRD. Detailed mitigation allocation and verification belong to those
+documents.
 
-| Hazard                  | Safety Goal Ref. | Mitigation Measures                                 | Monitoring Approach                                    | Risk Level (Before) | Risk Level (After) |
-| ----------------------- | ---------------- | --------------------------------------------------- | ------------------------------------------------------ | ------------------- | ------------------ |
-| Unauthorized Access     | 1.3.1            | Alerts, door/window lock enforcement, security link | Door/lock sensors, intrusion logs, audit reports       | Level 1             | Level 2            |
-| Cybersecurity           | 1.3.2            | Authentication, encryption, patches, RBAC           | Network activity logs, vulnerability scans, audit logs | Level 2             | Level 3            |
-| Fire\*                  | 1.3.3            | Smoke detection, alerts, evacuation support         | Smoke sensor status, maintenance reminders             | Level 2             | Level 2            |
-| Gas Leak\*              | 1.3.4            | Automatic gas cutoff, alerts, maintenance           | Gas sensor diagnostics, maintenance logs               | Level 2             | Level 3            |
-| CO Poisoning\*          | 1.3.5            | CO detection, alerts, maintenance reminders         | CO sensor logs, periodic calibration                   | Level 2             | Level 2            |
-| Water Leak/Flood        | 1.3.6            | Automatic water cutoff, alerts                      | Water sensor status, usage logs                        | Level 1             | Level 3            |
-| Electrical Shock\*      | 1.3.7            | RCD maintenance reminders                           | RCD self-test logs, inspection intervals               | Level 1             | Level 2            |
-| Poor Air Quality        | 1.3.8            | Alerts, interface with purifiers, proactive control | Air quality sensor trends, anomaly detection           | Level 3             | Level 4            |
-| Unsafe Cold Exposure    | 1.3.9            | Alerts, heating integration, proactive prevention   | Temperature logs, HVAC health monitoring               | Level 1             | Level 4            |
-| Unsafe Heat Exposure    | 1.3.10           | Alerts, cooling integration, proactive prevention   | Temperature logs, AC system diagnostics                | Level 1             | Level 4            |
-| System Failure          | 1.3.11           | Backup power, self-checks, diagnostics              | Safety-entity freshness, device uptime, network health monitoring | Level 2             | Level 2            |
-| Loss of Heating/Cooling | 1.3.12           | Alerts, redundancy, automated failover              | Heating/cooling performance logs, failover tests       | Level 3             | Level 3            |
-| Privacy Invasion        | 1.3.13           | Secure auth/encryption, disable/mask options        | Access logs, AV device monitoring                      | Level 1             | Level 4            |
-| Rain Entering Window    | 1.3.14           | Weather-based manual closure warning                 | Weather forecasts/warnings, contact states, event logs | Level 3             | Level 4            |
-| Frost Exposure Through Openings | 1.3.15 | Manual closure warning | Weather observations/forecasts, contact states, event logs | Level 3 | Level 4 |
-| Wind Damage to Openings | 1.3.16 | Manual closure warning | Gust forecasts, official warnings, contact states | Level 3 | Level 4 |
-| Outdoor Air Pollution Ingress | 1.3.17 | Manual closure warning and advice conflict inhibition | Measured/forecast AQ, contact states, event logs | Level 3 | Level 4 |
+| Hazard | Hazard ID(s) | HARA goal | Safety goal ID(s) | Risk before | Residual risk |
+| --- | --- | --- | --- | --- | --- |
+| Unauthorized Access | HZ‑UNAUTH‑01 | 1.3.1 | SG‑015 | Level 1 | Level 2 |
+| Cybersecurity | HZ‑CYBER‑SPOOF‑01 / HZ‑CYBER‑DENIAL‑01 | 1.3.2 | SG‑016 | Level 2 | Level 2 |
+| Fire\* | HZ‑FIRE‑01 | 1.3.3 | SG‑006 | Level 2 | Level 2 |
+| Gas Leak\* | HZ‑GAS‑01 | 1.3.4 | SG‑007 | Level 2 | Level 2 |
+| CO Poisoning\* | HZ‑CO‑01 | 1.3.5 | SG‑008 | Level 2 | Level 2 |
+| Water Leak/Flood | HZ‑WATER‑01 | 1.3.6 | SG‑009 | Level 1 | Level 2 |
+| Electrical Shock\* | HZ‑ELECT‑01 | 1.3.7 | SG‑013 | Level 1 | Level 2 |
+| Poor Air Quality | HZ‑AQ‑01 | 1.3.8 | SG‑005 | Level 2 | Level 4 |
+| Unsafe Cold Exposure | HZ‑UNDERTEMP‑01 / HZ‑UNDERTEMP‑02 | 1.3.9 | SG‑001 / SG‑002 | Level 1 | Level 3 |
+| Unsafe Heat Exposure | HZ‑OVERTEMP‑01 | 1.3.10 | SG‑004 | Level 1 | Level 3 |
+| System Failure | HZ‑SYSTEM‑FAIL‑01 | 1.3.11 | SG‑003 | Level 2 | Level 2 |
+| Loss of Heating/Cooling | HZ‑HVAC‑01 / HZ‑HVAC‑LOSS‑01 | 1.3.12 | SG‑010 / SG‑012 | Level 2 | Level 2 |
+| Privacy Invasion | HZ‑PRIV‑01 | 1.3.13 | SG‑014 | Level 1 | Level 3 |
+| Rain Entering Window | HZ‑WEATHER‑01 | 1.3.14 | SG‑011 | Level 3 | Level 4 |
+| Frost Exposure Through Openings | HZ‑EXT‑FROST‑01 | 1.3.15 | SG‑017 | Level 3 | Level 4 |
+| Wind Damage to Openings | HZ‑EXT‑WIND‑01 | 1.3.16 | SG‑018 | Level 3 | Level 4 |
+| Outdoor Air Pollution Ingress | HZ‑EXT‑AQ‑01 | 1.3.17 | SG‑019 | Level 3 | Level 4 |
 
 \* Life-threatening hazards must **not** be reduced below **Level 2** after mitigation, even if formulas suggest a lower level.

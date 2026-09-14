@@ -74,6 +74,7 @@ import components.safetycomponents.temperature.temperature_component  # noqa: F4
 import components.safetycomponents.safety_doors.safety_doors_component  # noqa: F401 - component registration
 import components.safetycomponents.external_hazard.external_hazard_component  # noqa: F401 - component registration
 import components.safetycomponents.entity_monitor.entity_monitor_component  # noqa: F401 - component registration
+import components.safetycomponents.internal_environmental_hazard.internal_environmental_hazard_monitor_component  # noqa: F401 - component registration
 from components.core.types_common import Symptom, RecoveryAction
 
 DEBUG = False
@@ -100,7 +101,7 @@ class SafetyFunctions(hass.Hass):
             return
 
         try:
-            self.args: Dict[str, Any] = AppCfgValidator.validate(
+            self.runtime_config: Dict[str, Any] = AppCfgValidator.validate(
                 self.args, hass=self, log=self.log
             )
         except AppCfgValidationError as exc:
@@ -121,18 +122,25 @@ class SafetyFunctions(hass.Hass):
         self.api_modules: dict = {}
         self.symptoms: dict[str, Symptom] = {}
         self.recovery_actions: dict[str, RecoveryAction] = {}
+        inactive_fault_names: set[str] = set()
         self.derivative_monitor = DerivativeMonitor(self, self.mqtt_entities)
         self.event_bus = EventBus()
 
         # Extract the validated configuration sections used at runtime.
-        self.fault_dict: dict = self.args["app_config"]["faults"]
-        self.safety_components_cfg: dict = self.args["user_config"]["safety_components"]
-        self.notification_cfg: dict = self.args["user_config"]["notification"]
-        self.common_entities_cfg: dict = self.args["user_config"]["common_entities"]
-        self.api_components_cfg: dict = self.args["user_config"].get(
+        self.fault_dict: dict = self.runtime_config["app_config"]["faults"]
+        self.safety_components_cfg: dict = self.runtime_config["user_config"][
+            "safety_components"
+        ]
+        self.notification_cfg: dict = self.runtime_config["user_config"][
+            "notification"
+        ]
+        self.common_entities_cfg: dict = self.runtime_config["user_config"][
+            "common_entities"
+        ]
+        self.api_components_cfg: dict = self.runtime_config["user_config"].get(
             "api_components", {}
         )
-        self.site_cfg: dict = self.args["user_config"].get("site", {})
+        self.site_cfg: dict = self.runtime_config["user_config"].get("site", {})
 
         # Create access to installation-wide Home Assistant entities.
         self.common_entities: CommonEntities = CommonEntities(
@@ -183,6 +191,9 @@ class SafetyFunctions(hass.Hass):
 
                 self.symptoms.update(symptoms_data)
                 self.recovery_actions.update(recovery_data)
+                inactive_fault_names.update(
+                    component_instance.get_inactive_fault_names()
+                )
                 fault_definitions = getattr(
                     component_instance, "get_fault_definitions", None
                 )
@@ -193,6 +204,12 @@ class SafetyFunctions(hass.Hass):
                                 f"Duplicate fault definition: {fault_name}"
                             )
                         self.fault_dict[fault_name] = fault_config
+
+        for fault_name in inactive_fault_names:
+            if self.fault_dict.pop(fault_name, None) is not None:
+                self.mqtt_entities.remove_sensor(
+                    f"sensor.fault_{fault_name}", remove_legacy_topic=True
+                )
 
         # Build fault models from the validated fault configuration.
         self.faults = cfg_pr.get_faults(self.fault_dict)
@@ -222,9 +239,14 @@ class SafetyFunctions(hass.Hass):
             state_store=notification_state_store,
             mqtt_entities=self.mqtt_entities,
         )
+        for component in self.sm_modules.values():
+            get_inhibitions = getattr(component, "get_output_inhibitions", None)
+            if callable(get_inhibitions):
+                for reason in get_inhibitions():
+                    self.notify_man.inhibit_local_switching(str(reason))
 
         # Create the recovery orchestration manager.
-        recovery_persistence_cfg = self.args["user_config"].get(
+        recovery_persistence_cfg = self.runtime_config["user_config"].get(
             "recovery", {}
         ).get("persistence", {})
         recovery_state_store = (
@@ -382,7 +404,7 @@ class SafetyFunctions(hass.Hass):
         calibrated = {
             **dependency,
             "source": "component",
-            "fault_owner": "entity_monitor",
+            "fault_owner": dependency.get("fault_owner", "entity_monitor"),
             "failure_debounce_seconds": default_failure_debounce,
             "recovery_debounce_seconds": default_recovery_debounce,
         }

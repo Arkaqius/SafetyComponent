@@ -138,9 +138,11 @@ class EntityMonitorComponent(SafetyComponent):
             mechanism_name = self._mechanism_name(dependency.key)
             related_symptoms: list[str] = []
             for check_name in check_names:
+                runtime.checks[check_name] = CheckRuntime()
+                if dependency.fault_owner == FaultOwner.NONE:
+                    continue
                 symptom_name = self._symptom_name(dependency.key, check_name)
                 related_symptoms.append(symptom_name)
-                runtime.checks[check_name] = CheckRuntime()
                 self._symptom_to_check[symptom_name] = (dependency.key, check_name)
                 symptoms[symptom_name] = Symptom(
                     module=modules[self.component_name],
@@ -330,6 +332,15 @@ class EntityMonitorComponent(SafetyComponent):
             )
 
         for check_name, result in results.items():
+            if runtime.dependency.fault_owner == FaultOwner.NONE:
+                self._apply_result(
+                    runtime,
+                    check_name,
+                    result,
+                    now,
+                    publish_symptom=False,
+                )
+                continue
             symptom_name = self._symptom_name(entity_key, check_name)
             mechanism = self.safety_mechanisms.get(symptom_name)
             if mechanism is None or not mechanism.isEnabled:
@@ -345,6 +356,8 @@ class EntityMonitorComponent(SafetyComponent):
         check_name: str,
         result: tuple[bool | None, str, Any],
         now: datetime,
+        *,
+        publish_symptom: bool = True,
     ) -> None:
         failing, reason, observed = result
         state = runtime.checks[check_name]
@@ -368,17 +381,24 @@ class EntityMonitorComponent(SafetyComponent):
             if elapsed >= runtime.dependency.failure_debounce_seconds:
                 state.active = True
                 state.result = "failed"
-                self.symptom_states[symptom_name] = FaultState.SET
-                self.event_bus.publish(
-                    "symptom",
-                    symptom_id=symptom_name,
-                    state=FaultState.SET,
-                    additional_info=self._symptom_context(runtime, check_name, state),
-                )
+                if publish_symptom:
+                    self.symptom_states[symptom_name] = FaultState.SET
+                    self.event_bus.publish(
+                        "symptom",
+                        symptom_id=symptom_name,
+                        state=FaultState.SET,
+                        additional_info=self._symptom_context(
+                            runtime, check_name, state
+                        ),
+                    )
             return
 
         state.pending_failure_since = None
-        if not state.active and self.symptom_states.get(symptom_name) == FaultState.CLEARED:
+        if (
+            not state.active
+            and publish_symptom
+            and self.symptom_states.get(symptom_name) == FaultState.CLEARED
+        ):
             state.result = "passed"
             return
         if state.pending_recovery_since is None:
@@ -388,13 +408,16 @@ class EntityMonitorComponent(SafetyComponent):
         if elapsed >= runtime.dependency.recovery_debounce_seconds:
             state.active = False
             state.result = "passed"
-            self.symptom_states[symptom_name] = FaultState.CLEARED
-            self.event_bus.publish(
-                "symptom",
-                symptom_id=symptom_name,
-                state=FaultState.CLEARED,
-                additional_info=self._symptom_context(runtime, check_name, state),
-            )
+            if publish_symptom:
+                self.symptom_states[symptom_name] = FaultState.CLEARED
+                self.event_bus.publish(
+                    "symptom",
+                    symptom_id=symptom_name,
+                    state=FaultState.CLEARED,
+                    additional_info=self._symptom_context(
+                        runtime, check_name, state
+                    ),
+                )
 
     def _evaluate_check(
         self,

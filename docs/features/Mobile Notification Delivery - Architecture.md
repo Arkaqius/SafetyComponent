@@ -72,6 +72,20 @@ mobile notify services.
   enough state to do so;
 - does not influence mobile transport success or retry decisions.
 
+For internal environmental alarms, LocalAnnunciator shall apply the
+[hazard-specific output contract](<Internal Environmental Hazard Monitoring - Architecture.md#7-guidance-and-output-safety>)
+before activation, level changes and restoration. Severity alone shall not
+authorize ordinary electrical switching during a flammable-gas incident.
+Eligibility shall account for every active or unresolved gas incident, even
+when another fault requests a light change. A rejected local output shall be
+diagnosed without blocking mobile submission; autonomous detector alarms shall
+remain independent. Returning a shared light to its previous state shall also
+require current eligibility and shall not follow an old stored permission.
+Gas switching inhibition shall be independently persisted and shall survive
+detector HEAL until the reviewed installation clearance policy accepts explicit
+authorized evidence. Notification acknowledgement or a `Cleared` fault event
+shall not release this output restriction.
+
 ### 2.4 `NotificationStateStore`
 
 - writes a versioned JSON snapshot atomically;

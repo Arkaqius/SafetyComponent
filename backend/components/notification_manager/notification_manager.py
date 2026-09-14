@@ -181,6 +181,18 @@ class NotificationManager:
     ) -> None:
         """Consume a FaultManager EventBus event."""
 
+        if (
+            fault_name == "InternalFlammableGasDetected"
+            and fault_state == FaultState.SET
+        ):
+            inhibit_switching = getattr(
+                self.local_annunciator, "inhibit_switching", None
+            )
+            if callable(inhibit_switching):
+                self.inhibit_local_switching(
+                    "active_or_unresolved_flammable_gas"
+                )
+
         restored_fault_needs_reconciliation = (
             fault_tag in self.active_notification
             and fault_state in {FaultState.CLEARED, FaultState.SHADOWED}
@@ -194,6 +206,16 @@ class NotificationManager:
                 fault_tag,
                 friendly_name=fault_friendly_name,
             )
+
+    def inhibit_local_switching(self, reason: str) -> None:
+        """Persist a component-supplied local switching restriction."""
+
+        inhibit_switching = getattr(
+            self.local_annunciator, "inhibit_switching", None
+        )
+        if callable(inhibit_switching):
+            inhibit_switching(reason)
+            self._persist_state()
 
     def handle_mobile_action(
         self,

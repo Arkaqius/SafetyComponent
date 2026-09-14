@@ -14,6 +14,15 @@ and call a Home Assistant service.
 
 ## 2. Proposal contract
 
+Internal environmental monitoring shall register no recovery proposal or
+actuator call. Its notification guidance shall follow the
+[internal hazard advice boundary](<Internal Environmental Hazard Monitoring - Architecture.md#7-guidance-and-output-safety>).
+Shared policy shall prevent comfort/PM ventilation or purification proposals
+from conflicting with active or unresolved smoke/gas/CO evidence. Clearing a
+detector alarm shall not authorize gas reopening, detector reset or re-entry.
+Existing unrelated recovery proposals shall still require their own current
+hazard-specific eligibility checks.
+
 Each active proposal has these allowlisted frontend fields:
 
 - stable `proposal_id` and current lifecycle `status`;
