@@ -5,20 +5,21 @@ import {
   notificationKind,
   notificationRecipient,
   notificationState,
-  readNotificationHistory,
+  type NotificationEntry,
+  type NotificationHistoryStatus,
 } from '../domain/notificationHistory.js';
-import type { EntitySnapshot } from '../domain/safety.js';
 import StatusBadge from './StatusBadge.js';
 
-export default function NotificationHistory({ entity, connected }: { entity?: EntitySnapshot; connected: boolean }) {
+interface NotificationHistoryProps {
+  entries: NotificationEntry[];
+  total: number;
+  status: NotificationHistoryStatus;
+  onRefresh: () => void;
+}
+
+export default function NotificationHistory({ entries, total, status, onRefresh }: NotificationHistoryProps) {
   const [result, setResult] = useState('accepted_by_home_assistant');
   const [state, setState] = useState('all');
-  const entries = readNotificationHistory(entity);
-  const available =
-    entity &&
-    !['unavailable', 'unknown'].includes(entity.state) &&
-    entity.attributes.version === 1 &&
-    Array.isArray(entity.attributes.entries);
   const visible = filterNotificationHistory(entries, result, state);
 
   return (
@@ -29,6 +30,9 @@ export default function NotificationHistory({ entity, connected }: { entity?: En
           <h2 id='notification-history-title'>Historia powiadomień</h2>
           <p>Wysłanie oznacza przyjęcie przez Home Assistant. Odbiór na telefonie nie jest potwierdzany.</p>
         </div>
+        <button className='text-button' disabled={status === 'loading'} onClick={onRefresh} type='button'>
+          {status === 'loading' ? 'Odświeżanie…' : 'Odśwież'}
+        </button>
       </div>
       <div className='history-controls'>
         <label className='select-field compact-select'>
@@ -49,11 +53,13 @@ export default function NotificationHistory({ entity, connected }: { entity?: En
           </select>
         </label>
       </div>
-      {!connected || !available ? (
+      {status === 'disconnected' || status === 'error' ? (
         <p role='status'>
           Historia powiadomień jest niedostępna.{' '}
           {entries.length > 0 ? 'Poniżej ostatnio odczytane wpisy.' : 'Oczekiwanie na dane z Home Assistanta.'}
         </p>
+      ) : status === 'loading' && entries.length === 0 ? (
+        <p role='status'>Pobieranie historii powiadomień…</p>
       ) : entries.length === 0 ? (
         <p>Brak zapisanych prób wysyłki. Historia obejmuje powiadomienia od uruchomienia rejestru.</p>
       ) : visible.length === 0 ? (
@@ -152,8 +158,8 @@ export default function NotificationHistory({ entity, connected }: { entity?: En
         ))}
       </div>
       <p className='notification-history-note'>
-        Ostatnie {Math.min(Number(entity?.attributes.limit) || 100, 100)} prób, osobno dla każdego odbiorcy, od najnowszych. Daty i godziny
-        w strefie czasowej przeglądarki. Starsze powiadomienia nie są odtwarzane z historii usterek.
+        Ostatnie {entries.length} z {total} prób, osobno dla każdego odbiorcy, od najnowszych. Daty i godziny w strefie czasowej
+        przeglądarki. Starsze powiadomienia nie są odtwarzane z historii usterek.
       </p>
     </section>
   );

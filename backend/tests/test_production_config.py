@@ -81,6 +81,7 @@ def test_production_mqtt_cleanup_removes_replaced_entities() -> None:
     )
 
     assert {
+        "sensor.notification_history",
         "sensor.recovery_closeexternalopeningexternalgate",
         "sensor.recovery_closeexternalopeninggaragegate",
         "sensor.fault_entityhealthtemperaturewindowupperbathroom",

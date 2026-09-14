@@ -18,6 +18,7 @@ import {
   type StatusTone,
 } from '../domain/safety';
 import { useEntityHistory } from '../hooks/useEntityHistory';
+import { useNotificationHistory } from '../hooks/useNotificationHistory';
 import { useSafetyEntities } from '../hooks/useSafetyEntities';
 
 type HistoryCategory = 'all' | 'system' | 'fault' | 'recovery';
@@ -37,9 +38,10 @@ const categoryLabels: Record<HistoryCategory, string> = {
 };
 
 export default function LogPage() {
-  const { entities, connection } = useSafetyEntities();
+  const { entities } = useSafetyEntities();
   const [category, setCategory] = useState<HistoryCategory>('all');
   const [hours, setHours] = useState<HistoryHours>(24);
+  const notificationHistory = useNotificationHistory(entities[NOTIFICATION_HISTORY_ENTITY_ID]);
 
   const historyEntities = Object.entries(entities)
     .filter(([entityId]) => isHistoryEntity(entityId))
@@ -57,7 +59,12 @@ export default function LogPage() {
 
   return (
     <div className='page-stack'>
-      <NotificationHistory entity={entities[NOTIFICATION_HISTORY_ENTITY_ID]} connected={connection.ready && !connection.cannotConnect} />
+      <NotificationHistory
+        entries={notificationHistory.entries}
+        onRefresh={notificationHistory.refresh}
+        status={notificationHistory.status}
+        total={notificationHistory.total}
+      />
       <section className='page-introduction'>
         <div>
           <span className='section-kicker'>Historia systemu</span>

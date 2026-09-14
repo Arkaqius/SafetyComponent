@@ -223,6 +223,7 @@ runtime_defaults:
     heartbeat_seconds: 60
     expire_after: 180
     legacy_discovery_entity_ids:
+    - sensor.notification_history
     - sensor.recovery_closeexternalopeningexternalgate
     - sensor.recovery_closeexternalopeninggaragegate
     - sensor.fault_entityhealthtemperaturewindowupperbathroom

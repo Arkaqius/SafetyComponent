@@ -1,0 +1,7 @@
+# Merge these event exclusions into the existing Recorder configuration.
+# Do not replace unrelated include/exclude rules in configuration.yaml.
+recorder:
+  exclude:
+    event_types:
+      - safetyhome_notification_history_request
+      - safetyhome_notification_history_response
