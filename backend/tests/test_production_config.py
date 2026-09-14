@@ -99,3 +99,30 @@ def test_production_mqtt_cleanup_removes_replaced_entities() -> None:
         "sensor.fault_entityhealthtemperaturewindowgarage",
         "sensor.entity_health_temperature_window_garage",
     } <= legacy_entities
+
+
+def test_production_internal_hazard_bindings_are_distinct_binary_channels() -> None:
+    config = _production_config()
+    component = config["user_config"]["safety_components"][
+        "InternalEnvironmentalHazardMonitorComponent"
+    ]
+    detectors = component["detectors"]
+
+    assert config["user_config"]["components_enabled"][
+        "InternalEnvironmentalHazardMonitorComponent"
+    ] is True
+    assert detectors["BathroomFlammableGas"] == {
+        "area_id": "bathroom",
+        "entity_id": "binary_sensor.bathroom_gasleak_detector_gas",
+        "friendly_name": "Czujnik gazu w łazience",
+        "hazard": "flammable_gas",
+        "profile": "home_assistant_binary_alarm",
+        "gas_identity": "flammable_gas_unspecified",
+    }
+    assert detectors["BathroomCarbonMonoxide"] == {
+        "area_id": "bathroom",
+        "entity_id": "binary_sensor.bathroom_carbonoxide_detector_carbon_monoxide",
+        "friendly_name": "Czujnik tlenku węgla w łazience",
+        "hazard": "carbon_monoxide",
+        "profile": "home_assistant_binary_alarm",
+    }

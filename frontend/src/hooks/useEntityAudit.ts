@@ -11,6 +11,8 @@ import {
 import { buildDeviceInventory, buildEntityInventory, getEntityMonitorSummary, getMonitoredEntities } from '../domain/entityHealth';
 import type { EntityMap } from '../domain/safety';
 
+export type RegistryStatus = 'disconnected' | 'loading' | 'ready' | 'error';
+
 export function useEntityAudit() {
   const { useStore } = useHass();
   const rawEntities = useStore(store => store.entities);
@@ -18,15 +20,38 @@ export function useEntityAudit() {
   const [entityRegistry, setEntityRegistry] = useState<EntityRegistryEntry[]>([]);
   const [deviceRegistry, setDeviceRegistry] = useState<DeviceRegistryEntry[]>([]);
   const [areaRegistry, setAreaRegistry] = useState<AreaRegistryEntry[]>([]);
+  const [registryStatus, setRegistryStatus] = useState<RegistryStatus>('disconnected');
 
   useEffect(() => {
-    if (!connection) return;
+    if (!connection) {
+      setRegistryStatus('disconnected');
+      return;
+    }
+    let cancelled = false;
+    setRegistryStatus('loading');
+    void Promise.all([
+      connection.sendMessagePromise<EntityRegistryEntry[]>({ type: 'config/entity_registry/list' }),
+      connection.sendMessagePromise<DeviceRegistryEntry[]>({ type: 'config/device_registry/list' }),
+      connection.sendMessagePromise<AreaRegistryEntry[]>({ type: 'config/area_registry/list' }),
+    ])
+      .then(([entities, devices, areas]) => {
+        if (cancelled) return;
+        setEntityRegistry(entities);
+        setDeviceRegistry(devices);
+        setAreaRegistry(areas);
+        setRegistryStatus('ready');
+      })
+      .catch(() => {
+        if (!cancelled) setRegistryStatus('error');
+      });
+
     const unsubscribers = [
       subscribeEntityRegistry(connection, setEntityRegistry),
       subscribeDeviceRegistry(connection, setDeviceRegistry),
       subscribeAreaRegistry(connection, setAreaRegistry),
     ];
     return () => {
+      cancelled = true;
       for (const unsubscribe of unsubscribers) {
         void unsubscribe();
       }
@@ -42,7 +67,7 @@ export function useEntityAudit() {
       summary: getEntityMonitorSummary(entities, monitored),
       inventory,
       devices: buildDeviceInventory(inventory, deviceRegistry, areaRegistry),
-      registriesAvailable: Boolean(connection),
+      registryStatus,
     };
-  }, [areaRegistry, connection, deviceRegistry, entities, entityRegistry]);
+  }, [areaRegistry, deviceRegistry, entities, entityRegistry, registryStatus]);
 }

@@ -16,6 +16,14 @@ class LocalAnnunciator:
         self.alarm_entity = config.get("alarm_entity")
         self._active_levels: dict[str, int] = {}
         self._previous_light_state: dict[str, Any] | None = None
+        self._switching_inhibited = False
+        self._inhibition_reason: str | None = None
+
+    def inhibit_switching(self, reason: str) -> None:
+        """Persistently block local electrical switching until approved clearance."""
+
+        self._switching_inhibited = True
+        self._inhibition_reason = str(reason)
 
     def activate(self, level: int, tag: str) -> None:
         """Activate configured local outputs once for a newly active fault."""
@@ -30,6 +38,9 @@ class LocalAnnunciator:
             raw = self.hass_app.get_state(self.light_entity, attribute="all")
             self._previous_light_state = raw if isinstance(raw, dict) else None
         self._active_levels[tag] = level
+
+        if self._switching_inhibited:
+            return
 
         if level == 1 and previous_level != 1 and self.alarm_entity:
             self.hass_app.call_service(
@@ -49,6 +60,9 @@ class LocalAnnunciator:
         if previous_level not in (1, 2) or not self.light_entity:
             return
         if any(active_level in (1, 2) for active_level in self._active_levels.values()):
+            return
+        if self._switching_inhibited:
+            self._previous_light_state = None
             return
         self._restore_light()
 
@@ -73,6 +87,10 @@ class LocalAnnunciator:
     def _restore_light(self) -> None:
         """Restore the light state captured before local ownership."""
 
+        if self._switching_inhibited:
+            self._previous_light_state = None
+            return
+
         previous = self._previous_light_state or {}
         self._previous_light_state = None
         if previous.get("state") != "on":
@@ -94,6 +112,8 @@ class LocalAnnunciator:
         return {
             "active_levels": dict(sorted(self._active_levels.items())),
             "previous_light_state": self._previous_light_state,
+            "switching_inhibited": self._switching_inhibited,
+            "inhibition_reason": self._inhibition_reason,
         }
 
     def restore(self, snapshot: dict[str, Any]) -> None:
@@ -110,3 +130,6 @@ class LocalAnnunciator:
             self._active_levels = {}
         previous = snapshot.get("previous_light_state")
         self._previous_light_state = previous if isinstance(previous, dict) else None
+        self._switching_inhibited = bool(snapshot.get("switching_inhibited", False))
+        reason = snapshot.get("inhibition_reason")
+        self._inhibition_reason = str(reason) if reason is not None else None

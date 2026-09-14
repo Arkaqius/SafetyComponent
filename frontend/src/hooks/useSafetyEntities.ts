@@ -13,6 +13,7 @@ import {
   type EntityMap,
 } from '../domain/safety';
 import { getEntityMonitorSummary, getMonitoredEntities } from '../domain/entityHealth';
+import { getInternalEnvironmentMonitoring } from '../domain/internalHazards';
 
 export function useSafetyEntities() {
   const { useStore } = useHass();
@@ -28,6 +29,7 @@ export function useSafetyEntities() {
     const temperatures = getMonitoredTemperatures(entities);
     const safetyDoors = getSafetyDoors(entities);
     const externalHazards = getExternalHazardMonitoring(entities);
+    const internalEnvironment = getInternalEnvironmentMonitoring(entities);
     const healthEntity = entities[HEALTH_ENTITY_ID];
     const systemEntity = entities[SYSTEM_STATE_ENTITY_ID];
     const monitoredEntities = getMonitoredEntities(entities);
@@ -41,6 +43,7 @@ export function useSafetyEntities() {
       temperatures,
       safetyDoors,
       externalHazards,
+      internalEnvironment,
       monitoredEntities,
       entityMonitorSummary: getEntityMonitorSummary(entities, monitoredEntities),
       recentActivity: getRecentActivity(entities),

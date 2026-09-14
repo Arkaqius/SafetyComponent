@@ -69,6 +69,25 @@ def test_safety_functions_initialization(mocked_hass_app_with_temp_component) ->
     }
 
 
+def test_reinitialize_keeps_raw_appdaemon_configuration(
+    mocked_hass_app_with_temp_component,
+) -> None:
+    app_instance, mocked_hass, __, ___, _ = mocked_hass_app_with_temp_component
+
+    app_instance.initialize()
+
+    raw_temperature_config = app_instance.args["user_config"][
+        "safety_components"
+    ]["TemperatureComponent"]
+    assert isinstance(raw_temperature_config, dict)
+
+    app_instance.initialize()
+
+    assert mqtt_payloads(
+        mocked_hass, mqtt_topic_for("sensor.safety_app_health")
+    )[-1] == "running"
+
+
 def test_entity_monitor_is_wired_into_application_startup(
     mocked_hass_app_with_temp_component,
 ) -> None:

@@ -23,8 +23,18 @@ export default function Dashboard() {
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const [averageDialogOpen, setAverageDialogOpen] = useState(false);
   const closeEntityDetails = useCallback(() => setSelectedEntityId(null), []);
-  const { entities, entityMonitorSummary, externalHazards, faults, recoveries, safetyDoors, summary, systemEntity, temperatures } =
-    useSafetyEntities();
+  const {
+    entities,
+    entityMonitorSummary,
+    externalHazards,
+    faults,
+    internalEnvironment,
+    recoveries,
+    safetyDoors,
+    summary,
+    systemEntity,
+    temperatures,
+  } = useSafetyEntities();
   const systemState = systemStatePresentation(systemEntity?.state);
   const values = temperatures.filter((temperature): temperature is TemperatureView & { state: number } => temperature.state !== null);
   const average = values.length > 0 ? values.reduce((sum, temperature) => sum + temperature.state, 0) / values.length : null;
@@ -144,6 +154,34 @@ export default function Dashboard() {
           value={fastestRising?.roomName ?? 'Stabilnie'}
           onClick={fastestRising ? () => setSelectedEntityId(fastestRising.entityId) : undefined}
         />
+      </section>
+
+      <section className={`panel internal-overview-panel internal-overview-${internalEnvironment.status}`}>
+        <div className='panel-header'>
+          <div>
+            <span className='section-kicker'>Bezpieczeństwo wewnątrz domu</span>
+            <h2>Zagrożenia wewnętrzne</h2>
+          </div>
+          <Link className='text-link' to='/internal-hazards'>
+            Szczegóły <Icon name='chevron' size={15} />
+          </Link>
+        </div>
+        <div className='internal-overview-grid'>
+          <div>
+            <span>Aktywne alarmy</span>
+            <strong>{internalEnvironment.activeHazards}</strong>
+          </div>
+          <div>
+            <span>Dostępne czujniki</span>
+            <strong>
+              {internalEnvironment.monitoredDetectors - internalEnvironment.unavailableDetectors}/{internalEnvironment.monitoredDetectors}
+            </strong>
+          </div>
+          <div>
+            <span>Ochrona przy gazie</span>
+            <strong>{internalEnvironment.gasSwitchingInhibited ? 'Aktywna' : 'Nieaktywna'}</strong>
+          </div>
+        </div>
       </section>
 
       <div className='dashboard-columns'>

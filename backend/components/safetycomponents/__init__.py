@@ -39,6 +39,12 @@ from .entity_monitor import (
     EntityMonitorComponent,
     validate_entity_monitor_config,
 )
+from .internal_environmental_hazard import (
+    BinaryDetectorProfile,
+    InternalEnvironmentalHazardMonitorComponent,
+    InternalEnvironmentalHazardMonitorConfig,
+    validate_internal_environmental_hazard_config,
+)
 
 __all__ = [
     "DebounceAction",
@@ -49,6 +55,9 @@ __all__ = [
     "ExternalHazardPolicy",
     "EntityMonitorCalibration",
     "EntityMonitorComponent",
+    "BinaryDetectorProfile",
+    "InternalEnvironmentalHazardMonitorComponent",
+    "InternalEnvironmentalHazardMonitorConfig",
     "SafetyComponent",
     "SafetyMechanism",
     "SafetyMechanismResult",
@@ -68,5 +77,6 @@ __all__ = [
     "validate_safety_doors_config",
     "validate_external_hazard_config",
     "validate_entity_monitor_config",
+    "validate_internal_environmental_hazard_config",
     "validate_temperature_config",
 ]

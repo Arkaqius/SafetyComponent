@@ -107,6 +107,26 @@ app_config:
       level: 3
       related_sms:
       - sm_ext_provider_unavailable
+    InternalSmokeDetected:
+      name: Wykryto dym
+      level: 1
+      related_sms:
+      - sm_iehm_smoke
+    InternalFlammableGasDetected:
+      name: Wykryto gaz palny
+      level: 1
+      related_sms:
+      - sm_iehm_flammable_gas
+    InternalCarbonMonoxideDetected:
+      name: Wykryto tlenek węgla
+      level: 1
+      related_sms:
+      - sm_iehm_carbon_monoxide
+    InternalEnvironmentalDetectorUnavailable:
+      name: Czujnik zagrożenia środowiskowego jest niedostępny
+      level: 3
+      related_sms:
+      - sm_iehm_detector_health
 runtime_defaults:
   notification:
     mobile:
@@ -221,6 +241,28 @@ runtime_defaults:
     - sensor.fault_entityhealthtemperaturewindowgarage
     - sensor.entity_health_temperature_window_garage
   safety_components:
+    InternalEnvironmentalHazardMonitorComponent:
+      profiles:
+        home_assistant_binary_alarm:
+          version: '1.0'
+          provenance: Home Assistant binary sensor state-event contract
+          alarm_states:
+          - 'on'
+          clear_states:
+          - 'off'
+          test_states: []
+          unavailable_states:
+          - unknown
+          - unavailable
+          clear_duration_seconds: 30
+          authoritative_clear: true
+      health_failure_debounce_seconds: 5
+      health_recovery_debounce_seconds: 60
+      persistence:
+        enabled: true
+        state_file: /config/appdaemon/internal_environment_state.json
+        maximum_detectors: 64
+      detectors: {}
     EntityMonitorComponent:
       explicit_entities:
         SmartHeatingAppHealth:

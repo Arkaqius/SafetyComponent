@@ -194,6 +194,11 @@ class SafetyComponent:
 
         return []
 
+    def get_inactive_fault_names(self) -> set[str]:
+        """Return configured fault definitions that do not apply at this site."""
+
+        return set()
+
     def init_safety_mechanism(self, sm_name: str, name: str, parameters: dict) -> bool:
         """
         Abstract method to initialize a safety mechanism based on the provided name and parameters.

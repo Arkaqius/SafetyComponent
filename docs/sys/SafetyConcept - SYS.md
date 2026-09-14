@@ -93,6 +93,12 @@ _Note: the data **providers** are external; the **interfaces** and how we use th
 - Entity-health registry and evaluation for explicit safety dependencies,
   component-declared dependencies, and the information-only Home Assistant
   inventory.
+- Heating-system supervision by C-HVAC across room heat need, controller
+  request, boiler response, and heat delivery, independent of normal heating
+  control and of C-TEMP room-temperature hazard decisions.
+- Internal environmental monitoring through one component implementing the
+  smoke/gas/CO C-ALARM allocation and indoor PM2.5 C-AQ allocation, with separate
+  environmental alarm and detector-health state.
 
 **Responsibilities (internal):**
 
@@ -151,6 +157,14 @@ Elements **outside** the boundary that we rely on and for which we define assump
 ### 3.4 Invariants (apply in all modes)
 
 - Life‑safety hazards (Fire/Gas/CO) may **actuate siren and emergency lights** regardless of mode.
+- Such outputs shall be explicitly approved for the hazard and installation;
+  flammable-gas incidents shall not cause unapproved electrical switching,
+  including shared-light activation or restoration. Generic severity-based
+  output selection shall not bypass this eligibility rule.
+- Once required detector bindings are validated, a valid asserted smoke/gas/CO
+  alarm shall bypass M1 observation grace and M3/M5 quiet policies. Invalid
+  configuration shall still follow the application initialization contract;
+  autonomous detector protection remains independent of application readiness.
 - Evidence logging remains active; failures to log **must not** block safety decisions.
 - Read‑back verification follows each actuation; on mismatch → retry → escalate per requirement.
 
@@ -302,8 +316,8 @@ When **WAN is down** (see §3, M4 Local‑Only), prefer delivery vectors that do
 | **SG‑004** | Prevent sustained **overheating** (> **T_max**) for longer than **T_crit_hot** in occupied rooms.                        | HZ‑OVERTEMP‑01                         | **ASIL B**                  | **5 min**         | **SS‑1:** Emergency cooling/ventilation + L2/L3        |
 | **SG‑005** | Maintain acceptable **indoor air quality**; detect/forecast breach and mitigate.                                         | HZ‑AQ‑01                               | **ASIL A**                  | **10 min**        | **SS‑1:** Ventilate/purify + L2                        |
 | **SG‑006** | Detect **smoke/fire** promptly; alert occupants; enter alarm safe state.                                                 | HZ‑FIRE‑01                             | **ASIL C**                  | **10 s**          | **SS‑Alarm:** Siren/lighting + L1                      |
-| **SG‑007** | Detect **flammable gas** accumulation; alert and ventilate safely.                                                       | HZ‑GAS‑01                              | **ASIL C**                  | **10 s**          | **SS‑Alarm:** Ventilate + L1                           |
-| **SG‑008** | Detect **CO** accumulation; alert and ventilate; escalate alarms.                                                        | HZ‑CO‑01                               | **ASIL C**                  | **10 s**          | **SS‑Alarm:** Ventilate + L1                           |
+| **SG‑007** | Detect **flammable gas** accumulation; alert and apply separately validated hazard-specific emergency response. | HZ‑GAS‑01 | **ASIL C** | **10 s** | **SS‑Alarm:** L1 + approved emergency response |
+| **SG‑008** | Detect **CO** accumulation; alert and provide hazard-specific emergency guidance. | HZ‑CO‑01 | **ASIL C** | **10 s** | **SS‑Alarm:** L1 + approved emergency response |
 | **SG‑009** | Detect **water leak/flood**; alert and shut off supply if available.                                                     | HZ‑WATER‑01                            | **QM/ASIL A**               | **60 s**          | **SS‑3:** Close valve + L2                             |
 | **SG‑010** | Detect **HVAC failures** affecting temperature control; prompt maintenance before exposure.                              | HZ‑HVAC‑01                             | **QM/ASIL A**               | **30 min**        | **SS‑4:** Degraded mode + L3                           |
 | **SG‑011** | Warn about **weather ingress** via open windows/doors during rain/storm.                                                | HZ‑WEATHER‑01                          | **QM**                      | **120 s after usable input** | **SS‑5:** Prompt manual secure closure + L2      |
@@ -337,15 +351,26 @@ _Interfaces turn §2 elements into **testable contracts**: freshness, latency, a
 - **Latency:** alarm edge visible **≤ 1 s**; **freshness:** heartbeat or supervised link **≤ 60 s**.
 - **Self‑test:** capability or maintenance reminder interval **≤ 6 months**.
 - **Verification:** inject alarm → L1 notify path triggered; evidence contains `rule_id=SYS‑SR‑120`.
+- Alarm and detector-health channels shall have separate typed mappings. A
+  valid alarm assertion shall not wait for a second detector, a numeric reading
+  or healthy ancillary diagnostics. Startup retained state shall be identified
+  as historical/unverified until authoritative source confirmation.
+- `SYS-SR-IEHM-003` shall provide the smoke-alarm requirement; the existing
+  `SYS‑SR‑120` evidence identifier shall remain a compatibility alias.
 
 **IR-003 Gas Detector**
 
-- Same structure as IR‑002; **ventilation** actuation must be possible (see OR‑003).
+- Same structure as IR‑002; the equipment profile shall identify the detected
+  flammable gas and current alarm semantics. Any OR-003 emergency response shall
+  require a separate hazard-specific installation approval; detection shall
+  not depend on actuator availability.
 - **Latency:** alarm edge **≤ 1 s**.
 
 **IR-004 CO Detector**
 
 - Same structure as IR‑002; **Latency:** alarm edge **≤ 1 s**; bedroom entities flagged for repeat policy.
+- CO shall remain distinct from CO2 and combustible-gas channels. Numeric ppm
+  telemetry shall supplement, not replace or gate, the detector's alarm output.
 
 **IR-005 Leak Sensor**
 
@@ -361,12 +386,36 @@ _Interfaces turn §2 elements into **testable contracts**: freshness, latency, a
 
 - **Accuracy:** CO₂ ±(50 ppm + 3%); PM2.5 per sensor spec; VOC relative index.
 - **Rate:** **≥ 0.2 Hz**; **freshness:** drop if `age > 120 s`.
+- Indoor PM2.5 shall use µg/m³ with identified indoor location, observation and
+  receipt times, quality and sensor/profile identity. AQI, PM10, CO2, VOC and
+  outdoor model values shall not be accepted as equivalent PM2.5 inputs.
+- Concentration averages shall declare their period, actual covered duration,
+  maximum gaps and sample provenance; absent data shall not contribute zeros.
+  Source-health timeouts shall be tighter where required by SG-003.
 
 **IR-008 Boiler Signals/Measurements**
 
 - Expose flow temperature, burner state, error codes.
 - **Rate:** flow temp **≥ 0.2 Hz**; **freshness:** drop if `age > 120 s`.
 - **Semantics:** discrete errors as enumerations with code table.
+- Every enabled C-HVAC rule shall identify its required signals: flow/return
+  temperatures, requested flow temperature, burner/pump state, central heating
+  (CH)/domestic hot water (DHW) mode,
+  permitted inhibition, and active device codes as applicable. Optional
+  maintenance and cycle counters shall declare their own quality contracts.
+- Boiler communication shall be evidenced by a trustworthy device-observation
+  timestamp or sequence/heartbeat and transport state. HA entity availability,
+  unchanged `last_updated`, and a retained `connected` value alone shall not
+  establish recent receipt of boiler measurements.
+- The adapter shall normalize units, quality, observation time, receipt time,
+  source identity, and model-specific codes. Last-error history shall remain
+  separate from active error state. Unmapped codes shall be explicitly unknown.
+- Room heating permission/need and controller demand shall use independently
+  identified inputs, including effective room targets and declared schedule or
+  inhibition state; they shall not be inferred solely from burner activity.
+- Freshness and total fault-detection budgets shall be distinct. C-HVAC
+  calibration shall allocate sampling, timeout, evaluation and debounce so
+  detection meets the applicable SG budget; IR-008 does not relax SG-003.
 
 **IR-009 Home Assistant Entity Health**
 
@@ -454,6 +503,11 @@ _Interfaces turn §2 elements into **testable contracts**: freshness, latency, a
 **OR-003 Ventilation / Gas Valve**
 
 - Commands: `vent_on/off`; `gas_valve_open/close`; **Latency:** **≤ 5 s** close valve; verify end‑state.
+- These are separately allocated emergency-response capabilities, not outputs
+  of internal environmental monitoring. Eligibility shall be assessed for the
+  specific hazard and equipment; a gas alarm shall not automatically energize
+  an ordinary fan, light or relay. A source clear shall not automatically reopen
+  a gas valve or approve re-entry.
 
 **OR-004 Water Shutoff Valve**
 
@@ -1114,9 +1168,143 @@ entity is safety-relevant through Group A or B.
 
 ---
 
-**Other component allocations:** Fire/CO/Gas is owned by C-ALARM, Water Leak by
-C-LEAK, Indoor Air Quality by C-AQ, HVAC Health by C-HVAC, intrusion/lock
-security by C-SEC, Privacy by C-PRIV, and Network/Platform Health by C-NET.
+### 8.6 Heating System Monitoring Component (C-HVAC)
+
+**Allocation:** `HeatingSystemMonitorComponent` shall own heating-system
+supervision under SG-010 and SG-012, contribute to SG-003 input supervision,
+and supply evidence to room cold/heat exposure diagnosis without replacing
+C-TEMP. HARA section 1.3.12 defines the stakeholder-level
+loss-of-heating/cooling safety goal.
+The detailed contract is defined in the
+[Heating System Monitoring architecture](<../features/Heating System Monitoring - Architecture.md>).
+
+#### 8.6.1 Boundaries and interfaces
+
+C-HVAC shall consume normalized IR-008 measurements, room need/controller
+demand evidence, and C-ENT quality for its declared Group B dependencies.
+The EMS-ESP adapter shall own provider/model interpretation and communication
+health; C-HVAC shall own household policy and incidents. SmartHeating and the
+boiler controller shall retain normal control. C-TEMP shall retain existing
+room-temperature mechanisms and faults.
+
+C-HVAC shall publish per-installation phase, supervision coverage, rule
+results, heating faults and bounded diagnostic evidence through the existing
+fault/MQTT/notification interfaces. It shall not perform boiler, pump, climate,
+gas-valve or other heating actuator calls or register recovery actions.
+
+#### 8.6.2 Functional requirements
+
+| ID | Requirement |
+| --- | --- |
+| SYS-SR-HSM-001 | C-HVAC shall distinguish independent room heat need, controller request, boiler response, and room heat delivery; a failed controller request shall not gate off need-to-request monitoring. |
+| SYS-SR-HSM-002 | C-HVAC shall register all enabled-rule inputs as component dependencies with entity identity, owner, purpose, units, quality, freshness source where trustworthy, and failure ownership. Shared inputs shall retain every consumer and its applicable contract. |
+| SYS-SR-HSM-003 | The adapter shall normalize telemetry and model-specific current codes separately from historical errors; unknown code meanings and inconsistent signals shall produce explicit interpretation/coverage diagnostics rather than a fabricated healthy or faulty boiler state. |
+| SYS-SR-HSM-004 | Operating phase shall be one of `idle`, `starting`, `heating`, `dhw`, `pump_overrun`, `inhibited`, or `unknown`, separate from supervision health and fault lifecycle; phase transitions shall use fresh coherent evidence and bounded mode-specific delays. |
+| SYS-SR-HSM-005 | Communication loss, invalid required measurements, or unavailable phase interpretation shall diagnose loss of supervision. C-HVAC-owned failures shall not create duplicate C-ENT faults; only dependent performance checks shall become unevaluable. |
+| SYS-SR-HSM-006 | C-HVAC shall detect permitted room heating need without controller demand, and controller demand without boiler response, accounting for effective targets, explicit schedule/inhibition and bounded DHW priority and anti-cycle delays. |
+| SYS-SR-HSM-007 | With valid heating demand and suitable operating conditions, C-HVAC shall detect insufficient flow-temperature rise and sustained failure to track the requested flow temperature using calibrated sample coverage, startup allowance, tolerances and durations. |
+| SYS-SR-HSM-008 | C-HVAC shall detect configured pump-state and flow/return inconsistencies and sustained room cooling despite requested heat delivery; it shall describe evidence as a suspected distribution problem rather than prove a particular failed mechanical part. |
+| SYS-SR-HSM-009 | C-HVAC shall detect excess temperature against validated mode-specific limits and manufacturer absolute limits independently of heating-demand gating for the absolute-limit rule. Normal hysteresis, DHW and overrun shall not be treated as excess CH temperature. Enablement shall require the reviewed `HSM-H05/<EquipmentProfileKey>` thermal response allocation; plausibility checks shall not mask valid dangerous temperatures. |
+| SYS-SR-HSM-010 | Active blocking/device faults shall be classified using a versioned manufacturer/model code table; maintenance and short-cycling diagnostics shall remain distinct from current device faults and heating-loss incidents. |
+| SYS-SR-HSM-011 | Each rule shall expose applicability, input quality, pending/active/recovering state and reasons. Missing evidence, removed demand, mode changes, acknowledgement and restart shall not positively clear active faults; HEAL shall require fresh rule-specific evidence. |
+| SYS-SR-HSM-012 | Detection, decision and notification budgets shall meet SG-003 (60 s for allocated sensor/communication failures) and SG-010/012 (30 min for heating loss). Startup, freshness, evaluation cadence, observation, debounce, allowed inhibition and notification allowance shall be budgeted without double counting parallel intervals; repeated inhibition or restart shall not indefinitely postpone detection. Notification acceptance shall not establish thermal recovery. |
+| SYS-SR-HSM-013 | C-HVAC shall preserve active incident IDs, qualifying onset/deadlines and evidence across restart using bounded versioned atomic storage. Untrusted persistence or a clock discontinuity shall expose degraded supervision and shall not reset an active incident into healthy state. |
+| SYS-SR-HSM-014 | Each incident shall use stable fault/mechanism identities, retain all contributing symptoms and distinguish observations from inferred causes. Communication recovery shall not clear performance faults; independent room-temperature alarms shall remain eligible. |
+| SYS-SR-HSM-015 | SET and HEAL shall include dated evidence, installation/room identity, phase, demand, relevant measurements, thresholds, elapsed duration, code interpretation and recovery evidence. Notification attempts shall preserve configured target/result semantics, quiet updates and bounded history; acceptance by HA shall not be represented as confirmed phone delivery. |
+| SYS-SR-HSM-016 | SafetyHome shall display phase, coverage, active faults, failed and unevaluable checks, evidence ages and reason-specific inhibition. History shall correlate SET/HEAL evidence with actual notification attempts. EN/PL/DE presentation shall preserve language-independent raw codes and IDs. |
+| SYS-SR-HSM-017 | Software calibration shall own thresholds, timings, code profiles, severities and rule enablement; installation configuration shall own entity/area bindings and equipment identity. Validation shall reject incomplete enabled rules, ambiguous hydraulics/code profiles, invalid recovery bands and timing combinations outside allocated budgets. |
+| SYS-SR-HSM-018 | C-HVAC shall be observation-only, with deterministic bounded evaluation and no boiler reset, heating setpoint writes, pump forcing, safety interlock bypass or recovery actions. Any backup/failover function shall require its own allocation and authorization. |
+
+#### 8.6.3 Severity, timing and safe-state contribution
+
+Heating-loss, device-fault and supervision-loss incidents shall contribute L3
+warnings. Excess temperature shall contribute L2. Maintenance and cycling shall
+contribute L4 information. Native boiler protection and independent C-TEMP,
+C-ALARM and C-LEAK decisions shall retain their own authority and severity.
+
+C-HVAC's contribution to SS-4 is explicit degraded supervision/operation and
+timely notification with manual guidance. Its timing evidence shall establish
+this contribution; it shall not assert that manual intervention or restored
+room temperature occurred within the notification deadline. The broader
+SG-012 backup/failover objective shall remain separately allocated.
+
+SG-003 supervision paths shall use a tighter timeout than the IR-008 maximum
+sample age where required to meet the 60 s total budget. Slow-provider paths
+shall expose unmet coverage rather than silently enlarge that budget. The
+architecture defines allocation examples and timing tests.
+
+#### 8.6.4 Traceability and verification
+
+- HZ‑HVAC‑01 and HZ‑HVAC‑LOSS‑01 / SG‑010 and SG‑012:
+  SYS-SR-HSM-001..018.
+- HZ‑SYSTEM‑FAIL‑01 / SG‑003 supervision contribution:
+  SYS-SR-HSM-002/003/005/011/012/013.
+- Cross-cutting delivery, presentation and boundary: SYS-SR-HSM-015..018.
+- Verification shall cover signal/counter normalization, independent need,
+  normal phases, prolonged inhibition, false-clear prevention, code profiles,
+  transient and sustained failures, timing boundaries, restart/clock faults,
+  C-ENT fault ownership, notification correlation and zero heating actuation.
+
+---
+
+### 8.7 Internal Environmental Hazard Monitoring (C-ALARM and C-AQ)
+
+`InternalEnvironmentalHazardMonitorComponent` shall implement smoke,
+flammable-gas and CO alarm supervision under C-ALARM and measured indoor PM2.5
+supervision under C-AQ. Logical allocations and SG identifiers shall remain
+distinct even though they share one component. Other C-AQ pollutants and
+outdoor exposure policy shall retain separate scope.
+
+The component shall consume IR-002/003/004/007 and C-ENT dependency quality,
+emit symptoms to FaultManager, and supply notification/diagnostic evidence.
+It shall observe and notify without registering recovery actions or controlling
+detectors, fans, purifiers, valves, openings, locks or HVAC. Shared notification
+outputs shall obey the same hazard-specific eligibility boundary.
+See the [Internal Environmental Hazard Monitoring architecture](<../features/Internal Environmental Hazard Monitoring - Architecture.md>).
+
+| ID | Requirement |
+| --- | --- |
+| SYS-SR-IEHM-001 | The component shall keep smoke, flammable gas, CO, indoor PM2.5 and detector health as separate semantic channels, each bound to an identified detector and indoor area. |
+| SYS-SR-IEHM-002 | All enabled inputs shall be Group B dependencies with explicit state/unit/quality contracts and compatible fault ownership. An asserted alarm shall not be modeled as a generic required-value failure or suppressed by another sensor's clear state. |
+| SYS-SR-IEHM-003 | A fresh valid smoke alarm shall immediately assert its detector symptom and the L1 smoke fault without averaging, multi-detector voting or general availability debounce. |
+| SYS-SR-IEHM-004 | A fresh valid flammable-gas alarm shall immediately assert a distinct L1 fault, retain gas identity and use hazard-specific emergency guidance and output eligibility. |
+| SYS-SR-IEHM-005 | A fresh valid CO alarm shall immediately assert a distinct L1 fault without substituting generic software ppm thresholds for manufacturer alarm logic. |
+| SYS-SR-IEHM-006 | PM2.5 checks shall validate concentration units and input quality, apply declared short-window concentration policy and recovery hysteresis, and optionally report separately defined long-term exposure. Neither PM2.5 nor an AQI shall be interpreted as smoke, CO or flammable gas. |
+| SYS-SR-IEHM-007 | Averaging shall be time-aware, bounded and explicit about sample coverage, skew, gaps and source age. Long-term reference values shall retain their averaging periods and shall not become instantaneous emergency thresholds. |
+| SYS-SR-IEHM-008 | Detector trouble, expired required heartbeat, missing channels and invalid/saturated measurements shall expose lost or degraded coverage separately from environmental alarms. Valid alarm assertions shall remain actionable despite ancillary battery/trouble faults. |
+| SYS-SR-IEHM-009 | A single detector shall suffice to activate its hazard fault; all contributing detector symptoms shall be retained. One detector clearing or going offline shall not clear another detector's active symptom or the aggregate hazard. |
+| SYS-SR-IEHM-010 | SET shall persist until fresh authoritative clear evidence satisfies the rule-specific recovery duration. Acknowledgement, unknown/unavailable inputs, removal of a configured detector, restart, hush/test state or receipt of old data shall not constitute HEAL. |
+| SYS-SR-IEHM-011 | Binary alarm interface response shall fit the 10 s SG-006/007/008 budget, including reception, component processing and notification allocation; default 10 s transport allowance shall not be added after another 10 s of detection. Intrinsic detector response to physical exposure and absent transport shall remain explicit assurance limits. |
+| SYS-SR-IEHM-012 | Required supervision paths shall fit SG-003's 60 s budget and short-window PM response shall fit SG-005's 10 min budget. Sampling, averaging, qualification, scheduler latency, decision and notification shall be included; long-term exposure diagnostics shall not substitute for the short-window path. |
+| SYS-SR-IEHM-013 | Active incident identity, contributing symptoms, qualifying evidence, authoritative clear ordering and consumed deadlines shall survive reload/restart in bounded atomic storage. Retained assertions shall be reconciled on startup, reconnect and coverage recovery. Corruption, clock uncertainty or missing state shall produce explicit unknown/degraded supervision rather than an authoritative clear. |
+| SYS-SR-IEHM-014 | Alarm, PM exposure, detector health and per-rule evaluability shall be separately visible in SafetyHome. Missing coverage shall not be labeled safe air or no hazard; cleared alarm presentation shall not imply permission to re-enter. |
+| SYS-SR-IEHM-015 | SET/HEAL notifications shall carry localizable hazard/detector/area names, timestamps, evidence, thresholds where applicable and incident correlation. Existing raw fault and journal states, bounded per-target attempts and HA-acceptance semantics shall remain unchanged. |
+| SYS-SR-IEHM-016 | Hazard-specific advice shall prioritize life safety and avoid generic ventilation/purifier/open-window instructions during smoke/gas/CO incidents or unresolved life-safety evidence. Optional PM ventilation advice shall require compatible current outdoor-hazard policy. |
+| SYS-SR-IEHM-017 | Neither the component nor shared notification adapters shall switch unapproved electrical outputs during a flammable-gas incident, including light restoration after another fault clears. A separately persisted switching-inhibition latch shall survive detector HEAL and require explicit authorized clearance under a reviewed installation policy. Native alarms shall remain independent; approved local annunciation shall remain independent of mobile delivery. |
+| SYS-SR-IEHM-018 | System policy shall own alarm profiles, calibration, severity, timers, evidence limits and output eligibility; installation configuration shall own detector/entity/area bindings and equipment profile selection. Incomplete or timing-incompatible enabled contracts shall be rejected. |
+| SYS-SR-IEHM-019 | User-facing text shall have EN/PL/DE parity, preserving machine IDs and raw states. Simulated fixtures and explicit test reports shall remain distinguishable from live alarms; maintenance mode shall not suppress an unambiguously live alarm. |
+| SYS-SR-IEHM-020 | Provider I/O, averaging, storage and delivery shall be isolated from the immediate alarm path, bounded and deterministic; the component shall register no recovery actions or actuator/reset calls. |
+
+The component shall map smoke/gas/CO to L1, short-window PM2.5 hazard to L2,
+optional long-term PM exposure to L3 and detector supervision loss to L3.
+Fault severity shall not be inferred from a health state or silently reduced
+by an unrelated active fault. C-ALARM and C-AQ contributions do not establish
+completion of separately allocated ventilation, evacuation or gas cutoff.
+
+HARA HZ‑FIRE‑01 / SG‑006, HZ‑GAS‑01 / SG‑007, HZ‑CO‑01 / SG‑008,
+HZ‑AQ‑01 / SG‑005 and HZ‑SYSTEM‑FAIL‑01 / SG‑003 shall trace to
+SYS-SR-IEHM-001..020 and SWR-IEHM-001..025.
+Verification shall cover immediate independent alarms, source quality,
+PM units/windows, multi-detector latches, positive HEAL, restart/time faults,
+bounded deadlines, guidance/output conflicts, persistence and notification/UI
+contracts as detailed in the feature architecture.
+
+---
+
+**Other component allocations:** Water Leak is owned by C-LEAK; C-AQ retains
+indoor-air-quality responsibilities beyond the PM2.5 allocation above;
+intrusion/lock security by C-SEC, Privacy by C-PRIV, and Network/Platform Health
+by C-NET.
 
 ## 9 Non‑Functional Requirements (NFR)
 
