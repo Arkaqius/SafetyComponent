@@ -117,6 +117,9 @@ test('accepts only a correlated and valid notification history response', () => 
   };
 
   assert.deepEqual(readNotificationHistoryResponse(response, 'request-1'), response);
+  const withoutNullCursor = { ...response };
+  Reflect.deleteProperty(withoutNullCursor, 'next_cursor');
+  assert.deepEqual(readNotificationHistoryResponse(withoutNullCursor, 'request-1'), response);
   assert.equal(readNotificationHistoryResponse(response, 'different'), null);
   assert.equal(readNotificationHistoryResponse({ ...response, entries: [{ ...entry, attempted_at: 'bad' }] }, 'request-1'), null);
 });

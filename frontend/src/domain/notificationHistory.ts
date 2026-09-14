@@ -92,6 +92,7 @@ export function notificationHistoryRequest(requestId: string, cursor?: string, r
 export function readNotificationHistoryResponse(data: unknown, expectedRequestId: string): NotificationHistoryResponse | null {
   if (!data || typeof data !== 'object') return null;
   const response = data as Record<string, unknown>;
+  const nextCursor = response.next_cursor;
   if (response.version !== 1 || response.request_id !== expectedRequestId) return null;
   if (response.status === 'error') {
     if (typeof response.error !== 'string' || response.error.length === 0) return null;
@@ -104,13 +105,13 @@ export function readNotificationHistoryResponse(data: unknown, expectedRequestId
     !Number.isInteger(response.total) ||
     Number(response.total) < 0 ||
     !Array.isArray(response.entries) ||
-    (response.next_cursor !== null && typeof response.next_cursor !== 'string')
+    (nextCursor !== undefined && nextCursor !== null && typeof nextCursor !== 'string')
   ) {
     return null;
   }
   const entries = response.entries.filter(isNotificationEntry);
   if (entries.length !== response.entries.length || entries.length > 20) return null;
-  return { ...response, entries } as unknown as NotificationHistoryPage;
+  return { ...response, entries, next_cursor: nextCursor ?? null } as unknown as NotificationHistoryPage;
 }
 
 export function filterNotificationHistory(entries: NotificationEntry[], result: string, state: string): NotificationEntry[] {
