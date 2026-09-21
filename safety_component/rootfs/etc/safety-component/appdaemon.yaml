@@ -1,0 +1,10 @@
+appdaemon:
+  latitude: __HOME_ASSISTANT_LATITUDE__
+  longitude: __HOME_ASSISTANT_LONGITUDE__
+  elevation: __HOME_ASSISTANT_ELEVATION__
+  time_zone: __HOME_ASSISTANT_TIME_ZONE__
+  app_dir: /run/safety-component/apps
+  plugins:
+    HASS:
+      type: hass
+      token: !env_var SUPERVISOR_TOKEN

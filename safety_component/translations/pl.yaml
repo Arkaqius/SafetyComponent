@@ -1,0 +1,6 @@
+configuration:
+  log_level:
+    name: Poziom logowania
+    description: Minimalny poziom komunikatów AppDaemon zapisywanych w logu App.
+network:
+  8099/tcp: Interfejs Safety Home (tylko Ingress)

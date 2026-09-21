@@ -1,0 +1,110 @@
+name: SafetyComponent App image
+
+on:
+  pull_request:
+    paths:
+      - .dockerignore
+      - .github/workflows/safety-component-app.yml
+      - backend/**
+      - frontend/**
+      - repository.yaml
+      - safety_component/**
+  push:
+    branches:
+      - main
+    paths:
+      - .dockerignore
+      - .github/workflows/safety-component-app.yml
+      - backend/**
+      - frontend/**
+      - repository.yaml
+      - safety_component/**
+  release:
+    types:
+      - published
+
+permissions: {}
+
+env:
+  ARCHITECTURES: '["amd64", "aarch64"]'
+  IMAGE_NAME: safetyfunctions
+  REGISTRY_PREFIX: ghcr.io/arkaqius
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Read and verify App version
+        id: version
+        shell: bash
+        run: |
+          version="$(awk '$1 == "version:" { print $2; exit }' safety_component/config.yaml)"
+          test -n "${version}"
+          if [[ "${GITHUB_EVENT_NAME}" == "release" && "${GITHUB_REF_NAME}" != "v${version}" ]]; then
+            echo "Release tag ${GITHUB_REF_NAME} must match App version v${version}" >&2
+            exit 1
+          fi
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Prepare architecture matrix
+        id: matrix
+        uses: home-assistant/builder/actions/prepare-multi-arch-matrix@7412f0023ea9b6e58e8bb5059f1660f51376f49a # 2026.09.0
+        with:
+          architectures: ${{ env.ARCHITECTURES }}
+          image-name: ${{ env.IMAGE_NAME }}
+          registry-prefix: ${{ env.REGISTRY_PREFIX }}
+
+  build:
+    needs: prepare
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      id-token: write
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build App image
+        uses: home-assistant/builder/actions/build-image@7412f0023ea9b6e58e8bb5059f1660f51376f49a # 2026.09.0
+        with:
+          arch: ${{ matrix.arch }}
+          container-registry-password: ${{ secrets.GITHUB_TOKEN }}
+          context: .
+          file: safety_component/Dockerfile
+          image: ${{ matrix.image }}
+          image-tags: ${{ needs.prepare.outputs.version }}
+          push: ${{ github.event_name == 'release' }}
+          version: ${{ needs.prepare.outputs.version }}
+
+  manifest:
+    if: github.event_name == 'release'
+    needs:
+      - prepare
+      - build
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write
+      packages: write
+    steps:
+      - name: Publish multi-architecture image
+        uses: home-assistant/builder/actions/publish-multi-arch-manifest@7412f0023ea9b6e58e8bb5059f1660f51376f49a # 2026.09.0
+        with:
+          architectures: ${{ env.ARCHITECTURES }}
+          container-registry-password: ${{ secrets.GITHUB_TOKEN }}
+          image-name: ${{ env.IMAGE_NAME }}
+          image-tags: |
+            ${{ needs.prepare.outputs.version }}
+            latest
+          registry-prefix: ${{ env.REGISTRY_PREFIX }}

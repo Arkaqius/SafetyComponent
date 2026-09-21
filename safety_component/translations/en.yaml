@@ -1,0 +1,6 @@
+configuration:
+  log_level:
+    name: Log level
+    description: Minimum AppDaemon log level written to the App log.
+network:
+  8099/tcp: Safety Home web interface (Ingress only)

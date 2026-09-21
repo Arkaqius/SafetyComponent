@@ -1,0 +1,10 @@
+[run]
+source = backend
+omit =
+    */backend/tests/*
+    */backend/templates/*
+    */backend/deploy.py
+
+[report]
+fail_under = 90
+show_missing = True

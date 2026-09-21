@@ -1,0 +1,16 @@
+{
+  "current": {
+    "time": "2026-08-04T12:00:00+00:00",
+    "european_aqi": 65,
+    "european_aqi_pm2_5": 60,
+    "european_aqi_pm10": 55,
+    "european_aqi_nitrogen_dioxide": 20,
+    "european_aqi_ozone": 30,
+    "european_aqi_sulphur_dioxide": 10,
+    "pm2_5": 22,
+    "pm10": 34,
+    "nitrogen_dioxide": 18,
+    "ozone": 42,
+    "sulphur_dioxide": 3
+  }
+}

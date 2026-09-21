@@ -1,0 +1,6 @@
+configuration:
+  log_level:
+    name: Protokollierungsstufe
+    description: Minimale AppDaemon-Protokollierungsstufe im App-Protokoll.
+network:
+  8099/tcp: Safety Home Weboberfläche (nur Ingress)

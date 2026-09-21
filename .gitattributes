@@ -1,0 +1,2 @@
+safety_component/Dockerfile text eol=lf
+safety_component/rootfs/** text eol=lf

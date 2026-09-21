@@ -1,0 +1,736 @@
+from unittest.mock import ANY, Mock
+import pytest
+from components.core.event_bus import EventBus
+from components.core.mqtt_entity_manager import MqttEntityManager
+from components.core.types_common import FaultState, SMState, Symptom, Fault
+from components.faults_manager.fault_manager import FaultManager
+
+@pytest.fixture
+def mocked_hass_app():
+    return Mock()
+
+@pytest.fixture
+def symptom():
+    # Creating a mock module for SafetyComponent
+    mock_module = Mock()
+    return Symptom(name="RiskyTemperatureOffice", sm_name="sm_tc_1", module=mock_module, parameters={"CAL_LOW_TEMP_THRESHOLD": 18.0})
+
+@pytest.fixture
+def fault():
+    return Fault(name="RiskyTemperature", related_symptoms=["sm_tc_1"], level=2)
+
+@pytest.fixture
+def fault_manager(mocked_hass_app, symptom, fault):
+    sm_modules = {"TemperatureComponent": Mock()}
+    symptom_dict = {"RiskyTemperatureOffice": symptom}
+    fault_dict = {"RiskyTemperature": fault}
+    event_bus = EventBus()
+    mqtt_entities = Mock(spec=MqttEntityManager)
+
+    def get_attributes(entity_id):
+        state = mocked_hass_app.get_state(entity_id, attribute="all")
+        return state.get("attributes", {}) if state else {}
+
+    mqtt_entities.get_attributes.side_effect = get_attributes
+    manager = FaultManager(
+        mocked_hass_app,
+        sm_modules,
+        symptom_dict,
+        fault_dict,
+        event_bus,
+        mqtt_entities,
+    )
+    manager.notify_spy = Mock()
+    manager.recovery_spy = Mock()
+
+    def notify_spy(
+        *,
+        fault_name,
+        level,
+        fault_state,
+        additional_info,
+        fault_tag,
+        should_notify=True,
+        **_,
+    ):
+        if should_notify:
+            manager.notify_spy(
+                fault_name,
+                level,
+                fault_state,
+                additional_info,
+                fault_tag,
+            )
+
+    def recovery_spy(*, fault_state, symptom, fault_tag, **_):
+        if fault_state != FaultState.SHADOWED:
+            manager.recovery_spy(symptom, fault_tag)
+
+    event_bus.subscribe("fault", notify_spy, priority=0)
+    event_bus.subscribe("fault", recovery_spy, priority=1)
+    return manager
+
+def test_fault_manager_initialization(fault_manager, fault, symptom):
+    """
+    Test if the FaultManager initializes correctly with fault and symptom dictionaries.
+    """
+    assert fault_manager.faults["RiskyTemperature"] == fault
+    assert fault_manager.symptoms["RiskyTemperatureOffice"] == symptom
+
+
+def test_system_state_uses_readable_code_for_most_severe_fault(fault_manager):
+    emergency = Fault("Emergency", ["sm_tc_1"], level=1)
+    warning = Fault("Warning", ["sm_tc_1"], level=3)
+    emergency.state = FaultState.SET
+    warning.state = FaultState.SET
+    fault_manager.faults = {"Emergency": emergency, "Warning": warning}
+
+    fault_manager.update_system_state_entity()
+
+    fault_manager.mqtt_entities.publish_sensor_state.assert_called_with(
+        "sensor.safetysystem_state",
+        "emergency",
+        attributes={"fault_count": 2, "highest_fault_level": 1},
+    )
+
+
+def test_system_state_reports_no_faults_without_active_faults(fault_manager):
+    fault_manager.update_system_state_entity()
+
+    fault_manager.mqtt_entities.publish_sensor_state.assert_called_with(
+        "sensor.safetysystem_state",
+        "no_faults",
+        attributes={"fault_count": 0, "highest_fault_level": 0},
+    )
+
+def test_fault_manager_requires_event_bus_and_mqtt(fault_manager):
+    """Verify manager-to-manager events and entity output have explicit dependencies."""
+    assert isinstance(fault_manager.event_bus, EventBus)
+    assert fault_manager.mqtt_entities is not None
+
+def test_set_symptom(fault_manager, mocked_hass_app):
+    """
+    Test if set_symptom correctly marks a symptom as SET and triggers the fault.
+    """
+    fault_manager._set_fault = Mock()
+
+    fault_manager.set_symptom("RiskyTemperatureOffice")
+    assert fault_manager.symptoms["RiskyTemperatureOffice"].state == FaultState.SET
+    fault_manager._set_fault.assert_called_once_with("RiskyTemperatureOffice", None)
+
+def test_clear_symptom(fault_manager, mocked_hass_app):
+    """
+    Test if clear_symptom correctly marks a symptom as CLEARED and clears the fault.
+    """
+    fault_manager._clear_fault = Mock()
+
+    fault_manager.clear_symptom("RiskyTemperatureOffice", {})
+    assert fault_manager.symptoms["RiskyTemperatureOffice"].state == FaultState.CLEARED
+    fault_manager._clear_fault.assert_called_once_with("RiskyTemperatureOffice", {})
+
+def test_disable_symptom(fault_manager, mocked_hass_app):
+    """
+    Test if disable_symptom correctly marks a symptom as NOT_TESTED and clears the fault.
+    """
+    fault_manager._clear_fault = Mock()
+
+    fault_manager.disable_symptom("RiskyTemperatureOffice", {})
+    assert fault_manager.symptoms["RiskyTemperatureOffice"].state == FaultState.NOT_TESTED
+    fault_manager._clear_fault.assert_called_once_with("RiskyTemperatureOffice", {})
+
+def test_set_fault(fault_manager, mocked_hass_app, fault):
+    """
+    Test if _set_fault correctly sets the fault and calls notification and recovery.
+    """
+    additional_info = {"Location": "Office"}
+    fault_manager._generate_fault_tag = Mock(return_value="mocked_fault_tag")
+    fault_manager.notify_spy.reset_mock()
+    fault_manager.recovery_spy.reset_mock()
+
+    # Set up the mock for get_state to return appropriate data
+    mocked_hass_app.get_state = Mock(return_value={"attributes": {"Location": "Kitchen"}})
+    
+    fault_manager._set_fault("RiskyTemperatureOffice", additional_info)
+
+    assert fault.state == FaultState.SET
+    fault_manager.mqtt_entities.publish_sensor_state.assert_any_call(
+        "sensor.fault_RiskyTemperature",
+        "Set",
+        attributes={
+            "Location": "Kitchen, Office",
+            "notification_tag": "mocked_fault_tag",
+        },
+    )
+    fault_manager.notify_spy.assert_any_call(
+        "RiskyTemperature",
+        fault.level,
+        FaultState.SET,
+        {"Location": "Kitchen, Office"},
+        "mocked_fault_tag"
+    )
+    fault_manager.recovery_spy.assert_called_once_with(fault_manager.symptoms["RiskyTemperatureOffice"], "mocked_fault_tag")
+
+def test_clear_fault(fault_manager, mocked_hass_app, fault):
+    """
+    Test if _clear_fault correctly clears the fault and calls notification and recovery.
+    """
+    additional_info = {"Location": "Office"}
+    fault_manager._generate_fault_tag = Mock(return_value="mocked_fault_tag")
+    fault_manager.notify_spy.reset_mock()
+    fault_manager.recovery_spy.reset_mock()
+
+    # Set up the mock for get_state to return appropriate data
+    mocked_hass_app.get_state = Mock(return_value={"attributes": {"Location": "Office"}})
+
+    # Set fault first to test clearing it
+    fault_manager._set_fault("RiskyTemperatureOffice", additional_info)
+
+    # Now clear the fault
+    fault_manager._clear_fault("RiskyTemperatureOffice", additional_info)
+
+    assert fault.state == FaultState.CLEARED
+    fault_manager.mqtt_entities.publish_sensor_state.assert_any_call(
+        "sensor.fault_RiskyTemperature",
+        "Cleared",
+        attributes={"Location": ""}
+    )
+    fault_manager.notify_spy.assert_any_call(
+        "RiskyTemperature",
+        fault.level,
+        FaultState.CLEARED,
+        additional_info,
+        "mocked_fault_tag"
+    )
+    fault_manager.recovery_spy.assert_any_call(fault_manager.symptoms["RiskyTemperatureOffice"], "mocked_fault_tag")
+
+def test_found_mapped_fault(fault_manager, fault):
+    """
+    Test if found_mapped_fault correctly returns the fault mapped from the symptom.
+    """
+    found_fault = fault_manager.found_mapped_fault("RiskyTemperatureOffice", "sm_tc_1")
+    assert found_fault == fault
+
+def test_check_fault(fault_manager):
+    """
+    Test if check_fault returns the correct fault state.
+    """
+    assert fault_manager.check_fault("RiskyTemperature") == FaultState.NOT_TESTED
+
+def test_check_symptom(fault_manager):
+    """
+    Test if check_symptom returns the correct symptom state.
+    """
+    assert fault_manager.check_symptom("RiskyTemperatureOffice") == FaultState.NOT_TESTED
+
+def test_fault_manager_multiple_symptoms(fault_manager, mocked_hass_app, fault):
+    """
+    Test the FaultManager with multiple symptoms, ensuring proper state transitions,
+    notification, and recovery actions for complex scenarios.
+    """
+    # Mock the recovery and notification interfaces
+    fault_manager._generate_fault_tag = Mock(return_value="mocked_fault_tag")
+    fault_manager.notify_spy.reset_mock()
+    fault_manager.recovery_spy.reset_mock()
+
+    # Define multiple symptoms for testing
+    symptom_office = Symptom(
+        name="RiskyTemperatureOffice",
+        sm_name="sm_tc_1",
+        module=Mock(),
+        parameters={"CAL_LOW_TEMP_THRESHOLD": 18.0},
+    )
+    symptom_kitchen = Symptom(
+        name="RiskyTemperatureKitchen",
+        sm_name="sm_tc_1",
+        module=Mock(),
+        parameters={"CAL_LOW_TEMP_THRESHOLD": 18.0},
+    )
+
+    # Add symptoms to the fault manager
+    fault_manager.symptoms["RiskyTemperatureOffice"] = symptom_office
+    fault_manager.symptoms["RiskyTemperatureKitchen"] = symptom_kitchen
+
+    # Add a fault that both symptoms relate to
+    fault.related_symptoms = ["sm_tc_1"]
+    fault_manager.faults["RiskyTemperature"] = fault
+
+    # Set up the mock for get_state to simulate a previous location being set
+    mocked_hass_app.get_state = Mock(
+        return_value={"attributes": {"Location": "Living Room"}}
+    )
+
+    # Set the first symptom (Office)
+    additional_info_office = {"Location": "Office"}
+    fault_manager.set_symptom("RiskyTemperatureOffice", additional_info_office)
+
+    # Verify the fault state is set and includes both locations (Living Room, Office)
+    assert fault.state == FaultState.SET
+    fault_manager.mqtt_entities.publish_sensor_state.assert_any_call(
+        "sensor.fault_RiskyTemperature",
+        "Set",
+        attributes={
+            "Location": "Living Room, Office",
+            "notification_tag": "mocked_fault_tag",
+        },
+    )
+    fault_manager.notify_spy.assert_any_call(
+        "RiskyTemperature",
+        fault.level,
+        FaultState.SET,
+        {"Location": "Living Room, Office"},
+        "mocked_fault_tag",
+    )
+    fault_manager.recovery_spy.assert_any_call(
+        symptom_office, "mocked_fault_tag"
+    )
+    
+    # Set the second symptom (Office)
+    additional_info_kitchen = {"Location": "Kitchen"}
+    fault_manager.set_symptom("RiskyTemperatureKitchen", additional_info_kitchen)
+    
+    # Verify the fault state is set and includes both locations (Living Room, Office)
+    assert fault.state == FaultState.SET
+    fault_manager.mqtt_entities.publish_sensor_state.assert_any_call(
+        "sensor.fault_RiskyTemperature",
+        "Set",
+        attributes={
+            "Location": "Living Room, Kitchen",
+            "notification_tag": "mocked_fault_tag",
+        },  # In normal system shall be also included Office but we dont have HA during tests
+    )
+    fault_manager.notify_spy.assert_any_call(
+        "RiskyTemperature",
+        fault.level,
+        FaultState.SET,
+        {"Location": "Living Room, Kitchen"},
+        "mocked_fault_tag",
+    )
+    fault_manager.recovery_spy.assert_any_call(
+        symptom_kitchen, "mocked_fault_tag"
+    )
+
+    # Clear the first symptom (Office)
+    fault_manager.clear_symptom("RiskyTemperatureOffice", additional_info_office)
+
+    # Verify that fault remains set because the kitchen symptom is not cleared
+    assert fault.state == FaultState.SET
+
+    # Clear the second symptom (Kitchen)
+    fault_manager.clear_symptom("RiskyTemperatureKitchen", additional_info_kitchen)
+
+    # Verify the fault is now cleared as all related symptoms are cleared
+    assert fault.state == FaultState.CLEARED
+    fault_manager.mqtt_entities.publish_sensor_state.assert_any_call(
+        "sensor.fault_RiskyTemperature",
+        "Cleared",
+        attributes={"Location": ""},
+    )
+    fault_manager.notify_spy.assert_any_call(
+        "RiskyTemperature",
+        fault.level,
+        FaultState.CLEARED,
+        additional_info_kitchen,
+        "mocked_fault_tag",
+    )
+    fault_manager.recovery_spy.assert_any_call(
+        symptom_kitchen, "mocked_fault_tag"
+    )
+
+
+def test_fault_manager_multiple_sm_names_single_fault(
+    fault_manager, mocked_hass_app
+):
+    """
+    Test that a fault mapped to multiple safety mechanism names clears only when all related symptoms are cleared.
+    """
+    fault_manager._generate_fault_tag = Mock(return_value="mocked_fault_tag")
+    fault_manager.notify_spy.reset_mock()
+    fault_manager.recovery_spy.reset_mock()
+
+    symptom_low = Symptom(
+        name="RiskyTemperatureOffice",
+        sm_name="sm_tc_1",
+        module=Mock(),
+        parameters={"CAL_LOW_TEMP_THRESHOLD": 18.0},
+    )
+    symptom_high = Symptom(
+        name="RiskyTemperatureHighOffice",
+        sm_name="sm_tc_3",
+        module=Mock(),
+        parameters={"CAL_HIGH_TEMP_THRESHOLD": 28.0},
+    )
+
+    fault_manager.symptoms = {
+        symptom_low.name: symptom_low,
+        symptom_high.name: symptom_high,
+    }
+    fault_manager.faults = {
+        "RiskyTemperature": Fault("RiskyTemperature", ["sm_tc_1", "sm_tc_3"], level=2)
+    }
+
+    mocked_hass_app.get_state = Mock(return_value={"attributes": {"Location": ""}})
+
+    fault_manager.set_symptom(symptom_low.name, {"Location": "Office"})
+    fault_manager.set_symptom(symptom_high.name, {"Location": "Office"})
+    fault_manager.clear_symptom(symptom_low.name, {"Location": "Office"})
+
+    assert fault_manager.faults["RiskyTemperature"].state == FaultState.SET
+
+    fault_manager.clear_symptom(symptom_high.name, {"Location": "Office"})
+
+    assert fault_manager.faults["RiskyTemperature"].state == FaultState.CLEARED
+
+
+def test_fault_manager_state_transitions(fault_manager, mocked_hass_app, fault):
+    """
+    Test complex state transitions involving multiple symptoms and faults.
+    """
+    # Mock the recovery and notification interfaces
+    fault_manager._generate_fault_tag = Mock(return_value="mocked_fault_tag")
+    fault_manager.notify_spy.reset_mock()
+    fault_manager.recovery_spy.reset_mock()
+
+    # Define two symptoms that relate to different faults
+    symptom1 = Symptom(
+        name="RiskyTemperatureOffice",
+        sm_name="sm_tc_1",
+        module=Mock(),
+        parameters={"CAL_LOW_TEMP_THRESHOLD": 18.0},
+    )
+    symptom2 = Symptom(
+        name="OverheatingKitchen",
+        sm_name="sm_tc_2",
+        module=Mock(),
+        parameters={"CAL_HIGH_TEMP_THRESHOLD": 30.0},
+    )
+
+    # Add symptoms to the fault manager
+    fault_manager.symptoms["RiskyTemperatureOffice"] = symptom1
+    fault_manager.symptoms["OverheatingKitchen"] = symptom2
+
+    # Add faults that relate to the symptoms
+    fault1 = Fault("RiskyTemperature", ["sm_tc_1"], level=2)
+    fault2 = Fault("OverheatingFault", ["sm_tc_2"], level=3)
+    fault_manager.faults["RiskyTemperature"] = fault1
+    fault_manager.faults["OverheatingFault"] = fault2
+
+    # Set up the mock for get_state to simulate a previous location being set
+    mocked_hass_app.get_state = Mock(
+        return_value={"attributes": {"Location": "Living Room"}}
+    )
+
+    # Set symptom1 (RiskyTemperatureOffice)
+    additional_info1 = {"Location": "Office"}
+    fault_manager.set_symptom("RiskyTemperatureOffice", additional_info1)
+
+    # Verify fault1 is set
+    assert fault1.state == FaultState.SET
+    fault_manager.notify_spy.assert_any_call(
+        "RiskyTemperature",
+        fault1.level,
+        FaultState.SET,
+        {"Location": "Living Room, Office"},
+        "mocked_fault_tag",
+    )
+
+    # Set symptom2 (OverheatingKitchen)
+    additional_info2 = {"Location": "Kitchen"}
+    fault_manager.set_symptom("OverheatingKitchen", additional_info2)
+
+    # Verify fault2 is set
+    assert fault2.state == FaultState.SET
+    fault_manager.notify_spy.assert_any_call(
+        "OverheatingFault",
+        fault2.level,
+        FaultState.SET,
+        {"Location": "Living Room, Kitchen"},
+        "mocked_fault_tag",
+    )
+
+    # Clear symptom1 (RiskyTemperatureOffice)
+    fault_manager.clear_symptom("RiskyTemperatureOffice", additional_info1)
+
+    # Verify fault1 is cleared
+    assert fault1.state == FaultState.CLEARED
+    fault_manager.notify_spy.assert_any_call(
+        "RiskyTemperature",
+        fault1.level,
+        FaultState.CLEARED,
+        additional_info1,
+        "mocked_fault_tag",
+    )
+
+    # Verify fault2 remains set
+    assert fault2.state == FaultState.SET
+
+    # Clear symptom2 (OverheatingKitchen)
+    fault_manager.clear_symptom("OverheatingKitchen", additional_info2)
+
+    # Verify fault2 is cleared
+    assert fault2.state == FaultState.CLEARED
+    fault_manager.notify_spy.assert_any_call(
+        "OverheatingFault",
+        fault2.level,
+        FaultState.CLEARED,
+        additional_info2,
+        "mocked_fault_tag",
+    )
+
+
+def test_fault_shadowing_clears_notification(fault_manager, mocked_hass_app):
+    """
+    Test that a fault listed in a shadowing rule is shadowed and its notification cleared.
+    """
+    fault_manager.notify_spy.reset_mock()
+    fault_manager.recovery_spy.reset_mock()
+    mocked_hass_app.get_state = Mock(return_value={"attributes": {"Location": "Office"}})
+
+    symptom_actual = Symptom(
+        name="RiskyTemperatureOffice",
+        sm_name="sm_tc_1",
+        module=Mock(),
+        parameters={"CAL_LOW_TEMP_THRESHOLD": 18.0},
+    )
+    symptom_forecast = Symptom(
+        name="RiskyTemperatureOfficeForecast",
+        sm_name="sm_tc_2",
+        module=Mock(),
+        parameters={"CAL_LOW_TEMP_THRESHOLD": 18.0},
+    )
+
+    fault_actual = Fault(
+        "RiskyTemperature",
+        ["sm_tc_1"],
+        level=2,
+        shadows=["RiskyTemperatureForecast"],
+    )
+    fault_forecast = Fault("RiskyTemperatureForecast", ["sm_tc_2"], level=3)
+
+    fault_manager.symptoms = {
+        symptom_actual.name: symptom_actual,
+        symptom_forecast.name: symptom_forecast,
+    }
+    fault_manager.faults = {
+        fault_actual.name: fault_actual,
+        fault_forecast.name: fault_forecast,
+    }
+
+    additional_info = {"Location": "Office"}
+    fault_manager.set_symptom(symptom_forecast.name, additional_info)
+    assert fault_forecast.state == FaultState.SET
+
+    fault_manager.set_symptom(symptom_actual.name, additional_info)
+    assert fault_actual.state == FaultState.SET
+    assert fault_forecast.state == FaultState.SHADOWED
+
+    fault_manager.notify_spy.assert_any_call(
+        "RiskyTemperatureForecast",
+        fault_forecast.level,
+        FaultState.SHADOWED,
+        additional_info,
+        ANY,
+    )
+    
+def test_fault_manager_init_safety_mechanisms_failure(fault_manager):
+    """
+    Test the FaultManager's init_safety_mechanisms function for a failure scenario where a symptom
+    fails to initialize its safety mechanism, setting its state to ERROR.
+    """
+    # Mock a symptom that will fail to initialize
+    symptom = Symptom(
+        name="FaultyTemperatureSensor",
+        sm_name="sm_tc_faulty",
+        module=Mock(),
+        parameters={"CAL_LOW_TEMP_THRESHOLD": 18.0},
+    )
+
+    # Make the init_safety_mechanism method return False to simulate failure
+    symptom.module.init_safety_mechanism = Mock(return_value=False)
+
+    # Add the symptom to the fault manager
+    fault_manager.symptoms["FaultyTemperatureSensor"] = symptom
+
+    # Initialize safety mechanisms
+    fault_manager.init_safety_mechanisms()
+
+    # Verify that the symptom state is set to ERROR
+    assert fault_manager.symptoms["FaultyTemperatureSensor"].sm_state == SMState.ERROR
+    
+def test_fault_manager_cleared_state_determinate_info(fault_manager, mocked_hass_app):
+    """
+    Test the _determinate_info function for the CLEARED branch.
+    """
+    # Set up the mock for get_state to simulate current attributes
+    mocked_hass_app.get_state = Mock(
+        return_value={"attributes": {"Location": "Living Room, Office"}}
+    )
+
+    # Define additional information to clear
+    additional_info = {"Location": "Office"}
+
+    # Call the _determinate_info method with FaultState.CLEARED
+    updated_info = fault_manager._determinate_info(
+        "sensor.fault_RiskyTemperature", additional_info, FaultState.CLEARED
+    )
+
+    # Verify the updated information
+    assert updated_info == {"Location": "Living Room"}
+
+    # Test clearing the last remaining location
+    additional_info = {"Location": "Living Room"}
+    updated_info = fault_manager._determinate_info(
+        "sensor.fault_RiskyTemperature", additional_info, FaultState.CLEARED
+    )
+
+    # Verify the updated information is empty
+    assert updated_info == {'Location': 'Office'}
+    
+    
+def test_fault_manager_multiple_faults_associated_with_symptom(fault_manager, mocked_hass_app):
+    """
+    Test the behavior when multiple faults are associated with a single symptom.
+    """
+    # Define a symptom
+    symptom = Symptom(
+        name="RiskyTemperatureOffice",
+        sm_name="sm_tc_1",
+        module=Mock(),
+        parameters={"CAL_LOW_TEMP_THRESHOLD": 18.0},
+    )
+    fault_manager.symptoms["RiskyTemperatureOffice"] = symptom
+
+    # Define multiple faults that are incorrectly associated with the same symptom
+    fault1 = Fault("Fault1", ["sm_tc_1"], level=2)
+    fault2 = Fault("Fault2", ["sm_tc_1"], level=3)
+    fault_manager.faults["Fault1"] = fault1
+    fault_manager.faults["Fault2"] = fault2
+
+    # Call found_mapped_fault and verify it returns None due to multiple faults
+    result = fault_manager.found_mapped_fault("RiskyTemperatureOffice", "sm_tc_1")
+    assert result is None
+    mocked_hass_app.log.assert_any_call(
+        "Error: Multiple faults found associated with symptom_id 'RiskyTemperatureOffice', indicating a configuration error.",
+        level="ERROR",
+    )
+
+
+def test_fault_manager_no_fault_associated_with_symptom(fault_manager, mocked_hass_app):
+    """
+    Test the behavior when no fault is associated with a symptom.
+    """
+    # Define a symptom
+    symptom = Symptom(
+        name="RiskyTemperatureOffice",
+        sm_name="sm_tc_1",
+        module=Mock(),
+        parameters={"CAL_LOW_TEMP_THRESHOLD": 18.0},
+    )
+    fault_manager.symptoms["RiskyTemperatureOffice"] = symptom
+
+    # Call found_mapped_fault and verify it returns None due to no associated faults
+    result = fault_manager.found_mapped_fault("RiskyTemperatureKitchen", "sm_tc_999")
+    assert result is None
+    mocked_hass_app.log.assert_any_call(
+        "Error: No faults associated with symptom_id 'RiskyTemperatureKitchen'. This may indicate a configuration error.",
+        level="ERROR",
+    )
+    
+def test_enable_sm_invalid_state(fault_manager, mocked_hass_app):
+    """
+    Test the behavior when an invalid safety mechanism state is provided.
+    """
+    # Define a symptom
+    symptom = Symptom(
+        name="RiskyTemperatureOffice",
+        sm_name="sm_tc_1",
+        module=Mock(),
+        parameters={"CAL_LOW_TEMP_THRESHOLD": 18.0},
+    )
+    fault_manager.symptoms["RiskyTemperatureOffice"] = symptom
+
+    # Attempt to enable the safety mechanism with an invalid state
+    invalid_state = "INVALID_STATE"  # This is not an instance of SMState
+    fault_manager.enable_sm("RiskyTemperatureOffice", invalid_state)
+
+    # Verify that the error was logged
+    mocked_hass_app.log.assert_any_call(
+        f"Error: Unknown SMState '{invalid_state}' for safety mechanism 'RiskyTemperatureOffice'.",
+        level="ERROR",
+    )
+    
+def test_enable_sm_failure_case(fault_manager, mocked_hass_app):
+    """
+    Test the behavior when enabling a safety mechanism fails.
+    """
+    # Define a symptom
+    symptom = Symptom(
+        name="RiskyTemperatureOffice",
+        sm_name="sm_tc_1",
+        module=Mock(),
+        parameters={"CAL_LOW_TEMP_THRESHOLD": 18.0},
+    )
+    # Simulate enabling failure by returning False
+    symptom.module.enable_safety_mechanism.return_value = False
+    fault_manager.symptoms["RiskyTemperatureOffice"] = symptom
+
+    # Attempt to enable the safety mechanism
+    fault_manager.enable_sm("RiskyTemperatureOffice", SMState.ENABLED)
+
+    # Verify that the symptom state is set to ERROR
+    assert symptom.sm_state == SMState.ERROR
+    
+def test_determinate_info_no_NOT_TESTED(fault_manager):
+    """
+    Test _determinate_info when fault_state doesn't match.
+    """
+    entity_id = "sensor.fault_test"
+    additional_info = {"Location": "Office"}
+    fault_state = FaultState.NOT_TESTED  # FaultState is neither SET nor CLEARED
+    
+    # Set up the mock for `get_state` to return current attributes
+    mocked_hass_app.get_state = Mock(return_value={
+        "attributes": {"Location": "None"}  # Existing attribute is set as 'None'
+    })
+
+    result = fault_manager._determinate_info(entity_id, additional_info, fault_state)
+    
+    # Verify that the result is None, covering the last line of the function
+    assert result is None
+    
+def test_determinate_info_set_none_value(fault_manager, mocked_hass_app):
+    """
+    Test _determinate_info when the current attribute exists as 'None' and needs to be updated to a new value.
+    """
+    entity_id = "sensor.fault_test"
+    additional_info = {"Location": "Office"}
+
+    # Set up the mock for `get_state` to return current attributes
+    mocked_hass_app.get_state = Mock(return_value={
+        "attributes": {"Location": "None"}  # Existing attribute is set as 'None'
+    })
+
+    fault_state = FaultState.SET
+
+    result = fault_manager._determinate_info(entity_id, additional_info, fault_state)
+    
+    # Verify that the attribute "Location" was updated from "None" to "Office"
+    assert result == {"Location": "Office"}
+    
+def test_determinate_info_clear_none_value(fault_manager, mocked_hass_app):
+    """
+    Test _determinate_info when clearing an attribute that exists as 'None'.
+    """
+    entity_id = "sensor.fault_test"
+    additional_info = {"Location": "Office"}
+
+    # Set up the mock for `get_state` to return current attributes
+    mocked_hass_app.get_state = Mock(return_value={
+        "attributes": {"Location": "None, Office"}  # Existing attribute contains 'None' and 'Office'
+    })
+
+    fault_state = FaultState.CLEARED
+
+    result = fault_manager._determinate_info(entity_id, additional_info, fault_state)
+    
+    # Verify that the attribute "Location" is cleared correctly
+    assert result == {"Location": "None"}

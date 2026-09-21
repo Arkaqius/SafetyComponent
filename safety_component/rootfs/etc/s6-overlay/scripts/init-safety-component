@@ -1,0 +1,29 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+
+set -euo pipefail
+
+readonly user_config="/config/user_config.yml"
+readonly runtime_root="/run/safety-component"
+readonly runtime_apps="${runtime_root}/apps"
+readonly appdaemon_config="/data/appdaemon"
+
+mkdir -p "/config/appdaemon" "${runtime_apps}" "${appdaemon_config}"
+
+if ! bashio::fs.file_exists "${user_config}"; then
+    cp /opt/safety-component/backend/config/user_config.example.yml "${user_config}"
+    bashio::exit.nok \
+        "Created /config/user_config.yml. Configure installation entities, then restart SafetyComponent."
+fi
+
+cp /opt/safety-component/backend/SafetyFunctions.py "${runtime_apps}/SafetyFunctions.py"
+cp -R /opt/safety-component/backend/components "${runtime_apps}/components"
+python /opt/safety-component/backend/build_app_config.py \
+    --system /opt/safety-component/backend/config/system_config.yml \
+    --user "${user_config}" \
+    --output "${runtime_apps}/apps.yaml"
+python /opt/safety-component/backend/build_appdaemon_config.py \
+    --template /etc/safety-component/appdaemon.yaml \
+    --output "${appdaemon_config}/appdaemon.yaml"
+
+bashio::log.info "SafetyComponent configuration compiled successfully"

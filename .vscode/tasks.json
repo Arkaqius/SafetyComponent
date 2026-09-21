@@ -1,0 +1,49 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Deploy AppDaemon (mirror to Samba)",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "${workspaceFolder}/backend/deploy.py",
+                "${workspaceFolder}/backend/",
+                "\\\\192.168.0.216\\addon_configs\\a0d7b954_appdaemon\\apps\\SafetyFunctions",
+                "--delete"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            },
+            "group": "build"
+        },
+        {
+            "label": "Deploy AppDaemon (dry run)",
+            "type": "shell",
+            "command": "python",
+            "args": [
+                "${workspaceFolder}/backend/deploy.py",
+                "${workspaceFolder}/backend/",
+                "\\\\192.168.0.216\\addon_configs\\a0d7b954_appdaemon\\apps\\SafetyFunctions",
+                "--delete",
+                "--dry-run",
+                "--ignore",
+                "${workspaceFolder}/backend/tests",
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": true
+            }
+        }
+    ]
+}

@@ -1,0 +1,28 @@
+# Backend
+
+## Coding Standards
+
+Follow these conventions when working on the backend codebase:
+
+- **Type hints**: Use type hints for function signatures, class attributes, and complex variables whenever practical.
+- **PEP 8 naming**: Use `snake_case` for functions/variables, `PascalCase` for classes, and `UPPER_SNAKE_CASE` for constants.
+- **Docstrings**: Add docstrings to all public modules, classes, and functions to describe purpose, inputs, and outputs.
+- **Imports**: Group standard library, third-party, and local imports separately, and keep imports ordered within each group.
+- **Clarity over cleverness**: Prefer explicit, readable logic and meaningful names over terse constructs.
+
+If you are unsure about an existing pattern, check nearby modules in `backend/` and follow the established style.
+
+## Home Assistant App runtime
+
+The standalone Home Assistant App compiles the packaged `system_config.yml`
+with `/config/user_config.yml` on every start. Its startup service invokes:
+
+```powershell
+python backend/build_app_config.py --system <system.yml> --user <user.yml> --output <apps.yaml>
+```
+
+The default paths remain available for local development after copying
+`config/user_config.example.yml` to the ignored `config/user_config.yml`.
+The generated `app_cfg.yaml` is also ignored. Explicit path arguments are for
+the container boundary and do not change the generated `SafetyFunctions`
+configuration contract.

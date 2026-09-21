@@ -1,0 +1,7 @@
+# Merge these explicit entities into the existing recorder configuration.
+# Do not replace unrelated include/exclude rules in configuration.yaml.
+recorder:
+  include:
+    entities:
+      - sensor.example_living_room_temperature
+      - sensor.example_bedroom_temperature

@@ -1,0 +1,32 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+
+declare core_state=""
+declare -i waited=0
+
+while [[ ${waited} -lt 300 ]]; do
+    core_state=$(curl -s -m 10 \
+        -H "Authorization: Bearer ${SUPERVISOR_TOKEN}" \
+        "http://supervisor/core/api/config" \
+        | jq -r '(.state // empty) | ascii_downcase' 2>/dev/null) \
+        || core_state=""
+
+    if [[ "${core_state}" = "running" ]]; then
+        break
+    fi
+
+    if [[ ${waited} -eq 0 ]]; then
+        bashio::log.info "Waiting for Home Assistant to finish starting..."
+    fi
+    sleep 5
+    waited=$((waited + 5))
+done
+
+if [[ "${core_state}" != "running" ]]; then
+    bashio::log.warning \
+        "Home Assistant is not running after ${waited}s; starting AppDaemon anyway"
+fi
+
+log_level="$(bashio::config 'log_level' | tr '[:lower:]' '[:upper:]')"
+bashio::log.info "Starting the SafetyFunctions AppDaemon runtime"
+exec appdaemon -c /data/appdaemon -D "${log_level}"
