@@ -26,3 +26,12 @@ The default paths remain available for local development after copying
 The generated `app_cfg.yaml` is also ignored. Explicit path arguments are for
 the container boundary and do not change the generated `SafetyFunctions`
 configuration contract.
+
+Source configuration model version 2 builds a normalized installation registry
+before generating component bindings. Packaged defaults are applied first,
+`installation.defaults` may override them for the whole installation, and one
+room or opening may override its applicable values last. The compiler accepts
+only explicit `user_config.model_version: 2`; missing, older, or unknown
+versions fail before AppDaemon starts. Print the machine-readable contract with
+`python backend/build_app_config.py --print-user-schema`. See
+[`Configuration Model - Architecture.md`](<../docs/features/Configuration Model - Architecture.md>).

@@ -212,9 +212,11 @@ This chapter defines **notification levels and vectors** used by the Safety Syst
 `backend/config/system_config.yml` owns software policy, calibration, stable
 fault-to-Safety-Mechanism mappings, provider lifecycle, MQTT behavior, and
 system health checks. The ignored `backend/config/user_config.yml` owns only
-installation bindings and operator choices; the repository contains
-`user_config.example.yml` as its public template. `backend/build_app_config.py`
-merges both sources into the ignored deployable `backend/app_cfg.yaml` contract:
+the normalized installation registry, installation-default overrides, and
+operator choices; the repository contains `user_config.example.yml` as its
+public template. `backend/build_app_config.py` resolves system defaults,
+installation defaults, and per-asset overrides into the ignored deployable
+`backend/app_cfg.yaml` contract:
 
 ```yaml
 app_config:
@@ -1018,11 +1020,13 @@ C-SEC. Diagnostic handling of unavailable inputs supports SG-003.
 
 #### 8.4.5 Installation calibration
 
-Every installation shall define its door keys, Home Assistant areas and entity
-bindings in the private `user_config.yml`. A door may inherit the public default
-timeout or define its own positive timeout. Optional condition bindings shall
-define explicit, disjoint pass and blocked states; the public repository shall
-not contain bindings or calibration copied from a real installation.
+Every installation shall define its opening keys, Home Assistant areas, entity
+bindings, and safety-door roles in the private `user_config.yml` installation
+registry. A safety-door role may inherit the public system timeout, an
+installation-wide timeout, or define its own positive timeout. Optional
+condition bindings shall define explicit, disjoint pass and blocked states; the
+public repository shall not contain bindings or calibration copied from a real
+installation.
 
 #### 8.4.6 Mapping and verification
 

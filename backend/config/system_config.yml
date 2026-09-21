@@ -3,6 +3,8 @@ app_definition:
   class: SafetyFunctions
   log_level: ERROR
   use_dictionary_unpacking: true
+configuration_model:
+  version: 2
 app_config:
   config_version: 1
   strict_validation: true
@@ -234,14 +236,14 @@ runtime_defaults:
     EntityMonitorComponent:
       explicit_entities: {}
     ExternalHazardComponent:
-      openings:
-        LivingRoomWindow:
-          hazards:
-          - frost
-          - wind
-          - rain
-          - storm
-          - outdoor_air_pollution
+      defaults:
+        hazards:
+        - frost
+        - wind
+        - rain
+        - storm
+        - outdoor_air_pollution
+      openings: {}
     SafetyDoorsComponent:
       defaults:
         timeout_seconds: 120

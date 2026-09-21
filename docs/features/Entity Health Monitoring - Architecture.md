@@ -473,11 +473,12 @@ virtualization or pagination, and collapsed device groups bound rendering cost.
 
 Global timing and publication policy belongs in `system_config.yml` under
 `app_config.calibration.entity_monitor`. Explicit installation health
-dependencies and overrides keyed by installation component IDs belong in the
-private `user_config.yml` under
-`safety_components.EntityMonitorComponent`. The public repository contains
-only schema-safe examples and shall not contain bindings from a real Home
-Assistant installation.
+dependencies belong in the private `user_config.yml` under
+`installation.monitored_entities`. Installation-specific overrides keyed by
+stable component dependency IDs belong under
+`installation.defaults.entity_monitor.component_overrides`. The public
+repository contains only schema-safe examples and shall not contain bindings
+from a real Home Assistant installation.
 
 The following is a structural example; the entity ID is illustrative rather
 than an installation mapping:
@@ -498,31 +499,34 @@ app_config:
               max_silence_seconds: 600
 
 user_config:
-  safety_components:
-    EntityMonitorComponent:
-      explicit_entities:
-        ExampleHeatingAppHealth:
-          entity_id: "sensor.example_heating_app_health"
-          description: "Health output of another AppDaemon application"
-          detection_budget_seconds: 30
-          failure_debounce_seconds: 15
-          recovery_debounce_seconds: 60
-          checks:
-            allowed_values:
-              target: "state"
-              values: ["running"]
-      component_overrides:
-        TemperatureExampleRoom:
-          detection_budget_seconds: 615
-          checks:
-            freshness:
-              timestamp_source: "last_updated"
-              max_silence_seconds: 600
+  model_version: 2
+  installation:
+    monitored_entities:
+      ExampleHeatingAppHealth:
+        entity_id: "sensor.example_heating_app_health"
+        description: "Health output of another AppDaemon application"
+        detection_budget_seconds: 30
+        failure_debounce_seconds: 15
+        recovery_debounce_seconds: 60
+        checks:
+          allowed_values:
+            target: "state"
+            values: ["running"]
+    defaults:
+      entity_monitor:
+        component_overrides:
+          TemperatureExampleRoom:
+            detection_budget_seconds: 615
+            checks:
+              freshness:
+                timestamp_source: "last_updated"
+                max_silence_seconds: 600
 ```
 
 Group B declarations are created from already validated component bindings and
-code-owned defaults. Their thresholds may be overridden only by stable key in
-the system-owned calibration source; they are not copied into user config.
+code-owned defaults. The system calibration remains the baseline; an
+installation may refine one dependency only by its stable key under the
+dedicated Entity Monitor installation-default override map.
 
 Strict validation rejects:
 

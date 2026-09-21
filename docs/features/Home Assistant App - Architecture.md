@@ -33,15 +33,23 @@ state remain outside the image in the App-specific configuration directory.
 
 ## 3. Configuration boundary
 
-The App preserves the existing two-source configuration contract:
+The App uses two editable sources and one generated runtime configuration:
 
 - packaged `system_config.yml` owns software policy, calibration, fault
   definitions, provider lifecycle, and stable technical contracts;
-- App-specific `user_config.yml` owns installation bindings, component
-  selection, language, notification destinations, site data, entities, and
-  areas;
+- App-specific `user_config.yml` owns component selection, language,
+  notification destinations, optional installation-wide default overrides,
+  and a normalized registry of site data, rooms, openings, detectors,
+  monitored entities, and Home Assistant bindings;
 - the compiler creates the AppDaemon `apps.yaml` inside the ephemeral runtime
   directory on every start.
+
+The compiler resolves system defaults, installation defaults, and per-asset
+overrides in that order. It then generates the existing component-specific
+runtime bindings. Physical assets are declared once, so one opening entity can
+serve multiple component roles without duplicated installation data. The
+[Configuration Model architecture](<Configuration Model - Architecture.md>)
+defines the complete editable schema and version policy.
 
 The Home Assistant App configuration tab owns shallow operational settings,
 such as log level. Complex entity and area mappings remain file-backed because

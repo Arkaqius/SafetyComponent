@@ -151,10 +151,11 @@ separate API Component registry:
 - `SafetyFunctions.terminate()` stops the external runtime before publishing
   application availability offline.
 
-`AppCfgValidator` validates schemas for `user_config.site`,
-`user_config.api_components`, and `ExternalHazardComponent`. Its entity and area
-collection will include every configured opening. Enabling C-EXT while a
-required API Component or site field is absent is a startup configuration error.
+`AppCfgValidator` validates the generated runtime schemas for
+`user_config.site`, `user_config.api_components`, and
+`ExternalHazardComponent`. Its entity and area collection will include every
+configured opening. Enabling C-EXT while a required API Component or site field
+is absent is a startup configuration error.
 
 ## 7. Component roles
 
@@ -470,16 +471,9 @@ SafetyFunctions:
           - "sm_ext_provider_unavailable"
 
   user_config:
+    model_version: 2
     components_enabled:
       ExternalHazardComponent: true
-
-    site:
-      latitude: 00.0000
-      longitude: 00.0000
-      timezone: Europe/Warsaw
-      country_code: PL
-      teryt_codes:
-        - "0000"
 
     api_components:
       OpenMeteoWeatherApiComponent:
@@ -489,26 +483,30 @@ SafetyFunctions:
       OpenMeteoAirQualityApiComponent:
         enabled: true
 
-    safety_components:
-      ExternalHazardComponent:
-        openings:
-          ExampleWindow:
-            area_id: example_room
-            entity_id: binary_sensor.example_window
-            friendly_name: "Example window"
-            kind: window
-            hazards:
-              - frost
-              - wind
-              - rain
-              - storm
-              - outdoor_air_pollution
-          ExampleGate:
-            area_id: example_driveway
-            entity_id: binary_sensor.example_driveway_gate
-            friendly_name: "Example driveway gate"
-            kind: gate
-            hazards: [frost, wind, rain, storm, outdoor_air_pollution]
+    installation:
+      site:
+        latitude: 00.0000
+        longitude: 00.0000
+        timezone: Europe/Warsaw
+        country_code: PL
+        teryt_codes:
+          - "0000"
+      defaults:
+        external_hazard:
+          hazards: [frost, wind, rain, storm, outdoor_air_pollution]
+      openings:
+        ExampleWindow:
+          area_id: example_room
+          entity_id: binary_sensor.example_window
+          friendly_name: "Example window"
+          kind: window
+          external_hazard: {}
+        ExampleGate:
+          area_id: example_driveway
+          entity_id: binary_sensor.example_driveway_gate
+          friendly_name: "Example driveway gate"
+          kind: gate
+          external_hazard:
             actuator_entity_id: cover.example_driveway_gate
             execution_policy: user_confirmed
             confirmation_timeout_seconds: 180

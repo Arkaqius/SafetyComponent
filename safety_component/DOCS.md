@@ -29,15 +29,17 @@ provide the entity selectors required by this safety configuration.
 AppDaemon's required latitude, longitude, elevation, and time zone are generated
 from Home Assistant Core configuration on every start. Do not duplicate these
 runtime settings in the App options. The safety provider coordinates under
-`user_config.site` remain installation-owned inputs and may intentionally differ
-from the Home Assistant installation location.
+`user_config.installation.site` remain installation-owned inputs and may
+intentionally differ from the Home Assistant installation location.
 
 ## Configuration ownership
 
-- `user_config.yml` contains installation-owned Home Assistant bindings,
+- `user_config.yml` contains a normalized registry of installation-owned rooms,
+  openings, detectors, monitored entities, Home Assistant bindings,
   notification destinations, location, language, and enabled components.
 - The packaged `system_config.yml` contains software policy, calibration,
-  fault definitions, provider lifecycle, and stable runtime contracts.
+  fault definitions, provider lifecycle, stable runtime contracts, and
+  installation-independent defaults.
 - `apps.yaml` is generated inside the container on every start and must not be
   edited.
 - `appdaemon/*.json` contains notification, recovery, and component persistence
@@ -47,6 +49,12 @@ The public SafetyComponent repository contains only
 `backend/config/user_config.example.yml`. Keep the real `user_config.yml` in a
 separate private repository or another access-controlled backup, and copy it to
 the App-specific configuration directory during installation or recovery.
+
+Configuration model version 2 applies values in the order system default,
+installation default, then asset override. Declare a physical opening once and
+attach its `external_hazard` or `safety_door` roles; a room references that
+opening by its stable key. `user_config.model_version: 2` is mandatory; missing,
+older, and unknown versions stop before AppDaemon starts.
 
 Changing stable fault keys, Safety Mechanism IDs, MQTT topics, entity IDs, raw
 state codes, or recovery behavior requires a coordinated code, requirements,
