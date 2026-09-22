@@ -278,6 +278,23 @@ class ApiComponentBindings(SourceModel):
     )
 
 
+class MqttCleanupBindings(SourceModel):
+    """Installation-owned MQTT discovery identities retained for cleanup."""
+
+    legacy_discovery_entity_ids: list[str] = Field(default_factory=list)
+
+    @field_validator("legacy_discovery_entity_ids")
+    @classmethod
+    def _legacy_sensor_entity_ids(cls, value: list[str]) -> list[str]:
+        normalized = list(dict.fromkeys(item.strip().lower() for item in value))
+        if any(not re.fullmatch(r"sensor\.[a-z0-9_]+", item) for item in normalized):
+            raise ValueError(
+                "legacy_discovery_entity_ids must contain lowercase sensor "
+                "entity IDs"
+            )
+        return normalized
+
+
 class InstallationConfig(SourceModel):
     """Normalized physical installation used to generate component bindings."""
 
@@ -353,6 +370,7 @@ class UserConfigurationV2(SourceModel):
     localization: LocalizationBindings = Field(default_factory=LocalizationBindings)
     notification: NotificationBindings
     api_components: ApiComponentBindings = Field(default_factory=ApiComponentBindings)
+    mqtt: MqttCleanupBindings = Field(default_factory=MqttCleanupBindings)
     installation: InstallationConfig
 
 

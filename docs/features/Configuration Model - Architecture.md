@@ -41,7 +41,7 @@ and runtime component identifiers are never derived from display names.
 | `runtime_defaults.recovery` | Recovery persistence and system-owned execution defaults. |
 | `runtime_defaults.localization` | Packaged display-name baseline. |
 | `runtime_defaults.api_components` | Supported provider set and default enablement. |
-| `runtime_defaults.mqtt` | Discovery, topics, availability, retain/QoS, heartbeat, expiry, and cleanup policy. |
+| `runtime_defaults.mqtt` | Discovery, topics, availability, retain/QoS, heartbeat, expiry, and the empty cleanup baseline. |
 | `runtime_defaults.safety_components` | Detector profiles, persistence bounds, component defaults, and empty installation collections. |
 
 Installation-specific entity IDs, areas, site applicability, notification
@@ -123,6 +123,7 @@ Unknown keys are rejected. The complete editable `user_config` root is:
 | `localization` | No | `language` is `en`, `pl`, or `de`; `entity_names` maps valid entity IDs to non-empty display names. Defaults to English with no overrides. |
 | `notification` | Yes | Installation-owned notification destinations described below. Retry, delivery, profile, persistence, and detail policy remain system-owned. |
 | `api_components` | No | Contains only the three supported provider keys, each with `enabled: true/false`; omitted providers inherit enabled system defaults. |
+| `mqtt` | No | Contains only installation-specific `legacy_discovery_entity_ids`; all transport and publication policy remains system-owned. |
 | `installation` | Yes | Physical installation registry described below. |
 
 The five required `components_enabled` keys are
@@ -144,6 +145,12 @@ The five required `components_enabled` keys are
 `ImgwWarningsApiComponent`, and `OpenMeteoAirQualityApiComponent`. Their URLs,
 polling, timeouts, retry bounds, staleness, and schemas remain in
 `system_config.yml`.
+
+`mqtt.legacy_discovery_entity_ids` is an optional, deduplicated list of
+lowercase `sensor.*` entity IDs previously published by this installation.
+The MQTT manager clears their retained discovery topics at startup. This list
+does not enable legacy configuration-model parsing and may be emptied after the
+installation has completed and verified the cleanup.
 
 ### 3.2 Installation root
 
