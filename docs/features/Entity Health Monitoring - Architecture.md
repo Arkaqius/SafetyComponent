@@ -98,10 +98,10 @@ Each entry has a stable installation key and contains:
 - failure and recovery debounce;
 - an enabled/disabled flag that preserves the stable key.
 
-Group A selection belongs to `system_config.yml` under
-`runtime_defaults.safety_components.EntityMonitorComponent`; generated runtime
-configuration places the validated entries under `EntityMonitorComponent`.
-This keeps health-policy thresholds out of the end-user binding file.
+Group A selection belongs to the installation registry under
+`installation.monitored_entities`; generated runtime configuration places the
+validated entries under `EntityMonitorComponent`. System timing defaults remain
+under `calibration.entity_monitor`.
 
 ### 4.2 Group B - component dependencies
 
@@ -472,7 +472,7 @@ virtualization or pagination, and collapsed device groups bound rendering cost.
 ## 14. Configuration contract
 
 Global timing and publication policy belongs in `system_config.yml` under
-`app_config.calibration.entity_monitor`. Explicit installation health
+`calibration.entity_monitor`. Explicit installation health
 dependencies belong in the private `user_config.yml` under
 `installation.monitored_entities`. Installation-specific overrides keyed by
 stable component dependency IDs belong under
@@ -484,19 +484,19 @@ The following is a structural example; the entity ID is illustrative rather
 than an installation mapping:
 
 ```yaml
-app_config:
-  calibration:
-    entity_monitor:
-      startup_grace_seconds: 60
-      default_failure_debounce_seconds: 15
-      default_recovery_debounce_seconds: 60
-      component_overrides:
-        TemperatureBedroom:
-          detection_budget_seconds: 615
-          checks:
-            freshness:
-              timestamp_source: "last_updated"
-              max_silence_seconds: 600
+calibration:
+  entity_monitor:
+    default_startup_grace_seconds: 60
+    default_failure_debounce_seconds: 15
+    default_recovery_debounce_seconds: 60
+    default_evaluation_interval_seconds: 5
+    component_overrides:
+      TemperatureBedroom:
+        detection_budget_seconds: 615
+        checks:
+          freshness:
+            timestamp_source: "last_updated"
+            max_silence_seconds: 600
 
 user_config:
   model_version: 2
@@ -514,6 +514,8 @@ user_config:
             values: ["running"]
     defaults:
       entity_monitor:
+        startup_grace_seconds: 30
+        evaluation_interval_seconds: 2
         component_overrides:
           TemperatureExampleRoom:
             detection_budget_seconds: 615

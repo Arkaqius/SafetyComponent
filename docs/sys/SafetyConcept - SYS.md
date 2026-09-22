@@ -647,26 +647,27 @@ temperature.
 
 - Per-room bindings: `area_id`, `temperature_sensor`, optional `window_sensor`,
   and optional cover `actuator`.
-- Thresholds and forecast horizon: `CAL_LOW_TEMP_THRESHOLD`,
-  `CAL_HIGH_TEMP_THRESHOLD`, and `CAL_FORECAST_TIMESPAN`, inherited from
-  component defaults unless overridden for the room.
+- Thresholds and forecast horizon: `default_low_temperature_c`,
+  `default_high_temperature_c`, and `default_forecast_horizon_hours`, inherited
+  by the installation and exposed as `low_temperature_c`,
+  `high_temperature_c`, and `forecast_horizon_hours` overrides.
 - Direct-mechanism debounce:
-  `SM_TC_1_DEBOUNCE_LIMIT` and `SM_TC_1_REEVAL_DELAY_SECONDS`.
+  `sm_tc_1_debounce_limit` and `sm_tc_1_reeval_delay_seconds`.
 - Forecast-mechanism debounce and derivative sampling:
-  `SM_TC_2_DEBOUNCE_LIMIT`, `SM_TC_2_REEVAL_DELAY_SECONDS`, and
-  `SM_TC_2_DERIVATIVE_SAMPLE_MINUTES`.
-- Plausibility bounds: `SM_TC_MIN_VALID_TEMPERATURE_C`,
-  `SM_TC_MAX_VALID_TEMPERATURE_C`, `SM_TC_MAX_ABS_RATE_C_PER_MIN`, and
-  `SM_TC_MAX_FORECAST_DELTA_C`.
+  `sm_tc_2_debounce_limit`, `sm_tc_2_reeval_delay_seconds`, and
+  `sm_tc_2_derivative_sample_minutes`.
+- Plausibility bounds: `sm_tc_min_valid_temperature_c`,
+  `sm_tc_max_valid_temperature_c`, `sm_tc_max_abs_rate_c_per_min`, and
+  `sm_tc_max_forecast_delta_c`.
 
 #### 8.2.4 Runtime identifier contract
 
 | System mechanism | Runtime ID | Positive condition | Symptom ID | Fault ID |
 | --- | --- | --- | --- | --- |
-| Direct low temperature | `sm_tc_1` | current temperature `< CAL_LOW_TEMP_THRESHOLD` | `RiskyTemperature{Room}` | `RiskyTemperature` |
-| Forecast low temperature | `sm_tc_2` | projected temperature `< CAL_LOW_TEMP_THRESHOLD` | `RiskyTemperature{Room}ForeCast` | `RiskyTemperatureForecast` |
-| Direct high temperature | `sm_tc_3` | current temperature `> CAL_HIGH_TEMP_THRESHOLD` | `RiskyTemperatureHigh{Room}` | `RiskyTemperature` |
-| Forecast high temperature | `sm_tc_4` | projected temperature `> CAL_HIGH_TEMP_THRESHOLD` | `RiskyTemperatureHigh{Room}ForeCast` | `RiskyTemperatureForecast` |
+| Direct low temperature | `sm_tc_1` | current temperature `< low_temperature_c` | `RiskyTemperature{Room}` | `RiskyTemperature` |
+| Forecast low temperature | `sm_tc_2` | projected temperature `< low_temperature_c` | `RiskyTemperature{Room}ForeCast` | `RiskyTemperatureForecast` |
+| Direct high temperature | `sm_tc_3` | current temperature `> high_temperature_c` | `RiskyTemperatureHigh{Room}` | `RiskyTemperature` |
+| Forecast high temperature | `sm_tc_4` | projected temperature `> high_temperature_c` | `RiskyTemperatureHigh{Room}ForeCast` | `RiskyTemperatureForecast` |
 
 `ForeCast` capitalization is retained as part of the existing runtime contract.
 

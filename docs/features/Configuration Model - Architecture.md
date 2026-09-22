@@ -29,20 +29,29 @@ and runtime component identifiers are never derived from display names.
 
 `system_config.yml` is immutable inside a released App image. Its sections are:
 
+The complete field-level rationale and override map is maintained in the
+[System Configuration reference](<../reference/System Configuration.md>).
+
 | Section | Ownership |
 | --- | --- |
 | `app_definition` | AppDaemon module, class, logging baseline, and invocation behavior. |
-| `configuration_model.version` | Exact editable source-model version accepted by the compiler. |
-| `app_config.validation` | Startup entity syntax and existence validation policy. |
-| `app_config.calibration` | Safety Mechanism calibration and Entity Monitor timing/check defaults. |
-| `app_config.external_hazard_policy` | Hazard thresholds, persistence, provider endpoints, polling, timeouts, retries, and staleness. |
-| `app_config.faults` | Stable fault catalog, levels, shadowing, and Safety Mechanism mappings. |
-| `runtime_defaults.notification` | Delivery profiles, retries, deadlines, repeat behavior, diagnostics, and persistence. |
-| `runtime_defaults.recovery` | Recovery persistence and system-owned execution defaults. |
-| `runtime_defaults.localization` | Packaged display-name baseline. |
-| `runtime_defaults.api_components` | Supported provider set and default enablement. |
-| `runtime_defaults.mqtt` | Discovery, topics, availability, retain/QoS, heartbeat, expiry, and the empty cleanup baseline. |
-| `runtime_defaults.safety_components` | Detector profiles, persistence bounds, component defaults, and empty installation collections. |
+| `system_config.version` | Exact system and editable source-model version accepted by the compiler. |
+| `validation` | Strict unknown-key handling plus startup entity syntax and existence validation. |
+| `calibration.temperature` | Temperature mechanism calibration and installation-independent room defaults. |
+| `calibration.entity_monitor` | Default timing, bounded publication, and component dependency overrides. |
+| `calibration.safety_door` | Installation-independent open-timeout default. |
+| `calibration.external_hazard` | Opening hazard defaults and default weather/air-quality decision thresholds. |
+| `calibration.internal_environmental_hazard` | Detector profiles, health timing, persistence, and capacity. |
+| `runtime_cfg.faults` | Stable fault catalog, levels, shadowing, and Safety Mechanism mappings. |
+| `runtime_cfg.providers` | Supported provider enablement, endpoints, polling, timeouts, retries, and staleness. |
+| `runtime_cfg.notification` | Delivery profiles, retries, deadlines, repeat behavior, diagnostics, and persistence. |
+| `runtime_cfg.recovery` | Recovery persistence and execution defaults. |
+| `runtime_cfg.mqtt` | Discovery, topics, availability, retain/QoS, heartbeat, expiry, and the empty cleanup baseline. |
+
+Packaged text is loaded from `backend/components/core/locales/<language>.yml`,
+not from `system_config.yml`. Empty installation collections such as rooms,
+openings, detectors, and explicit monitored entities are not system defaults;
+the compiler creates them only from the installation registry.
 
 Installation-specific entity IDs, areas, site applicability, notification
 destinations, and physical assets are prohibited from the system source.
@@ -122,7 +131,7 @@ Unknown keys are rejected. The complete editable `user_config` root is:
 | `components_enabled` | Yes | Contains exactly the five supported component keys, each with a boolean value, and enables at least one component. |
 | `localization` | No | `language` is `en`, `pl`, or `de`; `entity_names` maps valid entity IDs to non-empty display names. Defaults to English with no overrides. |
 | `notification` | Yes | Installation-owned notification destinations described below. Retry, delivery, profile, persistence, and detail policy remain system-owned. |
-| `api_components` | No | Contains only the three supported provider keys, each with `enabled: true/false`; omitted providers inherit enabled system defaults. |
+| `providers` | No | Contains only the three supported provider keys, each with `enabled: true/false`; omitted providers inherit enabled system defaults. |
 | `mqtt` | No | Contains only installation-specific `legacy_discovery_entity_ids`; all transport and publication policy remains system-owned. |
 | `installation` | Yes | Physical installation registry described below. |
 
@@ -141,7 +150,7 @@ The five required `components_enabled` keys are
 | `local.alarm_entity` | No | Valid Home Assistant entity ID for an approved local alarm output. |
 | `wan_entity` | No | Valid Home Assistant entity ID used as WAN reachability evidence, or `null`. |
 
-`api_components` accepts only `OpenMeteoWeatherApiComponent`,
+`providers` accepts only `OpenMeteoWeatherApiComponent`,
 `ImgwWarningsApiComponent`, and `OpenMeteoAirQualityApiComponent`. Their URLs,
 polling, timeouts, retry bounds, staleness, and schemas remain in
 `system_config.yml`.
@@ -173,8 +182,8 @@ Keys in `rooms`, `openings`, `detectors`, and `monitored_entities` use
 | --- | --- |
 | `defaults.temperature` | Optional `low_temperature_c`, `high_temperature_c`, and positive `forecast_horizon_hours`. Resolved low must remain below resolved high. |
 | `defaults.safety_door` | Optional positive `timeout_seconds`. |
-| `defaults.external_hazard` | Optional non-empty unique `hazards` list containing only `frost`, `wind`, `rain`, `storm`, and `outdoor_air_pollution`. |
-| `defaults.entity_monitor.component_overrides` | Map keyed by a stable component dependency ID. Each value may override non-negative failure/recovery debounce, positive detection budget, and checks. |
+| `defaults.external_hazard` | Optional non-empty unique `hazards` list plus weather and outdoor-air-quality overrides. Omitted values inherit the corresponding `default_*` system calibration. |
+| `defaults.entity_monitor` | Optional `startup_grace_seconds`, positive `evaluation_interval_seconds`, and component override map keyed by stable dependency ID. Each component override may refine debounce, detection budget, and checks. |
 
 ### 3.4 Rooms and openings
 

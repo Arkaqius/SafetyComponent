@@ -89,6 +89,10 @@ class ExternalHazardDefaults(SourceModel):
     """Installation-wide defaults for external-hazard opening roles."""
 
     hazards: list[HazardName] | None = Field(default=None, min_length=1)
+    weather: "WeatherOverrides" = Field(default_factory=lambda: WeatherOverrides())
+    outdoor_air_quality: "AirQualityOverrides" = Field(
+        default_factory=lambda: AirQualityOverrides()
+    )
 
     @field_validator("hazards")
     @classmethod
@@ -98,9 +102,47 @@ class ExternalHazardDefaults(SourceModel):
         return value
 
 
+class WeatherOverrides(SourceModel):
+    """Installation overrides for weather decision defaults."""
+
+    forecast_horizon_hours: int | None = Field(default=None, ge=1, le=72)
+    frost_watch_c: float | None = None
+    frost_warning_c: float | None = None
+    gust_watch_m_s: float | None = Field(default=None, gt=0)
+    gust_warning_m_s: float | None = Field(default=None, gt=0)
+    precipitation_warning_mm_h: float | None = Field(default=None, gt=0)
+    persistence_seconds: int | None = Field(default=None, ge=0)
+    hysteresis: dict[str, float] | None = None
+
+    @model_validator(mode="after")
+    def _ordered_thresholds(self) -> "WeatherOverrides":
+        if (
+            self.frost_watch_c is not None
+            and self.frost_warning_c is not None
+            and self.frost_warning_c > self.frost_watch_c
+        ):
+            raise ValueError("frost_warning_c must not exceed frost_watch_c")
+        if (
+            self.gust_watch_m_s is not None
+            and self.gust_warning_m_s is not None
+            and self.gust_warning_m_s < self.gust_watch_m_s
+        ):
+            raise ValueError("gust_warning_m_s must not be below gust_watch_m_s")
+        return self
+
+
+class AirQualityOverrides(SourceModel):
+    """Installation overrides for outdoor-air-quality decision defaults."""
+
+    standard: Literal["european_aqi"] | None = None
+    warning_at: float | None = Field(default=None, gt=0)
+
+
 class EntityMonitorDefaults(SourceModel):
     """Installation overrides for component-owned entity dependencies."""
 
+    startup_grace_seconds: int | None = Field(default=None, ge=0)
+    evaluation_interval_seconds: int | None = Field(default=None, ge=1)
     component_overrides: dict[str, ComponentEntityOverride] = Field(
         default_factory=dict
     )
@@ -264,7 +306,7 @@ class ProviderSelection(SourceModel):
     enabled: bool = True
 
 
-class ApiComponentBindings(SourceModel):
+class ProviderBindings(SourceModel):
     """Installation selection of the supported external providers."""
 
     OpenMeteoWeatherApiComponent: ProviderSelection = Field(
@@ -369,7 +411,7 @@ class UserConfigurationV2(SourceModel):
     components_enabled: ComponentSelection
     localization: LocalizationBindings = Field(default_factory=LocalizationBindings)
     notification: NotificationBindings
-    api_components: ApiComponentBindings = Field(default_factory=ApiComponentBindings)
+    providers: ProviderBindings = Field(default_factory=ProviderBindings)
     mqtt: MqttCleanupBindings = Field(default_factory=MqttCleanupBindings)
     installation: InstallationConfig
 
@@ -391,6 +433,17 @@ def user_configuration_schema() -> dict[str, Any]:
 
     close_declared_objects(schema)
     return schema
+
+
+def validate_user_configuration_v2(
+    user_config: dict[str, Any],
+) -> UserConfigurationV2:
+    """Validate and normalize the complete editable source configuration."""
+
+    try:
+        return UserConfigurationV2.model_validate(user_config)
+    except ValidationError as exc:
+        raise ValueError(str(exc)) from exc
 
 
 def _compile_temperature(
@@ -520,16 +573,17 @@ def compile_user_config_v2(
 ) -> dict[str, Any]:
     """Compile a v2 source config while preserving the v1 runtime contract."""
 
-    try:
-        source = UserConfigurationV2.model_validate(user_config)
-    except ValidationError as exc:
-        raise ValueError(str(exc)) from exc
+    source = validate_user_configuration_v2(user_config)
     installation = source.installation
 
     source_overrides = source.model_dump(exclude_unset=True)
     source_overrides.pop("model_version", None)
     source_overrides.pop("installation", None)
+    provider_overrides = source_overrides.pop("providers", {})
     compiled = deep_merge(runtime_defaults, source_overrides)
+    compiled["api_components"] = deep_merge(
+        runtime_defaults.get("api_components", {}), provider_overrides
+    )
     compiled["common_entities"] = copy.deepcopy(installation.common_entities)
     if installation.site is None:
         compiled.pop("site", None)

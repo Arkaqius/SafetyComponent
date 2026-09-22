@@ -7,6 +7,7 @@ readonly user_config="/config/user_config.yml"
 readonly runtime_root="/run/safety-component"
 readonly runtime_apps="${runtime_root}/apps"
 readonly appdaemon_config="/data/appdaemon"
+readonly log_level="$(bashio::config 'log_level' | tr '[:lower:]' '[:upper:]')"
 
 mkdir -p "/config/appdaemon" "${runtime_apps}" "${appdaemon_config}"
 
@@ -21,6 +22,7 @@ cp -R /opt/safety-component/backend/components "${runtime_apps}/components"
 python /opt/safety-component/backend/build_app_config.py \
     --system /opt/safety-component/backend/config/system_config.yml \
     --user "${user_config}" \
+    --log-level "${log_level}" \
     --output "${runtime_apps}/apps.yaml"
 python /opt/safety-component/backend/build_appdaemon_config.py \
     --template /etc/safety-component/appdaemon.yaml \

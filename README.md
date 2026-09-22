@@ -128,15 +128,17 @@ installation default → asset override**. The compiler declares each physical
 asset once and generates the existing component bindings from that registry.
 See the [Configuration Model architecture](<docs/features/Configuration Model - Architecture.md>)
 for the complete editable schema, precedence, validation, and schema-inspection
-command.
+command. See the [System Configuration reference](<docs/reference/System Configuration.md>)
+for every packaged configuration group, its ownership, override path, and
+rationale.
 
 The real `user_config.yml` and generated `app_cfg.yaml` are intentionally
 ignored. Keep installation configuration in a separate private repository or
 another access-controlled backup and copy it into place only for local
 validation or deployment.
 
-`user_config.model_version` selects the source configuration model;
-`app_config.config_version` remains the generated runtime contract version.
+`system_config.version` and `user_config.model_version` form one source-model
+contract. Generated runtime configuration has no independent version field.
 Stable fault keys, Safety Mechanism IDs, entity IDs, MQTT topics, and raw state
 codes are machine contracts and require coordinated requirements, code, test,
 and deployment changes.

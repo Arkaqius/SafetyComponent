@@ -46,6 +46,15 @@ def test_cli_accepts_explicit_app_paths(tmp_path, monkeypatch) -> None:
     )
 
 
+def test_home_assistant_log_level_overrides_packaged_default() -> None:
+    compiled = compile_config(
+        user_path=BACKEND_DIR / "config" / "user_config.example.yml",
+        log_level="DEBUG",
+    )
+
+    assert compiled["SafetyFunctions"]["log_level"] == "DEBUG"
+
+
 def test_cli_prints_complete_user_schema(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         sys,
@@ -75,6 +84,43 @@ def test_cli_prints_complete_user_schema(monkeypatch, capsys) -> None:
         "EntityMonitorComponent",
         "InternalEnvironmentalHazardMonitorComponent",
     }
+
+
+def test_cli_prints_complete_system_schema(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["build_app_config.py", "--print-system-schema"],
+    )
+
+    main()
+
+    schema = json.loads(capsys.readouterr().out)
+    assert schema["title"] == "SystemConfigurationV2"
+    assert schema["additionalProperties"] is False
+    assert set(schema["required"]) == {
+        "system_config",
+        "app_definition",
+        "validation",
+        "calibration",
+        "runtime_cfg",
+    }
+    assert schema["$defs"]["ProviderRuntimeSet"]["additionalProperties"] is False
+
+
+def test_system_source_rejects_unknown_keys(tmp_path) -> None:
+    system = yaml.safe_load(
+        (BACKEND_DIR / "config" / "system_config.yml").read_text(encoding="utf-8")
+    )
+    system["calibration"]["temperature"]["unknown_threshold"] = 1
+    system_path = tmp_path / "system.yml"
+    system_path.write_text(yaml.safe_dump(system), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="unknown_threshold"):
+        compile_config(
+            system_path=system_path,
+            user_path=BACKEND_DIR / "config" / "user_config.example.yml",
+        )
 
 
 def test_user_example_does_not_inherit_production_entity_collections() -> None:
@@ -171,6 +217,61 @@ def test_v2_precedence_is_system_then_installation_then_asset(tmp_path) -> None:
     assert (
         components["SafetyDoorsComponent"]["doors"]["EntranceDoor"]["timeout_seconds"]
         == 240
+    )
+
+
+def test_v2_overrides_system_policy_defaults_from_installation(tmp_path) -> None:
+    source = yaml.safe_load(
+        (BACKEND_DIR / "config" / "user_config.example.yml").read_text(encoding="utf-8")
+    )
+    defaults = source["user_config"]["installation"]["defaults"]
+    defaults["entity_monitor"] = {
+        "startup_grace_seconds": 15,
+        "evaluation_interval_seconds": 2,
+    }
+    defaults["external_hazard"] = {
+        "weather": {
+            "frost_watch_c": 3.0,
+            "frost_warning_c": 1.0,
+        },
+        "outdoor_air_quality": {"warning_at": 55},
+    }
+    source["user_config"]["providers"] = {
+        "ImgwWarningsApiComponent": {"enabled": False}
+    }
+    user_path = tmp_path / "user.yml"
+    user_path.write_text(yaml.safe_dump(source), encoding="utf-8")
+
+    compiled = compile_config(user_path=user_path)["SafetyFunctions"]
+    entity_monitor = compiled["app_config"]["calibration"]["entity_monitor"]
+    policy = compiled["app_config"]["external_hazard_policy"]
+
+    assert entity_monitor["startup_grace_seconds"] == 15
+    assert entity_monitor["evaluation_interval_seconds"] == 2
+    assert policy["weather"]["frost_watch_c"] == 3.0
+    assert policy["weather"]["frost_warning_c"] == 1.0
+    assert policy["outdoor_air_quality"]["warning_at"] == 55
+    assert (
+        compiled["user_config"]["api_components"]["ImgwWarningsApiComponent"]["enabled"]
+        is False
+    )
+
+
+def test_generated_runtime_has_one_system_version_contract() -> None:
+    compiled = compile_config(
+        user_path=BACKEND_DIR / "config" / "user_config.example.yml"
+    )["SafetyFunctions"]
+
+    assert "config_version" not in compiled["app_config"]
+    assert "strict_validation" not in compiled["app_config"]
+    assert compiled["app_config"]["validation"]["strict_validation"] is True
+    assert (
+        "SM_TC_1_DEBOUNCE_LIMIT"
+        not in compiled["app_config"]["calibration"]["temperature"]
+    )
+    assert (
+        compiled["app_config"]["calibration"]["temperature"]["sm_tc_1_debounce_limit"]
+        == 2
     )
 
 

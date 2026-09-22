@@ -58,9 +58,9 @@ def test_first_start_requires_reviewed_installation_config() -> None:
     )
     assert not (init_service / "run").exists()
 
-    init_script = (
-        service_root / "scripts" / "init-safety-component"
-    ).read_text(encoding="utf-8")
+    init_script = (service_root / "scripts" / "init-safety-component").read_text(
+        encoding="utf-8"
+    )
 
     assert "/config/user_config.yml" in init_script
     assert "user_config.example.yml" in init_script
@@ -70,6 +70,8 @@ def test_first_start_requires_reviewed_installation_config() -> None:
     assert "backend/." not in init_script
     assert "--system" in init_script
     assert "--user" in init_script
+    assert "--log-level" in init_script
+    assert "bashio::config 'log_level'" in init_script
     assert "--output" in init_script
     assert "build_appdaemon_config.py" in init_script
     assert "cp /etc/safety-component/appdaemon.yaml" not in init_script

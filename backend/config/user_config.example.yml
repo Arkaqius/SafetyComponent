@@ -23,6 +23,16 @@ user_config:
     local: {}
     wan_entity: null
 
+  # Optional provider enablement overrides. Endpoints, polling, retry, timeout,
+  # and staleness policy remain in system_config.yml.
+  providers:
+    OpenMeteoWeatherApiComponent:
+      enabled: true
+    ImgwWarningsApiComponent:
+      enabled: true
+    OpenMeteoAirQualityApiComponent:
+      enabled: true
+
   # Optional installation-specific MQTT discovery identities that must be
   # removed after an entity rename or deletion. MQTT transport policy remains
   # system-owned.
