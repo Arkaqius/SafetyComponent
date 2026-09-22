@@ -107,9 +107,11 @@ configuration directory, and process supervision. See the
 [App documentation](safety_component/DOCS.md) for first-start configuration
 and migration from the separate AppDaemon App.
 
-The first App start writes an example `user_config.yml` and stops. Review and
-replace every installation binding before starting it again. The old and new
-SafetyFunctions backends must not run simultaneously.
+On a fresh installation, the App opens Safety Home without starting
+SafetyFunctions. Open **Konfiguracja** to create `user_config.yml` from the
+example draft or import an existing version 2 YAML file. Review the bindings,
+save, then restart the App. The old and new SafetyFunctions backends must not
+run simultaneously.
 
 ## Configuration
 

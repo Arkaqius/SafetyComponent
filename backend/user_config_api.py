@@ -21,6 +21,8 @@ from configuration_model import validate_user_configuration_v2
 
 
 DEFAULT_USER_CONFIG_PATH = Path("/config/user_config.yml")
+EXAMPLE_USER_CONFIG_PATH = Path(__file__).resolve().parent / "config" / "user_config.example.yml"
+ABSENT_REVISION = "absent"
 MAX_REQUEST_BYTES = 512 * 1024
 
 
@@ -35,26 +37,60 @@ class UserConfigStore:
         self,
         user_path: Path = DEFAULT_USER_CONFIG_PATH,
         system_path: Path = SYSTEM_CONFIG_PATH,
+        example_path: Path = EXAMPLE_USER_CONFIG_PATH,
     ) -> None:
         self.user_path = user_path
         self.system_path = system_path
+        self.example_path = example_path
         self._write_lock = threading.Lock()
 
     def read(self) -> dict[str, Any]:
         """Return the editable user configuration and its content revision."""
 
-        raw = self.user_path.read_bytes()
-        document = yaml.safe_load(raw)
-        if not isinstance(document, dict) or not isinstance(
-            document.get("user_config"), dict
-        ):
-            raise ValueError("user_config.yml must contain a user_config mapping")
-        validate_user_configuration_v2(document["user_config"])
+        setup_required = not self.user_path.exists()
+        raw = (self.example_path if setup_required else self.user_path).read_bytes()
+        validation_error: str | None = None
+        document: Any = None
+        try:
+            document = yaml.safe_load(raw)
+            if not isinstance(document, dict) or not isinstance(
+                document.get("user_config"), dict
+            ):
+                raise ValueError("user_config.yml must contain a user_config mapping")
+            validate_user_configuration_v2(document["user_config"])
+            user_config = document["user_config"]
+        except (ValueError, yaml.YAMLError) as exc:
+            if setup_required:
+                raise
+            validation_error = str(exc)
+            if isinstance(document, dict) and isinstance(
+                document.get("user_config"), dict
+            ):
+                user_config = document["user_config"]
+            else:
+                example = yaml.safe_load(self.example_path.read_text(encoding="utf-8"))
+                user_config = example["user_config"]
+
         return {
-            "user_config": document["user_config"],
-            "revision": self._revision(raw),
+            "user_config": user_config,
+            "revision": ABSENT_REVISION if setup_required else self._revision(raw),
             "restart_required": False,
+            "setup_required": setup_required,
+            "validation_error": validation_error,
         }
+
+    def import_yaml(self, source: str) -> dict[str, Any]:
+        """Validate an uploaded v2 YAML document without persisting it."""
+
+        document = yaml.safe_load(source)
+        if not isinstance(document, dict) or set(document) != {"user_config"}:
+            raise ValueError("YAML must contain only a user_config mapping")
+        user_config = document["user_config"]
+        if not isinstance(user_config, dict):
+            raise ValueError("user_config must be a mapping")
+        validate_user_configuration_v2(user_config)
+        self._validate_with_compiler(document)
+        return {"user_config": user_config}
 
     def save(
         self, user_config: dict[str, Any], expected_revision: str
@@ -62,9 +98,11 @@ class UserConfigStore:
         """Validate and atomically save one revision without changing system policy."""
 
         with self._write_lock:
-            current_raw = self.user_path.read_bytes()
-            current_mode = self.user_path.stat().st_mode & 0o777
-            if expected_revision != self._revision(current_raw):
+            exists = self.user_path.exists()
+            current_raw = self.user_path.read_bytes() if exists else None
+            current_mode = self.user_path.stat().st_mode & 0o777 if exists else 0o600
+            current_revision = self._revision(current_raw) if current_raw is not None else ABSENT_REVISION
+            if expected_revision != current_revision:
                 raise RevisionConflictError(
                     "Configuration changed since it was opened; reload before saving"
                 )
@@ -101,6 +139,11 @@ class UserConfigStore:
                 # Exercise the same compiler used during App startup before replacing
                 # the persisted source. This validates both source layers together.
                 compile_config(system_path=self.system_path, user_path=candidate_path)
+                latest_raw = self.user_path.read_bytes() if self.user_path.exists() else None
+                if latest_raw != current_raw:
+                    raise RevisionConflictError(
+                        "Configuration changed during validation; reload before saving"
+                    )
                 os.replace(candidate_path, self.user_path)
                 candidate_path = None
             finally:
@@ -111,7 +154,19 @@ class UserConfigStore:
             "user_config": document["user_config"],
             "revision": self._revision(rendered),
             "restart_required": True,
+            "setup_required": False,
         }
+
+    def _validate_with_compiler(self, document: dict[str, Any]) -> None:
+        """Compile a temporary candidate without touching the installation file."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            candidate_path = Path(directory) / "user_config.yml"
+            candidate_path.write_text(
+                yaml.safe_dump(document, allow_unicode=True, sort_keys=False),
+                encoding="utf-8",
+            )
+            compile_config(system_path=self.system_path, user_path=candidate_path)
 
     @staticmethod
     def _revision(raw: bytes) -> str:
@@ -130,7 +185,7 @@ class UserConfigRequestHandler(BaseHTTPRequestHandler):
             return
         try:
             self._send_json(HTTPStatus.OK, self.store.read())
-        except (OSError, ValueError) as exc:
+        except (OSError, ValueError, yaml.YAMLError) as exc:
             self._send_json(
                 HTTPStatus.INTERNAL_SERVER_ERROR,
                 {"error": "configuration_unavailable", "message": str(exc)},
@@ -141,20 +196,7 @@ class UserConfigRequestHandler(BaseHTTPRequestHandler):
             self._send_json(HTTPStatus.NOT_FOUND, {"error": "not_found"})
             return
         try:
-            content_length = int(self.headers.get("Content-Length", "0"))
-        except ValueError:
-            content_length = 0
-        if not 0 < content_length <= MAX_REQUEST_BYTES:
-            self._send_json(
-                HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
-                {"error": "invalid_request_size"},
-            )
-            return
-
-        try:
-            payload = json.loads(self.rfile.read(content_length))
-            if not isinstance(payload, dict):
-                raise ValueError("Request body must be an object")
+            payload = self._read_payload()
             user_config = payload.get("user_config")
             revision = payload.get("revision")
             if not isinstance(user_config, dict) or not isinstance(revision, str):
@@ -166,7 +208,7 @@ class UserConfigRequestHandler(BaseHTTPRequestHandler):
                 {"error": "revision_conflict", "message": str(exc)},
             )
             return
-        except (json.JSONDecodeError, OSError, ValueError) as exc:
+        except (json.JSONDecodeError, OSError, ValueError, yaml.YAMLError) as exc:
             self._send_json(
                 HTTPStatus.UNPROCESSABLE_ENTITY,
                 {"error": "invalid_configuration", "message": str(exc)},
@@ -174,6 +216,36 @@ class UserConfigRequestHandler(BaseHTTPRequestHandler):
             return
 
         self._send_json(HTTPStatus.OK, saved)
+
+    def do_POST(self) -> None:  # noqa: N802 - stdlib handler contract
+        if self.path.rstrip("/") != "/api/config/import":
+            self._send_json(HTTPStatus.NOT_FOUND, {"error": "not_found"})
+            return
+        try:
+            payload = self._read_payload()
+            source = payload.get("yaml")
+            if not isinstance(source, str):
+                raise ValueError("yaml must be a string")
+            imported = self.store.import_yaml(source)
+        except (json.JSONDecodeError, OSError, ValueError, yaml.YAMLError) as exc:
+            self._send_json(
+                HTTPStatus.UNPROCESSABLE_ENTITY,
+                {"error": "invalid_configuration", "message": str(exc)},
+            )
+            return
+        self._send_json(HTTPStatus.OK, imported)
+
+    def _read_payload(self) -> dict[str, Any]:
+        try:
+            content_length = int(self.headers.get("Content-Length", "0"))
+        except ValueError as exc:
+            raise ValueError("Invalid Content-Length") from exc
+        if not 0 < content_length <= MAX_REQUEST_BYTES:
+            raise ValueError("Request body must be between 1 and 524288 bytes")
+        payload = json.loads(self.rfile.read(content_length))
+        if not isinstance(payload, dict):
+            raise ValueError("Request body must be an object")
+        return payload
 
     def log_message(self, format: str, *args: Any) -> None:
         """Write concise access messages to the container log."""

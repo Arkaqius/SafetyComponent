@@ -2148,6 +2148,12 @@ details summary:focus-visible {
   color: var(--critical);
 }
 
+.configuration-message-warning {
+  background: var(--warning-soft);
+  border-color: rgba(243, 201, 105, 0.28);
+  color: var(--warning);
+}
+
 .configuration-message-success {
   background: var(--safe-soft);
   border-color: rgba(79, 209, 165, 0.28);

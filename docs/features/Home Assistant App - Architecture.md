@@ -22,6 +22,7 @@ flowchart LR
     SafetyHome[Safety Home] -->|authenticated HA connection| HomeAssistant
     Nginx --> SafetyHome
     S6[S6 process supervision] --> AppDaemon
+    S6 --> ConfigApi
     S6 --> Nginx
     AppConfig[App configuration directory] --> ConfigCompiler
     ConfigApi -->|validated atomic write| AppConfig
@@ -35,7 +36,8 @@ state remain outside the image in the App-specific configuration directory.
 
 ## 3. Configuration boundary
 
-The App uses two editable sources and one generated runtime configuration:
+The App uses one packaged source, one editable source, and one generated runtime
+configuration:
 
 - packaged `system_config.yml` owns software policy, calibration, fault
   definitions, provider lifecycle, and stable technical contracts;
@@ -44,7 +46,7 @@ The App uses two editable sources and one generated runtime configuration:
   and a normalized registry of site data, rooms, openings, detectors,
   monitored entities, and Home Assistant bindings;
 - the compiler creates the AppDaemon `apps.yaml` inside the ephemeral runtime
-  directory on every start.
+  directory when a saved source is present and valid.
 
 The compiler resolves system defaults, installation defaults, and per-asset
 overrides in that order. It then generates the existing component-specific
@@ -65,9 +67,13 @@ A successful save persists the source but does not alter the running safety
 configuration. The operator restarts the App to execute the normal startup
 compiler and live Home Assistant validation as one controlled initialization.
 
-On first start the App writes `user_config.example.yml` as
-`user_config.yml` and exits. This prevents example entity bindings from being
-treated as reviewed installation evidence.
+On first start without `user_config.yml`, the App starts Ingress and the
+configuration API while SafetyFunctions waits. The API serves the packaged
+example as an unsaved draft; no installation file is created or compiled until
+the operator saves a validated version 2 configuration. The editor can also
+preview an imported YAML file without writing it. On restart, the backend
+compiles the saved source before starting AppDaemon. A compiler failure leaves
+Ingress available for correction.
 
 ## 4. Frontend and Ingress
 

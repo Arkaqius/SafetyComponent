@@ -318,6 +318,13 @@ Safety Home provides an authenticated Ingress page for editing the private
 `system_config.yml`; packaged policy remains a reviewed source-code and release
 artifact.
 
+When the installation file does not exist, the API returns the public example
+as an unsaved draft with an `absent` revision. SafetyFunctions waits while the
+operator fills the editor or imports an existing version 2 YAML file. Import
+validates and previews the source without persisting it. The first successful
+save creates `/config/user_config.yml`; a subsequent App restart compiles and
+starts SafetyFunctions.
+
 The local configuration API accepts a complete `user_config` object together
 with the revision that was read by the browser. Before replacing the file it:
 

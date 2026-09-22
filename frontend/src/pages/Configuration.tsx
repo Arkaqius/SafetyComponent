@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from 'react';
-import { loadUserConfiguration, saveUserConfiguration, type ConfigurationMap } from '../userConfigurationApi';
+import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import { importUserConfiguration, loadUserConfiguration, saveUserConfiguration, type ConfigurationMap } from '../userConfigurationApi';
 
 const providerNames = ['OpenMeteoWeatherApiComponent', 'ImgwWarningsApiComponent', 'OpenMeteoAirQualityApiComponent'];
 const registrySections = [
@@ -14,11 +14,14 @@ type SaveState = 'idle' | 'saving' | 'saved';
 export default function Configuration() {
   const [draft, setDraft] = useState<ConfigurationMap | null>(null);
   const [revision, setRevision] = useState('');
+  const [setupRequired, setSetupRequired] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [error, setError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [editorErrors, setEditorErrors] = useState<Record<string, string>>({});
   const [editorGeneration, setEditorGeneration] = useState(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -26,6 +29,8 @@ export default function Configuration() {
       const document = await loadUserConfiguration();
       setDraft(document.user_config);
       setRevision(document.revision);
+      setSetupRequired(document.setup_required);
+      setValidationError(document.validation_error ?? null);
       setDirty(false);
       setSaveState('idle');
       setEditorErrors({});
@@ -53,11 +58,36 @@ export default function Configuration() {
       const document = await saveUserConfiguration(draft, revision);
       setDraft(document.user_config);
       setRevision(document.revision);
+      setSetupRequired(false);
+      setValidationError(null);
       setDirty(false);
       setSaveState('saved');
     } catch (caught) {
       setSaveState('idle');
       setError(caught instanceof Error ? caught.message : 'Nie udało się zapisać konfiguracji');
+    }
+  };
+
+  const importFile = async (file: File) => {
+    if (!/\.ya?ml$/i.test(file.name)) {
+      setError('Wybierz plik .yml lub .yaml');
+      return;
+    }
+    if (file.size > 400 * 1024) {
+      setError('Plik YAML jest zbyt duży (limit 400 KiB)');
+      return;
+    }
+    setError(null);
+    try {
+      const imported = await importUserConfiguration(await file.text());
+      setDraft(imported);
+      setDirty(true);
+      setSaveState('idle');
+      setEditorErrors({});
+      setValidationError(null);
+      setEditorGeneration(current => current + 1);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Nie udało się wczytać pliku');
     }
   };
 
@@ -106,6 +136,21 @@ export default function Configuration() {
           </p>
         </div>
         <div className='configuration-actions'>
+          <input
+            accept='.yml,.yaml'
+            aria-label='Wybierz plik user_config YAML'
+            className='sr-only'
+            onChange={event => {
+              const file = event.target.files?.[0];
+              if (file) void importFile(file);
+              event.target.value = '';
+            }}
+            ref={fileInputRef}
+            type='file'
+          />
+          <button className='secondary-button' onClick={() => fileInputRef.current?.click()} type='button'>
+            Wczytaj user_config YAML
+          </button>
           <button className='secondary-button' disabled={!dirty || saveState === 'saving'} onClick={() => void load()} type='button'>
             Odrzuć zmiany
           </button>
@@ -115,11 +160,27 @@ export default function Configuration() {
             onClick={() => void save()}
             type='button'
           >
-            {saveState === 'saving' ? 'Zapisywanie…' : 'Zapisz konfigurację'}
+            {saveState === 'saving' ? 'Zapisywanie…' : setupRequired ? 'Utwórz user_config.yml' : 'Zapisz konfigurację'}
           </button>
         </div>
       </section>
 
+      {setupRequired ? (
+        <div className='configuration-message configuration-message-warning'>
+          Pierwsza konfiguracja: wypełnij dane instalacji albo wczytaj istniejący plik YAML. SafetyFunctions pozostaje wyłączony do czasu
+          zapisania poprawnego pliku i restartu aplikacji.
+        </div>
+      ) : null}
+      {validationError ? (
+        <div className='configuration-message configuration-message-error'>
+          Zapisany plik wymaga poprawy: {validationError}. Możesz poprawić pola lub wczytać poprawny plik YAML.
+        </div>
+      ) : null}
+      {dirty && !setupRequired ? (
+        <div className='configuration-message configuration-message-warning'>
+          Masz niezapisane zmiany. Sprawdź wartości i kliknij „Zapisz konfigurację”, aby zastąpić bieżący plik.
+        </div>
+      ) : null}
       {error ? <div className='configuration-message configuration-message-error'>{error}</div> : null}
       {saveState === 'saved' ? (
         <div className='configuration-message configuration-message-success'>

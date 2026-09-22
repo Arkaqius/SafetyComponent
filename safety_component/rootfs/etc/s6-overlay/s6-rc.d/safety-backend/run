@@ -1,6 +1,26 @@
 #!/command/with-contenv bashio
 # shellcheck shell=bash
 
+readonly user_config="/config/user_config.yml"
+readonly runtime_apps="/run/safety-component/apps"
+
+if [[ ! -f "${user_config}" ]]; then
+    bashio::log.warning \
+        "No user_config.yml yet; open Safety Home → Konfiguracja to create it, then restart this App"
+    exec sleep 2147483647
+fi
+
+log_level="$(bashio::config 'log_level' | tr '[:lower:]' '[:upper:]')"
+if ! python /opt/safety-component/backend/build_app_config.py \
+    --system /opt/safety-component/backend/config/system_config.yml \
+    --user "${user_config}" \
+    --log-level "${log_level}" \
+    --output "${runtime_apps}/apps.yaml"; then
+    bashio::log.error \
+        "Configuration compilation failed; edit user_config.yml in Safety Home and restart this App"
+    exec sleep 2147483647
+fi
+
 declare core_state=""
 declare -i waited=0
 
@@ -27,6 +47,13 @@ if [[ "${core_state}" != "running" ]]; then
         "Home Assistant is not running after ${waited}s; starting AppDaemon anyway"
 fi
 
-log_level="$(bashio::config 'log_level' | tr '[:lower:]' '[:upper:]')"
+if ! python /opt/safety-component/backend/build_appdaemon_config.py \
+    --template /etc/safety-component/appdaemon.yaml \
+    --output /data/appdaemon/appdaemon.yaml; then
+    bashio::log.error \
+        "Could not build AppDaemon configuration; Safety Home remains available"
+    exec sleep 2147483647
+fi
+
 bashio::log.info "Starting the SafetyFunctions AppDaemon runtime"
 exec appdaemon -c /data/appdaemon -D "${log_level}"

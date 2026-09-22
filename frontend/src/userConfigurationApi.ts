@@ -6,6 +6,8 @@ export interface UserConfigurationDocument {
   user_config: ConfigurationMap;
   revision: string;
   restart_required: boolean;
+  setup_required: boolean;
+  validation_error?: string | null;
 }
 
 interface ApiErrorBody {
@@ -15,8 +17,9 @@ interface ApiErrorBody {
 
 const CONFIG_ENDPOINT = 'api/config';
 let mockDocument: UserConfigurationDocument = {
-  revision: 'mock-1',
+  revision: 'absent',
   restart_required: false,
+  setup_required: true,
   user_config: {
     model_version: 2,
     components_enabled: {
@@ -86,6 +89,7 @@ export async function saveUserConfiguration(userConfig: ConfigurationMap, revisi
       user_config: structuredClone(userConfig),
       revision: `mock-${Date.now()}`,
       restart_required: true,
+      setup_required: false,
     };
     return structuredClone(mockDocument);
   }
@@ -94,6 +98,23 @@ export async function saveUserConfiguration(userConfig: ConfigurationMap, revisi
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ user_config: userConfig, revision }),
   });
+}
+
+export async function importUserConfiguration(source: string): Promise<ConfigurationMap> {
+  if (MOCK_MODE) throw new Error('Import YAML jest dostępny w zainstalowanej aplikacji.');
+  const response = await fetch('api/config/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ yaml: source }),
+  });
+  const body = (await response.json().catch(() => ({}))) as { user_config?: unknown } & ApiErrorBody;
+  if (!response.ok) {
+    throw new Error(body.message || body.error || `Błąd importu konfiguracji (${response.status})`);
+  }
+  if (!body.user_config || typeof body.user_config !== 'object' || Array.isArray(body.user_config)) {
+    throw new Error('Plik nie zawiera poprawnej sekcji user_config');
+  }
+  return body.user_config as ConfigurationMap;
 }
 
 async function requestConfiguration(url: string, init: RequestInit): Promise<UserConfigurationDocument> {

@@ -12,18 +12,20 @@ panel is restricted to Home Assistant administrators.
 
 ## Installation
 
-This first package is experimental. Add this Git repository to the Home
-Assistant App store, install **SafetyComponent**, and start it once. The first
-start creates `/addon_configs/<repository>_safety_component/user_config.yml`
-and then stops intentionally so an unreviewed example configuration cannot
-begin monitoring a real installation.
+Add this Git repository to the Home Assistant App store, install
+**SafetyComponent**, and start it. On a fresh installation, the Safety Home
+panel and its configuration API start while SafetyFunctions waits. Open
+**Safety Home → Konfiguracja** as a Home Assistant administrator. Replace the
+example bindings in the draft with your installation values, or click
+**Wczytaj user_config YAML** to load an existing version 2 `.yml`/`.yaml`
+file. Import validates the file and fills the form; it does not save it yet.
+Review the result and click **Utwórz user_config.yml**. The private file is then
+written to `/addon_configs/<repository>_safety_component/user_config.yml`.
 
-Edit `user_config.yml`, replace every example entity and area binding, then
-start the App again. After the first valid start, further changes can be made
-from **Safety Home → Konfiguracja**. The startup service parses and compiles
-the file with its packaged system policy before AppDaemon starts;
-SafetyFunctions then performs the full schema and Home Assistant entity
-validation during initialization.
+Restart the App after saving. The backend compiles the file with its packaged
+system policy before AppDaemon starts; SafetyFunctions then performs Home
+Assistant entity validation during initialization. If source compilation
+fails, Safety Home stays available so the configuration can be corrected.
 
 The App configuration tab owns the runtime log level. The Safety Home editor
 owns user and installation settings stored in `user_config.yml`, including
@@ -57,8 +59,9 @@ intentionally differ from the Home Assistant installation location.
 
 The public SafetyComponent repository contains only
 `backend/config/user_config.example.yml`. Keep the real `user_config.yml` in a
-separate private repository or another access-controlled backup, and copy it to
-the App-specific configuration directory during installation or recovery.
+separate private repository or another access-controlled backup. It can be
+restored through the editor's YAML import or copied into the App-specific
+configuration directory while the App is stopped.
 
 Configuration model version 2 applies values in the order system default,
 installation default, then asset override. Declare a physical opening once and
@@ -75,16 +78,17 @@ test, and deployment change.
 Use a controlled cutover so two SafetyFunctions instances never run at once:
 
 1. Back up the old AppDaemon App configuration.
-2. Start SafetyComponent once to create its App-specific `user_config.yml`,
-   then leave SafetyComponent stopped.
-3. Copy the reviewed contents of the old SafetyFunctions
-   `config/user_config.yml` into the new `user_config.yml`.
+2. Start SafetyComponent. SafetyFunctions waits while the configuration panel
+   is available.
+3. Open **Safety Home → Konfiguracja**, import the reviewed version 2
+   `user_config.yml`, inspect it, and save. Alternatively copy the file into
+   the App-specific configuration directory while the App is stopped.
 4. If lifecycle continuity is required, copy the old
    `appdaemon/notification_state.json`, `appdaemon/recovery_state.json`, and
    `appdaemon/internal_environment_state.json` files into the new App's
    `appdaemon/` directory. Missing files are created by the backend as needed.
 5. Stop the separate AppDaemon App, or remove its `SafetyFunctions` entry.
-6. Start SafetyComponent and inspect the App log for configuration or entity
+6. Restart SafetyComponent and inspect the App log for configuration or entity
    validation errors.
 
 Do not run the old and new backends together. They would register duplicate

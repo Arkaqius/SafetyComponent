@@ -72,7 +72,7 @@ def test_ingress_proxies_only_the_user_configuration_api() -> None:
     assert "--system /opt/safety-component/backend/config/system_config.yml" in api_run
 
 
-def test_first_start_requires_reviewed_installation_config() -> None:
+def test_first_start_keeps_frontend_available_until_config_is_saved() -> None:
     service_root = APP_ROOT / "rootfs" / "etc" / "s6-overlay"
     init_service = service_root / "s6-rc.d" / "init-safety-component"
     assert (init_service / "type").read_text(encoding="utf-8").strip() == "oneshot"
@@ -85,19 +85,23 @@ def test_first_start_requires_reviewed_installation_config() -> None:
         encoding="utf-8"
     )
 
-    assert "/config/user_config.yml" in init_script
-    assert "user_config.example.yml" in init_script
-    assert "bashio::exit.nok" in init_script
+    assert "bashio::exit.nok" not in init_script
+    assert "user_config.example.yml" not in init_script
     assert "backend/SafetyFunctions.py" in init_script
     assert "backend/components" in init_script
     assert "backend/." not in init_script
-    assert "--system" in init_script
-    assert "--user" in init_script
-    assert "--log-level" in init_script
-    assert "bashio::config 'log_level'" in init_script
-    assert "--output" in init_script
-    assert "build_appdaemon_config.py" in init_script
-    assert "cp /etc/safety-component/appdaemon.yaml" not in init_script
+    assert "build_appdaemon_config.py" not in init_script
+
+    backend_run = (service_root / "s6-rc.d" / "safety-backend" / "run").read_text(
+        encoding="utf-8"
+    )
+    assert '[[ ! -f "${user_config}" ]]' in backend_run
+    assert "build_app_config.py" in backend_run
+    assert "--system" in backend_run
+    assert "--user" in backend_run
+    assert "--log-level" in backend_run
+    assert "--output" in backend_run
+    assert "build_appdaemon_config.py" in backend_run
 
 
 def test_appdaemon_template_gets_required_location_from_home_assistant() -> None:
