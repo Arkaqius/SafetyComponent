@@ -66,7 +66,7 @@ class TemperatureCalibrationSource(SystemSourceModel):
     sm_tc_max_forecast_delta_c: float = Field(gt=0)
     default_low_temperature_c: float
     default_high_temperature_c: float
-    default_forecast_horizon_hours: float = Field(gt=0)
+    forecast_horizon_hours: float = Field(gt=0)
 
 
 class EntityMonitorCalibrationSource(SystemSourceModel):
@@ -89,7 +89,7 @@ class SafetyDoorCalibrationSource(SystemSourceModel):
 class WeatherCalibrationSource(SystemSourceModel):
     """Overridable weather-decision baselines."""
 
-    default_forecast_horizon_hours: int = Field(ge=1, le=72)
+    forecast_horizon_hours: int = Field(ge=1, le=72)
     default_frost_watch_c: float
     default_frost_warning_c: float
     default_gust_watch_m_s: float = Field(gt=0)

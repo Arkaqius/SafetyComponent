@@ -21,6 +21,15 @@ from user_config_api import (
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 
 
+@pytest.fixture(autouse=True)
+def _mock_home_assistant_location(monkeypatch) -> None:
+    monkeypatch.setattr(
+        UserConfigStore,
+        "_fetch_home_assistant_config",
+        staticmethod(lambda: {"latitude": 50.0, "longitude": 20.0}),
+    )
+
+
 def _store(tmp_path: Path) -> UserConfigStore:
     user_path = tmp_path / "user_config.yml"
     user_path.write_text(
@@ -65,7 +74,9 @@ def test_first_start_serves_example_without_creating_user_file(tmp_path: Path) -
     assert store.read()["revision"] == saved["revision"]
 
 
-def test_first_start_rejects_save_after_another_session_created_file(tmp_path: Path) -> None:
+def test_first_start_rejects_save_after_another_session_created_file(
+    tmp_path: Path,
+) -> None:
     store = UserConfigStore(user_path=tmp_path / "user_config.yml")
     draft = store.read()
     store.user_path.write_text("user_config: {}\n", encoding="utf-8")
@@ -74,7 +85,9 @@ def test_first_start_rejects_save_after_another_session_created_file(tmp_path: P
         store.save(draft["user_config"], draft["revision"])
 
 
-def test_invalid_existing_source_stays_editable_with_its_revision(tmp_path: Path) -> None:
+def test_invalid_existing_source_stays_editable_with_its_revision(
+    tmp_path: Path,
+) -> None:
     store = _store(tmp_path)
     store.user_path.write_text("user_config: {model_version: 1}\n", encoding="utf-8")
 
@@ -102,7 +115,9 @@ def test_malformed_existing_yaml_can_be_replaced_after_import(tmp_path: Path) ->
     assert store.read()["validation_error"] is None
 
 
-def test_import_previews_valid_yaml_without_replacing_existing_file(tmp_path: Path) -> None:
+def test_import_previews_valid_yaml_without_replacing_existing_file(
+    tmp_path: Path,
+) -> None:
     store = _store(tmp_path)
     before = store.user_path.read_bytes()
     source = (BACKEND_DIR / "config" / "user_config.example.yml").read_text(
@@ -180,7 +195,7 @@ def test_save_validates_and_atomically_replaces_user_source(tmp_path: Path) -> N
     store = _store(tmp_path)
     original = store.read()
     edited = original["user_config"]
-    edited["installation"]["defaults"]["temperature"] = {
+    edited["installation"]["component_settings"]["temperature"] = {
         "low_temperature_c": 17.0,
         "high_temperature_c": 27.0,
     }
@@ -191,8 +206,9 @@ def test_save_validates_and_atomically_replaces_user_source(tmp_path: Path) -> N
     assert saved["restart_required"] is True
     assert saved["revision"] != original["revision"]
     assert (
-        persisted["user_config"]["installation"]["defaults"]["temperature"]
-        ["low_temperature_c"]
+        persisted["user_config"]["installation"]["component_settings"]["temperature"][
+            "low_temperature_c"
+        ]
         == 17.0
     )
 
@@ -217,5 +233,19 @@ def test_save_rejects_invalid_config_without_changing_file(tmp_path: Path) -> No
 
     with pytest.raises(ValueError):
         store.save(edited, original["revision"])
+
+    assert store.user_path.read_bytes() == original_bytes
+
+
+def test_save_rejects_unavailable_ha_location_without_changing_file(
+    tmp_path: Path,
+) -> None:
+    store = _store(tmp_path)
+    store.home_assistant_config_provider = lambda: {}
+    original = store.read()
+    original_bytes = store.user_path.read_bytes()
+
+    with pytest.raises(ValueError, match="latitude"):
+        store.save(original["user_config"], original["revision"])
 
     assert store.user_path.read_bytes() == original_bytes

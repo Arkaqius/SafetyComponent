@@ -7,9 +7,15 @@ from pathlib import Path
 import pytest
 import yaml
 
-from build_app_config import compile_config, main
+from build_app_config import compile_config as _compile_config, main
 
 BACKEND_DIR = Path(__file__).parents[1]
+TEST_CORE_LOCATION = {"latitude": 50.0, "longitude": 20.0}
+
+
+def compile_config(*args, **kwargs):
+    kwargs.setdefault("home_assistant_config", TEST_CORE_LOCATION)
+    return _compile_config(*args, **kwargs)
 
 
 def test_example_installation_config_compiles() -> None:
@@ -19,12 +25,77 @@ def test_example_installation_config_compiles() -> None:
 
     assert compiled["SafetyFunctions"]["module"] == "SafetyFunctions"
     assert compiled["SafetyFunctions"]["user_config"]["site"]["country_code"] == "PL"
+    assert compiled["SafetyFunctions"]["user_config"]["site"]["latitude"] == 50.0
+    assert compiled["SafetyFunctions"]["user_config"]["site"]["longitude"] == 20.0
     assert "installation" not in compiled["SafetyFunctions"]["user_config"]
     assert "model_version" not in compiled["SafetyFunctions"]["user_config"]
 
 
+def test_site_coordinates_are_read_from_current_home_assistant_config() -> None:
+    compiled = compile_config(
+        user_path=BACKEND_DIR / "config" / "user_config.example.yml",
+        home_assistant_config={"latitude": -12.5, "longitude": 145.25},
+    )["SafetyFunctions"]["user_config"]["site"]
+
+    assert (compiled["latitude"], compiled["longitude"]) == (-12.5, 145.25)
+
+
+def test_site_rejects_missing_or_invalid_home_assistant_coordinates() -> None:
+    source = BACKEND_DIR / "config" / "user_config.example.yml"
+    with pytest.raises(ValueError, match="Home Assistant Core location is required"):
+        _compile_config(user_path=source)
+    with pytest.raises(ValueError, match="latitude"):
+        _compile_config(
+            user_path=source,
+            home_assistant_config={"latitude": 100.0, "longitude": 20.0},
+        )
+
+
+def test_user_source_rejects_persisted_coordinates_and_forecast_horizon(
+    tmp_path,
+) -> None:
+    source = yaml.safe_load(
+        (BACKEND_DIR / "config" / "user_config.example.yml").read_text(encoding="utf-8")
+    )
+    source["user_config"]["installation"]["site"]["latitude"] = 50.0
+    user_path = tmp_path / "user.yml"
+    user_path.write_text(yaml.safe_dump(source), encoding="utf-8")
+    with pytest.raises(ValueError, match="latitude"):
+        compile_config(user_path=user_path)
+
+    del source["user_config"]["installation"]["site"]["latitude"]
+    source["user_config"]["installation"]["component_settings"]["temperature"][
+        "forecast_horizon_hours"
+    ] = 3
+    user_path.write_text(yaml.safe_dump(source), encoding="utf-8")
+    with pytest.raises(ValueError, match="forecast_horizon_hours"):
+        compile_config(user_path=user_path)
+
+    del source["user_config"]["installation"]["component_settings"]["temperature"][
+        "forecast_horizon_hours"
+    ]
+    source["user_config"]["installation"]["component_settings"]["external_hazard"][
+        "hazards"
+    ] = ["frost"]
+    user_path.write_text(yaml.safe_dump(source), encoding="utf-8")
+    with pytest.raises(ValueError, match="hazards"):
+        compile_config(user_path=user_path)
+
+    del source["user_config"]["installation"]["component_settings"]["external_hazard"][
+        "hazards"
+    ]
+    source["user_config"]["installation"]["component_settings"]["external_hazard"][
+        "weather"
+    ] = {"forecast_horizon_hours": 3}
+    user_path.write_text(yaml.safe_dump(source), encoding="utf-8")
+    with pytest.raises(ValueError, match="forecast_horizon_hours"):
+        compile_config(user_path=user_path)
+
+
 def test_cli_accepts_explicit_app_paths(tmp_path, monkeypatch) -> None:
     output_path = tmp_path / "apps.yaml"
+    location_path = tmp_path / "ha-location.json"
+    location_path.write_text(json.dumps(TEST_CORE_LOCATION), encoding="utf-8")
     monkeypatch.setattr(
         sys,
         "argv",
@@ -36,6 +107,8 @@ def test_cli_accepts_explicit_app_paths(tmp_path, monkeypatch) -> None:
             str(BACKEND_DIR / "config" / "user_config.example.yml"),
             "--output",
             str(output_path),
+            "--home-assistant-config",
+            str(location_path),
         ],
     )
 
@@ -192,14 +265,13 @@ def test_v2_precedence_is_system_then_installation_then_asset(tmp_path) -> None:
         (BACKEND_DIR / "config" / "user_config.example.yml").read_text(encoding="utf-8")
     )
     installation = source["user_config"]["installation"]
-    installation["defaults"]["temperature"] = {
+    installation["component_settings"]["temperature"] = {
         "high_temperature_c": 27.0,
-        "forecast_horizon_hours": 3.0,
     }
     installation["rooms"]["LivingRoom"]["temperature"] = {
         "high_temperature_c": 26.0,
     }
-    installation["defaults"]["safety_door"] = {"timeout_seconds": 180}
+    installation["component_settings"]["safety_door"] = {"timeout_seconds": 180}
     installation["openings"]["EntranceDoor"]["safety_door"] = {"timeout_seconds": 240}
     user_path = tmp_path / "user.yml"
     user_path.write_text(yaml.safe_dump(source), encoding="utf-8")
@@ -212,7 +284,7 @@ def test_v2_precedence_is_system_then_installation_then_asset(tmp_path) -> None:
     assert temperature["defaults"]["CAL_LOW_TEMP_THRESHOLD"] == 18.0
     assert temperature["defaults"]["CAL_HIGH_TEMP_THRESHOLD"] == 27.0
     assert temperature["rooms"]["LivingRoom"]["CAL_HIGH_TEMP_THRESHOLD"] == 26.0
-    assert temperature["rooms"]["LivingRoom"]["CAL_FORECAST_TIMESPAN"] == 3.0
+    assert temperature["rooms"]["LivingRoom"]["CAL_FORECAST_TIMESPAN"] == 2.0
     assert components["SafetyDoorsComponent"]["defaults"]["timeout_seconds"] == 180
     assert (
         components["SafetyDoorsComponent"]["doors"]["EntranceDoor"]["timeout_seconds"]
@@ -224,7 +296,7 @@ def test_v2_overrides_system_policy_defaults_from_installation(tmp_path) -> None
     source = yaml.safe_load(
         (BACKEND_DIR / "config" / "user_config.example.yml").read_text(encoding="utf-8")
     )
-    defaults = source["user_config"]["installation"]["defaults"]
+    defaults = source["user_config"]["installation"]["component_settings"]
     defaults["entity_monitor"] = {
         "startup_grace_seconds": 15,
         "evaluation_interval_seconds": 2,
@@ -293,7 +365,7 @@ def test_v2_rejects_invalid_thresholds_after_inheritance(tmp_path) -> None:
     source = yaml.safe_load(
         (BACKEND_DIR / "config" / "user_config.example.yml").read_text(encoding="utf-8")
     )
-    source["user_config"]["installation"]["defaults"]["temperature"] = {
+    source["user_config"]["installation"]["component_settings"]["temperature"] = {
         "low_temperature_c": 30.0
     }
     user_path = tmp_path / "user.yml"

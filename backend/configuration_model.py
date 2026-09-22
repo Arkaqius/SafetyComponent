@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import re
+from collections.abc import Mapping
 from typing import Any, Literal
 
 from pydantic import (
@@ -14,6 +15,7 @@ from pydantic import (
     model_validator,
 )
 
+from build_appdaemon_config import validated_number
 from components.core.pydantic_utils import StrictBaseModel
 from components.safetycomponents.entity_monitor.schema import (
     ComponentEntityOverride,
@@ -54,7 +56,6 @@ class TemperatureDefaults(SourceModel):
 
     low_temperature_c: float | None = None
     high_temperature_c: float | None = None
-    forecast_horizon_hours: float | None = Field(default=None, gt=0)
 
     @model_validator(mode="after")
     def _ordered_thresholds(self) -> "TemperatureDefaults":
@@ -74,8 +75,6 @@ class TemperatureDefaults(SourceModel):
             values["CAL_LOW_TEMP_THRESHOLD"] = self.low_temperature_c
         if self.high_temperature_c is not None:
             values["CAL_HIGH_TEMP_THRESHOLD"] = self.high_temperature_c
-        if self.forecast_horizon_hours is not None:
-            values["CAL_FORECAST_TIMESPAN"] = self.forecast_horizon_hours
         return values
 
 
@@ -86,26 +85,17 @@ class SafetyDoorDefaults(SourceModel):
 
 
 class ExternalHazardDefaults(SourceModel):
-    """Installation-wide defaults for external-hazard opening roles."""
+    """Installation-specific external-hazard decision thresholds."""
 
-    hazards: list[HazardName] | None = Field(default=None, min_length=1)
     weather: "WeatherOverrides" = Field(default_factory=lambda: WeatherOverrides())
     outdoor_air_quality: "AirQualityOverrides" = Field(
         default_factory=lambda: AirQualityOverrides()
     )
 
-    @field_validator("hazards")
-    @classmethod
-    def _unique_hazards(cls, value: list[HazardName] | None) -> list[HazardName] | None:
-        if value is not None and len(value) != len(set(value)):
-            raise ValueError("external hazard defaults must not contain duplicates")
-        return value
-
 
 class WeatherOverrides(SourceModel):
     """Installation overrides for weather decision defaults."""
 
-    forecast_horizon_hours: int | None = Field(default=None, ge=1, le=72)
     frost_watch_c: float | None = None
     frost_warning_c: float | None = None
     gust_watch_m_s: float | None = Field(default=None, gt=0)
@@ -148,8 +138,8 @@ class EntityMonitorDefaults(SourceModel):
     )
 
 
-class InstallationDefaults(SourceModel):
-    """Optional installation layer between system and asset defaults."""
+class ComponentSettings(SourceModel):
+    """Installation-specific settings grouped by their owning component."""
 
     temperature: TemperatureDefaults = Field(default_factory=TemperatureDefaults)
     safety_door: SafetyDoorDefaults = Field(default_factory=SafetyDoorDefaults)
@@ -337,12 +327,27 @@ class MqttCleanupBindings(SourceModel):
         return normalized
 
 
+class InstallationSite(SourceModel):
+    """Administrative location; geographic coordinates always come from HA."""
+
+    timezone: str
+    country_code: str
+    teryt_codes: list[str] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _validate_site(self) -> "InstallationSite":
+        # The runtime coordinates are supplied later; validate the remaining
+        # administrative fields through the same strict site contract.
+        SiteConfig.model_validate({"latitude": 0, "longitude": 0, **self.model_dump()})
+        return self
+
+
 class InstallationConfig(SourceModel):
     """Normalized physical installation used to generate component bindings."""
 
-    site: SiteConfig | None = None
+    site: InstallationSite | None = None
     common_entities: dict[str, str] = Field(default_factory=dict)
-    defaults: InstallationDefaults = Field(default_factory=InstallationDefaults)
+    component_settings: ComponentSettings = Field(default_factory=ComponentSettings)
     rooms: dict[str, InstallationRoom] = Field(default_factory=dict)
     openings: dict[str, InstallationOpening] = Field(default_factory=dict)
     detectors: dict[str, InternalDetectorConfig] = Field(default_factory=dict)
@@ -451,9 +456,11 @@ def _compile_temperature(
 ) -> dict[str, Any]:
     defaults = deep_merge(
         system_component.get("defaults", {}),
-        installation.defaults.temperature.to_runtime(),
+        installation.component_settings.temperature.to_runtime(),
     )
-    _validate_resolved_temperature(defaults, "installation.defaults.temperature")
+    _validate_resolved_temperature(
+        defaults, "installation.component_settings.temperature"
+    )
     rooms: dict[str, dict[str, Any]] = {}
     for room_name, room in installation.rooms.items():
         binding: dict[str, Any] = {
@@ -489,7 +496,7 @@ def _validate_resolved_temperature(values: dict[str, Any], path: str) -> None:
 def _compile_safety_doors(
     system_component: dict[str, Any], installation: InstallationConfig
 ) -> dict[str, Any]:
-    installation_defaults = installation.defaults.safety_door.model_dump(
+    installation_defaults = installation.component_settings.safety_door.model_dump(
         exclude_none=True
     )
     defaults = deep_merge(system_component.get("defaults", {}), installation_defaults)
@@ -511,7 +518,7 @@ def _compile_external_hazards(
     system_component: dict[str, Any], installation: InstallationConfig
 ) -> dict[str, Any]:
     system_defaults = system_component.get("defaults", {})
-    install_defaults = installation.defaults.external_hazard.model_dump(
+    install_defaults = installation.component_settings.external_hazard.model_dump(
         exclude_none=True
     )
     defaults = deep_merge(system_defaults, install_defaults)
@@ -562,14 +569,16 @@ def _compile_entity_monitor(
         compiled.get("component_overrides", {}),
         {
             key: value.model_dump(exclude_none=True)
-            for key, value in installation.defaults.entity_monitor.component_overrides.items()
+            for key, value in installation.component_settings.entity_monitor.component_overrides.items()
         },
     )
     return compiled
 
 
 def compile_user_config_v2(
-    runtime_defaults: dict[str, Any], user_config: dict[str, Any]
+    runtime_defaults: dict[str, Any],
+    user_config: dict[str, Any],
+    home_assistant_config: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Compile a v2 source config while preserving the v1 runtime contract."""
 
@@ -588,7 +597,13 @@ def compile_user_config_v2(
     if installation.site is None:
         compiled.pop("site", None)
     else:
-        compiled["site"] = installation.site.model_dump()
+        compiled["site"] = SiteConfig.model_validate(
+            {
+                **installation.site.model_dump(),
+                "latitude": validated_number(home_assistant_config, "latitude"),
+                "longitude": validated_number(home_assistant_config, "longitude"),
+            }
+        ).model_dump()
 
     system_components = runtime_defaults.get("safety_components", {})
     compiled["safety_components"] = {

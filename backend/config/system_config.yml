@@ -25,7 +25,7 @@ calibration:
     sm_tc_max_forecast_delta_c: 6.0
     default_low_temperature_c: 18.0
     default_high_temperature_c: 28.0
-    default_forecast_horizon_hours: 2.0
+    forecast_horizon_hours: 2.0
 
   entity_monitor:
     default_startup_grace_seconds: 60
@@ -48,7 +48,7 @@ calibration:
     actuation_mode: manual_and_user_confirmed
     clear_delay_seconds: 120
     weather:
-      default_forecast_horizon_hours: 2
+      forecast_horizon_hours: 2
       default_frost_watch_c: 2.0
       default_frost_warning_c: 0.0
       default_gust_watch_m_s: 15.0

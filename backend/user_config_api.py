@@ -12,16 +12,19 @@ import threading
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import yaml
 
-from build_app_config import SYSTEM_CONFIG_PATH, compile_config
+from build_app_config import SYSTEM_CONFIG_PATH, compile_config, load_mapping
+from build_appdaemon_config import CORE_CONFIG_URL, fetch_core_config
 from configuration_model import validate_user_configuration_v2
 
 
 DEFAULT_USER_CONFIG_PATH = Path("/config/user_config.yml")
-EXAMPLE_USER_CONFIG_PATH = Path(__file__).resolve().parent / "config" / "user_config.example.yml"
+EXAMPLE_USER_CONFIG_PATH = (
+    Path(__file__).resolve().parent / "config" / "user_config.example.yml"
+)
 ABSENT_REVISION = "absent"
 MAX_REQUEST_BYTES = 512 * 1024
 
@@ -38,11 +41,24 @@ class UserConfigStore:
         user_path: Path = DEFAULT_USER_CONFIG_PATH,
         system_path: Path = SYSTEM_CONFIG_PATH,
         example_path: Path = EXAMPLE_USER_CONFIG_PATH,
+        home_assistant_config_provider: Callable[[], dict[str, Any]] | None = None,
     ) -> None:
         self.user_path = user_path
         self.system_path = system_path
         self.example_path = example_path
+        self.home_assistant_config_provider = (
+            home_assistant_config_provider or self._fetch_home_assistant_config
+        )
         self._write_lock = threading.Lock()
+
+    @staticmethod
+    def _fetch_home_assistant_config() -> dict[str, Any]:
+        """Read current HA coordinates when validating an installation draft."""
+
+        token = os.environ.get("SUPERVISOR_TOKEN")
+        if not token:
+            raise ValueError("SUPERVISOR_TOKEN is required for Home Assistant location")
+        return fetch_core_config(CORE_CONFIG_URL, token)
 
     def read(self) -> dict[str, Any]:
         """Return the editable user configuration and its content revision."""
@@ -71,8 +87,45 @@ class UserConfigStore:
                 example = yaml.safe_load(self.example_path.read_text(encoding="utf-8"))
                 user_config = example["user_config"]
 
+        calibration = load_mapping(self.system_path).get("calibration", {})
+        temperature = calibration.get("temperature", {})
+        safety_door = calibration.get("safety_door", {})
+        entity_monitor = calibration.get("entity_monitor", {})
+        external_hazard = calibration.get("external_hazard", {})
+        system_defaults = {
+            "temperature": {
+                key: temperature[key]
+                for key in ("default_low_temperature_c", "default_high_temperature_c")
+                if key in temperature
+            },
+            "safety_door": {
+                "default_timeout_seconds": safety_door.get("default_timeout_seconds")
+            },
+            "entity_monitor": {
+                key: entity_monitor[key]
+                for key in (
+                    "default_startup_grace_seconds",
+                    "default_evaluation_interval_seconds",
+                )
+                if key in entity_monitor
+            },
+            "external_hazard": {
+                "weather": {
+                    key: value
+                    for key, value in external_hazard.get("weather", {}).items()
+                    if key.startswith("default_")
+                },
+                "outdoor_air_quality": {
+                    "default_warning_at": external_hazard.get(
+                        "outdoor_air_quality", {}
+                    ).get("default_warning_at")
+                },
+            },
+        }
+
         return {
             "user_config": user_config,
+            "system_defaults": system_defaults,
             "revision": ABSENT_REVISION if setup_required else self._revision(raw),
             "restart_required": False,
             "setup_required": setup_required,
@@ -101,7 +154,11 @@ class UserConfigStore:
             exists = self.user_path.exists()
             current_raw = self.user_path.read_bytes() if exists else None
             current_mode = self.user_path.stat().st_mode & 0o777 if exists else 0o600
-            current_revision = self._revision(current_raw) if current_raw is not None else ABSENT_REVISION
+            current_revision = (
+                self._revision(current_raw)
+                if current_raw is not None
+                else ABSENT_REVISION
+            )
             if expected_revision != current_revision:
                 raise RevisionConflictError(
                     "Configuration changed since it was opened; reload before saving"
@@ -138,8 +195,14 @@ class UserConfigStore:
 
                 # Exercise the same compiler used during App startup before replacing
                 # the persisted source. This validates both source layers together.
-                compile_config(system_path=self.system_path, user_path=candidate_path)
-                latest_raw = self.user_path.read_bytes() if self.user_path.exists() else None
+                compile_config(
+                    system_path=self.system_path,
+                    user_path=candidate_path,
+                    home_assistant_config=self.home_assistant_config_provider(),
+                )
+                latest_raw = (
+                    self.user_path.read_bytes() if self.user_path.exists() else None
+                )
                 if latest_raw != current_raw:
                     raise RevisionConflictError(
                         "Configuration changed during validation; reload before saving"
@@ -166,7 +229,11 @@ class UserConfigStore:
                 yaml.safe_dump(document, allow_unicode=True, sort_keys=False),
                 encoding="utf-8",
             )
-            compile_config(system_path=self.system_path, user_path=candidate_path)
+            compile_config(
+                system_path=self.system_path,
+                user_path=candidate_path,
+                home_assistant_config=self.home_assistant_config_provider(),
+            )
 
     @staticmethod
     def _revision(raw: bytes) -> str:
@@ -281,9 +348,7 @@ def main() -> None:
     args = parser.parse_args()
 
     UserConfigRequestHandler.store = UserConfigStore(args.user, args.system)
-    server = ConfigurationHttpServer(
-        (args.host, args.port), UserConfigRequestHandler
-    )
+    server = ConfigurationHttpServer((args.host, args.port), UserConfigRequestHandler)
     print(f"config-api: listening on {args.host}:{args.port}", flush=True)
     server.serve_forever()
 

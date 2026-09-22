@@ -476,7 +476,7 @@ Global timing and publication policy belongs in `system_config.yml` under
 dependencies belong in the private `user_config.yml` under
 `installation.monitored_entities`. Installation-specific overrides keyed by
 stable component dependency IDs belong under
-`installation.defaults.entity_monitor.component_overrides`. The public
+`installation.component_settings.entity_monitor.component_overrides`. The public
 repository contains only schema-safe examples and shall not contain bindings
 from a real Home Assistant installation.
 

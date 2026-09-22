@@ -13,6 +13,7 @@ from build_appdaemon_config import (
     fetch_core_config_with_retry,
     render_appdaemon_config,
     write_appdaemon_config,
+    write_core_location,
 )
 
 
@@ -94,11 +95,14 @@ def test_fetch_core_config_uses_supervisor_bearer_token(monkeypatch) -> None:
 
     monkeypatch.setattr(build_appdaemon_config, "urlopen", fake_urlopen)
 
-    assert fetch_core_config(
-        build_appdaemon_config.CORE_CONFIG_URL,
-        "test-token",
-        timeout=3.0,
-    ) == payload
+    assert (
+        fetch_core_config(
+            build_appdaemon_config.CORE_CONFIG_URL,
+            "test-token",
+            timeout=3.0,
+        )
+        == payload
+    )
 
 
 def test_write_appdaemon_config_creates_parent_and_output(tmp_path) -> None:
@@ -120,6 +124,24 @@ def test_write_appdaemon_config_creates_parent_and_output(tmp_path) -> None:
 
     assert output_path.is_file()
     assert "latitude: 50.0" in output_path.read_text(encoding="utf-8")
+
+
+def test_write_core_location_keeps_only_current_coordinates(tmp_path) -> None:
+    output_path = tmp_path / "runtime" / "ha-location.json"
+    write_core_location(
+        output_path,
+        {
+            "latitude": 51.5,
+            "longitude": -0.1,
+            "time_zone": "Europe/London",
+            "token": "must-not-be-copied",
+        },
+    )
+
+    assert json.loads(output_path.read_text(encoding="utf-8")) == {
+        "latitude": 51.5,
+        "longitude": -0.1,
+    }
 
 
 def test_fetch_core_config_with_retry_waits_then_returns(monkeypatch, capsys) -> None:
@@ -210,7 +232,7 @@ def test_main_writes_runtime_config(monkeypatch, tmp_path) -> None:
     build_appdaemon_config.main()
 
     assert output_path.is_file()
-    assert "time_zone: \"Europe/Warsaw\"" in output_path.read_text(encoding="utf-8")
+    assert 'time_zone: "Europe/Warsaw"' in output_path.read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize(

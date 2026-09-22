@@ -102,6 +102,8 @@ def test_first_start_keeps_frontend_available_until_config_is_saved() -> None:
     assert "--log-level" in backend_run
     assert "--output" in backend_run
     assert "build_appdaemon_config.py" in backend_run
+    assert '--location-output "${core_location}"' in backend_run
+    assert '--home-assistant-config "${core_location}"' in backend_run
 
 
 def test_appdaemon_template_gets_required_location_from_home_assistant() -> None:

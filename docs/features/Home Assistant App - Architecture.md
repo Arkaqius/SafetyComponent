@@ -42,13 +42,13 @@ configuration:
 - packaged `system_config.yml` owns software policy, calibration, fault
   definitions, provider lifecycle, and stable technical contracts;
 - App-specific `user_config.yml` owns component selection, language,
-  notification destinations, optional installation-wide default overrides,
+  notification destinations, optional component-specific installation overrides,
   and a normalized registry of site data, rooms, openings, detectors,
   monitored entities, and Home Assistant bindings;
 - the compiler creates the AppDaemon `apps.yaml` inside the ephemeral runtime
   directory when a saved source is present and valid.
 
-The compiler resolves system defaults, installation defaults, and per-asset
+The compiler resolves system defaults, component settings, and per-asset
 overrides in that order. It then generates the existing component-specific
 runtime bindings. Physical assets are declared once, so one opening entity can
 serve multiple component roles without duplicated installation data. The
@@ -57,11 +57,11 @@ defines the complete editable schema and version policy.
 
 The Home Assistant App configuration tab owns shallow operational settings,
 such as log level. Safety Home owns the editor for `user_config.yml`, including
-component selection, notification destinations, installation defaults, and
+component selection, notification destinations, component settings, and
 the physical asset registry. The editor uses a same-origin API available only
 through authenticated Ingress. It performs model and compiler validation and
-uses revision-checked atomic writes. It does not expose or mutate the packaged
-`system_config.yml`.
+uses revision-checked atomic writes. It exposes a read-only subset of packaged
+calibration defaults for field help but never mutates `system_config.yml`.
 
 A successful save persists the source but does not alter the running safety
 configuration. The operator restarts the App to execute the normal startup

@@ -3,6 +3,7 @@
 
 readonly user_config="/config/user_config.yml"
 readonly runtime_apps="/run/safety-component/apps"
+readonly core_location="/run/safety-component/ha-location.json"
 
 if [[ ! -f "${user_config}" ]]; then
     bashio::log.warning \
@@ -11,16 +12,6 @@ if [[ ! -f "${user_config}" ]]; then
 fi
 
 log_level="$(bashio::config 'log_level' | tr '[:lower:]' '[:upper:]')"
-if ! python /opt/safety-component/backend/build_app_config.py \
-    --system /opt/safety-component/backend/config/system_config.yml \
-    --user "${user_config}" \
-    --log-level "${log_level}" \
-    --output "${runtime_apps}/apps.yaml"; then
-    bashio::log.error \
-        "Configuration compilation failed; edit user_config.yml in Safety Home and restart this App"
-    exec sleep 2147483647
-fi
-
 declare core_state=""
 declare -i waited=0
 
@@ -49,9 +40,21 @@ fi
 
 if ! python /opt/safety-component/backend/build_appdaemon_config.py \
     --template /etc/safety-component/appdaemon.yaml \
+    --location-output "${core_location}" \
     --output /data/appdaemon/appdaemon.yaml; then
     bashio::log.error \
         "Could not build AppDaemon configuration; Safety Home remains available"
+    exec sleep 2147483647
+fi
+
+if ! python /opt/safety-component/backend/build_app_config.py \
+    --system /opt/safety-component/backend/config/system_config.yml \
+    --user "${user_config}" \
+    --home-assistant-config "${core_location}" \
+    --log-level "${log_level}" \
+    --output "${runtime_apps}/apps.yaml"; then
+    bashio::log.error \
+        "Configuration compilation failed; edit user_config.yml in Safety Home and restart this App"
     exec sleep 2147483647
 fi
 

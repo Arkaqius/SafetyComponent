@@ -39,10 +39,10 @@ changed the file after it was opened, reload the page and reconcile the newer
 revision instead of overwriting it.
 
 AppDaemon's required latitude, longitude, elevation, and time zone are generated
-from Home Assistant Core configuration on every start. Do not duplicate these
-runtime settings in the App options. The safety provider coordinates under
-`user_config.installation.site` remain installation-owned inputs and may
-intentionally differ from the Home Assistant installation location.
+from Home Assistant Core configuration on every start. The same current latitude
+and longitude are used for the safety providers. Do not duplicate coordinates
+in the App options or `user_config.installation.site`; its timezone, country,
+and TERYT codes remain installation-owned.
 
 ## Configuration ownership
 

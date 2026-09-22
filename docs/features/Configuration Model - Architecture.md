@@ -15,7 +15,7 @@ Configuration is resolved in three ordered layers:
 1. `system_config.yml` provides packaged policy, calibration, profiles,
    provider lifecycle, fault definitions, and component defaults that do not
    depend on one installation.
-2. `user_config.yml` `installation.defaults` optionally overrides a packaged
+2. `user_config.yml` `installation.component_settings` optionally overrides a packaged
    default for the whole installation.
 3. A room, opening, detector, or monitored entity may refine the applicable
    value for that asset.
@@ -81,14 +81,12 @@ user_config:
 
   installation:
     site:
-      latitude: 50.0
-      longitude: 20.0
       timezone: Europe/Warsaw
       country_code: PL
       teryt_codes: ["0000"]
     common_entities:
       outside_temp: sensor.outdoor_temperature
-    defaults:
+    component_settings:
       temperature:
         high_temperature_c: 27.0
 
@@ -165,9 +163,9 @@ installation has completed and verified the cleanup.
 
 | Field | Required | Contract |
 | --- | --- | --- |
-| `site` | When External Hazard is enabled | Latitude `[-90, 90]`, longitude `[-180, 180]`, valid IANA `timezone`, two-letter `country_code`, and a non-empty unique list of four-digit `teryt_codes`. |
+| `site` | When External Hazard is enabled | Valid IANA `timezone`, two-letter `country_code`, and a non-empty unique list of four-digit `teryt_codes`. Latitude and longitude are never stored here; they come from current Home Assistant Core configuration on every App start. |
 | `common_entities` | No | Map of stable semantic keys to Home Assistant entity IDs. |
-| `defaults` | No | Installation-wide overrides for temperature, safety doors, external hazards, and Entity Monitor dependencies. |
+| `component_settings` | No | Installation-wide overrides grouped by Temperature, Safety Doors, External Hazard, and Entity Monitor. |
 | `rooms` | No | Stable room registry used to generate Temperature bindings. |
 | `openings` | No | Stable physical opening registry used by room, Safety Doors, and External Hazard bindings. |
 | `detectors` | No | Internal environmental detector registry. |
@@ -176,14 +174,14 @@ installation has completed and verified the cleanup.
 Keys in `rooms`, `openings`, `detectors`, and `monitored_entities` use
 `^[A-Z][A-Za-z0-9]*$`. They are technical identities, not translated names.
 
-### 3.3 Installation defaults
+### 3.3 Component settings
 
 | Path | Fields and constraints |
 | --- | --- |
-| `defaults.temperature` | Optional `low_temperature_c`, `high_temperature_c`, and positive `forecast_horizon_hours`. Resolved low must remain below resolved high. |
-| `defaults.safety_door` | Optional positive `timeout_seconds`. |
-| `defaults.external_hazard` | Optional non-empty unique `hazards` list plus weather and outdoor-air-quality overrides. Omitted values inherit the corresponding `default_*` system calibration. |
-| `defaults.entity_monitor` | Optional `startup_grace_seconds`, positive `evaluation_interval_seconds`, and component override map keyed by stable dependency ID. Each component override may refine debounce, detection budget, and checks. |
+| `component_settings.temperature` | Optional `low_temperature_c` and `high_temperature_c`. Resolved low must remain below resolved high. The forecast horizon is system-owned. |
+| `component_settings.safety_door` | Optional positive `timeout_seconds`. |
+| `component_settings.external_hazard` | Optional weather and outdoor-air-quality threshold overrides. The default hazard list and forecast horizon are system-owned; an opening may still select its applicable hazards. |
+| `component_settings.entity_monitor` | Optional `startup_grace_seconds`, positive `evaluation_interval_seconds`, and component override map keyed by stable dependency ID. Each component override may refine debounce, detection budget, and checks. |
 
 ### 3.4 Rooms and openings
 
@@ -195,7 +193,7 @@ Each room accepts:
 | `temperature_sensor` | Yes | Temperature entity ID; syntax and existence are checked at startup. |
 | `window` | No | Stable key of one opening in the same `area_id`. One opening cannot be assigned to two rooms. |
 | `actuator` | No | `cover.*` entity accepted by the existing Temperature safe-actuation contract. |
-| `temperature` | No | Per-room temperature fields from section 3.3; these override installation and system defaults. |
+| `temperature` | No | Per-room low/high temperature fields from section 3.3; these override installation and system defaults. |
 
 Each opening accepts `area_id`, `entity_id`, `friendly_name`, and `kind`.
 `kind` is one of `window`, `door`, `garage_door`, or `gate`. It may then carry
@@ -253,7 +251,7 @@ existing runtime namespace:
 System-owned detector profiles, persistence limits, provider policy, MQTT
 behavior, health calibration, and fault definitions are added during
 compilation. The compiler does not copy `model_version`, `installation`, or
-installation defaults into the runtime output. SafetyFunctions therefore sees
+component settings into the runtime output. SafetyFunctions therefore sees
 the same validated component contract as before configuration model version 2.
 
 ## 5. Validation boundaries
@@ -292,8 +290,8 @@ python backend/build_app_config.py --print-user-schema
 Validate and compile a reviewed source file with:
 
 ```powershell
-python backend/build_app_config.py --user <user.yml> --output <apps.yaml>
-python backend/build_app_config.py --user <user.yml> --output <apps.yaml> --check
+python backend/build_app_config.py --user <user.yml> --home-assistant-config <ha-location.json> --output <apps.yaml>
+python backend/build_app_config.py --user <user.yml> --home-assistant-config <ha-location.json> --output <apps.yaml> --check
 ```
 
 The Pydantic source model, generated JSON Schema, public example, architecture
@@ -314,9 +312,9 @@ an additional editable source of truth.
 
 Safety Home provides an authenticated Ingress page for editing the private
 `user_config.yml`. The page covers the editable root fields and the complete
-`installation` registry. It never reads, returns, or writes
-`system_config.yml`; packaged policy remains a reviewed source-code and release
-artifact.
+`installation` registry. It never writes `system_config.yml`; the API exposes
+only read-only calibration defaults as field help. Packaged policy remains a
+reviewed source-code and release artifact.
 
 When the installation file does not exist, the API returns the public example
 as an unsaved draft with an `absent` revision. SafetyFunctions waits while the
@@ -331,7 +329,8 @@ with the revision that was read by the browser. Before replacing the file it:
 1. rejects a stale revision so two browser sessions cannot silently overwrite
    one another;
 2. validates the complete version 2 source model;
-3. compiles the candidate together with the packaged system configuration;
+3. reads current Home Assistant Core coordinates and compiles the candidate
+   together with the packaged system configuration;
 4. atomically replaces `/config/user_config.yml` only after those checks pass.
 
 Saving does not apply a partial configuration to a running SafetyFunctions
@@ -339,3 +338,5 @@ instance. The operator restarts the Home Assistant App, and the normal startup
 compiler recreates `apps.yaml` before AppDaemon starts. Entity existence and
 other checks requiring a live Home Assistant connection remain part of
 SafetyFunctions initialization.
+The startup compiler fails closed when Home Assistant does not provide valid
+coordinates for a configured site; it never substitutes example coordinates.

@@ -19,7 +19,8 @@ BACKEND_DIR = Path(__file__).parents[1]
 
 def _example_config() -> dict:
     return compile_config(
-        user_path=BACKEND_DIR / "config" / "user_config.example.yml"
+        user_path=BACKEND_DIR / "config" / "user_config.example.yml",
+        home_assistant_config={"latitude": 50.0, "longitude": 20.0},
     )["SafetyFunctions"]
 
 

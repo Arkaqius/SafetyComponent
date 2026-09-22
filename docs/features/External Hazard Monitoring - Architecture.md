@@ -418,10 +418,11 @@ system_config:
 
 calibration:
   external_hazard:
+    default_hazards: [frost, wind, rain, storm, outdoor_air_pollution]
     actuation_mode: manual_and_user_confirmed
     clear_delay_seconds: 120
     weather:
-      default_forecast_horizon_hours: 2
+      forecast_horizon_hours: 2
       default_frost_watch_c: 2.0
       default_frost_warning_c: 0.0
       default_gust_watch_m_s: 15.0
@@ -495,15 +496,12 @@ user_config:
 
   installation:
     site:
-      latitude: 00.0000
-      longitude: 00.0000
       timezone: Europe/Warsaw
       country_code: PL
       teryt_codes:
         - "0000"
-    defaults:
+    component_settings:
       external_hazard:
-        hazards: [frost, wind, rain, storm, outdoor_air_pollution]
         weather:
           frost_watch_c: 3.0
         outdoor_air_quality:

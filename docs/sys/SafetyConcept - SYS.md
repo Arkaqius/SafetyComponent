@@ -212,10 +212,10 @@ This chapter defines **notification levels and vectors** used by the Safety Syst
 `backend/config/system_config.yml` owns software policy, calibration, stable
 fault-to-Safety-Mechanism mappings, provider lifecycle, MQTT behavior, and
 system health checks. The ignored `backend/config/user_config.yml` owns only
-the normalized installation registry, installation-default overrides, and
+the normalized installation registry, component-specific overrides, and
 operator choices; the repository contains `user_config.example.yml` as its
 public template. `backend/build_app_config.py` resolves system defaults,
-installation defaults, and per-asset overrides into the ignored deployable
+component settings, and per-asset overrides into the ignored deployable
 `backend/app_cfg.yaml` contract:
 
 ```yaml
@@ -647,10 +647,10 @@ temperature.
 
 - Per-room bindings: `area_id`, `temperature_sensor`, optional `window_sensor`,
   and optional cover `actuator`.
-- Thresholds and forecast horizon: `default_low_temperature_c`,
-  `default_high_temperature_c`, and `default_forecast_horizon_hours`, inherited
-  by the installation and exposed as `low_temperature_c`,
-  `high_temperature_c`, and `forecast_horizon_hours` overrides.
+- Thresholds: `default_low_temperature_c` and
+  `default_high_temperature_c`, inherited by the installation and exposed as
+  `low_temperature_c` and `high_temperature_c` overrides. The
+  `forecast_horizon_hours` parameter is fixed in system configuration.
 - Direct-mechanism debounce:
   `sm_tc_1_debounce_limit` and `sm_tc_1_reeval_delay_seconds`.
 - Forecast-mechanism debounce and derivative sampling:
@@ -780,8 +780,8 @@ temperature.
 
 #### 8.3.4 Parameters
 
-- Site identity: latitude, longitude, timezone, country, and configured TERYT
-  codes.
+- Site identity: latitude and longitude from Home Assistant Core at each App
+  start, plus configured timezone, country, and TERYT codes.
 - Opening registry: stable opening name, `entity_id`, `area_id`, opening kind,
   applicable hazard types, execution policy, and optional allowlisted
   `cover.*` actuator.

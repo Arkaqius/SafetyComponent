@@ -1,6 +1,6 @@
 # Copy to user_config.yml and replace only Home Assistant installation values.
 # System policy and defaults live in system_config.yml. Values under
-# installation.defaults override them for this installation; values on one
+# installation.component_settings override them for this installation; values on one
 # room or opening override both layers.
 user_config:
   model_version: 2
@@ -41,8 +41,6 @@ user_config:
 
   installation:
     site:
-      latitude: 50.0
-      longitude: 20.0
       timezone: Europe/Warsaw
       country_code: PL
       teryt_codes:
@@ -53,7 +51,7 @@ user_config:
 
     # Optional installation-wide overrides. Omit this block to use the
     # packaged system defaults unchanged.
-    defaults:
+    component_settings:
       temperature: {}
       safety_door: {}
       external_hazard: {}

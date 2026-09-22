@@ -85,11 +85,18 @@ modelu v2. Import tylko wypełnia formularz. Sprawdź go, zapisz i uruchom
 ponownie aplikację, aby wystartował SafetyFunctions.
 
 Strona edytuje włączone komponenty i providery, język, odbiorców powiadomień,
-dane lokalizacji, wartości domyślne instalacji oraz rejestry pomieszczeń,
+administracyjne dane lokalizacji, ustawienia komponentów oraz rejestry pomieszczeń,
 otworów, detektorów i monitorowanych encji. `system_config.yml` jest częścią
 wersjonowanego obrazu aplikacji. Cały panel Ingress jest dostępny tylko dla
 administratorów Home Assistanta, ponieważ konfiguracja zawiera prywatną
 topologię instalacji.
+
+Szerokość i długość geograficzna są pobierane z Home Assistanta przy każdym
+starcie i nie są zapisywane w `user_config.yml`. Horyzonty prognozy i domyślna
+lista zagrożeń są dostarczane w `system_config.yml`. Dodatkowe monitorowane
+encje wpisuje się osobno; zależności innych komponentów są monitorowane
+automatycznie. Konserwacja MQTT dla starych identyfikatorów discovery znajduje
+się w zwijanej sekcji zaawansowanej.
 
 Zapis jest przyjmowany tylko wtedy, gdy dokument nadal ma odczytaną rewizję,
 przechodzi walidację modelu v2 i daje się skompilować z dołączoną konfiguracją

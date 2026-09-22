@@ -2286,6 +2286,77 @@ details summary:focus-visible {
   min-height: 230px;
 }
 
+.configuration-ha-location,
+.configuration-field-help,
+.configuration-field small,
+.configuration-object-editor small {
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  line-height: 1.5;
+}
+
+.configuration-object-editor,
+.configuration-nested-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.configuration-object-editor {
+  margin-top: 18px;
+}
+
+.configuration-object-heading,
+.configuration-object-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.configuration-object-entry {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.configuration-object-entry-heading,
+.configuration-object-add,
+.configuration-nested-row,
+.configuration-array-row {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.configuration-object-entry-heading {
+  justify-content: space-between;
+}
+
+.configuration-object-add input,
+.configuration-object-add select {
+  background: rgba(3, 9, 13, 0.42);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  min-height: 40px;
+  padding: 8px 10px;
+}
+
+.configuration-nested-row > .configuration-field,
+.configuration-array-row > .configuration-field,
+.configuration-object-add > .configuration-field {
+  flex: 1 1 240px;
+}
+
+.configuration-nested-row > .configuration-nested-fields {
+  flex: 1 1 100%;
+}
+
+.configuration-editor-error {
+  color: var(--critical) !important;
+}
+
 .metric-strip {
   background: var(--surface);
   border: 1px solid var(--border);

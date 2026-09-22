@@ -4,6 +4,7 @@ export type ConfigurationMap = Record<string, unknown>;
 
 export interface UserConfigurationDocument {
   user_config: ConfigurationMap;
+  system_defaults?: ConfigurationMap;
   revision: string;
   restart_required: boolean;
   setup_required: boolean;
@@ -43,17 +44,15 @@ let mockDocument: UserConfigurationDocument = {
     mqtt: { legacy_discovery_entity_ids: [] },
     installation: {
       site: {
-        latitude: 50,
-        longitude: 20,
         timezone: 'Europe/Warsaw',
         country_code: 'PL',
         teryt_codes: ['0000'],
       },
       common_entities: { outside_temp: 'sensor.outdoor_temperature' },
-      defaults: {
-        temperature: { low_temperature_c: 18, high_temperature_c: 28, forecast_horizon_hours: 2 },
-        safety_door: { timeout_seconds: 120 },
-        external_hazard: { hazards: ['frost', 'wind', 'rain', 'storm', 'outdoor_air_pollution'] },
+      component_settings: {
+        temperature: {},
+        safety_door: {},
+        external_hazard: {},
         entity_monitor: {},
       },
       rooms: {
@@ -76,6 +75,22 @@ let mockDocument: UserConfigurationDocument = {
       monitored_entities: {},
     },
   },
+  system_defaults: {
+    temperature: { default_low_temperature_c: 18, default_high_temperature_c: 28 },
+    safety_door: { default_timeout_seconds: 120 },
+    entity_monitor: { default_startup_grace_seconds: 60, default_evaluation_interval_seconds: 5 },
+    external_hazard: {
+      weather: {
+        default_frost_watch_c: 2,
+        default_frost_warning_c: 0,
+        default_gust_watch_m_s: 15,
+        default_gust_warning_m_s: 20,
+        default_precipitation_warning_mm_h: 2.5,
+        default_persistence_seconds: 120,
+      },
+      outdoor_air_quality: { default_warning_at: 60 },
+    },
+  },
 };
 
 export async function loadUserConfiguration(): Promise<UserConfigurationDocument> {
@@ -87,6 +102,7 @@ export async function saveUserConfiguration(userConfig: ConfigurationMap, revisi
   if (MOCK_MODE) {
     mockDocument = {
       user_config: structuredClone(userConfig),
+      system_defaults: mockDocument.system_defaults,
       revision: `mock-${Date.now()}`,
       restart_required: true,
       setup_required: false,

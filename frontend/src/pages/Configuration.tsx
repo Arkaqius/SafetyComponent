@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useConfig } from '@hakit/core';
+import ConfigurationObjectEditor from '../components/ConfigurationObjectEditor';
 import { importUserConfiguration, loadUserConfiguration, saveUserConfiguration, type ConfigurationMap } from '../userConfigurationApi';
 
 const providerNames = ['OpenMeteoWeatherApiComponent', 'ImgwWarningsApiComponent', 'OpenMeteoAirQualityApiComponent'];
@@ -6,21 +8,41 @@ const registrySections = [
   { key: 'rooms', title: 'Pomieszczenia', description: 'Czujniki temperatury, obszary i przypisane otwory.' },
   { key: 'openings', title: 'Drzwi, bramy i okna', description: 'Fizyczne otwory oraz ich role bezpieczeństwa.' },
   { key: 'detectors', title: 'Detektory zagrożeń', description: 'Czujniki dymu, gazu i tlenku węgla.' },
-  { key: 'monitored_entities', title: 'Monitorowane encje', description: 'Jawnie nadzorowane encje i ich kryteria zdrowia.' },
 ] as const;
+const registryTemplates: Record<string, ConfigurationMap> = {
+  rooms: { area_id: '', temperature_sensor: '', temperature: {} },
+  openings: { area_id: '', entity_id: '', friendly_name: '', kind: 'window' },
+  detectors: { area_id: '', entity_id: '', friendly_name: '', hazard: 'smoke', profile: '' },
+  monitored_entities: { entity_id: '', description: '', enabled: true, checks: {} },
+};
+const registryHelp: Record<string, string> = {
+  area_id: 'Identyfikator obszaru Home Assistant.',
+  entity_id: 'Identyfikator encji Home Assistant, np. binary_sensor.drzwi.',
+  temperature_sensor: 'Encja pomiaru temperatury w pomieszczeniu.',
+  window: 'Stabilny identyfikator otworu z sekcji Drzwi, bramy i okna.',
+  actuator: 'Opcjonalna encja cover.* dla komponentu temperatury.',
+  friendly_name: 'Nazwa czytelna dla użytkownika.',
+  kind: 'Rodzaj otworu.',
+  safety_door: 'Dodaj obiekt, aby włączyć rolę monitorowania drzwi.',
+  external_hazard: 'Dodaj obiekt, aby włączyć rolę zagrożeń zewnętrznych.',
+  hazard: 'Rodzaj zagrożenia wykrywany przez detektor.',
+  profile: 'Nazwa profilu detektora z system_config.yml.',
+  description: 'Opis celu dodatkowego monitoringu.',
+  checks: 'Warunki oceny zdrowia encji.',
+};
 
 type SaveState = 'idle' | 'saving' | 'saved';
 
 export default function Configuration() {
+  const haConfig = useConfig();
   const [draft, setDraft] = useState<ConfigurationMap | null>(null);
+  const [systemDefaults, setSystemDefaults] = useState<ConfigurationMap>({});
   const [revision, setRevision] = useState('');
   const [setupRequired, setSetupRequired] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [error, setError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
-  const [editorErrors, setEditorErrors] = useState<Record<string, string>>({});
-  const [editorGeneration, setEditorGeneration] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -28,13 +50,12 @@ export default function Configuration() {
     try {
       const document = await loadUserConfiguration();
       setDraft(document.user_config);
+      setSystemDefaults(document.system_defaults ?? {});
       setRevision(document.revision);
       setSetupRequired(document.setup_required);
       setValidationError(document.validation_error ?? null);
       setDirty(false);
       setSaveState('idle');
-      setEditorErrors({});
-      setEditorGeneration(current => current + 1);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Nie udało się pobrać konfiguracji');
     }
@@ -51,7 +72,7 @@ export default function Configuration() {
   }, []);
 
   const save = async () => {
-    if (!draft || Object.keys(editorErrors).length > 0) return;
+    if (!draft) return;
     setSaveState('saving');
     setError(null);
     try {
@@ -83,9 +104,7 @@ export default function Configuration() {
       setDraft(imported);
       setDirty(true);
       setSaveState('idle');
-      setEditorErrors({});
       setValidationError(null);
-      setEditorGeneration(current => current + 1);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Nie udało się wczytać pliku');
     }
@@ -117,12 +136,21 @@ export default function Configuration() {
   const installation = asMap(draft.installation);
   const site = asMap(installation.site);
   const commonEntities = asMap(installation.common_entities);
-  const defaults = asMap(installation.defaults);
+  const defaults = asMap(installation.component_settings);
   const temperatureDefaults = asMap(defaults.temperature);
   const safetyDoorDefaults = asMap(defaults.safety_door);
   const entityMonitorDefaults = asMap(defaults.entity_monitor);
   const externalHazardDefaults = asMap(defaults.external_hazard);
+  const weatherSettings = asMap(externalHazardDefaults.weather);
+  const airQualitySettings = asMap(externalHazardDefaults.outdoor_air_quality);
   const componentOverrides = asMap(entityMonitorDefaults.component_overrides);
+  const temperatureSystem = asMap(systemDefaults.temperature);
+  const safetyDoorSystem = asMap(systemDefaults.safety_door);
+  const entityMonitorSystem = asMap(systemDefaults.entity_monitor);
+  const externalHazardSystem = asMap(systemDefaults.external_hazard);
+  const weatherSystem = asMap(externalHazardSystem.weather);
+  const airQualitySystem = asMap(externalHazardSystem.outdoor_air_quality);
+  const timezones = supportedTimezones(stringValue(site.timezone));
 
   return (
     <div className='page-stack'>
@@ -132,7 +160,8 @@ export default function Configuration() {
           <h2>Ustawienia SafetyComponent</h2>
           <p>
             Edytujesz wyłącznie prywatny <code>user_config.yml</code>. Polityka, kalibracja i parametry wykonawcze z{' '}
-            <code>system_config.yml</code> są dostarczane razem z aplikacją i nie są dostępne w tym panelu.
+            <code>system_config.yml</code> są dostarczane razem z aplikacją. W panelu widać ich wartości domyślne, ale nie można ich tu
+            zmienić.
           </p>
         </div>
         <div className='configuration-actions'>
@@ -154,12 +183,7 @@ export default function Configuration() {
           <button className='secondary-button' disabled={!dirty || saveState === 'saving'} onClick={() => void load()} type='button'>
             Odrzuć zmiany
           </button>
-          <button
-            className='primary-button'
-            disabled={!dirty || saveState === 'saving' || Object.keys(editorErrors).length > 0}
-            onClick={() => void save()}
-            type='button'
-          >
+          <button className='primary-button' disabled={!dirty || saveState === 'saving'} onClick={() => void save()} type='button'>
             {saveState === 'saving' ? 'Zapisywanie…' : setupRequired ? 'Utwórz user_config.yml' : 'Zapisz konfigurację'}
           </button>
         </div>
@@ -220,10 +244,11 @@ export default function Configuration() {
       </section>
 
       <section className='panel configuration-section'>
-        <SectionHeader title='Ustawienia użytkownika' description='Język interfejsu i miejsca docelowe powiadomień Home Assistant.' />
+        <SectionHeader title='Lokalizacja i nazwy' description='Język oraz przyjazne nazwy encji publikowanych przez SafetyComponent.' />
         <div className='configuration-grid'>
           <SelectField
             label='Język'
+            help='Język komunikatów i nazw publikowanych przez SafetyComponent.'
             value={stringValue(localization.language, 'pl')}
             onChange={value => update(['localization', 'language'], value)}
             options={[
@@ -232,13 +257,29 @@ export default function Configuration() {
               ['de', 'Deutsch'],
             ]}
           />
+        </div>
+        <ConfigurationObjectEditor
+          description='Opcjonalne nazwy zamiast nazw domyślnych. Kluczem jest entity_id.'
+          label='Nadpisania nazw encji'
+          value={asMap(localization.entity_names)}
+          newEntry=''
+          onChange={value => update(['localization', 'entity_names'], value)}
+        />
+      </section>
+
+      <section className='panel configuration-section'>
+        <SectionHeader title='Powiadomienia' description='Miejsca docelowe powiadomień Home Assistant.' />
+        <div className='configuration-grid'>
           <TextField
             label='Domyślny adres po kliknięciu powiadomienia'
+            help='Ścieżka w Home Assistant otwierana po dotknięciu powiadomienia.'
+            defaultValue='/'
             value={stringValue(mobile.default_url)}
             onChange={value => update(['notification', 'mobile', 'default_url'], value)}
           />
           <TextAreaField
             label='Usługi powiadomień (jedna w wierszu)'
+            help='Wpisz usługi notify/<nazwa>, dostępne w tej instalacji.'
             value={stringList(mobile.services).join('\n')}
             onChange={value => update(['notification', 'mobile', 'services'], splitLines(value))}
           />
@@ -257,55 +298,40 @@ export default function Configuration() {
             value={stringValue(localNotification.alarm_entity)}
             onChange={value => update(['notification', 'local', 'alarm_entity'], value || undefined)}
           />
-          <TextAreaField
-            label='Encje MQTT do jednorazowego posprzątania'
-            value={stringList(mqtt.legacy_discovery_entity_ids).join('\n')}
-            onChange={value => update(['mqtt', 'legacy_discovery_entity_ids'], splitLines(value))}
-          />
         </div>
-        <JsonObjectEditor
-          description='Opcjonalne przyjazne nazwy encji publikowanych przez SafetyComponent.'
-          key={`entity-names-${editorGeneration}`}
-          label='Nadpisania nazw encji'
-          value={asMap(localization.entity_names)}
-          onChange={value => update(['localization', 'entity_names'], value)}
-          onError={message => setEditorError(setEditorErrors, 'entity_names', message)}
-        />
       </section>
 
       <section className='panel configuration-section'>
         <SectionHeader
           title='Instalacja Home Assistant'
-          description='Lokalizacja oraz wspólne encje dostępne dla wszystkich komponentów.'
+          description='Dane administracyjne i wspólne encje. Współrzędne są pobierane z Home Assistant przy każdym uruchomieniu aplikacji.'
         />
+        <p className='configuration-ha-location'>
+          Współrzędne HA: {haConfig ? `${haConfig.latitude}, ${haConfig.longitude}` : 'oczekiwanie na Home Assistant'}
+        </p>
         <div className='configuration-grid'>
-          <NumberField
-            label='Szerokość geograficzna'
-            value={numberValue(site.latitude)}
-            onChange={value => update(['installation', 'site', 'latitude'], value)}
-          />
-          <NumberField
-            label='Długość geograficzna'
-            value={numberValue(site.longitude)}
-            onChange={value => update(['installation', 'site', 'longitude'], value)}
-          />
-          <TextField
+          <SelectField
             label='Strefa czasowa'
+            help='Strefa używana do interpretacji lokalnych alertów; współrzędne pochodzą z HA.'
             value={stringValue(site.timezone)}
             onChange={value => update(['installation', 'site', 'timezone'], value)}
+            options={timezones.map(zone => [zone, zone])}
           />
           <TextField
             label='Kod kraju'
+            help='Dwuliterowy kod kraju dla reguł administracyjnych, np. PL.'
             value={stringValue(site.country_code)}
             onChange={value => update(['installation', 'site', 'country_code'], value.toUpperCase())}
           />
           <TextAreaField
             label='Kody TERYT (jeden w wierszu)'
+            help='Czterocyfrowe kody powiatów używane przez ostrzeżenia IMGW.'
             value={stringList(site.teryt_codes).join('\n')}
             onChange={value => update(['installation', 'site', 'teryt_codes'], splitLines(value))}
           />
           <TextField
             label='Encja temperatury zewnętrznej'
+            help='Encja używana przez komponent temperatury, jeśli jest włączony.'
             value={stringValue(commonEntities.outside_temp)}
             onChange={value => update(['installation', 'common_entities', 'outside_temp'], value)}
           />
@@ -314,80 +340,143 @@ export default function Configuration() {
 
       <section className='panel configuration-section'>
         <SectionHeader
-          title='Domyślne wartości instalacji'
-          description='Nadpisują wartości systemowe dla całej instalacji. Ustawienia pojedynczego zasobu mają wyższy priorytet.'
+          title='Ustawienia komponentów'
+          description='Ustawienia specyficzne dla instalacji. Puste pola używają pokazanej wartości systemowej; ustawienia pojedynczego zasobu mają wyższy priorytet.'
         />
-        <div className='configuration-grid'>
-          <NumberField
-            label='Minimalna temperatura (°C)'
-            optional
-            value={numberValue(temperatureDefaults.low_temperature_c)}
-            onChange={value => update(['installation', 'defaults', 'temperature', 'low_temperature_c'], value)}
-          />
-          <NumberField
-            label='Maksymalna temperatura (°C)'
-            optional
-            value={numberValue(temperatureDefaults.high_temperature_c)}
-            onChange={value => update(['installation', 'defaults', 'temperature', 'high_temperature_c'], value)}
-          />
-          <NumberField
-            label='Horyzont prognozy (h)'
-            optional
-            value={numberValue(temperatureDefaults.forecast_horizon_hours)}
-            onChange={value => update(['installation', 'defaults', 'temperature', 'forecast_horizon_hours'], value)}
-          />
+        <fieldset className='configuration-fieldset'>
+          <legend>Temperatura</legend>
+          <div className='configuration-grid'>
+            <NumberField
+              label='Minimalna temperatura (°C)'
+              optional
+              defaultValue={String(temperatureSystem.default_low_temperature_c ?? '')}
+              help='Próg dla wszystkich pomieszczeń bez własnego progu.'
+              value={numberValue(temperatureDefaults.low_temperature_c)}
+              onChange={value => update(['installation', 'component_settings', 'temperature', 'low_temperature_c'], value)}
+            />
+            <NumberField
+              label='Maksymalna temperatura (°C)'
+              optional
+              defaultValue={String(temperatureSystem.default_high_temperature_c ?? '')}
+              help='Próg dla wszystkich pomieszczeń bez własnego progu.'
+              value={numberValue(temperatureDefaults.high_temperature_c)}
+              onChange={value => update(['installation', 'component_settings', 'temperature', 'high_temperature_c'], value)}
+            />
+          </div>
+        </fieldset>
+        <fieldset className='configuration-fieldset'>
+          <legend>Drzwi i bramy</legend>
           <NumberField
             label='Timeout drzwi i bram (s)'
             optional
+            defaultValue={String(safetyDoorSystem.default_timeout_seconds ?? '')}
+            help='Czas, po którym otwarty otwór zgłasza stan alarmowy.'
             value={numberValue(safetyDoorDefaults.timeout_seconds)}
-            onChange={value => update(['installation', 'defaults', 'safety_door', 'timeout_seconds'], value)}
+            onChange={value => update(['installation', 'component_settings', 'safety_door', 'timeout_seconds'], value)}
           />
-          <NumberField
-            label='Czas ochronny po starcie (s)'
-            optional
-            value={numberValue(entityMonitorDefaults.startup_grace_seconds)}
-            onChange={value => update(['installation', 'defaults', 'entity_monitor', 'startup_grace_seconds'], value)}
-          />
-          <NumberField
-            label='Interwał oceny encji (s)'
-            optional
-            value={numberValue(entityMonitorDefaults.evaluation_interval_seconds)}
-            onChange={value => update(['installation', 'defaults', 'entity_monitor', 'evaluation_interval_seconds'], value)}
-          />
-        </div>
-        <div className='configuration-columns'>
-          <JsonObjectEditor
-            description='Lista zagrożeń oraz progi pogody i jakości powietrza.'
-            key={`external-hazard-${editorGeneration}`}
-            label='Domyślne zagrożenia zewnętrzne'
-            value={externalHazardDefaults}
-            onChange={value => update(['installation', 'defaults', 'external_hazard'], value)}
-            onError={message => setEditorError(setEditorErrors, 'external_hazard', message)}
-          />
-          <JsonObjectEditor
-            description='Wyjątki nadzoru zależności należących do komponentów.'
-            key={`component-overrides-${editorGeneration}`}
+        </fieldset>
+        <fieldset className='configuration-fieldset'>
+          <legend>Monitoring encji</legend>
+          <div className='configuration-grid'>
+            <NumberField
+              label='Czas ochronny po starcie (s)'
+              optional
+              defaultValue={String(entityMonitorSystem.default_startup_grace_seconds ?? '')}
+              help='Opóźnia zgłaszanie awarii zależności po uruchomieniu.'
+              value={numberValue(entityMonitorDefaults.startup_grace_seconds)}
+              onChange={value => update(['installation', 'component_settings', 'entity_monitor', 'startup_grace_seconds'], value)}
+            />
+            <NumberField
+              label='Interwał oceny encji (s)'
+              optional
+              defaultValue={String(entityMonitorSystem.default_evaluation_interval_seconds ?? '')}
+              help='Częstotliwość sprawdzania zdrowia monitorowanych encji.'
+              value={numberValue(entityMonitorDefaults.evaluation_interval_seconds)}
+              onChange={value => update(['installation', 'component_settings', 'entity_monitor', 'evaluation_interval_seconds'], value)}
+            />
+          </div>
+          <ConfigurationObjectEditor
+            description='Wyjątki dla zależności należących do komponentów. Monitorowane encje dodatkowe są poniżej.'
             label='Wyjątki monitoringu encji'
             value={componentOverrides}
-            onChange={value => update(['installation', 'defaults', 'entity_monitor', 'component_overrides'], value)}
-            onError={message => setEditorError(setEditorErrors, 'component_overrides', message)}
+            newEntry={{}}
+            onChange={value => update(['installation', 'component_settings', 'entity_monitor', 'component_overrides'], value)}
           />
-        </div>
+          <ConfigurationObjectEditor
+            label='Dodatkowe monitorowane encje'
+            description='Encje używane przez logikę innych komponentów są monitorowane automatycznie. Dodawaj tu tylko pozostałe.'
+            value={asMap(installation.monitored_entities)}
+            newEntry={registryTemplates.monitored_entities}
+            help={registryHelp}
+            onChange={value => update(['installation', 'monitored_entities'], value)}
+          />
+        </fieldset>
+        <fieldset className='configuration-fieldset'>
+          <legend>Zagrożenia zewnętrzne</legend>
+          <p className='configuration-field-help'>
+            Lista zagrożeń i horyzont prognozy są ustawieniami systemowymi. Poniżej można zmienić tylko progi dla tej instalacji.
+          </p>
+          <div className='configuration-grid'>
+            {(
+              [
+                ['frost_watch_c', 'Obserwacja mrozu (°C)'],
+                ['frost_warning_c', 'Ostrzeżenie przed mrozem (°C)'],
+                ['gust_watch_m_s', 'Obserwacja porywów (m/s)'],
+                ['gust_warning_m_s', 'Ostrzeżenie o porywach (m/s)'],
+                ['precipitation_warning_mm_h', 'Ostrzeżenie o opadach (mm/h)'],
+                ['persistence_seconds', 'Trwałość warunku (s)'],
+              ] as const
+            ).map(([key, label]) => (
+              <NumberField
+                key={key}
+                label={label}
+                optional
+                defaultValue={String(weatherSystem[`default_${key}`] ?? '')}
+                help='Puste pole używa wartości systemowej.'
+                value={numberValue(weatherSettings[key])}
+                onChange={value => update(['installation', 'component_settings', 'external_hazard', 'weather', key], value)}
+              />
+            ))}
+            <NumberField
+              label='Próg jakości powietrza (AQI)'
+              optional
+              defaultValue={String(airQualitySystem.default_warning_at ?? '')}
+              help='Puste pole używa wartości systemowej.'
+              value={numberValue(airQualitySettings.warning_at)}
+              onChange={value =>
+                update(['installation', 'component_settings', 'external_hazard', 'outdoor_air_quality', 'warning_at'], value)
+              }
+            />
+          </div>
+        </fieldset>
       </section>
 
       {registrySections.map(section => (
         <section className='panel configuration-section' key={section.key}>
           <SectionHeader title={section.title} description={section.description} />
-          <JsonObjectEditor
-            key={`${section.key}-${editorGeneration}`}
-            label={`${section.title} — dane źródłowe`}
+          <ConfigurationObjectEditor
+            label={section.title}
             description='Nazwy kluczy są stabilnymi identyfikatorami. Zapis zostanie sprawdzony względem modelu konfiguracji.'
             value={asMap(installation[section.key])}
+            newEntry={registryTemplates[section.key]}
+            help={registryHelp}
             onChange={value => update(['installation', section.key], value)}
-            onError={message => setEditorError(setEditorErrors, section.key, message)}
           />
         </section>
       ))}
+      <details className='panel configuration-section'>
+        <summary>Konserwacja MQTT — stare encje discovery</summary>
+        <p className='configuration-field-help'>
+          Po zmianie nazwy lub usunięciu encji wpisz jej dawny identyfikator sensor.*. Przy kolejnym starcie aplikacja opublikuje puste
+          retained discovery i stan. Lista nie jest wykrywana automatycznie, ponieważ aplikacja nie przechowuje kompletnego rejestru
+          poprzednich identyfikatorów.
+        </p>
+        <TextAreaField
+          label='Encje MQTT do usunięcia (jedna w wierszu)'
+          value={stringList(mqtt.legacy_discovery_entity_ids).join('\n')}
+          onChange={value => update(['mqtt', 'legacy_discovery_entity_ids'], splitLines(value))}
+        />
+      </details>
     </div>
   );
 }
@@ -412,11 +501,24 @@ function ToggleField({ label, checked, onChange }: { label: string; checked: boo
   );
 }
 
-function TextField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+function TextField({
+  label,
+  value,
+  onChange,
+  help,
+  defaultValue,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  help?: string;
+  defaultValue?: string;
+}) {
   return (
     <label className='configuration-field'>
-      <span>{label}</span>
+      <span title={help}>{label}</span>
       <input onChange={event => onChange(event.target.value)} value={value} />
+      <FieldHelp help={help} defaultValue={defaultValue} />
     </label>
   );
 }
@@ -425,11 +527,15 @@ function NumberField({
   label,
   value,
   optional = false,
+  help,
+  defaultValue,
   onChange,
 }: {
   label: string;
   value: number | undefined;
   optional?: boolean;
+  help?: string;
+  defaultValue?: string;
   onChange: (value: number | undefined) => void;
 }) {
   const [text, setText] = useState(value === undefined ? '' : String(value));
@@ -440,7 +546,7 @@ function NumberField({
 
   return (
     <label className='configuration-field'>
-      <span>{label}</span>
+      <span title={help}>{label}</span>
       <input
         inputMode='decimal'
         onBlur={() => {
@@ -454,17 +560,30 @@ function NumberField({
           else if (Number.isFinite(Number(next))) onChange(Number(next));
         }}
         type='number'
+        step='any'
         value={text}
       />
+      <FieldHelp help={help} defaultValue={defaultValue} />
     </label>
   );
 }
 
-function TextAreaField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+function TextAreaField({
+  label,
+  value,
+  onChange,
+  help,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  help?: string;
+}) {
   return (
     <label className='configuration-field'>
-      <span>{label}</span>
+      <span title={help}>{label}</span>
       <textarea onChange={event => onChange(event.target.value)} rows={4} value={value} />
+      <FieldHelp help={help} />
     </label>
   );
 }
@@ -474,15 +593,17 @@ function SelectField({
   value,
   options,
   onChange,
+  help,
 }: {
   label: string;
   value: string;
   options: Array<[string, string]>;
   onChange: (value: string) => void;
+  help?: string;
 }) {
   return (
     <label className='configuration-field'>
-      <span>{label}</span>
+      <span title={help}>{label}</span>
       <select onChange={event => onChange(event.target.value)} value={value}>
         {options.map(([optionValue, optionLabel]) => (
           <option key={optionValue} value={optionValue}>
@@ -490,51 +611,18 @@ function SelectField({
           </option>
         ))}
       </select>
+      <FieldHelp help={help} />
     </label>
   );
 }
 
-function JsonObjectEditor({
-  label,
-  description,
-  value,
-  onChange,
-  onError,
-}: {
-  label: string;
-  description: string;
-  value: ConfigurationMap;
-  onChange: (value: ConfigurationMap) => void;
-  onError: (message: string | null) => void;
-}) {
-  const [text, setText] = useState(() => JSON.stringify(value, null, 2));
-  const [parseError, setParseError] = useState<string | null>(null);
-
+function FieldHelp({ help, defaultValue }: { help?: string; defaultValue?: string }) {
+  if (!help && !defaultValue) return null;
   return (
-    <label className='configuration-json-editor'>
-      <span>{label}</span>
-      <small>{description}</small>
-      {parseError ? <small className='configuration-editor-error'>{parseError}</small> : null}
-      <textarea
-        spellCheck={false}
-        value={text}
-        onChange={event => {
-          const nextText = event.target.value;
-          setText(nextText);
-          try {
-            const parsed: unknown = JSON.parse(nextText);
-            if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('Wymagany jest obiekt JSON');
-            setParseError(null);
-            onError(null);
-            onChange(parsed as ConfigurationMap);
-          } catch (caught) {
-            const message = caught instanceof Error ? caught.message : 'Nieprawidłowy JSON';
-            setParseError(message);
-            onError(message);
-          }
-        }}
-      />
-    </label>
+    <small className='configuration-field-help'>
+      {help}
+      {defaultValue ? `${help ? ' ' : ''}Domyślnie: ${defaultValue}.` : ''}
+    </small>
   );
 }
 
@@ -574,15 +662,12 @@ function updatePath(source: ConfigurationMap, path: string[], value: unknown): C
   return copy;
 }
 
-function setEditorError(setter: Dispatch<SetStateAction<Record<string, string>>>, key: string, message: string | null) {
-  setter(current => {
-    const next = { ...current };
-    if (message) next[key] = message;
-    else delete next[key];
-    return next;
-  });
-}
-
 function friendlyName(name: string, suffix: string): string {
   return name.replace(new RegExp(`${suffix}$`), '').replace(/([a-z])([A-Z])/g, '$1 $2');
+}
+
+function supportedTimezones(current: string): string[] {
+  const intl = Intl as typeof Intl & { supportedValuesOf?: (key: string) => string[] };
+  const zones = intl.supportedValuesOf?.('timeZone') ?? ['Europe/Warsaw', 'Europe/London', 'UTC'];
+  return Array.from(new Set([current, ...zones].filter(Boolean))).sort();
 }

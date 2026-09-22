@@ -7,9 +7,11 @@ installation-independent defaults. Operators do not edit it inside a released
 Home Assistant App. The build compiler combines it with the private
 `user_config.yml` and generates the AppDaemon runtime configuration.
 
-The `default_` prefix has one precise meaning: the value is the system baseline
-and the user model provides an explicit override path. Fields without that
-prefix are fixed software policy for the released system configuration.
+The `default_` prefix identifies a system baseline that a user or asset may
+refine. Fields without that prefix are fixed software policy for the released
+system configuration. `default_hazards` is inherited by opening roles, which
+may select their own applicable hazards; there is no installation-wide user
+override for the list.
 
 `system_config.version` and `user_config.model_version` must match. There is no
 independent version in the generated `app_config` object.
@@ -32,6 +34,8 @@ python backend/build_app_config.py --print-system-schema
 
 Rooms, openings, detectors, monitored entities, site coordinates, notification
 destinations, and Home Assistant entity IDs do not belong in this file.
+Site latitude and longitude are read from current Home Assistant Core
+configuration at App startup and are not persisted in `user_config.yml` either.
 
 ## 3. Application and validation
 
@@ -60,9 +64,9 @@ destinations, and Home Assistant entity IDs do not belong in this file.
 | `sm_tc_max_valid_temperature_c` | °C `80` | Upper plausibility boundary. | No |
 | `sm_tc_max_abs_rate_c_per_min` | °C/min `0.25` | Rejects implausible temperature-rate evidence. | No |
 | `sm_tc_max_forecast_delta_c` | °C `6` | Bounds forecast extrapolation from one observation. | No |
-| `default_low_temperature_c` | °C `18` | Installation baseline for the low-temperature threshold. | `installation.defaults.temperature.low_temperature_c`, then room override |
-| `default_high_temperature_c` | °C `28` | Installation baseline for the high-temperature threshold. | `installation.defaults.temperature.high_temperature_c`, then room override |
-| `default_forecast_horizon_hours` | hours `2` | Installation baseline for room forecast evaluation. | `installation.defaults.temperature.forecast_horizon_hours`, then room override |
+| `default_low_temperature_c` | °C `18` | Installation baseline for the low-temperature threshold. | `installation.component_settings.temperature.low_temperature_c`, then room override |
+| `default_high_temperature_c` | °C `28` | Installation baseline for the high-temperature threshold. | `installation.component_settings.temperature.high_temperature_c`, then room override |
+| `forecast_horizon_hours` | hours `2` | Fixed horizon for room forecast evaluation. | No |
 
 The compiler preserves the existing uppercase mechanism parameter names only
 inside the generated runtime payload and diagnostics. Editable calibration uses
@@ -72,31 +76,32 @@ inside the generated runtime payload and diagnostics. Editable calibration uses
 
 | Field under `calibration.entity_monitor` | Type/default | Purpose | User override |
 | --- | --- | --- | --- |
-| `default_startup_grace_seconds` | seconds `60` | Prevents startup transients from immediately becoming dependency faults. | `installation.defaults.entity_monitor.startup_grace_seconds` |
+| `default_startup_grace_seconds` | seconds `60` | Prevents startup transients from immediately becoming dependency faults. | `installation.component_settings.entity_monitor.startup_grace_seconds` |
 | `default_failure_debounce_seconds` | seconds `15` | Default persistence required before a dependency becomes unhealthy. | Per explicit entity or component dependency |
 | `default_recovery_debounce_seconds` | seconds `60` | Default persistence required before recovery is accepted. | Per explicit entity or component dependency |
-| `default_evaluation_interval_seconds` | seconds `5` | Baseline periodic evaluation cadence. | `installation.defaults.entity_monitor.evaluation_interval_seconds` |
+| `default_evaluation_interval_seconds` | seconds `5` | Baseline periodic evaluation cadence. | `installation.component_settings.entity_monitor.evaluation_interval_seconds` |
 | `unhealthy_summary_limit` | integer `32` | Bounds diagnostic publication size. | No |
-| `component_overrides` | mapping, empty | Reviewed calibration for stable component-owned dependency keys. | Merged with `installation.defaults.entity_monitor.component_overrides` |
+| `component_overrides` | mapping, empty | Reviewed calibration for stable component-owned dependency keys. | Merged with `installation.component_settings.entity_monitor.component_overrides` |
 
 ### 4.3 Safety Door
 
 `calibration.safety_door.default_timeout_seconds` is the system open-duration
-baseline. `installation.defaults.safety_door.timeout_seconds` overrides it for
+baseline. `installation.component_settings.safety_door.timeout_seconds` overrides it for
 one installation, and an opening role may override it for one door or gate.
 
 ### 4.4 External Hazard
 
 `calibration.external_hazard.default_hazards` is the baseline hazard set for an
 opening role. `actuation_mode` and `clear_delay_seconds` are fixed runtime
-policy. Weather and air-quality fields all use `default_` because the private
-installation may refine them under
-`installation.defaults.external_hazard.weather` and
-`installation.defaults.external_hazard.outdoor_air_quality`.
+policy. Weather and air-quality decision thresholds use `default_` because the
+private installation may refine them under
+`installation.component_settings.external_hazard.weather` and
+`installation.component_settings.external_hazard.outdoor_air_quality`. The
+weather forecast horizon has no user override.
 
 | System field | Unit/default | Installation override |
 | --- | --- | --- |
-| `weather.default_forecast_horizon_hours` | hours `2` | `weather.forecast_horizon_hours` |
+| `weather.forecast_horizon_hours` | hours `2` | No user override |
 | `weather.default_frost_watch_c` | °C `2` | `weather.frost_watch_c` |
 | `weather.default_frost_warning_c` | °C `0` | `weather.frost_warning_c` |
 | `weather.default_gust_watch_m_s` | m/s `15` | `weather.gust_watch_m_s` |
