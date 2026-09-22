@@ -56,6 +56,22 @@ wcześniejszy zapis bez dziennika rozpoczyna historię od pustej listy.
 Rejestrator Home Assistanta nie jest wymagany do odczytu tej listy.
 Historia encji pozostaje poniżej i korzysta z Rejestratora.
 
+## Konfiguracja instalacji
+
+Strona **Konfiguracja** edytuje prywatny `user_config.yml`: włączone
+komponenty i providery, język, odbiorców powiadomień, dane lokalizacji,
+wartości domyślne instalacji oraz rejestry pomieszczeń, otworów, detektorów i
+monitorowanych encji. `system_config.yml` nie jest udostępniany ani zmieniany
+przez frontend; jest częścią wersjonowanego obrazu aplikacji.
+Cały panel Ingress jest dostępny tylko dla administratorów Home Assistanta,
+ponieważ konfiguracja zawiera prywatną topologię instalacji.
+
+Zapis jest przyjmowany tylko wtedy, gdy dokument nadal ma odczytaną rewizję,
+przechodzi walidację modelu v2 i daje się skompilować z dołączoną konfiguracją
+systemową. Po zapisie uruchom ponownie aplikację SafetyComponent. Dopiero
+kontrolowany start tworzy nowe `apps.yaml` i wykonuje walidację zależną od
+bieżących encji Home Assistanta.
+
 ### Potwierdzanie powiadomień
 
 Rozwinięta karta aktywnej usterki poziomu L1–L3 na pulpicie zawiera przycisk

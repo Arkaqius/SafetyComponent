@@ -7,6 +7,8 @@ AppDaemon App is required after migration.
 The App connects to Home Assistant through the Supervisor-provided token,
 serves Safety Home only through authenticated Ingress, and keeps installation
 configuration and lifecycle state in its App-specific configuration directory.
+Because the same Ingress includes the private installation editor, the sidebar
+panel is restricted to Home Assistant administrators.
 
 ## Installation
 
@@ -17,14 +19,22 @@ and then stops intentionally so an unreviewed example configuration cannot
 begin monitoring a real installation.
 
 Edit `user_config.yml`, replace every example entity and area binding, then
-start the App again. The startup service parses and compiles that file with its
-packaged system policy before AppDaemon starts; SafetyFunctions then performs
-the full schema and Home Assistant entity validation during initialization.
+start the App again. After the first valid start, further changes can be made
+from **Safety Home → Konfiguracja**. The startup service parses and compiles
+the file with its packaged system policy before AppDaemon starts;
+SafetyFunctions then performs the full schema and Home Assistant entity
+validation during initialization.
 
-The App configuration tab currently owns the runtime log level. Complex entity,
-area, room, detector, and opening mappings remain in `user_config.yml`; the
-Home Assistant App schema supports only shallow nested structures and cannot
-provide the entity selectors required by this safety configuration.
+The App configuration tab owns the runtime log level. The Safety Home editor
+owns user and installation settings stored in `user_config.yml`, including
+entity, area, room, detector, and opening mappings. The packaged
+`system_config.yml` is not editable from the UI.
+
+The editor validates the complete model and checks it with the packaged system
+configuration before an atomic save. Saving does not change the running safety
+logic. Restart the App to compile and apply the new source. If another session
+changed the file after it was opened, reload the page and reconcile the newer
+revision instead of overwriting it.
 
 AppDaemon's required latitude, longitude, elevation, and time zone are generated
 from Home Assistant Core configuration on every start. Do not duplicate these

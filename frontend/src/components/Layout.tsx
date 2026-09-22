@@ -47,6 +47,12 @@ const menuItems: Array<{ title: string; path: string; icon: IconName; descriptio
     icon: 'history',
     description: 'Powiadomienia i zmiany stanów',
   },
+  {
+    title: 'Konfiguracja',
+    path: '/configuration',
+    icon: 'settings',
+    description: 'Ustawienia użytkownika i instalacji',
+  },
 ];
 
 export default function Layout() {

@@ -18,6 +18,7 @@ def test_app_exposes_only_authenticated_ingress() -> None:
     assert config["ingress_port"] == 8099
     assert config["panel_icon"] == "mdi:alarm-light"
     assert config["panel_title"] == "Safety Home"
+    assert config["panel_admin"] is True
     assert config["ports"]["8099/tcp"] is None
 
 
@@ -28,6 +29,7 @@ def test_app_runs_backend_and_frontend_under_s6() -> None:
     for service in (
         "init-safety-component",
         "safety-backend",
+        "safety-config-api",
         "safety-frontend",
     ):
         assert (contents / service).is_file()
@@ -38,6 +40,7 @@ def test_app_runs_backend_and_frontend_under_s6() -> None:
         for service in (
             "init-safety-component",
             "safety-backend",
+            "safety-config-api",
             "safety-frontend",
         )
     )
@@ -47,6 +50,26 @@ def test_app_runs_backend_and_frontend_under_s6() -> None:
     scripts.append(service_root / "scripts" / "init-safety-component")
     assert scripts
     assert all(b"\r\n" not in script.read_bytes() for script in scripts)
+
+
+def test_ingress_proxies_only_the_user_configuration_api() -> None:
+    nginx = (
+        APP_ROOT / "rootfs" / "etc" / "nginx" / "http.d" / "safety-component.conf"
+    ).read_text(encoding="utf-8")
+    api_run = (
+        APP_ROOT
+        / "rootfs"
+        / "etc"
+        / "s6-overlay"
+        / "s6-rc.d"
+        / "safety-config-api"
+        / "run"
+    ).read_text(encoding="utf-8")
+
+    assert "location /api/config" in nginx
+    assert "proxy_pass http://127.0.0.1:8100" in nginx
+    assert "--user /config/user_config.yml" in api_run
+    assert "--system /opt/safety-component/backend/config/system_config.yml" in api_run
 
 
 def test_first_start_requires_reviewed_installation_config() -> None:

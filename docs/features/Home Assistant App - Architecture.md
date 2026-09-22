@@ -16,6 +16,7 @@ installed or operator-managed dependency of the resulting App.
 flowchart LR
     Supervisor -->|SUPERVISOR_TOKEN| AppDaemon
     Supervisor -->|authenticated Ingress| Nginx
+    Nginx -->|user configuration API| ConfigApi[Configuration API]
     AppDaemon --> SafetyFunctions
     SafetyFunctions -->|state, events, services| HomeAssistant[Home Assistant Core]
     SafetyHome[Safety Home] -->|authenticated HA connection| HomeAssistant
@@ -23,6 +24,7 @@ flowchart LR
     S6[S6 process supervision] --> AppDaemon
     S6 --> Nginx
     AppConfig[App configuration directory] --> ConfigCompiler
+    ConfigApi -->|validated atomic write| AppConfig
     PackagedPolicy[Packaged system policy] --> ConfigCompiler
     ConfigCompiler --> AppDaemon
 ```
@@ -52,12 +54,16 @@ serve multiple component roles without duplicated installation data. The
 defines the complete editable schema and version policy.
 
 The Home Assistant App configuration tab owns shallow operational settings,
-such as log level. Complex entity and area mappings remain file-backed because
-the Supervisor App schema does not provide Home Assistant entity selectors and
-supports nested arrays and dictionaries only to a bounded depth. A native
-selector flow requires an explicit Home Assistant integration or an
-authenticated configuration API; it shall not be simulated with free-form App
-options.
+such as log level. Safety Home owns the editor for `user_config.yml`, including
+component selection, notification destinations, installation defaults, and
+the physical asset registry. The editor uses a same-origin API available only
+through authenticated Ingress. It performs model and compiler validation and
+uses revision-checked atomic writes. It does not expose or mutate the packaged
+`system_config.yml`.
+
+A successful save persists the source but does not alter the running safety
+configuration. The operator restarts the App to execute the normal startup
+compiler and live Home Assistant validation as one controlled initialization.
 
 On first start the App writes `user_config.example.yml` as
 `user_config.yml` and exits. This prevents example entity bindings from being
@@ -75,13 +81,18 @@ The App declares:
 - `ingress: true` for authenticated access through Home Assistant;
 - `panel_title: Safety Home` for the sidebar label;
 - `panel_icon: mdi:alarm-light` for the sidebar siren icon;
-- `panel_admin: false` so authenticated non-admin household users can view
-  safety status.
+- `panel_admin: true` so the private installation editor and safety panel are
+  restricted to Home Assistant administrators.
 
 Frontend assets use relative paths so the same build works under the dynamic
 Ingress prefix and the legacy `/local/SafetyHome/` compatibility deployment.
 Client-side navigation remains fragment-based and does not require server-side
 route knowledge.
+
+Nginx proxies only `/api/config` to a loopback-only configuration service. The
+service returns the private editable source to the authenticated browser and
+never returns Supervisor credentials, packaged system policy, generated
+runtime configuration, or persistence state.
 
 ## 5. Home Assistant communication
 
@@ -112,7 +123,7 @@ frontend assets are image-owned or ephemeral and are recreated after restore.
 Self-monitoring is part of the App runtime rather than a separate Safety
 Component:
 
-- S6 supervises AppDaemon and Nginx independently;
+- S6 supervises AppDaemon, the configuration API, and Nginx independently;
 - a non-zero exit of either required service terminates the container so
   Supervisor can observe and restart the failed App, while a clean exit remains
   under S6 restart supervision;

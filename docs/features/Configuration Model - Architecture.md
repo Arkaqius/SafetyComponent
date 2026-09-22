@@ -309,3 +309,26 @@ The public repository contains `system_config.yml` and
 contains household topology, entity IDs, notification destinations, and site
 data. Generated `app_cfg.yaml` or `apps.yaml` is ephemeral and shall not become
 an additional editable source of truth.
+
+## 8. Operator editing boundary
+
+Safety Home provides an authenticated Ingress page for editing the private
+`user_config.yml`. The page covers the editable root fields and the complete
+`installation` registry. It never reads, returns, or writes
+`system_config.yml`; packaged policy remains a reviewed source-code and release
+artifact.
+
+The local configuration API accepts a complete `user_config` object together
+with the revision that was read by the browser. Before replacing the file it:
+
+1. rejects a stale revision so two browser sessions cannot silently overwrite
+   one another;
+2. validates the complete version 2 source model;
+3. compiles the candidate together with the packaged system configuration;
+4. atomically replaces `/config/user_config.yml` only after those checks pass.
+
+Saving does not apply a partial configuration to a running SafetyFunctions
+instance. The operator restarts the Home Assistant App, and the normal startup
+compiler recreates `apps.yaml` before AppDaemon starts. Entity existence and
+other checks requiring a live Home Assistant connection remain part of
+SafetyFunctions initialization.

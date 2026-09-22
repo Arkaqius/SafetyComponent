@@ -29,6 +29,8 @@ RUN chmod a+x \
         /etc/s6-overlay/scripts/init-safety-component \
         /etc/s6-overlay/s6-rc.d/safety-backend/run \
         /etc/s6-overlay/s6-rc.d/safety-backend/finish \
+        /etc/s6-overlay/s6-rc.d/safety-config-api/run \
+        /etc/s6-overlay/s6-rc.d/safety-config-api/finish \
         /etc/s6-overlay/s6-rc.d/safety-frontend/run \
         /etc/s6-overlay/s6-rc.d/safety-frontend/finish
 
