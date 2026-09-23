@@ -2312,8 +2312,7 @@ details summary:focus-visible {
   margin-top: 18px;
 }
 
-.configuration-object-heading,
-.configuration-object-entry {
+.configuration-object-heading {
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -2323,6 +2322,15 @@ details summary:focus-visible {
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 14px;
+}
+
+.configuration-object-entry > summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.configuration-object-entry[open] > summary {
+  margin-bottom: 12px;
 }
 
 .configuration-object-entry-heading,
@@ -2356,6 +2364,10 @@ details summary:focus-visible {
 }
 
 .configuration-nested-row > .configuration-nested-fields {
+  flex: 1 1 100%;
+}
+
+.configuration-nested-row > .configuration-fieldset {
   flex: 1 1 100%;
 }
 

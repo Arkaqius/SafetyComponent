@@ -78,8 +78,9 @@ globalnym ustawieniem Rejestratora i nie jest zmieniana przez przykład.
 
 ## Konfiguracja instalacji
 
-Szczegółowa [instrukcja konfiguracji](CONFIGURATION.md) opisuje kolejność
-uruchomienia, źródła wartości oraz znaczenie pól formularza i pliku YAML.
+Szczegółowa [instrukcja konfiguracji](CONFIGURATION.md) prowadzi przez pola i
+działania w formularzu. YAML pozostaje opcją importu, a nie wymaganym sposobem
+konfiguracji.
 
 Po pierwszym starcie aplikacji otwórz **Konfiguracja**. Panel pokaże szkic
 `user_config.yml`; zastąp przykładowe encje i obszary danymi domu albo użyj
@@ -98,8 +99,8 @@ Szerokość i długość geograficzna są pobierane z Home Assistanta przy każd
 starcie i nie są zapisywane w `user_config.yml`. Horyzonty prognozy i domyślna
 lista zagrożeń są dostarczane w `system_config.yml`. Dodatkowe monitorowane
 encje wpisuje się osobno; zależności innych komponentów są monitorowane
-automatycznie. Konserwacja MQTT dla starych identyfikatorów discovery znajduje
-się w zwijanej sekcji zaawansowanej.
+automatycznie. Nazwy konkretnych encji można doprecyzować w prywatnych plikach
+lokalizacji, poza `user_config.yml`.
 
 Zapis jest przyjmowany tylko wtedy, gdy dokument nadal ma odczytaną rewizję,
 przechodzi walidację modelu v2 i daje się skompilować z dołączoną konfiguracją

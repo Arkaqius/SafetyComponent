@@ -7,16 +7,19 @@ guidance, and notification text are translated.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any, Mapping
 
-from pydantic import ConfigDict, Field, field_validator
 import yaml
+from pydantic import ConfigDict, field_validator
 
 from components.core.pydantic_utils import StrictBaseModel
 
 
 _LOCALES_DIR = Path(__file__).with_name("locales")
+_PRIVATE_LOCALES_DIR = Path("/config/locales")
+_ENTITY_NAME_KEY = re.compile(r"^entity_name\.[a-z0-9_]+\.[a-z0-9_]+$")
 
 
 def _load_translations() -> dict[str, dict[str, str]]:
@@ -40,12 +43,11 @@ _TRANSLATIONS = _load_translations()
 
 
 class LocalizationSettings(StrictBaseModel):
-    """Installation-specific localization settings."""
+    """Selected language for packaged and private localization files."""
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="forbid")
 
     language: str = "en"
-    entity_names: dict[str, str] = Field(default_factory=dict)
 
     @field_validator("language")
     @classmethod
@@ -57,18 +59,6 @@ class LocalizationSettings(StrictBaseModel):
             )
         return language
 
-    @field_validator("entity_names")
-    @classmethod
-    def _validate_entity_names(cls, value: dict[str, str]) -> dict[str, str]:
-        normalized: dict[str, str] = {}
-        for entity_id, name in value.items():
-            normalized_id = entity_id.strip().lower()
-            normalized_name = name.strip()
-            if not normalized_id or not normalized_name:
-                raise ValueError("entity_names keys and values must not be empty")
-            normalized[normalized_id] = normalized_name
-        return normalized
-
 
 class Localizer:
     """Resolve localized text while keeping backend state codes stable."""
@@ -76,12 +66,37 @@ class Localizer:
     def __init__(
         self,
         settings: LocalizationSettings | Mapping[str, Any] | None = None,
+        *,
+        private_locales_dir: Path = _PRIVATE_LOCALES_DIR,
     ) -> None:
         if isinstance(settings, LocalizationSettings):
             self.settings = settings
         else:
             self.settings = LocalizationSettings.model_validate(dict(settings or {}))
         self._translations = _TRANSLATIONS[self.settings.language]
+        self._private_entity_names = self._load_private_entity_names(
+            private_locales_dir / f"{self.settings.language}.yml"
+        )
+
+    @staticmethod
+    def _load_private_entity_names(path: Path) -> dict[str, str]:
+        """Load optional installation names from a private locale file."""
+        if not path.exists():
+            return {}
+        values = yaml.safe_load(path.read_text(encoding="utf-8"))
+        if not isinstance(values, dict):
+            raise ValueError(f"Invalid private localization file: {path}")
+        names: dict[str, str] = {}
+        for key, name in values.items():
+            if (
+                not isinstance(key, str)
+                or not _ENTITY_NAME_KEY.fullmatch(key)
+                or not isinstance(name, str)
+                or not name.strip()
+            ):
+                raise ValueError(f"Invalid private entity name in {path}: {key!r}")
+            names[key.removeprefix("entity_name.")] = name.strip()
+        return names
 
     @property
     def language(self) -> str:
@@ -96,7 +111,7 @@ class Localizer:
     def entity_name(self, entity_id: str, fallback: str) -> str:
         """Return a configured or built-in localized entity name."""
         normalized_id = entity_id.strip().lower()
-        configured = self.settings.entity_names.get(normalized_id)
+        configured = self._private_entity_names.get(normalized_id)
         if configured:
             return configured
         built_in_keys = {

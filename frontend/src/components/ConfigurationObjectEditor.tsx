@@ -1,47 +1,36 @@
 import { useState } from 'react';
-type ConfigurationMap = Record<string, unknown>;
+import { initialObject, updateObjectField, type FieldSpec } from './configurationFieldSchemas.js';
 
-type Value = string | number | boolean | null | Value[] | { [key: string]: Value };
-const fieldOptions: Record<string, string[]> = {
-  kind: ['window', 'door', 'garage_door', 'gate'],
-  hazard: ['smoke', 'flammable_gas', 'carbon_monoxide'],
-  execution_policy: ['manual', 'user_confirmed'],
-  standard: ['european_aqi'],
-};
+type ConfigurationMap = Record<string, unknown>;
 
 interface Props {
   label: string;
   description: string;
   value: ConfigurationMap;
   onChange: (value: ConfigurationMap) => void;
-  newEntry: unknown;
-  help?: Record<string, string>;
+  schema: Record<string, FieldSpec>;
 }
 
-function objectValue(value: unknown): Record<string, Value> {
-  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, Value>) : {};
+function asMap(value: unknown): ConfigurationMap {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as ConfigurationMap) : {};
 }
 
-function copy(value: Value): Value {
-  return structuredClone(value);
-}
-
-export default function ConfigurationObjectEditor({ label, description, value, onChange, newEntry, help = {} }: Props) {
+export default function ConfigurationObjectEditor({ label, description, value, onChange, schema }: Props) {
   const [newKey, setNewKey] = useState('');
   const [message, setMessage] = useState('');
-  const entries = objectValue(value);
+  const entries = asMap(value);
 
   const add = () => {
     const key = newKey.trim();
-    if (!key) {
-      setMessage('Wpisz identyfikator lub nazwę encji.');
+    if (!/^[A-Z][A-Za-z0-9]*$/.test(key)) {
+      setMessage('Wpisz stabilny identyfikator PascalCase, np. LivingRoom.');
       return;
     }
     if (Object.prototype.hasOwnProperty.call(entries, key)) {
       setMessage('Taki identyfikator już istnieje.');
       return;
     }
-    onChange({ ...entries, [key]: copy(newEntry as Value) });
+    onChange({ ...entries, [key]: initialObject(schema) });
     setNewKey('');
     setMessage('');
   };
@@ -53,9 +42,10 @@ export default function ConfigurationObjectEditor({ label, description, value, o
         <small>{description}</small>
       </div>
       {Object.entries(entries).map(([key, entry]) => (
-        <div className='configuration-object-entry' key={key}>
+        <details className='configuration-object-entry' key={key}>
+          <summary>{key}</summary>
           <div className='configuration-object-entry-heading'>
-            <strong>{key}</strong>
+            <small>Ustawienia wpisu {key}</small>
             <button
               className='secondary-button'
               onClick={() => {
@@ -65,11 +55,11 @@ export default function ConfigurationObjectEditor({ label, description, value, o
               }}
               type='button'
             >
-              Usuń
+              Usuń wpis
             </button>
           </div>
-          <ValueEditor label={key} path={key} value={entry} help={help} onChange={next => onChange({ ...entries, [key]: next })} />
-        </div>
+          <ObjectFields schema={schema} value={asMap(entry)} onChange={next => onChange({ ...entries, [key]: next })} />
+        </details>
       ))}
       <div className='configuration-object-add'>
         <label className='configuration-field'>
@@ -77,7 +67,7 @@ export default function ConfigurationObjectEditor({ label, description, value, o
           <input aria-label={`Nowy identyfikator: ${label}`} onChange={event => setNewKey(event.target.value)} value={newKey} />
         </label>
         <button className='secondary-button' onClick={add} type='button'>
-          {typeof newEntry === 'string' ? '+ Dodaj nazwę' : '+ Dodaj obiekt'}
+          + Dodaj obiekt
         </button>
       </div>
       {message ? <small className='configuration-editor-error'>{message}</small> : null}
@@ -85,155 +75,176 @@ export default function ConfigurationObjectEditor({ label, description, value, o
   );
 }
 
-function ValueEditor({
-  label,
-  path,
+function ObjectFields({
+  schema,
   value,
   onChange,
-  help,
 }: {
-  label: string;
-  path: string;
-  value: Value;
-  onChange: (value: Value) => void;
-  help: Record<string, string>;
+  schema: Record<string, FieldSpec>;
+  value: ConfigurationMap;
+  onChange: (value: ConfigurationMap) => void;
 }) {
-  const [newField, setNewField] = useState('');
-  const [newType, setNewType] = useState('text');
-  const hint = help[path] || help[label];
-
-  if (Array.isArray(value)) {
-    return (
-      <div className='configuration-nested-fields'>
-        <small>
-          {label}
-          {hint ? ` — ${hint}` : ''}
-        </small>
-        {value.map((item, index) => (
-          <div className='configuration-array-row' key={`${path}-${index}`}>
-            <ValueEditor
-              label={`${label} ${index + 1}`}
-              path={`${path}.${index}`}
-              value={item}
-              help={help}
-              onChange={next => onChange(value.map((current, position) => (position === index ? next : current)))}
-            />
-            <button className='secondary-button' onClick={() => onChange(value.filter((_, position) => position !== index))} type='button'>
-              Usuń
-            </button>
+  const [selected, setSelected] = useState('');
+  const available = Object.entries(schema).filter(([key]) => {
+    if (Object.prototype.hasOwnProperty.call(value, key)) return false;
+    if (key === 'gas_identity' && value.hazard !== 'flammable_gas') return false;
+    if (key === 'actuator_entity_id' && value.execution_policy !== 'user_confirmed') return false;
+    return true;
+  });
+  const updateField = (key: string, next: unknown) => onChange(updateObjectField(value, key, next));
+  return (
+    <div className='configuration-nested-fields'>
+      {Object.entries(schema)
+        .filter(([key]) => key in value)
+        .map(([key, field]) => (
+          <div className='configuration-nested-row' key={key}>
+            <SchemaField field={field} value={value[key]} onChange={next => updateField(key, next)} />
+            {!field.required &&
+            !(key === 'gas_identity' && value.hazard === 'flammable_gas') &&
+            !(key === 'actuator_entity_id' && value.execution_policy === 'user_confirmed') ? (
+              <button
+                aria-label={`Usuń ustawienie ${field.label}`}
+                className='secondary-button'
+                onClick={() => {
+                  const next = { ...value };
+                  delete next[key];
+                  onChange(next);
+                }}
+                type='button'
+              >
+                Usuń ustawienie
+              </button>
+            ) : null}
           </div>
         ))}
-        <button
-          className='secondary-button'
-          onClick={() => onChange([...value, value.length && typeof value[0] === 'number' ? 0 : ''])}
-          type='button'
-        >
-          + Dodaj element
-        </button>
-      </div>
-    );
-  }
-  if (value && typeof value === 'object') {
-    const fields = objectValue(value);
-    return (
-      <div className='configuration-nested-fields'>
-        {path.includes('.') ? (
-          <small>
-            {label}
-            {hint ? ` — ${hint}` : ''}
-          </small>
-        ) : null}
-        {Object.entries(fields).map(([field, entry]) => (
-          <div className='configuration-nested-row' key={field}>
-            <ValueEditor
-              label={field}
-              path={`${path}.${field}`}
-              value={entry}
-              help={help}
-              onChange={next => onChange({ ...fields, [field]: next })}
-            />
+      {Object.keys(value)
+        .filter(key => !(key in schema))
+        .map(key => (
+          <div className='configuration-nested-row' key={key}>
+            <small className='configuration-editor-error'>Nieobsługiwane pole „{key}”.</small>
             <button
-              aria-label={`Usuń pole ${field}`}
               className='secondary-button'
               onClick={() => {
-                const next = { ...fields };
-                delete next[field];
+                const next = { ...value };
+                delete next[key];
                 onChange(next);
               }}
               type='button'
             >
-              Usuń pole
+              Usuń nieobsługiwane pole
             </button>
           </div>
         ))}
+      {available.length ? (
         <div className='configuration-object-add'>
-          <input
-            aria-label={`Nowe pole w ${label}`}
-            onChange={event => setNewField(event.target.value)}
-            placeholder='Nazwa pola'
-            value={newField}
-          />
-          <select aria-label='Typ pola' onChange={event => setNewType(event.target.value)} value={newType}>
-            <option value='text'>Tekst</option>
-            <option value='number'>Liczba</option>
-            <option value='boolean'>Tak/Nie</option>
-            <option value='object'>Obiekt</option>
-            <option value='array'>Lista</option>
-          </select>
+          <label className='configuration-field'>
+            <span>Dodaj ustawienie</span>
+            <select aria-label='Wybierz ustawienie' value={selected} onChange={event => setSelected(event.target.value)}>
+              <option value=''>Wybierz pole…</option>
+              {available.map(([key, field]) => (
+                <option key={key} value={key}>
+                  {field.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <button
             className='secondary-button'
-            disabled={!newField.trim() || Object.prototype.hasOwnProperty.call(fields, newField.trim())}
+            disabled={!selected}
             onClick={() => {
-              const initial: Value =
-                newType === 'number' ? 0 : newType === 'boolean' ? false : newType === 'object' ? {} : newType === 'array' ? [] : '';
-              onChange({ ...fields, [newField.trim()]: initial });
-              setNewField('');
+              const field = schema[selected];
+              if (field) updateField(selected, structuredClone(field.initial));
+              setSelected('');
             }}
             type='button'
           >
             + Dodaj pole
           </button>
         </div>
+      ) : null}
+    </div>
+  );
+}
+
+function SchemaField({ field, value, onChange }: { field: FieldSpec; value: unknown; onChange: (value: unknown) => void }) {
+  if (field.kind === 'object') {
+    return (
+      <fieldset className='configuration-fieldset'>
+        <legend title={field.help}>{field.label}</legend>
+        <ObjectFields schema={field.fields ?? {}} value={asMap(value)} onChange={onChange} />
+      </fieldset>
+    );
+  }
+  if (field.kind === 'list') {
+    const entries = Array.isArray(value) ? (value as string[]) : [];
+    return (
+      <div className='configuration-nested-fields'>
+        <strong title={field.help}>{field.label}</strong>
+        {field.help ? <small>{field.help}</small> : null}
+        {entries.map((entry, index) => (
+          <div className='configuration-array-row' key={index}>
+            {field.options ? (
+              <select
+                aria-label={`${field.label} ${index + 1}`}
+                value={entry}
+                onChange={event => onChange(entries.map((item, position) => (position === index ? event.target.value : item)))}
+              >
+                <option value=''>Wybierz…</option>
+                {field.options.map(([key, label]) => (
+                  <option key={key} value={key}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                aria-label={`${field.label} ${index + 1}`}
+                value={entry}
+                onChange={event => onChange(entries.map((item, position) => (position === index ? event.target.value : item)))}
+              />
+            )}
+            <button
+              className='secondary-button'
+              onClick={() => onChange(entries.filter((_, position) => position !== index))}
+              type='button'
+            >
+              Usuń
+            </button>
+          </div>
+        ))}
+        <button className='secondary-button' onClick={() => onChange([...entries, ''])} type='button'>
+          + Dodaj element
+        </button>
       </div>
-    );
-  }
-  if (typeof value === 'boolean') {
-    return (
-      <label className='configuration-field'>
-        <span title={hint}>{label}</span>
-        <select onChange={event => onChange(event.target.value === 'true')} value={String(value)}>
-          <option value='true'>Tak</option>
-          <option value='false'>Nie</option>
-        </select>
-        {hint ? <small>{hint}</small> : null}
-      </label>
-    );
-  }
-  if (typeof value === 'string' && fieldOptions[label]) {
-    return (
-      <label className='configuration-field'>
-        <span title={hint}>{label}</span>
-        <select onChange={event => onChange(event.target.value)} value={value}>
-          {fieldOptions[label].map(option => (
-            <option key={option} value={option}>
-              {option}
-            </option>
-          ))}
-        </select>
-        {hint ? <small>{hint}</small> : null}
-      </label>
     );
   }
   return (
     <label className='configuration-field'>
-      <span title={hint}>{label}</span>
-      <input
-        onChange={event => onChange(typeof value === 'number' ? Number(event.target.value) : event.target.value)}
-        type={typeof value === 'number' ? 'number' : 'text'}
-        step={typeof value === 'number' ? 'any' : undefined}
-        value={value ?? ''}
-      />
-      {hint ? <small>{hint}</small> : null}
+      <span title={field.help}>{field.label}</span>
+      {field.kind === 'boolean' ? (
+        <select value={String(value === true)} onChange={event => onChange(event.target.value === 'true')}>
+          <option value='true'>Tak</option>
+          <option value='false'>Nie</option>
+        </select>
+      ) : field.kind === 'select' ? (
+        <select value={String(value ?? '')} onChange={event => onChange(event.target.value)}>
+          {field.options?.map(([key, label]) => (
+            <option key={key} value={key}>
+              {label}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <input
+          type={field.kind === 'number' ? 'number' : 'text'}
+          step={field.kind === 'number' ? 'any' : undefined}
+          value={String(value ?? '')}
+          onChange={event =>
+            onChange(field.kind === 'number' ? (event.target.value === '' ? null : Number(event.target.value)) : event.target.value)
+          }
+        />
+      )}
+      {field.help ? <small>{field.help}</small> : null}
     </label>
   );
 }

@@ -230,33 +230,19 @@ def test_v2_installation_generates_shared_component_bindings() -> None:
     assert door["entity_id"] == "binary_sensor.entrance_door"
 
 
-def test_v2_preserves_installation_owned_mqtt_cleanup_ids(tmp_path) -> None:
+@pytest.mark.parametrize("obsolete_field", ["mqtt", "entity_names"])
+def test_v2_rejects_removed_user_fields(tmp_path, obsolete_field: str) -> None:
     source = yaml.safe_load(
         (BACKEND_DIR / "config" / "user_config.example.yml").read_text(encoding="utf-8")
     )
-    source["user_config"]["mqtt"]["legacy_discovery_entity_ids"] = [
-        "sensor.old_safety_entity",
-        "sensor.old_safety_entity",
-    ]
+    if obsolete_field == "mqtt":
+        source["user_config"]["mqtt"] = {"legacy_discovery_entity_ids": []}
+    else:
+        source["user_config"]["localization"]["entity_names"] = {}
     user_path = tmp_path / "user.yml"
     user_path.write_text(yaml.safe_dump(source), encoding="utf-8")
 
-    mqtt = compile_config(user_path=user_path)["SafetyFunctions"]["user_config"]["mqtt"]
-
-    assert mqtt["legacy_discovery_entity_ids"] == ["sensor.old_safety_entity"]
-
-
-def test_v2_rejects_invalid_mqtt_cleanup_id(tmp_path) -> None:
-    source = yaml.safe_load(
-        (BACKEND_DIR / "config" / "user_config.example.yml").read_text(encoding="utf-8")
-    )
-    source["user_config"]["mqtt"]["legacy_discovery_entity_ids"] = [
-        "binary_sensor.not_supported"
-    ]
-    user_path = tmp_path / "user.yml"
-    user_path.write_text(yaml.safe_dump(source), encoding="utf-8")
-
-    with pytest.raises(ValueError, match="lowercase sensor entity IDs"):
+    with pytest.raises(ValueError, match=obsolete_field):
         compile_config(user_path=user_path)
 
 

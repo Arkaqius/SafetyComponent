@@ -231,4 +231,3 @@ runtime_cfg:
     qos: 0
     heartbeat_seconds: 60
     expire_after: 180
-    legacy_discovery_entity_ids: []

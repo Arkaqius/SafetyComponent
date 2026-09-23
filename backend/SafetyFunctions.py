@@ -457,7 +457,6 @@ class SafetyFunctions(hass.Hass):
             )
             self.localizer = self.mqtt_entities.localizer
             self.mqtt_entities.publish_availability(False)
-            self.mqtt_entities.cleanup_legacy_discovery_topics()
             self._register_health_entity()
             self._set_internal_entity("sensor.safety_app_health", "init")
         except (ValidationError, ValueError) as exc:

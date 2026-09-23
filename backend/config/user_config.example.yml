@@ -33,12 +33,6 @@ user_config:
     OpenMeteoAirQualityApiComponent:
       enabled: true
 
-  # Optional installation-specific MQTT discovery identities that must be
-  # removed after an entity rename or deletion. MQTT transport policy remains
-  # system-owned.
-  mqtt:
-    legacy_discovery_entity_ids: []
-
   installation:
     site:
       timezone: Europe/Warsaw

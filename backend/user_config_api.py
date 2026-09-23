@@ -93,6 +93,11 @@ class UserConfigStore:
         entity_monitor = calibration.get("entity_monitor", {})
         external_hazard = calibration.get("external_hazard", {})
         system_defaults = {
+            "detector_profiles": sorted(
+                calibration.get("internal_environmental_hazard", {})
+                .get("profiles", {})
+                .keys()
+            ),
             "temperature": {
                 key: temperature[key]
                 for key in ("default_low_temperature_c", "default_high_temperature_c")

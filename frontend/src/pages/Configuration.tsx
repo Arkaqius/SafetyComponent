@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useConfig } from '@hakit/core';
 import ConfigurationObjectEditor from '../components/ConfigurationObjectEditor';
+import { registrySchemas } from '../components/configurationFieldSchemas';
 import { importUserConfiguration, loadUserConfiguration, saveUserConfiguration, type ConfigurationMap } from '../userConfigurationApi';
 
 const providerNames = ['OpenMeteoWeatherApiComponent', 'ImgwWarningsApiComponent', 'OpenMeteoAirQualityApiComponent'];
@@ -9,27 +10,6 @@ const registrySections = [
   { key: 'openings', title: 'Drzwi, bramy i okna', description: 'Fizyczne otwory oraz ich role bezpieczeństwa.' },
   { key: 'detectors', title: 'Detektory zagrożeń', description: 'Czujniki dymu, gazu i tlenku węgla.' },
 ] as const;
-const registryTemplates: Record<string, ConfigurationMap> = {
-  rooms: { area_id: '', temperature_sensor: '', temperature: {} },
-  openings: { area_id: '', entity_id: '', friendly_name: '', kind: 'window' },
-  detectors: { area_id: '', entity_id: '', friendly_name: '', hazard: 'smoke', profile: '' },
-  monitored_entities: { entity_id: '', description: '', enabled: true, checks: {} },
-};
-const registryHelp: Record<string, string> = {
-  area_id: 'Identyfikator obszaru Home Assistant.',
-  entity_id: 'Identyfikator encji Home Assistant, np. binary_sensor.drzwi.',
-  temperature_sensor: 'Encja pomiaru temperatury w pomieszczeniu.',
-  window: 'Stabilny identyfikator otworu z sekcji Drzwi, bramy i okna.',
-  actuator: 'Opcjonalna encja cover.* dla komponentu temperatury.',
-  friendly_name: 'Nazwa czytelna dla użytkownika.',
-  kind: 'Rodzaj otworu.',
-  safety_door: 'Dodaj obiekt, aby włączyć rolę monitorowania drzwi.',
-  external_hazard: 'Dodaj obiekt, aby włączyć rolę zagrożeń zewnętrznych.',
-  hazard: 'Rodzaj zagrożenia wykrywany przez detektor.',
-  profile: 'Nazwa profilu detektora z system_config.yml.',
-  description: 'Opis celu dodatkowego monitoringu.',
-  checks: 'Warunki oceny zdrowia encji.',
-};
 
 type SaveState = 'idle' | 'saving' | 'saved';
 
@@ -132,7 +112,6 @@ export default function Configuration() {
   const mobile = asMap(notification.mobile);
   const localNotification = asMap(notification.local);
   const providers = asMap(draft.providers);
-  const mqtt = asMap(draft.mqtt);
   const installation = asMap(draft.installation);
   const site = asMap(installation.site);
   const commonEntities = asMap(installation.common_entities);
@@ -150,6 +129,18 @@ export default function Configuration() {
   const externalHazardSystem = asMap(systemDefaults.external_hazard);
   const weatherSystem = asMap(externalHazardSystem.weather);
   const airQualitySystem = asMap(externalHazardSystem.outdoor_air_quality);
+  const detectorProfiles = stringList(systemDefaults.detector_profiles);
+  const detectorSchema = detectorProfiles.length
+    ? {
+        ...registrySchemas.detectors,
+        profile: {
+          ...registrySchemas.detectors.profile,
+          kind: 'select' as const,
+          options: detectorProfiles.map(profile => [profile, profile] as [string, string]),
+          initial: detectorProfiles[0],
+        },
+      }
+    : registrySchemas.detectors;
   const timezones = supportedTimezones(stringValue(site.timezone));
 
   return (
@@ -167,7 +158,7 @@ export default function Configuration() {
         <div className='configuration-actions'>
           <a
             className='secondary-button configuration-help-link'
-            href='https://github.com/Arkaqius/SafetyComponent/blob/4edd8cd/frontend/CONFIGURATION.md'
+            href='https://github.com/Arkaqius/SafetyComponent/blob/feature/configuration-bindings-notifications-ui/frontend/CONFIGURATION.md'
             rel='noopener noreferrer'
             target='_blank'
           >
@@ -252,7 +243,7 @@ export default function Configuration() {
       </section>
 
       <section className='panel configuration-section'>
-        <SectionHeader title='Lokalizacja i nazwy' description='Język oraz przyjazne nazwy encji publikowanych przez SafetyComponent.' />
+        <SectionHeader title='Język' description='Nazwy encji są definiowane w plikach lokalizacji, poza konfiguracją użytkownika.' />
         <div className='configuration-grid'>
           <SelectField
             label='Język'
@@ -266,13 +257,6 @@ export default function Configuration() {
             ]}
           />
         </div>
-        <ConfigurationObjectEditor
-          description='Opcjonalne nazwy zamiast nazw domyślnych. Kluczem jest entity_id.'
-          label='Nadpisania nazw encji'
-          value={asMap(localization.entity_names)}
-          newEntry=''
-          onChange={value => update(['localization', 'entity_names'], value)}
-        />
       </section>
 
       <section className='panel configuration-section'>
@@ -407,15 +391,14 @@ export default function Configuration() {
             description='Wyjątki dla zależności należących do komponentów. Monitorowane encje dodatkowe są poniżej.'
             label='Wyjątki monitoringu encji'
             value={componentOverrides}
-            newEntry={{}}
+            schema={registrySchemas.component_overrides}
             onChange={value => update(['installation', 'component_settings', 'entity_monitor', 'component_overrides'], value)}
           />
           <ConfigurationObjectEditor
             label='Dodatkowe monitorowane encje'
             description='Encje używane przez logikę innych komponentów są monitorowane automatycznie. Dodawaj tu tylko pozostałe.'
             value={asMap(installation.monitored_entities)}
-            newEntry={registryTemplates.monitored_entities}
-            help={registryHelp}
+            schema={registrySchemas.monitored_entities}
             onChange={value => update(['installation', 'monitored_entities'], value)}
           />
         </fieldset>
@@ -466,25 +449,11 @@ export default function Configuration() {
             label={section.title}
             description='Nazwy kluczy są stabilnymi identyfikatorami. Zapis zostanie sprawdzony względem modelu konfiguracji.'
             value={asMap(installation[section.key])}
-            newEntry={registryTemplates[section.key]}
-            help={registryHelp}
+            schema={section.key === 'detectors' ? detectorSchema : registrySchemas[section.key]}
             onChange={value => update(['installation', section.key], value)}
           />
         </section>
       ))}
-      <details className='panel configuration-section'>
-        <summary>Konserwacja MQTT — stare encje discovery</summary>
-        <p className='configuration-field-help'>
-          Po zmianie nazwy lub usunięciu encji wpisz jej dawny identyfikator sensor.*. Przy kolejnym starcie aplikacja opublikuje puste
-          retained discovery i stan. Lista nie jest wykrywana automatycznie, ponieważ aplikacja nie przechowuje kompletnego rejestru
-          poprzednich identyfikatorów.
-        </p>
-        <TextAreaField
-          label='Encje MQTT do usunięcia (jedna w wierszu)'
-          value={stringList(mqtt.legacy_discovery_entity_ids).join('\n')}
-          onChange={value => update(['mqtt', 'legacy_discovery_entity_ids'], splitLines(value))}
-        />
-      </details>
     </div>
   );
 }

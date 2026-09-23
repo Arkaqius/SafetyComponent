@@ -65,12 +65,7 @@ def test_localization_keeps_state_code_and_localizes_display_metadata():
     hass_app = Mock()
     mqtt_entities = MqttEntityManager(
         hass_app,
-        localization={
-            "language": "pl",
-            "entity_names": {
-                "sensor.safety_app_health": "Kondycja systemu",
-            },
-        },
+        localization={"language": "pl"},
     )
 
     mqtt_entities.register_sensor(
@@ -96,7 +91,7 @@ def test_localization_keeps_state_code_and_localizes_display_metadata():
         "safety_component/state/safety_app_health",
     )[-1].kwargs["payload"]
 
-    assert discovery_payload["name"] == "Kondycja systemu"
+    assert discovery_payload["name"] == "Stan aplikacji bezpieczeństwa"
     assert state_payload == "running"
     assert attributes_payload["state_label"] == "Działa"
 
@@ -114,16 +109,10 @@ def test_localization_keeps_state_code_and_localizes_display_metadata():
     assert updated_attributes_payload["state_label"] == "Zatrzymana"
 
 
-def test_availability_cleanup_and_remove_sensor():
+def test_availability_and_remove_sensor():
     hass_app = Mock()
-    mqtt_entities = MqttEntityManager(
-        hass_app,
-        {
-            "legacy_discovery_entity_ids": ["sensor.safety_app_health"]
-        },
-    )
+    mqtt_entities = MqttEntityManager(hass_app)
 
-    mqtt_entities.cleanup_legacy_discovery_topics()
     mqtt_entities.publish_availability(True)
     mqtt_entities.register_sensor("sensor.test", "Test", state="ok")
     mqtt_entities.remove_sensor("sensor.test", remove_legacy_topic=True)
@@ -131,21 +120,6 @@ def test_availability_cleanup_and_remove_sensor():
     availability_call = _mqtt_calls(hass_app, "safety_component/status")[-1]
     assert availability_call.kwargs["payload"] == "online"
     assert availability_call.kwargs["retain"] is True
-
-    legacy_health_call = _mqtt_calls(
-        hass_app, "homeassistant/sensor/safety_app_health/config"
-    )[0]
-    assert legacy_health_call.kwargs["payload"] == ""
-    assert legacy_health_call.kwargs["retain"] is True
-
-    for topic in (
-        "homeassistant/sensor/safety_component_safety_app_health/config",
-        "safety_component/state/safety_app_health",
-        "safety_component/attributes/safety_app_health",
-    ):
-        cleanup_call = _mqtt_calls(hass_app, topic)[0]
-        assert cleanup_call.kwargs["payload"] == ""
-        assert cleanup_call.kwargs["retain"] is True
 
     for topic in (
         "homeassistant/sensor/safety_component_test/config",
@@ -198,7 +172,6 @@ def test_entity_ids_are_canonical_and_none_is_an_explicit_unknown_state():
         {"device_identifier": "Unsafe Identifier"},
         {"heartbeat_seconds": 0, "expire_after": 60},
         {"heartbeat_seconds": 60, "expire_after": 60},
-        {"legacy_discovery_entity_ids": ["light.not_a_sensor"]},
     ],
 )
 def test_invalid_mqtt_settings_are_rejected(mqtt_config):

@@ -127,10 +127,9 @@ Unknown keys are rejected. The complete editable `user_config` root is:
 | --- | --- | --- |
 | `model_version` | Yes | Integer `2`; no other or missing version is accepted. |
 | `components_enabled` | Yes | Contains exactly the five supported component keys, each with a boolean value, and enables at least one component. |
-| `localization` | No | `language` is `en`, `pl`, or `de`; `entity_names` maps valid entity IDs to non-empty display names. Defaults to English with no overrides. |
+| `localization` | No | Selects `language` as `en`, `pl`, or `de`; names are resolved from locale files, not from user configuration. Defaults to English. |
 | `notification` | Yes | Installation-owned notification destinations described below. Retry, delivery, profile, persistence, and detail policy remain system-owned. |
 | `providers` | No | Contains only the three supported provider keys, each with `enabled: true/false`; omitted providers inherit enabled system defaults. |
-| `mqtt` | No | Contains only installation-specific `legacy_discovery_entity_ids`; all transport and publication policy remains system-owned. |
 | `installation` | Yes | Physical installation registry described below. |
 
 The five required `components_enabled` keys are
@@ -153,11 +152,8 @@ The five required `components_enabled` keys are
 polling, timeouts, retry bounds, staleness, and schemas remain in
 `system_config.yml`.
 
-`mqtt.legacy_discovery_entity_ids` is an optional, deduplicated list of
-lowercase `sensor.*` entity IDs previously published by this installation.
-The MQTT manager clears their retained discovery topics at startup. This list
-does not enable legacy configuration-model parsing and may be emptied after the
-installation has completed and verified the cleanup.
+MQTT transport and publication policy are entirely system-owned. The user
+configuration has no MQTT section or retired-discovery cleanup list.
 
 ### 3.2 Installation root
 

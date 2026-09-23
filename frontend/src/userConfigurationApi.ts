@@ -30,7 +30,7 @@ let mockDocument: UserConfigurationDocument = {
       EntityMonitorComponent: true,
       InternalEnvironmentalHazardMonitorComponent: true,
     },
-    localization: { language: 'pl', entity_names: {} },
+    localization: { language: 'pl' },
     notification: {
       mobile: { services: ['notify/all_phones'], default_url: '/' },
       local: {},
@@ -41,7 +41,6 @@ let mockDocument: UserConfigurationDocument = {
       ImgwWarningsApiComponent: { enabled: true },
       OpenMeteoAirQualityApiComponent: { enabled: true },
     },
-    mqtt: { legacy_discovery_entity_ids: [] },
     installation: {
       site: {
         timezone: 'Europe/Warsaw',
@@ -76,6 +75,7 @@ let mockDocument: UserConfigurationDocument = {
     },
   },
   system_defaults: {
+    detector_profiles: ['home_assistant_binary_alarm'],
     temperature: { default_low_temperature_c: 18, default_high_temperature_c: 28 },
     safety_door: { default_timeout_seconds: 120 },
     entity_monitor: { default_startup_grace_seconds: 60, default_evaluation_interval_seconds: 5 },

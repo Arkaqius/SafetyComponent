@@ -216,25 +216,9 @@ class InstallationOpening(SourceModel):
 
 
 class LocalizationBindings(SourceModel):
-    """Installation-owned language and optional display-name overrides."""
+    """Installation-owned language selection; names live in locale files."""
 
     language: Literal["en", "pl", "de"] = "en"
-    entity_names: dict[str, str] = Field(default_factory=dict)
-
-    @field_validator("entity_names")
-    @classmethod
-    def _nonempty_entity_names(cls, value: dict[str, str]) -> dict[str, str]:
-        normalized: dict[str, str] = {}
-        for entity_id, name in value.items():
-            normalized_id = entity_id.strip().lower()
-            normalized_name = name.strip()
-            if not _ENTITY_ID.fullmatch(normalized_id) or not normalized_name:
-                raise ValueError(
-                    "localization.entity_names requires valid entity IDs and "
-                    "non-empty names"
-                )
-            normalized[normalized_id] = normalized_name
-        return normalized
 
 
 class MobileNotificationBindings(SourceModel):
@@ -308,23 +292,6 @@ class ProviderBindings(SourceModel):
     OpenMeteoAirQualityApiComponent: ProviderSelection = Field(
         default_factory=ProviderSelection
     )
-
-
-class MqttCleanupBindings(SourceModel):
-    """Installation-owned MQTT discovery identities retained for cleanup."""
-
-    legacy_discovery_entity_ids: list[str] = Field(default_factory=list)
-
-    @field_validator("legacy_discovery_entity_ids")
-    @classmethod
-    def _legacy_sensor_entity_ids(cls, value: list[str]) -> list[str]:
-        normalized = list(dict.fromkeys(item.strip().lower() for item in value))
-        if any(not re.fullmatch(r"sensor\.[a-z0-9_]+", item) for item in normalized):
-            raise ValueError(
-                "legacy_discovery_entity_ids must contain lowercase sensor "
-                "entity IDs"
-            )
-        return normalized
 
 
 class InstallationSite(SourceModel):
@@ -417,7 +384,6 @@ class UserConfigurationV2(SourceModel):
     localization: LocalizationBindings = Field(default_factory=LocalizationBindings)
     notification: NotificationBindings
     providers: ProviderBindings = Field(default_factory=ProviderBindings)
-    mqtt: MqttCleanupBindings = Field(default_factory=MqttCleanupBindings)
     installation: InstallationConfig
 
 

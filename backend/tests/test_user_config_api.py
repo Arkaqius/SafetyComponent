@@ -51,6 +51,9 @@ def test_read_returns_only_user_source_and_revision(tmp_path: Path) -> None:
     assert result["revision"]
     assert result["restart_required"] is False
     assert result["setup_required"] is False
+    assert result["system_defaults"]["detector_profiles"] == [
+        "home_assistant_binary_alarm"
+    ]
     assert "system_config" not in result
 
 

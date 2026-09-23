@@ -158,9 +158,8 @@ opening/room registry.
 ### 5.4 MQTT
 
 `runtime_cfg.mqtt` owns discovery topics, device identity, retain/QoS behavior,
-heartbeat, expiry, and startup cleanup behavior. The private configuration may
-only add installation-specific `legacy_discovery_entity_ids` that must be
-removed after entity renames or deletions.
+heartbeat, expiry, and startup retained-state behavior. The user configuration
+does not contain MQTT policy or a retired-discovery cleanup list.
 
 ## 6. Localization
 
@@ -170,8 +169,13 @@ Backend translations are stored in:
 - `backend/components/core/locales/pl.yml`;
 - `backend/components/core/locales/de.yml`.
 
-`user_config.localization.language` selects one file and
-`localization.entity_names` may override installation-specific display names.
+`user_config.localization.language` selects one file. Optional private
+installation names live in `/config/locales/<language>.yml` in the App's
+private configuration directory. This flat YAML mapping accepts only
+`entity_name.<entity_id>: <display name>` entries, for example
+`entity_name.sensor.safety_app_health: Safety status`. A private name takes
+precedence over a packaged name. The files are never edited by the GUI and
+must not be committed to the public repository.
 Stable entity IDs, fault IDs, Safety Mechanism IDs, raw states, and MQTT topics
 are never localized.
 
