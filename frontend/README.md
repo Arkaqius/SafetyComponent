@@ -78,6 +78,9 @@ globalnym ustawieniem Rejestratora i nie jest zmieniana przez przykład.
 
 ## Konfiguracja instalacji
 
+Szczegółowa [instrukcja konfiguracji](CONFIGURATION.md) opisuje kolejność
+uruchomienia, źródła wartości oraz znaczenie pól formularza i pliku YAML.
+
 Po pierwszym starcie aplikacji otwórz **Konfiguracja**. Panel pokaże szkic
 `user_config.yml`; zastąp przykładowe encje i obszary danymi domu albo użyj
 **Wczytaj user_config YAML**, aby wczytać istniejący plik `.yml`/`.yaml` w

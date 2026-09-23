@@ -2096,6 +2096,12 @@ details summary:focus-visible {
   gap: 10px;
 }
 
+.configuration-help-link {
+  align-items: center;
+  display: inline-flex;
+  text-decoration: none;
+}
+
 .primary-button,
 .secondary-button {
   border-radius: 11px;

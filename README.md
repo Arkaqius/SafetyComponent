@@ -133,6 +133,8 @@ for the complete editable schema, precedence, validation, and schema-inspection
 command. See the [System Configuration reference](<docs/reference/System Configuration.md>)
 for every packaged configuration group, its ownership, override path, and
 rationale.
+For a first-install walkthrough and field-by-field operator help, see the
+[configuration guide](frontend/CONFIGURATION.md).
 
 The real `user_config.yml` and generated `app_cfg.yaml` are intentionally
 ignored. Keep installation configuration in a separate private repository or

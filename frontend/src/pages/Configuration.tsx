@@ -165,6 +165,14 @@ export default function Configuration() {
           </p>
         </div>
         <div className='configuration-actions'>
+          <a
+            className='secondary-button configuration-help-link'
+            href='https://github.com/Arkaqius/SafetyComponent/blob/feature/configuration-bindings-notifications-ui/frontend/CONFIGURATION.md'
+            rel='noopener noreferrer'
+            target='_blank'
+          >
+            Pomoc: opis pól konfiguracji
+          </a>
           <input
             accept='.yml,.yaml'
             aria-label='Wybierz plik user_config YAML'
