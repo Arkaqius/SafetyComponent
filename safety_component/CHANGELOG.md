@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.0
+
+- Introduce configuration model 2 with validated installation bindings and
+  packaged system defaults. Existing version 1 `user_config.yml` files must be
+  migrated before upgrading; the App does not accept them automatically.
+- Add a Safety Home configuration editor for first-run setup, YAML import, and
+  schema-guided editing of rooms, openings, detectors, and monitored entities.
+- Read location coordinates from Home Assistant at startup and keep private
+  entity display names in installation localization files, outside the public
+  repository.
+- Keep system policy and calibration outside the user-facing editor.
+
 ## 0.2.0
 
 - Start the public repository with a clean history that contains no production

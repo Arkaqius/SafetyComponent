@@ -11,7 +11,7 @@ RUN npm run build
 FROM ghcr.io/home-assistant/base-python:3.12-alpine3.24
 
 ARG BUILD_ARCH=amd64
-ARG BUILD_VERSION=0.2.0
+ARG BUILD_VERSION=0.3.0
 
 SHELL ["/bin/ash", "-o", "pipefail", "-c"]
 
