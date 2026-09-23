@@ -1,5 +1,4 @@
 from unittest.mock import Mock
-import pytest
 from components.core.common_entities import CommonEntities
 
 def test_common_entities_initialization():

@@ -108,7 +108,7 @@ def parse_datetime(value: Any, *, default: datetime | None = None) -> datetime:
                 except ValueError:
                     continue
             if parsed is None:
-                raise ValueError(f"Unsupported datetime value: {value!r}")
+                raise ValueError(f"Unsupported datetime value: {value!r}") from None
     elif default is not None:
         parsed = default
     else:

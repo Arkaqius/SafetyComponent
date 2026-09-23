@@ -32,7 +32,7 @@ Use Python 3.10 or newer from the repository root:
 ```powershell
 python -m venv .venv
 .venv\Scripts\Activate.ps1
-python -m pip install -r backend/requirements.txt
+python -m pip install -r backend/requirements-dev.txt
 ```
 
 ### Frontend
@@ -89,10 +89,17 @@ technical IDs and raw state values remain language-independent.
 Run backend checks from the repository root:
 
 ```powershell
+python -m ruff check backend
+python -m mypy
 pytest backend/tests
 pytest backend/tests --cov=backend --cov-report=term-missing
 git diff --check
 ```
+
+Ruff checks backend and test code for correctness issues and selected PEP 8
+rules. Mypy initially checks the typed configuration compiler and source
+schemas listed in `mypy.ini`; expand this scope as legacy AppDaemon boundaries
+gain explicit types. Both checks run in the backend CI job before the tests.
 
 Run frontend checks from `frontend/`:
 

@@ -11,11 +11,10 @@ The CustomSafetyComponent class can be customized to implement specific monitori
 mechanisms, using Home Assistant's infrastructure to interact with sensors and execute safety actions.
 """
 
-from typing import Dict, Any, Callable, Optional
+from typing import Dict, Any
 from components.safetycomponents.core.safety_component import (
     SafetyComponent,
     safety_mechanism_decorator,
-    DebounceState,
     SafetyMechanismResult,
 )
 from components.safetycomponents.core.safety_mechanism import SafetyMechanism

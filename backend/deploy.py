@@ -129,8 +129,6 @@ def copy_tree(
         # Walk destination and remove files not in manifest (and not ignored)
         for root, dirs, files in os.walk(dst, topdown=False):
             rel_root = Path(root).relative_to(dst)
-            src_root = src / rel_root
-
             # Files
             for fname in files:
                 dst_file = Path(root) / fname

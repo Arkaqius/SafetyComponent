@@ -514,7 +514,7 @@ class AppCfgValidator:
                     "user_config.safety_components must enable at least one component"
                 )
         except (ValidationError, ValueError) as exc:
-            raise AppCfgValidationError(str(exc))
+            raise AppCfgValidationError(str(exc)) from exc
 
         if hass is not None:
             _resolve_area_names(runtime_cfg, hass)

@@ -6,6 +6,8 @@ on:
       - .dockerignore
       - .github/workflows/safety-component-app.yml
       - backend/**
+      - mypy.ini
+      - ruff.toml
       - frontend/**
       - repository.yaml
       - safety_component/**
@@ -16,6 +18,8 @@ on:
       - .dockerignore
       - .github/workflows/safety-component-app.yml
       - backend/**
+      - mypy.ini
+      - ruff.toml
       - frontend/**
       - repository.yaml
       - safety_component/**
@@ -45,10 +49,18 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
-          cache-dependency-path: backend/requirements.txt
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
 
       - name: Install backend dependencies
-        run: python -m pip install -r backend/requirements.txt pytest-cov
+        run: python -m pip install -r backend/requirements-dev.txt
+
+      - name: Lint backend
+        run: python -m ruff check backend
+
+      - name: Check backend types
+        run: python -m mypy
 
       - name: Run backend tests and coverage gate
         run: python -m pytest backend/tests --cov=backend --cov-report=term-missing
