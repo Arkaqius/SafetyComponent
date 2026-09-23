@@ -1,0 +1,75 @@
+entity.safety_app_health: Safety app health
+entity.safety_system_state: Safety system state
+entity.entity_monitor_summary: Monitored entities
+entity.notification_delivery_health: Notification delivery health
+entity.recovery_window: 'Window recovery: {location}'
+entity.temperature_low_threshold: 'Low temperature limit: {location}'
+entity.temperature_high_threshold: 'High temperature limit: {location}'
+state.health.init: Starting
+state.health.running: Running
+state.health.invalid_cfg: Invalid configuration
+state.health.stopped: Stopped
+state.system.no_faults: No active faults
+state.system.emergency: Emergency
+state.system.hazard: Hazard
+state.system.warning: Warning
+state.system.information: Information
+state.system.stopped: Stopped
+state.fault.set: Active
+state.fault.shadowed: Shadowed
+state.fault.cleared: Cleared
+state.fault.not_tested: Not tested
+state.recovery.to_perform: Action needed
+state.recovery.awaiting_confirmation: Confirmation required
+state.recovery.executing: In progress
+state.recovery.confirmed: Confirmed
+state.recovery.failed: Failed
+state.recovery.timed_out: Timed out
+state.recovery.do_not_perform: No action needed
+state.entity_health.healthy: Healthy
+state.entity_health.degraded: Needs attention
+state.entity_health.stale: Stale data
+state.entity_health.unavailable: Unavailable
+state.notification_delivery.healthy: Healthy
+state.notification_delivery.degraded: Needs attention
+state.notification_delivery.queued: Queued
+fault.entity_health: 'Entity problem: {entity}'
+hazard.label.smoke: Smoke
+hazard.label.flammable_gas: Flammable gas
+hazard.label.carbon_monoxide: Carbon monoxide
+hazard.guidance.smoke: Leave the affected area and call emergency services.
+hazard.guidance.flammable_gas: Leave the affected area, avoid electrical switches,
+  and call emergency services from a safe place.
+hazard.guidance.carbon_monoxide: Leave the affected area immediately and call emergency
+  services.
+notification.title.1: Immediate action needed
+notification.title.2: Safety issue detected
+notification.title.3: Please check your home
+notification.title.cleared: Safety issue resolved
+notification.active: '{fault} needs your attention.'
+notification.cleared: Good news - {fault} is no longer active.
+notification.guidance: 'What you can do:'
+notification.action.ack: Acknowledge
+detail.location: Location
+detail.hazard: Hazard
+detail.openings: Affected openings
+detail.observed_value: Observed or forecast value
+detail.threshold: Policy threshold
+detail.evidence_kind: Evidence type
+detail.source: Source
+detail.source_time: Source time
+detail.valid_to: Valid until
+detail.freshness: Freshness
+detail.freshness_age: Time since last update
+detail.source_reference: Authoritative reference
+detail.severity: Severity
+detail.confirmation: Confirmation
+detail.capability: Capability
+detail.providers: Providers
+detail.stations: Stations
+detail.source_entity: Opening sensor
+recovery.close_windows: Please close the windows in {location}.
+recovery.open_windows: Please open the windows in {location}.
+recovery.close_opening: Close {opening}.
+recovery.confirm_close_opening: Confirm closing {opening}. SafetyComponent will act
+  only after your confirmation.

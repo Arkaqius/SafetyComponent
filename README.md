@@ -63,6 +63,7 @@ of other Home Assistant entities and devices.
 
 Feature architecture documents include
 [`Home Assistant App`](docs/features/Home%20Assistant%20App%20-%20Architecture.md),
+[`Configuration Model`](docs/features/Configuration%20Model%20-%20Architecture.md),
 [`Mobile Notification Delivery`](docs/features/Mobile%20Notification%20Delivery%20-%20Architecture.md),
 [`Recommended Actions and Recovery`](docs/features/Recommended%20Actions%20and%20Recovery%20-%20Architecture.md),
 [`External Hazard Monitoring`](docs/features/External%20Hazard%20Monitoring%20-%20Architecture.md),
@@ -106,30 +107,45 @@ configuration directory, and process supervision. See the
 [App documentation](safety_component/DOCS.md) for first-start configuration
 and migration from the separate AppDaemon App.
 
-The first App start writes an example `user_config.yml` and stops. Review and
-replace every installation binding before starting it again. The old and new
-SafetyFunctions backends must not run simultaneously.
+On a fresh installation, the App opens Safety Home without starting
+SafetyFunctions. Open **Konfiguracja** to create `user_config.yml` from the
+example draft or import an existing version 2 YAML file. Review the bindings,
+save, then restart the App. The old and new SafetyFunctions backends must not
+run simultaneously.
 
 ## Configuration
 
 The configuration sources separate:
 
 - `system_config.yml` — application policy, calibration, stable fault catalog,
-  provider lifecycle, MQTT behavior, notification profiles, explicit health
-  monitoring, and per-dependency system checks;
+  provider lifecycle, MQTT behavior, notification profiles, system-owned
+  dependencies, and installation-independent defaults;
 - `user_config.yml` — component selection, language, notification destinations,
-  site data, and Home Assistant entity/area bindings;
+  optional installation-wide default overrides, and a normalized registry of
+  site data, rooms, openings, detectors, and monitored entities;
 - `app_cfg.yaml` — generated output; do not edit it directly.
+
+Configuration model version 2 resolves values in the order **system default →
+installation default → asset override**. The compiler declares each physical
+asset once and generates the existing component bindings from that registry.
+See the [Configuration Model architecture](<docs/features/Configuration Model - Architecture.md>)
+for the complete editable schema, precedence, validation, and schema-inspection
+command. See the [System Configuration reference](<docs/reference/System Configuration.md>)
+for every packaged configuration group, its ownership, override path, and
+rationale.
+For a first-install walkthrough and field-by-field operator help, see the
+[configuration guide](frontend/CONFIGURATION.md).
 
 The real `user_config.yml` and generated `app_cfg.yaml` are intentionally
 ignored. Keep installation configuration in a separate private repository or
 another access-controlled backup and copy it into place only for local
 validation or deployment.
 
-`config_version` must match the schema supported by the backend. Stable fault
-keys, Safety Mechanism IDs, entity IDs, MQTT topics, and raw state codes are
-machine contracts and require coordinated requirements, code, test, and
-deployment changes.
+`system_config.version` and `user_config.model_version` form one source-model
+contract. Generated runtime configuration has no independent version field.
+Stable fault keys, Safety Mechanism IDs, entity IDs, MQTT topics, and raw state
+codes are machine contracts and require coordinated requirements, code, test,
+and deployment changes.
 
 ## Frontend
 
@@ -153,6 +169,7 @@ the [frontend README](frontend/README.md).
 - [System safety architecture and requirements](<docs/sys/SafetyConcept - SYS.md>)
 - [Software safety requirements](<docs/sys/SafetyComponent - SSRD.md>)
 - [Home Assistant App architecture](<docs/features/Home Assistant App - Architecture.md>)
+- [Configuration Model architecture](<docs/features/Configuration Model - Architecture.md>)
 - [Mobile Notification Delivery architecture](<docs/features/Mobile Notification Delivery - Architecture.md>)
 - [External Hazard Monitoring architecture](<docs/features/External Hazard Monitoring - Architecture.md>)
 - [Entity Health Monitoring architecture](<docs/features/Entity Health Monitoring - Architecture.md>)

@@ -78,6 +78,7 @@ import components.safetycomponents.entity_monitor.entity_monitor_component  # no
 import components.safetycomponents.internal_environmental_hazard.internal_environmental_hazard_monitor_component  # noqa: F401 - component registration
 from components.core.types_common import Symptom, RecoveryAction
 
+
 class SafetyFunctions(hass.Hass):
     """
     Main class for managing safety functions in the Home Assistant environment.
@@ -122,9 +123,7 @@ class SafetyFunctions(hass.Hass):
         self.safety_components_cfg: dict = self.runtime_config["user_config"][
             "safety_components"
         ]
-        self.notification_cfg: dict = self.runtime_config["user_config"][
-            "notification"
-        ]
+        self.notification_cfg: dict = self.runtime_config["user_config"]["notification"]
         self.common_entities_cfg: dict = self.runtime_config["user_config"][
             "common_entities"
         ]
@@ -153,7 +152,9 @@ class SafetyFunctions(hass.Hass):
         # Instantiate provider adapters without starting network activity.
         for component_name, component_cls in get_registered_api_components().items():
             provider_cfg = self.api_components_cfg.get(component_name)
-            if not isinstance(provider_cfg, dict) or not provider_cfg.get("enabled", True):
+            if not isinstance(provider_cfg, dict) or not provider_cfg.get(
+                "enabled", True
+            ):
                 continue
             provider_host = urlparse(str(provider_cfg["base_url"])).hostname
             if not provider_host:
@@ -241,9 +242,11 @@ class SafetyFunctions(hass.Hass):
         )
 
         # Create the recovery orchestration manager.
-        recovery_persistence_cfg = self.runtime_config["user_config"].get(
-            "recovery", {}
-        ).get("persistence", {})
+        recovery_persistence_cfg = (
+            self.runtime_config["user_config"]
+            .get("recovery", {})
+            .get("persistence", {})
+        )
         recovery_state_store = (
             JsonRecoveryStateStore(recovery_persistence_cfg["state_file"])
             if recovery_persistence_cfg.get("enabled", False)
@@ -263,15 +266,11 @@ class SafetyFunctions(hass.Hass):
                 self.reco_man.register_policy_evaluator(component)
 
         # Wire symptom and fault events in deterministic priority order.
-        self.event_bus.subscribe(
-            "symptom", self.fm.handle_symptom_event, priority=0
-        )
+        self.event_bus.subscribe("symptom", self.fm.handle_symptom_event, priority=0)
         self.event_bus.subscribe(
             "fault", self.notify_man.handle_fault_event, priority=0
         )
-        self.event_bus.subscribe(
-            "fault", self.reco_man.handle_fault_event, priority=1
-        )
+        self.event_bus.subscribe("fault", self.reco_man.handle_fault_event, priority=1)
 
         # Publish system and fault entities before mechanisms begin evaluation.
         self.register_entities()
@@ -342,16 +341,15 @@ class SafetyFunctions(hass.Hass):
             dependencies.append(
                 self._calibrate_component_dependency(
                     {
-                    "key": "Common" + "".join(
-                        part.capitalize() for part in str(key).split("_")
-                    ),
-                    "entity_id": entity_id,
-                    "owner": "SafetyFunctions",
-                    "purpose": f"Shared application entity: {key}",
-                    "checks": checks,
-                    "detection_budget_seconds": (
-                        3615 if key == "outside_temp" else 30
-                    ),
+                        "key": "Common"
+                        + "".join(part.capitalize() for part in str(key).split("_")),
+                        "entity_id": entity_id,
+                        "owner": "SafetyFunctions",
+                        "purpose": f"Shared application entity: {key}",
+                        "checks": checks,
+                        "detection_budget_seconds": (
+                            3615 if key == "outside_temp" else 30
+                        ),
                     },
                     component_overrides,
                     failure_debounce,
@@ -369,17 +367,14 @@ class SafetyFunctions(hass.Hass):
             budget = dependency.get("detection_budget_seconds")
             if budget is None:
                 continue
-            dependency_failure_debounce = int(
-                dependency["failure_debounce_seconds"]
-            )
+            dependency_failure_debounce = int(dependency["failure_debounce_seconds"])
             if dependency_failure_debounce > int(budget):
                 raise ValueError(
                     f"{dependency['key']} availability debounce exceeds detection budget"
                 )
             freshness = dependency.get("checks", {}).get("freshness")
             if freshness and (
-                int(freshness["max_silence_seconds"])
-                + dependency_failure_debounce
+                int(freshness["max_silence_seconds"]) + dependency_failure_debounce
                 > int(budget)
             ):
                 raise ValueError(
@@ -446,7 +441,9 @@ class SafetyFunctions(hass.Hass):
                 raise ValueError("user_config.mqtt must be a mapping")
             if not isinstance(raw_localization_cfg, Mapping):
                 raise ValueError("user_config.localization must be a mapping")
-            strict_validation = bool(app_config.get("strict_validation", True))
+            strict_validation = bool(
+                app_config.get("validation", {}).get("strict_validation", True)
+            )
             localization = LocalizationSettings.model_validate(
                 dict(raw_localization_cfg),
                 context={"strict_validation": strict_validation},
@@ -460,7 +457,6 @@ class SafetyFunctions(hass.Hass):
             )
             self.localizer = self.mqtt_entities.localizer
             self.mqtt_entities.publish_availability(False)
-            self.mqtt_entities.cleanup_legacy_discovery_topics()
             self._register_health_entity()
             self._set_internal_entity("sensor.safety_app_health", "init")
         except (ValidationError, ValueError) as exc:

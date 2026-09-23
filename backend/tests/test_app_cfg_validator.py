@@ -8,7 +8,9 @@ from components.app_config_validator.app_cfg_validator import (
     _collect_entity_ids,
     _validate_entity_existence,
 )
-from components.safetycomponents.temperature.schema import COMPONENT_NAME as TEMP_COMPONENT_NAME
+from components.safetycomponents.temperature.schema import (
+    COMPONENT_NAME as TEMP_COMPONENT_NAME,
+)
 from components.safetycomponents.safety_doors.schema import (
     COMPONENT_NAME as SAFETY_DOORS_COMPONENT_NAME,
 )
@@ -17,7 +19,9 @@ from components.safetycomponents.safety_doors.schema import (
 def test_validate_app_cfg_normalizes_temperature_component(app_config_valid):
     validated = AppCfgValidator.validate(app_config_valid)
 
-    temperature_cfg = validated["user_config"]["safety_components"]["TemperatureComponent"]
+    temperature_cfg = validated["user_config"]["safety_components"][
+        "TemperatureComponent"
+    ]
     assert isinstance(temperature_cfg, list)
     assert {"Office", "Kitchen"} == {list(room.keys())[0] for room in temperature_cfg}
 
@@ -75,9 +79,7 @@ def test_validate_app_cfg_normalizes_safety_doors_component(app_config_valid):
     }
 
     validated = AppCfgValidator.validate(cfg)
-    doors = validated["user_config"]["safety_components"][
-        SAFETY_DOORS_COMPONENT_NAME
-    ]
+    doors = validated["user_config"]["safety_components"][SAFETY_DOORS_COMPONENT_NAME]
 
     assert doors == [
         {
@@ -105,9 +107,7 @@ def test_validate_app_cfg_normalizes_safety_doors_component(app_config_valid):
 def test_validate_app_cfg_rejects_safety_doors_without_entries(app_config_valid):
     cfg = copy.deepcopy(app_config_valid)
     cfg["user_config"]["components_enabled"][SAFETY_DOORS_COMPONENT_NAME] = True
-    cfg["user_config"]["safety_components"][SAFETY_DOORS_COMPONENT_NAME] = {
-        "doors": {}
-    }
+    cfg["user_config"]["safety_components"][SAFETY_DOORS_COMPONENT_NAME] = {"doors": {}}
 
     with pytest.raises(AppCfgValidationError):
         AppCfgValidator.validate(cfg)
@@ -160,9 +160,7 @@ def test_validate_app_cfg_requires_area_id_for_safety_door(app_config_valid):
         {"heartbeat_seconds": 0, "expire_after": 180},
     ],
 )
-def test_validate_app_cfg_rejects_invalid_mqtt_settings(
-    app_config_valid, mqtt_config
-):
+def test_validate_app_cfg_rejects_invalid_mqtt_settings(app_config_valid, mqtt_config):
     cfg = copy.deepcopy(app_config_valid)
     cfg["user_config"]["mqtt"] = mqtt_config
 
@@ -185,9 +183,9 @@ def test_validate_app_cfg_rejects_non_cover_temperature_actuator(
     app_config_valid,
 ):
     cfg = copy.deepcopy(app_config_valid)
-    cfg["user_config"]["safety_components"]["TemperatureComponent"]["rooms"][
-        "Office"
-    ]["actuator"] = "switch.window_relay"
+    cfg["user_config"]["safety_components"]["TemperatureComponent"]["rooms"]["Office"][
+        "actuator"
+    ] = "switch.window_relay"
 
     with pytest.raises(AppCfgValidationError, match="cover entity"):
         AppCfgValidator.validate(cfg)
@@ -216,9 +214,7 @@ def test_validate_app_cfg_resolves_current_home_assistant_area_names(
     ]
 
     office_cfg = next(room["Office"] for room in temperature_cfg if "Office" in room)
-    kitchen_cfg = next(
-        room["Kitchen"] for room in temperature_cfg if "Kitchen" in room
-    )
+    kitchen_cfg = next(room["Kitchen"] for room in temperature_cfg if "Kitchen" in room)
     assert office_cfg["area_name"] == "Biuro"
     assert kitchen_cfg["area_name"] == "Kuchnia"
 
@@ -257,7 +253,9 @@ def test_validate_app_cfg_uses_defaults_when_room_thresholds_missing(app_config_
 
     validated = AppCfgValidator.validate(cfg)
 
-    temperature_cfg = validated["user_config"]["safety_components"]["TemperatureComponent"]
+    temperature_cfg = validated["user_config"]["safety_components"][
+        "TemperatureComponent"
+    ]
     office_cfg = next(room["Office"] for room in temperature_cfg if "Office" in room)
     kitchen_cfg = next(room["Kitchen"] for room in temperature_cfg if "Kitchen" in room)
 
@@ -265,10 +263,7 @@ def test_validate_app_cfg_uses_defaults_when_room_thresholds_missing(app_config_
     assert office_cfg["CAL_HIGH_TEMP_THRESHOLD"] == defaults["CAL_HIGH_TEMP_THRESHOLD"]
     assert office_cfg["CAL_FORECAST_TIMESPAN"] == defaults["CAL_FORECAST_TIMESPAN"]
     assert kitchen_cfg["CAL_LOW_TEMP_THRESHOLD"] == defaults["CAL_LOW_TEMP_THRESHOLD"]
-    assert (
-        kitchen_cfg["CAL_HIGH_TEMP_THRESHOLD"]
-        == defaults["CAL_HIGH_TEMP_THRESHOLD"]
-    )
+    assert kitchen_cfg["CAL_HIGH_TEMP_THRESHOLD"] == defaults["CAL_HIGH_TEMP_THRESHOLD"]
     assert kitchen_cfg["CAL_FORECAST_TIMESPAN"] == defaults["CAL_FORECAST_TIMESPAN"]
 
 
@@ -283,7 +278,7 @@ def test_validate_app_cfg_rejects_unknown_keys_when_strict(app_config_valid):
 
 def test_validate_app_cfg_allows_unknown_keys_when_not_strict(app_config_valid):
     cfg = copy.deepcopy(app_config_valid)
-    cfg["app_config"]["strict_validation"] = False
+    cfg["app_config"]["validation"]["strict_validation"] = False
     cfg["app_config"]["unknown_key"] = 1
     cfg["user_config"]["unknown_key"] = "ok"
 
@@ -313,7 +308,7 @@ def test_validate_app_cfg_rejects_missing_entities_when_enabled(app_config_valid
         AppCfgValidator.validate(cfg, hass=DummyHass())
 
 
-def test_validate_app_cfg_rejects_unsupported_config_version(app_config_valid):
+def test_validate_app_cfg_rejects_removed_config_version(app_config_valid):
     cfg = copy.deepcopy(app_config_valid)
     cfg["app_config"]["config_version"] = 99
 
@@ -356,7 +351,10 @@ def test_collect_entity_ids_skips_invalid_room_entries():
         }
     }
     entity_ids = _collect_entity_ids(runtime_cfg)
-    assert ("user_config.safety_components.TemperatureComponent.RoomB.temperature_sensor", "sensor.test") in entity_ids
+    assert (
+        "user_config.safety_components.TemperatureComponent.RoomB.temperature_sensor",
+        "sensor.test",
+    ) in entity_ids
 
 
 def test_collect_entity_ids_includes_nested_notification_entities():

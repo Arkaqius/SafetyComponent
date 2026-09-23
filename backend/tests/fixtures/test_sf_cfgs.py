@@ -64,9 +64,8 @@ def _app_config_base():
         "class": "SafetyFunctions",
         "log_level": "DEBUG",
         "app_config": {
-            "config_version": 1,
-            "strict_validation": True,
             "validation": {
+                "strict_validation": True,
                 "validate_entity_id_syntax": True,
                 "validate_entity_existence": False,
             },

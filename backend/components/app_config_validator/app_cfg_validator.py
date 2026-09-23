@@ -49,7 +49,7 @@ from components.safetycomponents.temperature.schema import (
 class AppCfgValidationError(Exception):
     """Raised when the provided app configuration does not satisfy the schema."""
 
-SUPPORTED_CONFIG_VERSION = 1
+
 ENTITY_ID_PATTERN = re.compile(r"^[a-z0-9_]+\.[a-z0-9_]+$")
 REQUIRED_EXTERNAL_API_COMPONENTS = (
     OPEN_METEO_WEATHER_COMPONENT_NAME,
@@ -301,9 +301,7 @@ def _resolve_area_names(runtime_cfg: Dict[str, Any], hass: Any) -> None:
                     config_path,
                 )
 
-    internal_hazard_cfg = components.get(
-        INTERNAL_ENVIRONMENTAL_HAZARD_COMPONENT_NAME
-    )
+    internal_hazard_cfg = components.get(INTERNAL_ENVIRONMENTAL_HAZARD_COMPONENT_NAME)
     if isinstance(internal_hazard_cfg, dict):
         detectors = internal_hazard_cfg.get("detectors", {})
         if isinstance(detectors, dict):
@@ -318,9 +316,7 @@ def _resolve_area_names(runtime_cfg: Dict[str, Any], hass: Any) -> None:
                     f"{INTERNAL_ENVIRONMENTAL_HAZARD_COMPONENT_NAME}."
                     f"detectors.{detector_key}.area_id"
                 )
-                detector_cfg["area_name"] = _resolve_area_name(
-                    hass, area_id, path
-                )
+                detector_cfg["area_name"] = _resolve_area_name(hass, area_id, path)
 
     external_cfg = components.get(EXTERNAL_HAZARD_COMPONENT_NAME)
     if isinstance(external_cfg, dict):
@@ -380,7 +376,9 @@ def _validate_api_components(
             raise ValueError(f"Missing user_config.api_components.{name}")
         provider_policy = policy.providers.get(name)
         if not isinstance(provider_policy, dict):
-            raise ValueError(f"Missing app_config.external_hazard_policy.providers.{name}")
+            raise ValueError(
+                f"Missing app_config.external_hazard_policy.providers.{name}"
+            )
         merged = {**provider_policy, **user_binding}
         if name == OPEN_METEO_WEATHER_COMPONENT_NAME:
             merged["forecast_horizon_hours"] = policy.weather.forecast_horizon_hours
@@ -391,8 +389,7 @@ def _validate_api_components(
     unknown_policy = sorted(set(policy.providers) - set(validators))
     if strict_validation and unknown_policy:
         raise ValueError(
-            "Unknown external hazard provider policies: "
-            + ", ".join(unknown_policy)
+            "Unknown external hazard provider policies: " + ", ".join(unknown_policy)
         )
     unknown = sorted(set(raw_api_components) - set(validators))
     if strict_validation and unknown:
@@ -460,12 +457,10 @@ def _to_runtime(
                 log=log,
             )
         elif name == INTERNAL_ENVIRONMENTAL_HAZARD_COMPONENT_NAME:
-            runtime_components[name] = (
-                validate_internal_environmental_hazard_config(
-                    component_cfg,
-                    strict_validation=strict_validation,
-                    log=log,
-                )
+            runtime_components[name] = validate_internal_environmental_hazard_config(
+                component_cfg,
+                strict_validation=strict_validation,
+                log=log,
             )
         else:
             runtime_components[name] = component_cfg
@@ -497,18 +492,14 @@ class AppCfgValidator:
         log: Callable[..., None] | None = None,
     ) -> Dict[str, Any]:
         strict_validation = (
-            raw_cfg.get("app_config", {}).get("strict_validation", True)
+            raw_cfg.get("app_config", {})
+            .get("validation", {})
+            .get("strict_validation", True)
         )
         try:
             cfg = AppCfg.model_validate(
                 raw_cfg, context={"strict_validation": strict_validation}
             )
-            if cfg.app_config.config_version != SUPPORTED_CONFIG_VERSION:
-                raise AppCfgValidationError(
-                    "Unsupported config_version "
-                    f"{cfg.app_config.config_version}; "
-                    f"supported={SUPPORTED_CONFIG_VERSION}"
-                )
             runtime_cfg = _to_runtime(
                 cfg,
                 strict_validation=strict_validation,

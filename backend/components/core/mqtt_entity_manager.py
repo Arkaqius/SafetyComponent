@@ -38,7 +38,6 @@ class MqttSettings(StrictBaseModel):
     qos: StrictInt = Field(default=0, ge=0, le=2)
     heartbeat_seconds: StrictInt = Field(default=60, ge=0)
     expire_after: StrictInt = Field(default=180, ge=0)
-    legacy_discovery_entity_ids: list[StrictStr] = Field(default_factory=list)
 
     @field_validator("discovery_prefix", "base_topic", mode="before")
     @classmethod
@@ -53,17 +52,6 @@ class MqttSettings(StrictBaseModel):
         if value is None or not isinstance(value, str):
             return value
         return cls._normalize_topic(value)
-
-    @field_validator("legacy_discovery_entity_ids")
-    @classmethod
-    def _validate_legacy_entity_ids(cls, value: list[str]) -> list[str]:
-        for entity_id in value:
-            if not re.fullmatch(r"sensor\.[a-z0-9_]+", entity_id):
-                raise ValueError(
-                    "legacy_discovery_entity_ids must contain lowercase "
-                    "sensor entity IDs"
-                )
-        return value
 
     @field_validator("device_identifier")
     @classmethod
@@ -158,11 +146,6 @@ class MqttEntityManager:
         self.discovered_entities: set[str] = set()
         self._discovery_payloads: dict[str, str] = {}
         self._prepared_entities: set[str] = set()
-
-    def cleanup_legacy_discovery_topics(self) -> None:
-        """Remove explicitly configured retired sensors and discovery messages."""
-        for entity_id in self.settings.legacy_discovery_entity_ids:
-            self.remove_sensor(entity_id, remove_legacy_topic=True)
 
     def publish_availability(self, online: bool = True) -> None:
         """Publish app availability to the configured MQTT availability topic."""

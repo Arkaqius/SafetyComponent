@@ -1,7 +1,10 @@
 # Copy to user_config.yml and replace only Home Assistant installation values.
-# Safety thresholds, fault mappings, provider policy, MQTT behavior, and
-# Entity Monitor system checks belong to system_config.yml.
+# System policy and defaults live in system_config.yml. Values under
+# installation.component_settings override them for this installation; values on one
+# room or opening override both layers.
 user_config:
+  model_version: 2
+
   components_enabled:
     TemperatureComponent: true
     SafetyDoorsComponent: true
@@ -20,35 +23,57 @@ user_config:
     local: {}
     wan_entity: null
 
-  common_entities:
-    outside_temp: sensor.outdoor_temperature
+  # Optional provider enablement overrides. Endpoints, polling, retry, timeout,
+  # and staleness policy remain in system_config.yml.
+  providers:
+    OpenMeteoWeatherApiComponent:
+      enabled: true
+    ImgwWarningsApiComponent:
+      enabled: true
+    OpenMeteoAirQualityApiComponent:
+      enabled: true
 
-  site:
-    latitude: 50.0
-    longitude: 20.0
-    timezone: Europe/Warsaw
-    country_code: PL
-    teryt_codes:
-      - "0000"
+  installation:
+    site:
+      timezone: Europe/Warsaw
+      country_code: PL
+      teryt_codes:
+        - "0000"
 
-  safety_components:
-    TemperatureComponent:
-      rooms:
-        LivingRoom:
-          area_id: living_room
-          temperature_sensor: sensor.living_room_temperature
-          window_sensor: binary_sensor.living_room_window
+    common_entities:
+      outside_temp: sensor.outdoor_temperature
 
-    SafetyDoorsComponent:
-      doors:
-        EntranceDoor:
-          area_id: entryway
-          entity_id: binary_sensor.entrance_door
+    # Optional installation-wide overrides. Omit this block to use the
+    # packaged system defaults unchanged.
+    component_settings:
+      temperature: {}
+      safety_door: {}
+      external_hazard: {}
+      entity_monitor: {}
 
-    ExternalHazardComponent:
-      openings:
-        LivingRoomWindow:
-          area_id: living_room
-          entity_id: binary_sensor.living_room_window
-          friendly_name: Okno w salonie
-          kind: window
+    rooms:
+      LivingRoom:
+        area_id: living_room
+        temperature_sensor: sensor.living_room_temperature
+        window: LivingRoomWindow
+        temperature: {}
+
+    # Each physical opening is declared once and may feed multiple component
+    # bindings. Presence of a role enables that role for the opening.
+    openings:
+      LivingRoomWindow:
+        area_id: living_room
+        entity_id: binary_sensor.living_room_window
+        friendly_name: Okno w salonie
+        kind: window
+        external_hazard: {}
+
+      EntranceDoor:
+        area_id: entryway
+        entity_id: binary_sensor.entrance_door
+        friendly_name: Drzwi wejściowe
+        kind: door
+        safety_door: {}
+
+    detectors: {}
+    monitored_entities: {}
