@@ -8,6 +8,9 @@ import pytest
 import yaml
 
 from build_app_config import compile_config as _compile_config, main
+from components.safetycomponents.safety_doors.safety_doors_component import (
+    SafetyDoorsComponent,
+)
 
 BACKEND_DIR = Path(__file__).parents[1]
 TEST_CORE_LOCATION = {"latitude": 50.0, "longitude": 20.0}
@@ -29,6 +32,40 @@ def test_example_installation_config_compiles() -> None:
     assert compiled["SafetyFunctions"]["user_config"]["site"]["longitude"] == 20.0
     assert "installation" not in compiled["SafetyFunctions"]["user_config"]
     assert "model_version" not in compiled["SafetyFunctions"]["user_config"]
+
+
+def test_documented_example_house_compiles() -> None:
+    example = BACKEND_DIR.parent / "docs" / "examples" / "example_house_user_config.yml"
+    compiled = compile_config(user_path=example)["SafetyFunctions"]["user_config"]
+    components = compiled["safety_components"]
+
+    assert set(components["TemperatureComponent"]["rooms"]) == {
+        "LivingRoom",
+        "Bedroom",
+    }
+    assert (
+        components["TemperatureComponent"]["rooms"]["Bedroom"]["CAL_HIGH_TEMP_THRESHOLD"]
+        == 26.0
+    )
+    assert (
+        components["EntityMonitorComponent"]["component_overrides"][
+            "SafetyDoorEntranceDoor"
+        ]["failure_debounce_seconds"]
+        == 10
+    )
+    door = components["SafetyDoorsComponent"]["doors"]["EntranceDoor"]
+    dependencies = SafetyDoorsComponent.get_entity_dependencies(
+        [{"EntranceDoor": door}]
+    )
+    assert "SafetyDoorEntranceDoor" in {item["key"] for item in dependencies}
+    assert (
+        "UtilityHumidity"
+        in components["EntityMonitorComponent"]["explicit_entities"]
+    )
+    assert (
+        "HallSmoke"
+        in components["InternalEnvironmentalHazardMonitorComponent"]["detectors"]
+    )
 
 
 def test_site_coordinates_are_read_from_current_home_assistant_config() -> None:

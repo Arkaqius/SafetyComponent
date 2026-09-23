@@ -134,7 +134,9 @@ command. See the [System Configuration reference](<docs/reference/System Configu
 for every packaged configuration group, its ownership, override path, and
 rationale.
 For a first-install walkthrough and field-by-field operator help, see the
-[configuration guide](frontend/CONFIGURATION.md).
+[configuration guide](frontend/CONFIGURATION.md), including a fictional
+[house example](docs/examples/example_house_user_config.yml) with monitoring
+overrides and an additional monitored entity.
 
 The real `user_config.yml` and generated `app_cfg.yaml` are intentionally
 ignored. Keep installation configuration in a separate private repository or

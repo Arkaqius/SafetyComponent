@@ -158,7 +158,7 @@ export default function Configuration() {
         <div className='configuration-actions'>
           <a
             className='secondary-button configuration-help-link'
-            href='https://github.com/Arkaqius/SafetyComponent/blob/feature/configuration-bindings-notifications-ui/frontend/CONFIGURATION.md'
+            href='https://github.com/Arkaqius/SafetyComponent/blob/main/frontend/CONFIGURATION.md'
             rel='noopener noreferrer'
             target='_blank'
           >
