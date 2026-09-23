@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1
+
+- Add Ruff linting and targeted mypy type checks to backend CI before tests.
+- Resolve static-analysis findings and restore a recovery test previously hidden
+  by a duplicate test name. The App configuration contract is unchanged.
+
 ## 0.3.0
 
 - Introduce configuration model 2 with validated installation bindings and
