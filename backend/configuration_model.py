@@ -27,7 +27,8 @@ from components.safetycomponents.internal_environmental_hazard.schema import (
 )
 from components.safetycomponents.safety_doors.schema import SafetyDoorCondition
 
-CONFIGURATION_MODEL_VERSION = 2
+ConfigurationModelVersion = Literal[2]
+CONFIGURATION_MODEL_VERSION: ConfigurationModelVersion = 2
 _STABLE_KEY = re.compile(r"^[A-Z][A-Za-z0-9]*$")
 _ENTITY_ID = re.compile(r"^[a-z0-9_]+\.[a-z0-9_]+$")
 _NOTIFY_SERVICE = re.compile(r"^notify/[a-z0-9_]+$")
@@ -379,7 +380,7 @@ class ComponentSelection(SourceModel):
 class UserConfigurationV2(SourceModel):
     """Complete editable source contract for user_config.yml."""
 
-    model_version: Literal[CONFIGURATION_MODEL_VERSION]
+    model_version: ConfigurationModelVersion
     components_enabled: ComponentSelection
     localization: LocalizationBindings = Field(default_factory=LocalizationBindings)
     notification: NotificationBindings

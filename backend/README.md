@@ -12,6 +12,12 @@ Follow these conventions when working on the backend codebase:
 
 If you are unsure about an existing pattern, check nearby modules in `backend/` and follow the established style.
 
+Install `backend/requirements-dev.txt` for local checks. From the repository
+root, run `python -m ruff check backend` for selected PEP 8 and correctness
+rules, and `python -m mypy` for the configuration compiler and source schemas
+currently listed in `mypy.ini`. The checks run in CI alongside backend tests;
+newly typed modules can be added to the mypy scope incrementally.
+
 ## Home Assistant App runtime
 
 The standalone Home Assistant App compiles the packaged `system_config.yml`

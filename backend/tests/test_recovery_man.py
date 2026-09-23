@@ -22,7 +22,6 @@ def test_recovery_cleared_state(mocked_hass_app_with_temp_component):
     )
     symptom = Mock()
     symptom.state = FaultState.CLEARED
-    fault_tag = "00"
     app_instance.initialize()
 
     recovery_manager = app_instance.reco_man
@@ -125,7 +124,7 @@ def test_recovery_validation_fails(mocked_hass_app_with_temp_component):
     recovery_manager._execute_recovery.assert_not_called()
 
 
-def test_successful_recovery_execution(mocked_hass_app_with_temp_component):
+def test_successful_recovery_execution_basic(mocked_hass_app_with_temp_component):
     """
     Test Case: Successful recovery action execution.
 
@@ -155,7 +154,9 @@ def test_successful_recovery_execution(mocked_hass_app_with_temp_component):
 
     recovery_manager.recovery(symptom,"00")
 
-    recovery_manager._execute_recovery.assert_called_once_with(symptom, recovery_result)
+    recovery_manager._execute_recovery.assert_called_once_with(
+        symptom, recovery_result, "00"
+    )
 
 
 def test_dry_test_failure_aborts_recovery(mocked_hass_app_with_temp_component):
@@ -555,9 +556,6 @@ def test_recovery_conflict_with_higher_priority(mocked_hass_app_with_temp_compon
     recovery_manager.fm.found_mapped_fault.assert_any_call(symptom.name, symptom.sm_name)
     recovery_manager.fm.found_mapped_fault.assert_any_call("MatchingSymptom", "sm_test")
 
-import pytest
-from unittest.mock import Mock, patch
-from components.core.types_common import FaultState, RecoveryActionState, RecoveryResult
 
 def test_perform_recovery_with_exception_handling(mocked_hass_app_with_temp_component):
     """

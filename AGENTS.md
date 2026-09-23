@@ -107,6 +107,8 @@ requests a new BMAD installation.
 Run backend checks from the repository root:
 
 ```powershell
+python -m ruff check backend
+python -m mypy
 pytest backend/tests
 pytest backend/tests --cov=backend --cov-report=term-missing
 ```

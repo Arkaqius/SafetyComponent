@@ -20,7 +20,7 @@ from components.safetycomponents.internal_environmental_hazard.schema import (
     BinaryDetectorProfile,
     InternalEnvironmentPersistence,
 )
-from configuration_model import CONFIGURATION_MODEL_VERSION
+from configuration_model import ConfigurationModelVersion
 
 
 class SystemSourceModel(StrictBaseModel):
@@ -32,7 +32,7 @@ class SystemSourceModel(StrictBaseModel):
 class SystemVersion(SystemSourceModel):
     """Shared system and user source-model version."""
 
-    version: Literal[CONFIGURATION_MODEL_VERSION]
+    version: ConfigurationModelVersion
 
 
 class AppDefinition(SystemSourceModel):

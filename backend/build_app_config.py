@@ -41,6 +41,14 @@ def load_mapping(path: Path) -> dict[str, Any]:
     return value
 
 
+def _require_mapping(name: str, value: Any) -> dict[str, Any]:
+    """Require a named top-level configuration section to be a mapping."""
+
+    if not isinstance(value, dict):
+        raise ValueError(f"Missing mapping: {name}")
+    return value
+
+
 def compile_config(
     system_path: Path = SYSTEM_CONFIG_PATH,
     user_path: Path = USER_CONFIG_PATH,
@@ -52,20 +60,11 @@ def compile_config(
 
     system = validate_system_configuration(load_mapping(system_path))
     user = load_mapping(user_path)
-    app_definition = system.get("app_definition")
-    validation = system.get("validation")
-    calibration = system.get("calibration")
-    runtime_cfg = system.get("runtime_cfg")
-    user_config = user.get("user_config")
-    for name, value in (
-        ("app_definition", app_definition),
-        ("validation", validation),
-        ("calibration", calibration),
-        ("runtime_cfg", runtime_cfg),
-        ("user_config", user_config),
-    ):
-        if not isinstance(value, dict):
-            raise ValueError(f"Missing mapping: {name}")
+    app_definition = _require_mapping("app_definition", system.get("app_definition"))
+    validation = _require_mapping("validation", system.get("validation"))
+    calibration = _require_mapping("calibration", system.get("calibration"))
+    runtime_cfg = _require_mapping("runtime_cfg", system.get("runtime_cfg"))
+    user_config = _require_mapping("user_config", user.get("user_config"))
 
     model_version = user_config.get("model_version")
     if model_version != CONFIGURATION_MODEL_VERSION:
