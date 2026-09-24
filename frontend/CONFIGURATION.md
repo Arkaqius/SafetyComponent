@@ -3,8 +3,10 @@
 Ten przewodnik prowadzi przez formularz **Safety Home → Konfiguracja** w Home
 Assistant. Nie trzeba pisać YAML od zera. Panel zapisuje prywatny
 `user_config.yml` aplikacji; polityka bezpieczeństwa i wartości systemowe są
-dostarczane z aplikacją. Przykładowy YAML jest dostępny tylko jako
-[materiał techniczny](../backend/config/user_config.example.yml).
+dostarczane z aplikacją. Skrócony [szablon YAML](../backend/config/user_config.example.yml)
+służy jako materiał techniczny. Pełny,
+fikcyjny [przykład domu](../docs/examples/example_house_user_config.yml)
+można obejrzeć lub wczytać do formularza.
 
 ## Pierwsze uruchomienie
 
@@ -22,6 +24,50 @@ dostarczane z aplikacją. Przykładowy YAML jest dostępny tylko jako
 4. Uruchom ponownie aplikację. Dopiero restart stosuje nową konfigurację i
    sprawdza dostępność encji. Sprawdź logi oraz stany czujników SafetyComponent.
    Nie uruchamiaj alarmów ani urządzeń wykonawczych tylko dla testu formularza.
+
+## Przykład: mały dom
+
+Fikcyjny dom ma salon, sypialnię, wejście, hol i pomieszczenie techniczne.
+Poniższa kolejność odpowiada sekcjom formularza.
+[Pełny plik przykładu](../docs/examples/example_house_user_config.yml) możesz
+wczytać przez **Wczytaj user_config YAML**, aby obejrzeć wszystkie pola w GUI.
+Sam import niczego nie zapisuje. Przed zapisem zastąp każde przykładowe
+`entity_id`, `area_id`, usługę `notify/*` i kod TERYT wartościami z własnej
+instalacji. Przykładowe progi nie są zaleceniem bezpieczeństwa.
+
+1. W **Funkcjach i integracjach** włącz pięć komponentów domu. Wybierz język
+   polski i rzeczywistą usługę powiadomień, np. własne `notify/mobile_app_*`.
+2. W **Instalacji Home Assistant** wybierz `Europe/Warsaw`, kraj `PL`, własne
+   czterocyfrowe kody powiatów TERYT oraz czujnik temperatury zewnętrznej.
+   Nie wpisuj współrzędnych — aplikacja odczyta je z HA przy starcie.
+3. W **Ustawieniach komponentów** przykład ustawia górny próg temperatury
+   całego domu na `27 °C` i czas drzwi na `180 s`. Sypialnia ma własny próg
+   `26 °C`, więc nadpisuje wartość całego domu. Brak nadpisania w salonie
+   oznacza dziedziczenie `27 °C`.
+4. W **Drzwiach, bramach i oknach** dodaj `LivingRoomWindow` z rolą
+   **Zagrożenia zewnętrzne** oraz `EntranceDoor` z rolą **Monitoring drzwi i
+   bram**. W **Pomieszczeniach** dodaj `LivingRoom` i `Bedroom`; salon
+   odwołuje się do `LivingRoomWindow`. To jedno fizyczne okno, więc nie
+   dodawaj drugiej kopii jego czujnika. Gdy nie ustawisz listy zagrożeń okna,
+   dziedziczy ono systemowe zagrożenia domyślne.
+5. W **Detektorach zagrożeń** dodaj `HallSmoke` z profilem
+   `home_assistant_binary_alarm` z konfiguracji systemowej. Użyj go tylko,
+   jeśli rzeczywista encja dymu raportuje stany zgodne z tym profilem.
+6. W **Dodatkowych monitorowanych encjach** dodaj `UtilityHumidity` z
+   kontrolami **Skończona liczba** i **Zakres liczbowy 0–100**. To dodatkowy
+   czujnik, którego nie używa żaden z powyższych komponentów.
+
+### Przykład wyjątku monitoringu encji
+
+`EntranceDoor` jest już monitorowane jako zależność komponentu drzwi.
+Nie dodawaj tej samej encji do **Dodatkowych monitorowanych encji**. Aby
+zmienić jej kontrole, w **Wyjątkach monitoringu encji** dodaj klucz
+`SafetyDoorEntranceDoor` (prefiks `SafetyDoor` i techniczny klucz otworu
+`EntranceDoor`). Przykład ustawia opóźnienie wykrycia awarii na `10 s`, budżet
+wykrycia na `30 s` i dozwolone stany na `on`/`off`. Te pola zmieniają sposób
+oceny istniejącej zależności; **nie wyłączają jej monitorowania**. Nieznany
+klucz wyjątku powoduje błąd przy starcie, a opóźnienie musi mieścić się w
+budżecie wykrycia.
 
 ## Co wpisać w poszczególnych sekcjach
 

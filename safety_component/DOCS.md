@@ -57,11 +57,14 @@ and TERYT codes remain installation-owned.
 - `appdaemon/*.json` contains notification, recovery, and component persistence
   owned by the running App.
 
-The public SafetyComponent repository contains only
-`backend/config/user_config.example.yml`. Keep the real `user_config.yml` in a
-separate private repository or another access-controlled backup. It can be
-restored through the editor's YAML import or copied into the App-specific
-configuration directory while the App is stopped.
+The public repository contains a minimal
+[`user_config.example.yml`](../backend/config/user_config.example.yml) and a
+fictional [worked house example](../docs/examples/example_house_user_config.yml).
+The [operator guide](../frontend/CONFIGURATION.md) explains how to enter the
+worked example in Safety Home. Keep the real `user_config.yml` in a separate
+private repository or another access-controlled backup. It can be restored
+through the editor's YAML import or copied into the App-specific configuration
+directory while the App is stopped.
 
 Configuration model version 2 applies values in the order system default,
 installation default, then asset override. Declare a physical opening once and

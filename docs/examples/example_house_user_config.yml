@@ -1,0 +1,96 @@
+# Fictional house for the Safety Home configuration guide.
+# Replace every entity ID, area ID, notify service and TERYT code before use.
+# Thresholds illustrate the configuration layers; they are not safety advice.
+user_config:
+  model_version: 2
+
+  components_enabled:
+    TemperatureComponent: true
+    SafetyDoorsComponent: true
+    ExternalHazardComponent: true
+    EntityMonitorComponent: true
+    InternalEnvironmentalHazardMonitorComponent: true
+
+  localization:
+    language: pl
+
+  notification:
+    mobile:
+      services:
+        - notify/mobile_app_example_phone
+      default_url: /
+    local: {}
+    wan_entity: null
+
+  installation:
+    site:
+      timezone: Europe/Warsaw
+      country_code: PL
+      teryt_codes:
+        - "0000"
+    # Coordinates are always read from Home Assistant, not this file.
+    common_entities:
+      outside_temp: sensor.example_outdoor_temperature
+
+    component_settings:
+      # Applies to every room unless the room has its own value.
+      temperature:
+        high_temperature_c: 27.0
+      # Applies to every safety door unless the opening has its own value.
+      safety_door:
+        timeout_seconds: 180
+      # Override an existing component dependency, not a monitoring exclusion.
+      entity_monitor:
+        component_overrides:
+          SafetyDoorEntranceDoor:
+            failure_debounce_seconds: 10
+            detection_budget_seconds: 30
+            checks:
+              allowed_values:
+                values: ["on", "off"]
+
+    rooms:
+      LivingRoom:
+        area_id: living_room
+        temperature_sensor: sensor.example_living_room_temperature
+        window: LivingRoomWindow
+      Bedroom:
+        area_id: bedroom
+        temperature_sensor: sensor.example_bedroom_temperature
+        temperature:
+          high_temperature_c: 26.0
+
+    openings:
+      LivingRoomWindow:
+        area_id: living_room
+        entity_id: binary_sensor.example_living_room_window
+        friendly_name: Okno w salonie
+        kind: window
+        # Omitted hazards inherit the packaged system hazard list.
+        external_hazard: {}
+      EntranceDoor:
+        area_id: entryway
+        entity_id: binary_sensor.example_entrance_door
+        friendly_name: Drzwi wejściowe
+        kind: door
+        safety_door: {}
+
+    detectors:
+      HallSmoke:
+        area_id: hall
+        entity_id: binary_sensor.example_hall_smoke
+        friendly_name: Czujnik dymu w holu
+        hazard: smoke
+        profile: home_assistant_binary_alarm
+
+    # These are additional inputs not already owned by another component.
+    monitored_entities:
+      UtilityHumidity:
+        area_id: utility_room
+        entity_id: sensor.example_utility_humidity
+        description: Wilgotność w pomieszczeniu technicznym
+        checks:
+          finite_number: {}
+          numeric_range:
+            minimum: 0
+            maximum: 100
