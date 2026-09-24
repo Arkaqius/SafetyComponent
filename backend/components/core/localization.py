@@ -7,246 +7,47 @@ guidance, and notification text are translated.
 
 from __future__ import annotations
 
+import re
+from pathlib import Path
 from typing import Any, Mapping
 
-from pydantic import ConfigDict, Field, field_validator
+import yaml
+from pydantic import ConfigDict, field_validator
 
 from components.core.pydantic_utils import StrictBaseModel
 
 
-_TRANSLATIONS: dict[str, dict[str, str]] = {
-    "en": {
-        "entity.safety_app_health": "Safety app health",
-        "entity.safety_system_state": "Safety system state",
-        "entity.entity_monitor_summary": "Monitored entities",
-        "entity.notification_delivery_health": "Notification delivery health",
-        "entity.recovery_window": "Window recovery: {location}",
-        "entity.temperature_low_threshold": "Low temperature limit: {location}",
-        "entity.temperature_high_threshold": "High temperature limit: {location}",
-        "state.health.init": "Starting",
-        "state.health.running": "Running",
-        "state.health.invalid_cfg": "Invalid configuration",
-        "state.health.stopped": "Stopped",
-        "state.system.no_faults": "No active faults",
-        "state.system.emergency": "Emergency",
-        "state.system.hazard": "Hazard",
-        "state.system.warning": "Warning",
-        "state.system.information": "Information",
-        "state.system.stopped": "Stopped",
-        "state.fault.set": "Active",
-        "state.fault.shadowed": "Shadowed",
-        "state.fault.cleared": "Cleared",
-        "state.fault.not_tested": "Not tested",
-        "state.recovery.to_perform": "Action needed",
-        "state.recovery.awaiting_confirmation": "Confirmation required",
-        "state.recovery.executing": "In progress",
-        "state.recovery.confirmed": "Confirmed",
-        "state.recovery.failed": "Failed",
-        "state.recovery.timed_out": "Timed out",
-        "state.recovery.do_not_perform": "No action needed",
-        "state.entity_health.healthy": "Healthy",
-        "state.entity_health.degraded": "Needs attention",
-        "state.entity_health.stale": "Stale data",
-        "state.entity_health.unavailable": "Unavailable",
-        "state.notification_delivery.healthy": "Healthy",
-        "state.notification_delivery.degraded": "Needs attention",
-        "state.notification_delivery.queued": "Queued",
-        "fault.entity_health": "Entity problem: {entity}",
-        "hazard.label.smoke": "Smoke",
-        "hazard.label.flammable_gas": "Flammable gas",
-        "hazard.label.carbon_monoxide": "Carbon monoxide",
-        "hazard.guidance.smoke": "Leave the affected area and call emergency services.",
-        "hazard.guidance.flammable_gas": "Leave the affected area, avoid electrical switches, and call emergency services from a safe place.",
-        "hazard.guidance.carbon_monoxide": "Leave the affected area immediately and call emergency services.",
-        "notification.title.1": "Immediate action needed",
-        "notification.title.2": "Safety issue detected",
-        "notification.title.3": "Please check your home",
-        "notification.title.cleared": "Safety issue resolved",
-        "notification.active": "{fault} needs your attention.",
-        "notification.cleared": "Good news - {fault} is no longer active.",
-        "notification.guidance": "What you can do:",
-        "notification.action.ack": "Acknowledge",
-        "detail.location": "Location",
-        "detail.hazard": "Hazard",
-        "detail.openings": "Affected openings",
-        "detail.observed_value": "Observed or forecast value",
-        "detail.threshold": "Policy threshold",
-        "detail.evidence_kind": "Evidence type",
-        "detail.source": "Source",
-        "detail.source_time": "Source time",
-        "detail.valid_to": "Valid until",
-        "detail.freshness": "Freshness",
-        "detail.freshness_age": "Time since last update",
-        "detail.source_reference": "Authoritative reference",
-        "detail.severity": "Severity",
-        "detail.confirmation": "Confirmation",
-        "detail.capability": "Capability",
-        "detail.providers": "Providers",
-        "detail.stations": "Stations",
-        "detail.source_entity": "Opening sensor",
-        "recovery.close_windows": "Please close the windows in {location}.",
-        "recovery.open_windows": "Please open the windows in {location}.",
-        "recovery.close_opening": "Close {opening}.",
-        "recovery.confirm_close_opening": "Confirm closing {opening}. SafetyComponent will act only after your confirmation.",
-    },
-    "pl": {
-        "entity.safety_app_health": "Stan aplikacji bezpieczeństwa",
-        "entity.safety_system_state": "Stan systemu bezpieczeństwa",
-        "entity.entity_monitor_summary": "Monitorowane encje",
-        "entity.notification_delivery_health": "Stan dostarczania powiadomień",
-        "entity.recovery_window": "Działanie naprawcze: okna — {location}",
-        "entity.temperature_low_threshold": "Dolny próg temperatury — {location}",
-        "entity.temperature_high_threshold": "Górny próg temperatury — {location}",
-        "state.health.init": "Uruchamianie",
-        "state.health.running": "Działa",
-        "state.health.invalid_cfg": "Błędna konfiguracja",
-        "state.health.stopped": "Zatrzymana",
-        "state.system.no_faults": "Brak aktywnych usterek",
-        "state.system.emergency": "Alarm krytyczny",
-        "state.system.hazard": "Zagrożenie",
-        "state.system.warning": "Ostrzeżenie",
-        "state.system.information": "Informacja",
-        "state.system.stopped": "Zatrzymany",
-        "state.fault.set": "Aktywna",
-        "state.fault.shadowed": "Przesłonięta",
-        "state.fault.cleared": "Usunięta",
-        "state.fault.not_tested": "Nieprzetestowana",
-        "state.recovery.to_perform": "Wymaga działania",
-        "state.recovery.awaiting_confirmation": "Wymaga potwierdzenia",
-        "state.recovery.executing": "W trakcie",
-        "state.recovery.confirmed": "Potwierdzone",
-        "state.recovery.failed": "Niepowodzenie",
-        "state.recovery.timed_out": "Przekroczono czas",
-        "state.recovery.do_not_perform": "Nie wymaga działania",
-        "state.entity_health.healthy": "Sprawna",
-        "state.entity_health.degraded": "Wymaga uwagi",
-        "state.entity_health.stale": "Dane nieaktualne",
-        "state.entity_health.unavailable": "Niedostępna",
-        "state.notification_delivery.healthy": "Sprawne",
-        "state.notification_delivery.degraded": "Wymaga uwagi",
-        "state.notification_delivery.queued": "Oczekuje w kolejce",
-        "fault.entity_health": "Problem z encją: {entity}",
-        "hazard.label.smoke": "Dym",
-        "hazard.label.flammable_gas": "Gaz palny",
-        "hazard.label.carbon_monoxide": "Tlenek węgla",
-        "hazard.guidance.smoke": "Opuść zagrożone miejsce i wezwij służby ratunkowe.",
-        "hazard.guidance.flammable_gas": "Opuść zagrożone miejsce, nie używaj przełączników elektrycznych i wezwij służby z bezpiecznego miejsca.",
-        "hazard.guidance.carbon_monoxide": "Natychmiast opuść zagrożone miejsce i wezwij służby ratunkowe.",
-        "notification.title.1": "Wymagane natychmiastowe działanie",
-        "notification.title.2": "Wykryto zagrożenie w domu",
-        "notification.title.3": "Sprawdź, co dzieje się w domu",
-        "notification.title.cleared": "Zagrożenie zostało usunięte",
-        "notification.active": "Wymaga uwagi: {fault}.",
-        "notification.cleared": "Dobra wiadomość - problem „{fault}” został rozwiązany.",
-        "notification.guidance": "Co możesz zrobić:",
-        "notification.action.ack": "Potwierdź",
-        "detail.location": "Lokalizacja",
-        "detail.hazard": "Zagrożenie",
-        "detail.openings": "Narażone okna lub drzwi",
-        "detail.observed_value": "Wartość zmierzona lub prognozowana",
-        "detail.threshold": "Próg bezpieczeństwa",
-        "detail.evidence_kind": "Rodzaj danych",
-        "detail.source": "Źródło",
-        "detail.source_time": "Czas danych źródłowych",
-        "detail.valid_to": "Ważne do",
-        "detail.freshness": "Aktualność",
-        "detail.freshness_age": "Czas od ostatniej aktualizacji",
-        "detail.source_reference": "Odnośnik urzędowy",
-        "detail.severity": "Waga",
-        "detail.confirmation": "Potwierdzenie",
-        "detail.capability": "Zakres danych",
-        "detail.providers": "Dostawcy danych",
-        "detail.stations": "Stacje pomiarowe",
-        "detail.source_entity": "Czujnik otwarcia",
-        "recovery.close_windows": "Zamknij okna w lokalizacji: {location}.",
-        "recovery.open_windows": "Otwórz okna w lokalizacji: {location}.",
-        "recovery.close_opening": "Zamknij: {opening}.",
-        "recovery.confirm_close_opening": "Potwierdź zamknięcie: {opening}. SafetyComponent wykona polecenie dopiero po Twoim potwierdzeniu.",
-    },
-    "de": {
-        "entity.safety_app_health": "Status der Sicherheitsanwendung",
-        "entity.safety_system_state": "Status des Sicherheitssystems",
-        "entity.entity_monitor_summary": "Überwachte Entitäten",
-        "entity.notification_delivery_health": "Status der Benachrichtigungszustellung",
-        "entity.recovery_window": "Fenstermaßnahme – {location}",
-        "entity.temperature_low_threshold": "Untere Temperaturgrenze – {location}",
-        "entity.temperature_high_threshold": "Obere Temperaturgrenze – {location}",
-        "state.health.init": "Wird gestartet",
-        "state.health.running": "Läuft",
-        "state.health.invalid_cfg": "Ungültige Konfiguration",
-        "state.health.stopped": "Angehalten",
-        "state.system.no_faults": "Keine aktiven Fehler",
-        "state.system.emergency": "Kritischer Alarm",
-        "state.system.hazard": "Gefahr",
-        "state.system.warning": "Warnung",
-        "state.system.information": "Information",
-        "state.system.stopped": "Angehalten",
-        "state.fault.set": "Aktiv",
-        "state.fault.shadowed": "Überlagert",
-        "state.fault.cleared": "Behoben",
-        "state.fault.not_tested": "Nicht getestet",
-        "state.recovery.to_perform": "Maßnahme erforderlich",
-        "state.recovery.awaiting_confirmation": "Bestätigung erforderlich",
-        "state.recovery.executing": "In Ausführung",
-        "state.recovery.confirmed": "Bestätigt",
-        "state.recovery.failed": "Fehlgeschlagen",
-        "state.recovery.timed_out": "Zeitüberschreitung",
-        "state.recovery.do_not_perform": "Keine Maßnahme erforderlich",
-        "state.entity_health.healthy": "Fehlerfrei",
-        "state.entity_health.degraded": "Prüfung erforderlich",
-        "state.entity_health.stale": "Veraltete Daten",
-        "state.entity_health.unavailable": "Nicht verfügbar",
-        "state.notification_delivery.healthy": "Fehlerfrei",
-        "state.notification_delivery.degraded": "Prüfung erforderlich",
-        "state.notification_delivery.queued": "In Warteschlange",
-        "fault.entity_health": "Entitätsproblem: {entity}",
-        "hazard.label.smoke": "Rauch",
-        "hazard.label.flammable_gas": "Brennbares Gas",
-        "hazard.label.carbon_monoxide": "Kohlenmonoxid",
-        "hazard.guidance.smoke": "Verlassen Sie den betroffenen Bereich und rufen Sie den Rettungsdienst.",
-        "hazard.guidance.flammable_gas": "Verlassen Sie den betroffenen Bereich, betätigen Sie keine elektrischen Schalter und rufen Sie den Rettungsdienst von einem sicheren Ort aus.",
-        "hazard.guidance.carbon_monoxide": "Verlassen Sie den betroffenen Bereich sofort und rufen Sie den Rettungsdienst.",
-        "notification.title.1": "Sofortiges Handeln erforderlich",
-        "notification.title.2": "Sicherheitsproblem erkannt",
-        "notification.title.3": "Bitte prüfen Sie Ihr Zuhause",
-        "notification.title.cleared": "Sicherheitsproblem behoben",
-        "notification.active": "{fault} erfordert Ihre Aufmerksamkeit.",
-        "notification.cleared": "Gute Nachricht – {fault} ist nicht mehr aktiv.",
-        "notification.guidance": "Das können Sie tun:",
-        "notification.action.ack": "Bestätigen",
-        "detail.location": "Ort",
-        "detail.hazard": "Gefahr",
-        "detail.openings": "Betroffene Öffnungen",
-        "detail.observed_value": "Mess- oder Prognosewert",
-        "detail.threshold": "Sicherheitsschwelle",
-        "detail.evidence_kind": "Datentyp",
-        "detail.source": "Quelle",
-        "detail.source_time": "Quellzeit",
-        "detail.valid_to": "Gültig bis",
-        "detail.freshness": "Aktualität",
-        "detail.freshness_age": "Zeit seit der letzten Aktualisierung",
-        "detail.source_reference": "Behördliche Referenz",
-        "detail.severity": "Schweregrad",
-        "detail.confirmation": "Bestätigung",
-        "detail.capability": "Datenbereich",
-        "detail.providers": "Datenanbieter",
-        "detail.stations": "Messstationen",
-        "detail.source_entity": "Öffnungssensor",
-        "recovery.close_windows": "Bitte schließen Sie die Fenster in {location}.",
-        "recovery.open_windows": "Bitte öffnen Sie die Fenster in {location}.",
-        "recovery.close_opening": "Schließen Sie {opening}.",
-        "recovery.confirm_close_opening": "Bestätigen Sie das Schließen von {opening}. SafetyComponent handelt erst nach Ihrer Bestätigung.",
-    },
-}
+_LOCALES_DIR = Path(__file__).with_name("locales")
+_PRIVATE_LOCALES_DIR = Path("/config/locales")
+_ENTITY_NAME_KEY = re.compile(r"^entity_name\.[a-z0-9_]+\.[a-z0-9_]+$")
+
+
+def _load_translations() -> dict[str, dict[str, str]]:
+    """Load packaged backend translations from language files."""
+
+    translations: dict[str, dict[str, str]] = {}
+    for path in sorted(_LOCALES_DIR.glob("*.yml")):
+        values = yaml.safe_load(path.read_text(encoding="utf-8"))
+        if not isinstance(values, dict) or any(
+            not isinstance(key, str) or not isinstance(value, str)
+            for key, value in values.items()
+        ):
+            raise ValueError(f"Invalid localization file: {path}")
+        translations[path.stem] = values
+    if "en" not in translations:
+        raise ValueError("English localization file is required")
+    return translations
+
+
+_TRANSLATIONS = _load_translations()
 
 
 class LocalizationSettings(StrictBaseModel):
-    """Installation-specific localization settings."""
+    """Selected language for packaged and private localization files."""
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="forbid")
 
     language: str = "en"
-    entity_names: dict[str, str] = Field(default_factory=dict)
 
     @field_validator("language")
     @classmethod
@@ -258,18 +59,6 @@ class LocalizationSettings(StrictBaseModel):
             )
         return language
 
-    @field_validator("entity_names")
-    @classmethod
-    def _validate_entity_names(cls, value: dict[str, str]) -> dict[str, str]:
-        normalized: dict[str, str] = {}
-        for entity_id, name in value.items():
-            normalized_id = entity_id.strip().lower()
-            normalized_name = name.strip()
-            if not normalized_id or not normalized_name:
-                raise ValueError("entity_names keys and values must not be empty")
-            normalized[normalized_id] = normalized_name
-        return normalized
-
 
 class Localizer:
     """Resolve localized text while keeping backend state codes stable."""
@@ -277,12 +66,37 @@ class Localizer:
     def __init__(
         self,
         settings: LocalizationSettings | Mapping[str, Any] | None = None,
+        *,
+        private_locales_dir: Path = _PRIVATE_LOCALES_DIR,
     ) -> None:
         if isinstance(settings, LocalizationSettings):
             self.settings = settings
         else:
             self.settings = LocalizationSettings.model_validate(dict(settings or {}))
         self._translations = _TRANSLATIONS[self.settings.language]
+        self._private_entity_names = self._load_private_entity_names(
+            private_locales_dir / f"{self.settings.language}.yml"
+        )
+
+    @staticmethod
+    def _load_private_entity_names(path: Path) -> dict[str, str]:
+        """Load optional installation names from a private locale file."""
+        if not path.exists():
+            return {}
+        values = yaml.safe_load(path.read_text(encoding="utf-8"))
+        if not isinstance(values, dict):
+            raise ValueError(f"Invalid private localization file: {path}")
+        names: dict[str, str] = {}
+        for key, name in values.items():
+            if (
+                not isinstance(key, str)
+                or not _ENTITY_NAME_KEY.fullmatch(key)
+                or not isinstance(name, str)
+                or not name.strip()
+            ):
+                raise ValueError(f"Invalid private entity name in {path}: {key!r}")
+            names[key.removeprefix("entity_name.")] = name.strip()
+        return names
 
     @property
     def language(self) -> str:
@@ -297,7 +111,7 @@ class Localizer:
     def entity_name(self, entity_id: str, fallback: str) -> str:
         """Return a configured or built-in localized entity name."""
         normalized_id = entity_id.strip().lower()
-        configured = self.settings.entity_names.get(normalized_id)
+        configured = self._private_entity_names.get(normalized_id)
         if configured:
             return configured
         built_in_keys = {

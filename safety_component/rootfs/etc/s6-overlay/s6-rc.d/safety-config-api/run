@@ -1,0 +1,9 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+
+bashio::log.info "Starting the SafetyComponent configuration API"
+exec python /opt/safety-component/backend/user_config_api.py \
+    --host 127.0.0.1 \
+    --port 8100 \
+    --user /config/user_config.yml \
+    --system /opt/safety-component/backend/config/system_config.yml

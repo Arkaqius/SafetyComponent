@@ -348,11 +348,11 @@ eligibility; it shall not be inferred from a stored pre-alarm light state.
 `backend/config/system_config.yml` shall own mechanism/fault definitions,
 severity, profiles, PM thresholds/windows, supervision/clear timers, storage
 limits and hazard-output policy. `backend/config/user_config.yml` shall own
-component selection, detector keys, indoor entity/area bindings and reviewed
-equipment/profile selection. `backend/app_cfg.yaml` shall remain generated;
-installation deletion shall not leave a detector silently supplied by defaults.
-No live installation shall be inferred from illustrative names or device class
-alone.
+component selection and, under `installation.detectors`, detector keys, indoor
+entity/area bindings and reviewed equipment/profile selection.
+`backend/app_cfg.yaml` shall remain generated; installation deletion shall not
+leave a detector silently supplied by defaults. No live installation shall be
+inferred from illustrative names or device class alone.
 
 Validation shall reject overlapping alarm/clear/test sets, unknown pollutants,
 wrong units, incomplete enabled channels, missing current-clear semantics,

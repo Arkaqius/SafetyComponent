@@ -11,7 +11,8 @@ from components.core.types_common import FaultState
 def test_gas_alarm_reaches_l1_fault_without_co_consensus(tmp_path) -> None:
     backend_dir = Path(__file__).parents[1]
     raw = compile_config(
-        user_path=backend_dir / "config" / "user_config.example.yml"
+        user_path=backend_dir / "config" / "user_config.example.yml",
+        home_assistant_config={"latitude": 50.0, "longitude": 20.0},
     )["SafetyFunctions"]
     raw["app_config"]["validation"]["validate_entity_existence"] = False
     raw["user_config"]["components_enabled"] = {

@@ -1,0 +1,76 @@
+entity.safety_app_health: Status der Sicherheitsanwendung
+entity.safety_system_state: Status des Sicherheitssystems
+entity.entity_monitor_summary: Überwachte Entitäten
+entity.notification_delivery_health: Status der Benachrichtigungszustellung
+entity.recovery_window: Fenstermaßnahme – {location}
+entity.temperature_low_threshold: Untere Temperaturgrenze – {location}
+entity.temperature_high_threshold: Obere Temperaturgrenze – {location}
+state.health.init: Wird gestartet
+state.health.running: Läuft
+state.health.invalid_cfg: Ungültige Konfiguration
+state.health.stopped: Angehalten
+state.system.no_faults: Keine aktiven Fehler
+state.system.emergency: Kritischer Alarm
+state.system.hazard: Gefahr
+state.system.warning: Warnung
+state.system.information: Information
+state.system.stopped: Angehalten
+state.fault.set: Aktiv
+state.fault.shadowed: Überlagert
+state.fault.cleared: Behoben
+state.fault.not_tested: Nicht getestet
+state.recovery.to_perform: Maßnahme erforderlich
+state.recovery.awaiting_confirmation: Bestätigung erforderlich
+state.recovery.executing: In Ausführung
+state.recovery.confirmed: Bestätigt
+state.recovery.failed: Fehlgeschlagen
+state.recovery.timed_out: Zeitüberschreitung
+state.recovery.do_not_perform: Keine Maßnahme erforderlich
+state.entity_health.healthy: Fehlerfrei
+state.entity_health.degraded: Prüfung erforderlich
+state.entity_health.stale: Veraltete Daten
+state.entity_health.unavailable: Nicht verfügbar
+state.notification_delivery.healthy: Fehlerfrei
+state.notification_delivery.degraded: Prüfung erforderlich
+state.notification_delivery.queued: In Warteschlange
+fault.entity_health: 'Entitätsproblem: {entity}'
+hazard.label.smoke: Rauch
+hazard.label.flammable_gas: Brennbares Gas
+hazard.label.carbon_monoxide: Kohlenmonoxid
+hazard.guidance.smoke: Verlassen Sie den betroffenen Bereich und rufen Sie den Rettungsdienst.
+hazard.guidance.flammable_gas: Verlassen Sie den betroffenen Bereich, betätigen Sie
+  keine elektrischen Schalter und rufen Sie den Rettungsdienst von einem sicheren
+  Ort aus.
+hazard.guidance.carbon_monoxide: Verlassen Sie den betroffenen Bereich sofort und
+  rufen Sie den Rettungsdienst.
+notification.title.1: Sofortiges Handeln erforderlich
+notification.title.2: Sicherheitsproblem erkannt
+notification.title.3: Bitte prüfen Sie Ihr Zuhause
+notification.title.cleared: Sicherheitsproblem behoben
+notification.active: '{fault} erfordert Ihre Aufmerksamkeit.'
+notification.cleared: Gute Nachricht – {fault} ist nicht mehr aktiv.
+notification.guidance: 'Das können Sie tun:'
+notification.action.ack: Bestätigen
+detail.location: Ort
+detail.hazard: Gefahr
+detail.openings: Betroffene Öffnungen
+detail.observed_value: Mess- oder Prognosewert
+detail.threshold: Sicherheitsschwelle
+detail.evidence_kind: Datentyp
+detail.source: Quelle
+detail.source_time: Quellzeit
+detail.valid_to: Gültig bis
+detail.freshness: Aktualität
+detail.freshness_age: Zeit seit der letzten Aktualisierung
+detail.source_reference: Behördliche Referenz
+detail.severity: Schweregrad
+detail.confirmation: Bestätigung
+detail.capability: Datenbereich
+detail.providers: Datenanbieter
+detail.stations: Messstationen
+detail.source_entity: Öffnungssensor
+recovery.close_windows: Bitte schließen Sie die Fenster in {location}.
+recovery.open_windows: Bitte öffnen Sie die Fenster in {location}.
+recovery.close_opening: Schließen Sie {opening}.
+recovery.confirm_close_opening: Bestätigen Sie das Schließen von {opening}. SafetyComponent
+  handelt erst nach Ihrer Bestätigung.

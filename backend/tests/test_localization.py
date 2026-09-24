@@ -99,6 +99,24 @@ def test_unknown_text_key_falls_back_to_key() -> None:
     assert Localizer({"language": "de"}).text("missing.key") == "missing.key"
 
 
+def test_private_entity_names_override_packaged_names_without_changing_ids(tmp_path) -> None:
+    (tmp_path / "pl.yml").write_text(
+        "entity_name.sensor.safety_app_health: Prywatna nazwa\n",
+        encoding="utf-8",
+    )
+    localizer = Localizer({"language": "pl"}, private_locales_dir=tmp_path)
+
+    assert localizer.entity_name("sensor.safety_app_health", "fallback") == "Prywatna nazwa"
+    assert localizer.entity_name("sensor.safetysystem_state", "fallback") == "Stan systemu bezpieczeństwa"
+
+
+@pytest.mark.parametrize("source", ["wrong: Name\n", "entity_name.sensor.test: ''\n", "- invalid\n"])
+def test_private_locale_rejects_unknown_or_empty_entries(tmp_path, source: str) -> None:
+    (tmp_path / "pl.yml").write_text(source, encoding="utf-8")
+    with pytest.raises(ValueError, match="private"):
+        Localizer({"language": "pl"}, private_locales_dir=tmp_path)
+
+
 @pytest.mark.parametrize(
     "settings",
     [

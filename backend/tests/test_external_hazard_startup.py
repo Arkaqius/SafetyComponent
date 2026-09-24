@@ -30,7 +30,8 @@ class StubExternalRuntime:
 def test_example_external_hazard_startup_is_wired_before_polling(tmp_path) -> None:
     backend_dir = Path(__file__).parents[1]
     raw = compile_config(
-        user_path=backend_dir / "config" / "user_config.example.yml"
+        user_path=backend_dir / "config" / "user_config.example.yml",
+        home_assistant_config={"latitude": 50.0, "longitude": 20.0},
     )["SafetyFunctions"]
     state_file = tmp_path / "notification_state.json"
     raw["user_config"]["notification"]["persistence"]["state_file"] = str(

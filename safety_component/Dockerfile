@@ -11,7 +11,7 @@ RUN npm run build
 FROM ghcr.io/home-assistant/base-python:3.12-alpine3.24
 
 ARG BUILD_ARCH=amd64
-ARG BUILD_VERSION=0.2.0
+ARG BUILD_VERSION=0.3.1
 
 SHELL ["/bin/ash", "-o", "pipefail", "-c"]
 
@@ -29,6 +29,8 @@ RUN chmod a+x \
         /etc/s6-overlay/scripts/init-safety-component \
         /etc/s6-overlay/s6-rc.d/safety-backend/run \
         /etc/s6-overlay/s6-rc.d/safety-backend/finish \
+        /etc/s6-overlay/s6-rc.d/safety-config-api/run \
+        /etc/s6-overlay/s6-rc.d/safety-config-api/finish \
         /etc/s6-overlay/s6-rc.d/safety-frontend/run \
         /etc/s6-overlay/s6-rc.d/safety-frontend/finish
 

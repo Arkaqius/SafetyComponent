@@ -89,7 +89,7 @@ def test_notification_updates_single_fault_notification_for_prefault_lifecycle(
         mocked_hass_app_with_temp_component
     )
     app_instance.args = copy.deepcopy(app_instance.args)
-    state_store = _install_stateful_hass(app_instance, mock_behaviors_default)
+    _install_stateful_hass(app_instance, mock_behaviors_default)
 
     app_instance.initialize()
     app_instance.call_service.reset_mock()

@@ -76,6 +76,38 @@ pozostałych reguł `include`/`exclude`. Taki zakres przywraca wykresy temperatu
 bez włączania zapisu całej domeny `sensor`. Retencja `purge_keep_days` pozostaje
 globalnym ustawieniem Rejestratora i nie jest zmieniana przez przykład.
 
+## Konfiguracja instalacji
+
+Szczegółowa [instrukcja konfiguracji](CONFIGURATION.md) prowadzi przez pola i
+działania w formularzu. YAML pozostaje opcją importu, a nie wymaganym sposobem
+konfiguracji.
+
+Po pierwszym starcie aplikacji otwórz **Konfiguracja**. Panel pokaże szkic
+`user_config.yml`; zastąp przykładowe encje i obszary danymi domu albo użyj
+**Wczytaj user_config YAML**, aby wczytać istniejący plik `.yml`/`.yaml` w
+modelu v2. Import tylko wypełnia formularz. Sprawdź go, zapisz i uruchom
+ponownie aplikację, aby wystartował SafetyFunctions.
+
+Strona edytuje włączone komponenty i providery, język, odbiorców powiadomień,
+administracyjne dane lokalizacji, ustawienia komponentów oraz rejestry pomieszczeń,
+otworów, detektorów i monitorowanych encji. `system_config.yml` jest częścią
+wersjonowanego obrazu aplikacji. Cały panel Ingress jest dostępny tylko dla
+administratorów Home Assistanta, ponieważ konfiguracja zawiera prywatną
+topologię instalacji.
+
+Szerokość i długość geograficzna są pobierane z Home Assistanta przy każdym
+starcie i nie są zapisywane w `user_config.yml`. Horyzonty prognozy i domyślna
+lista zagrożeń są dostarczane w `system_config.yml`. Dodatkowe monitorowane
+encje wpisuje się osobno; zależności innych komponentów są monitorowane
+automatycznie. Nazwy konkretnych encji można doprecyzować w prywatnych plikach
+lokalizacji, poza `user_config.yml`.
+
+Zapis jest przyjmowany tylko wtedy, gdy dokument nadal ma odczytaną rewizję,
+przechodzi walidację modelu v2 i daje się skompilować z dołączoną konfiguracją
+systemową. Po zapisie uruchom ponownie aplikację SafetyComponent. Dopiero
+kontrolowany start tworzy nowe `apps.yaml` i wykonuje walidację zależną od
+bieżących encji Home Assistanta.
+
 ## Działania rekomendowane
 
 Karta działania pokazuje instrukcję, powód, źródło, ważność i bieżący etap

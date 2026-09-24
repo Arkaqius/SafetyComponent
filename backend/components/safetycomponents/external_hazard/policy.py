@@ -86,7 +86,7 @@ def _measurement(values: Mapping[str, Any], name: str, default: str) -> str:
 def _number(values: Mapping[str, Any], name: str) -> float:
     measurement = values.get(name)
     try:
-        return float(getattr(measurement, "value"))
+        return float(measurement.value)
     except (TypeError, ValueError, AttributeError) as exc:
         raise ValueError(f"Missing normalized measurement {name}") from exc
 

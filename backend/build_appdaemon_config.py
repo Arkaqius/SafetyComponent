@@ -46,7 +46,7 @@ def fetch_core_config(
     return payload
 
 
-def _validated_number(config: Mapping[str, object], field: str) -> int | float:
+def validated_number(config: Mapping[str, object], field: str) -> int | float:
     """Return one required finite numeric Home Assistant setting."""
 
     value = config.get(field)
@@ -68,14 +68,12 @@ def render_appdaemon_config(
     """Render AppDaemon's required location fields into its YAML template."""
 
     replacements = {
-        PLACEHOLDERS["latitude"]: json.dumps(
-            _validated_number(core_config, "latitude")
-        ),
+        PLACEHOLDERS["latitude"]: json.dumps(validated_number(core_config, "latitude")),
         PLACEHOLDERS["longitude"]: json.dumps(
-            _validated_number(core_config, "longitude")
+            validated_number(core_config, "longitude")
         ),
         PLACEHOLDERS["elevation"]: json.dumps(
-            _validated_number(core_config, "elevation")
+            validated_number(core_config, "elevation")
         ),
     }
     time_zone = core_config.get("time_zone")
@@ -131,6 +129,27 @@ def write_appdaemon_config(
     temporary_path.replace(output_path)
 
 
+def write_core_location(output_path: Path, core_config: Mapping[str, object]) -> None:
+    """Atomically store only the HA coordinates needed by SafetyFunctions."""
+
+    coordinates = {
+        field: validated_number(core_config, field)
+        for field in ("latitude", "longitude")
+    }
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        dir=output_path.parent,
+        prefix=f".{output_path.name}.",
+        suffix=".tmp",
+        delete=False,
+    ) as temporary_file:
+        json.dump(coordinates, temporary_file)
+        temporary_path = Path(temporary_file.name)
+    temporary_path.replace(output_path)
+
+
 def fetch_core_config_with_retry(
     url: str,
     token: str,
@@ -143,9 +162,7 @@ def fetch_core_config_with_retry(
     for attempt in range(1, attempts + 1):
         try:
             core_config = fetch_core_config(url, token)
-            missing = [
-                field for field in REQUIRED_FIELDS if field not in core_config
-            ]
+            missing = [field for field in REQUIRED_FIELDS if field not in core_config]
             if missing:
                 raise ValueError(
                     "Home Assistant Core configuration is missing required fields: "
@@ -173,6 +190,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--template", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--location-output", type=Path)
     parser.add_argument("--url", default=CORE_CONFIG_URL)
     parser.add_argument("--attempts", type=int, default=60)
     parser.add_argument("--retry-delay", type=float, default=5.0)
@@ -196,6 +214,8 @@ def main() -> None:
         args.output,
         core_config,
     )
+    if args.location_output is not None:
+        write_core_location(args.location_output, core_config)
 
 
 if __name__ == "__main__":

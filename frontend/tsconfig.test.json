@@ -9,5 +9,5 @@
     "rootDir": "src",
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.test.tsbuildinfo"
   },
-  "include": ["src/domain/**/*.ts", "src/components/NotificationHistory.test.tsx"]
+  "include": ["src/domain/**/*.ts", "src/components/NotificationHistory.test.tsx", "src/components/ConfigurationObjectEditor.test.tsx"]
 }

@@ -212,9 +212,11 @@ This chapter defines **notification levels and vectors** used by the Safety Syst
 `backend/config/system_config.yml` owns software policy, calibration, stable
 fault-to-Safety-Mechanism mappings, provider lifecycle, MQTT behavior, and
 system health checks. The ignored `backend/config/user_config.yml` owns only
-installation bindings and operator choices; the repository contains
-`user_config.example.yml` as its public template. `backend/build_app_config.py`
-merges both sources into the ignored deployable `backend/app_cfg.yaml` contract:
+the normalized installation registry, component-specific overrides, and
+operator choices; the repository contains `user_config.example.yml` as its
+public template. `backend/build_app_config.py` resolves system defaults,
+component settings, and per-asset overrides into the ignored deployable
+`backend/app_cfg.yaml` contract:
 
 ```yaml
 app_config:
@@ -645,26 +647,27 @@ temperature.
 
 - Per-room bindings: `area_id`, `temperature_sensor`, optional `window_sensor`,
   and optional cover `actuator`.
-- Thresholds and forecast horizon: `CAL_LOW_TEMP_THRESHOLD`,
-  `CAL_HIGH_TEMP_THRESHOLD`, and `CAL_FORECAST_TIMESPAN`, inherited from
-  component defaults unless overridden for the room.
+- Thresholds: `default_low_temperature_c` and
+  `default_high_temperature_c`, inherited by the installation and exposed as
+  `low_temperature_c` and `high_temperature_c` overrides. The
+  `forecast_horizon_hours` parameter is fixed in system configuration.
 - Direct-mechanism debounce:
-  `SM_TC_1_DEBOUNCE_LIMIT` and `SM_TC_1_REEVAL_DELAY_SECONDS`.
+  `sm_tc_1_debounce_limit` and `sm_tc_1_reeval_delay_seconds`.
 - Forecast-mechanism debounce and derivative sampling:
-  `SM_TC_2_DEBOUNCE_LIMIT`, `SM_TC_2_REEVAL_DELAY_SECONDS`, and
-  `SM_TC_2_DERIVATIVE_SAMPLE_MINUTES`.
-- Plausibility bounds: `SM_TC_MIN_VALID_TEMPERATURE_C`,
-  `SM_TC_MAX_VALID_TEMPERATURE_C`, `SM_TC_MAX_ABS_RATE_C_PER_MIN`, and
-  `SM_TC_MAX_FORECAST_DELTA_C`.
+  `sm_tc_2_debounce_limit`, `sm_tc_2_reeval_delay_seconds`, and
+  `sm_tc_2_derivative_sample_minutes`.
+- Plausibility bounds: `sm_tc_min_valid_temperature_c`,
+  `sm_tc_max_valid_temperature_c`, `sm_tc_max_abs_rate_c_per_min`, and
+  `sm_tc_max_forecast_delta_c`.
 
 #### 8.2.4 Runtime identifier contract
 
 | System mechanism | Runtime ID | Positive condition | Symptom ID | Fault ID |
 | --- | --- | --- | --- | --- |
-| Direct low temperature | `sm_tc_1` | current temperature `< CAL_LOW_TEMP_THRESHOLD` | `RiskyTemperature{Room}` | `RiskyTemperature` |
-| Forecast low temperature | `sm_tc_2` | projected temperature `< CAL_LOW_TEMP_THRESHOLD` | `RiskyTemperature{Room}ForeCast` | `RiskyTemperatureForecast` |
-| Direct high temperature | `sm_tc_3` | current temperature `> CAL_HIGH_TEMP_THRESHOLD` | `RiskyTemperatureHigh{Room}` | `RiskyTemperature` |
-| Forecast high temperature | `sm_tc_4` | projected temperature `> CAL_HIGH_TEMP_THRESHOLD` | `RiskyTemperatureHigh{Room}ForeCast` | `RiskyTemperatureForecast` |
+| Direct low temperature | `sm_tc_1` | current temperature `< low_temperature_c` | `RiskyTemperature{Room}` | `RiskyTemperature` |
+| Forecast low temperature | `sm_tc_2` | projected temperature `< low_temperature_c` | `RiskyTemperature{Room}ForeCast` | `RiskyTemperatureForecast` |
+| Direct high temperature | `sm_tc_3` | current temperature `> high_temperature_c` | `RiskyTemperatureHigh{Room}` | `RiskyTemperature` |
+| Forecast high temperature | `sm_tc_4` | projected temperature `> high_temperature_c` | `RiskyTemperatureHigh{Room}ForeCast` | `RiskyTemperatureForecast` |
 
 `ForeCast` capitalization is retained as part of the existing runtime contract.
 
@@ -777,8 +780,8 @@ temperature.
 
 #### 8.3.4 Parameters
 
-- Site identity: latitude, longitude, timezone, country, and configured TERYT
-  codes.
+- Site identity: latitude and longitude from Home Assistant Core at each App
+  start, plus configured timezone, country, and TERYT codes.
 - Opening registry: stable opening name, `entity_id`, `area_id`, opening kind,
   applicable hazard types, execution policy, and optional allowlisted
   `cover.*` actuator.
@@ -1018,11 +1021,13 @@ C-SEC. Diagnostic handling of unavailable inputs supports SG-003.
 
 #### 8.4.5 Installation calibration
 
-Every installation shall define its door keys, Home Assistant areas and entity
-bindings in the private `user_config.yml`. A door may inherit the public default
-timeout or define its own positive timeout. Optional condition bindings shall
-define explicit, disjoint pass and blocked states; the public repository shall
-not contain bindings or calibration copied from a real installation.
+Every installation shall define its opening keys, Home Assistant areas, entity
+bindings, and safety-door roles in the private `user_config.yml` installation
+registry. A safety-door role may inherit the public system timeout, an
+installation-wide timeout, or define its own positive timeout. Optional
+condition bindings shall define explicit, disjoint pass and blocked states; the
+public repository shall not contain bindings or calibration copied from a real
+installation.
 
 #### 8.4.6 Mapping and verification
 

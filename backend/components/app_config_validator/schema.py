@@ -21,6 +21,7 @@ class ValidationSettings(StrictBaseModel):
 
     model_config = ConfigDict(extra="allow")
 
+    strict_validation: bool = True
     validate_entity_id_syntax: bool = True
     validate_entity_existence: bool = True
 
@@ -30,15 +31,15 @@ class TemperatureCalibration(StrictBaseModel):
 
     model_config = ConfigDict(extra="allow")
 
-    SM_TC_1_DEBOUNCE_LIMIT: int = 2
-    SM_TC_1_REEVAL_DELAY_SECONDS: int = 30
-    SM_TC_2_DEBOUNCE_LIMIT: int = 2
-    SM_TC_2_REEVAL_DELAY_SECONDS: int = 30
-    SM_TC_2_DERIVATIVE_SAMPLE_MINUTES: int = 15
-    SM_TC_MIN_VALID_TEMPERATURE_C: float = -40.0
-    SM_TC_MAX_VALID_TEMPERATURE_C: float = 80.0
-    SM_TC_MAX_ABS_RATE_C_PER_MIN: float = Field(default=0.25, gt=0)
-    SM_TC_MAX_FORECAST_DELTA_C: float = Field(default=6.0, gt=0)
+    sm_tc_1_debounce_limit: int = 2
+    sm_tc_1_reeval_delay_seconds: int = 30
+    sm_tc_2_debounce_limit: int = 2
+    sm_tc_2_reeval_delay_seconds: int = 30
+    sm_tc_2_derivative_sample_minutes: int = 15
+    sm_tc_min_valid_temperature_c: float = -40.0
+    sm_tc_max_valid_temperature_c: float = 80.0
+    sm_tc_max_abs_rate_c_per_min: float = Field(default=0.25, gt=0)
+    sm_tc_max_forecast_delta_c: float = Field(default=6.0, gt=0)
 
 
 class CalibrationSettings(StrictBaseModel):
@@ -47,7 +48,9 @@ class CalibrationSettings(StrictBaseModel):
     model_config = ConfigDict(extra="allow")
 
     temperature: TemperatureCalibration = Field(default_factory=TemperatureCalibration)
-    entity_monitor: EntityMonitorCalibration = Field(default_factory=EntityMonitorCalibration)
+    entity_monitor: EntityMonitorCalibration = Field(
+        default_factory=EntityMonitorCalibration
+    )
 
 
 class AppPolicy(StrictBaseModel):
@@ -55,8 +58,6 @@ class AppPolicy(StrictBaseModel):
 
     model_config = ConfigDict(extra="allow")
 
-    config_version: int = Field(..., ge=1)
-    strict_validation: bool = True
     validation: ValidationSettings = Field(default_factory=ValidationSettings)
     calibration: CalibrationSettings = Field(default_factory=CalibrationSettings)
     external_hazard_policy: ExternalHazardPolicy | None = None

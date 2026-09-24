@@ -83,10 +83,7 @@ class AirQualityPolicy(StrictBaseModel):
 class ExternalHazardPolicy(StrictBaseModel):
     """Global household external-hazard policy."""
 
-    actuation_mode: Literal["manual_and_user_confirmed"] = (
-        "manual_and_user_confirmed"
-    )
-    decision_timeout_seconds: int = Field(default=1, ge=1, le=10)
+    actuation_mode: Literal["manual_and_user_confirmed"] = "manual_and_user_confirmed"
     clear_delay_seconds: int = Field(default=120, ge=0)
     weather: WeatherPolicy
     outdoor_air_quality: AirQualityPolicy
@@ -148,7 +145,9 @@ class ExternalHazardComponentConfig(StrictBaseModel):
     def _stable_opening_ids(
         cls, value: dict[str, OpeningConfig]
     ) -> dict[str, OpeningConfig]:
-        invalid = [name for name in value if not re.fullmatch(r"[A-Z][A-Za-z0-9]*", name)]
+        invalid = [
+            name for name in value if not re.fullmatch(r"[A-Z][A-Za-z0-9]*", name)
+        ]
         if invalid:
             raise ValueError(
                 "Opening IDs must use stable PascalCase identifiers: "

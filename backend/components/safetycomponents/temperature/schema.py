@@ -46,9 +46,7 @@ class TemperatureRoom(StrictBaseModel):
     @classmethod
     def _validate_window_actuator(cls, value: str | None) -> str | None:
         if value is not None and not value.startswith("cover."):
-            raise ValueError(
-                "TemperatureComponent actuator must be a cover entity"
-            )
+            raise ValueError("TemperatureComponent actuator must be a cover entity")
         return value
 
     @model_validator(mode="after")
@@ -175,6 +173,30 @@ def validate_temperature_config(
         "SM_TC_MAX_FORECAST_DELTA_C": 6.0,
     }
     if calibration:
-        calibration_defaults.update(calibration)
+        calibration_defaults.update(
+            {
+                "SM_TC_1_DEBOUNCE_LIMIT": calibration["sm_tc_1_debounce_limit"],
+                "SM_TC_1_REEVAL_DELAY_SECONDS": calibration[
+                    "sm_tc_1_reeval_delay_seconds"
+                ],
+                "SM_TC_2_DEBOUNCE_LIMIT": calibration["sm_tc_2_debounce_limit"],
+                "SM_TC_2_REEVAL_DELAY_SECONDS": calibration[
+                    "sm_tc_2_reeval_delay_seconds"
+                ],
+                "SM_TC_2_DERIVATIVE_SAMPLE_MINUTES": calibration[
+                    "sm_tc_2_derivative_sample_minutes"
+                ],
+                "SM_TC_MIN_VALID_TEMPERATURE_C": calibration[
+                    "sm_tc_min_valid_temperature_c"
+                ],
+                "SM_TC_MAX_VALID_TEMPERATURE_C": calibration[
+                    "sm_tc_max_valid_temperature_c"
+                ],
+                "SM_TC_MAX_ABS_RATE_C_PER_MIN": calibration[
+                    "sm_tc_max_abs_rate_c_per_min"
+                ],
+                "SM_TC_MAX_FORECAST_DELTA_C": calibration["sm_tc_max_forecast_delta_c"],
+            }
+        )
 
     return validated.to_runtime(calibration_defaults)

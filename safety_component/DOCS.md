@@ -7,46 +7,70 @@ AppDaemon App is required after migration.
 The App connects to Home Assistant through the Supervisor-provided token,
 serves Safety Home only through authenticated Ingress, and keeps installation
 configuration and lifecycle state in its App-specific configuration directory.
+Because the same Ingress includes the private installation editor, the sidebar
+panel is restricted to Home Assistant administrators.
 
 ## Installation
 
-This first package is experimental. Add this Git repository to the Home
-Assistant App store, install **SafetyComponent**, and start it once. The first
-start creates `/addon_configs/<repository>_safety_component/user_config.yml`
-and then stops intentionally so an unreviewed example configuration cannot
-begin monitoring a real installation.
+Add this Git repository to the Home Assistant App store, install
+**SafetyComponent**, and start it. On a fresh installation, the Safety Home
+panel and its configuration API start while SafetyFunctions waits. Open
+**Safety Home → Konfiguracja** as a Home Assistant administrator. Replace the
+example bindings in the draft with your installation values, or click
+**Wczytaj user_config YAML** to load an existing version 2 `.yml`/`.yaml`
+file. Import validates the file and fills the form; it does not save it yet.
+Review the result and click **Utwórz user_config.yml**. The private file is then
+written to `/addon_configs/<repository>_safety_component/user_config.yml`.
 
-Edit `user_config.yml`, replace every example entity and area binding, then
-start the App again. The startup service parses and compiles that file with its
-packaged system policy before AppDaemon starts; SafetyFunctions then performs
-the full schema and Home Assistant entity validation during initialization.
+Restart the App after saving. The backend compiles the file with its packaged
+system policy before AppDaemon starts; SafetyFunctions then performs Home
+Assistant entity validation during initialization. If source compilation
+fails, Safety Home stays available so the configuration can be corrected.
 
-The App configuration tab currently owns the runtime log level. Complex entity,
-area, room, detector, and opening mappings remain in `user_config.yml`; the
-Home Assistant App schema supports only shallow nested structures and cannot
-provide the entity selectors required by this safety configuration.
+The App configuration tab owns the runtime log level. The Safety Home editor
+owns user and installation settings stored in `user_config.yml`, including
+entity, area, room, detector, and opening mappings. The packaged
+`system_config.yml` is not editable from the UI.
+
+The editor validates the complete model and checks it with the packaged system
+configuration before an atomic save. Saving does not change the running safety
+logic. Restart the App to compile and apply the new source. If another session
+changed the file after it was opened, reload the page and reconcile the newer
+revision instead of overwriting it.
 
 AppDaemon's required latitude, longitude, elevation, and time zone are generated
-from Home Assistant Core configuration on every start. Do not duplicate these
-runtime settings in the App options. The safety provider coordinates under
-`user_config.site` remain installation-owned inputs and may intentionally differ
-from the Home Assistant installation location.
+from Home Assistant Core configuration on every start. The same current latitude
+and longitude are used for the safety providers. Do not duplicate coordinates
+in the App options or `user_config.installation.site`; its timezone, country,
+and TERYT codes remain installation-owned.
 
 ## Configuration ownership
 
-- `user_config.yml` contains installation-owned Home Assistant bindings,
+- `user_config.yml` contains a normalized registry of installation-owned rooms,
+  openings, detectors, monitored entities, Home Assistant bindings,
   notification destinations, location, language, and enabled components.
 - The packaged `system_config.yml` contains software policy, calibration,
-  fault definitions, provider lifecycle, and stable runtime contracts.
+  fault definitions, provider lifecycle, stable runtime contracts, and
+  installation-independent defaults.
 - `apps.yaml` is generated inside the container on every start and must not be
   edited.
 - `appdaemon/*.json` contains notification, recovery, and component persistence
   owned by the running App.
 
-The public SafetyComponent repository contains only
-`backend/config/user_config.example.yml`. Keep the real `user_config.yml` in a
-separate private repository or another access-controlled backup, and copy it to
-the App-specific configuration directory during installation or recovery.
+The public repository contains a minimal
+[`user_config.example.yml`](../backend/config/user_config.example.yml) and a
+fictional [worked house example](../docs/examples/example_house_user_config.yml).
+The [operator guide](../frontend/CONFIGURATION.md) explains how to enter the
+worked example in Safety Home. Keep the real `user_config.yml` in a separate
+private repository or another access-controlled backup. It can be restored
+through the editor's YAML import or copied into the App-specific configuration
+directory while the App is stopped.
+
+Configuration model version 2 applies values in the order system default,
+installation default, then asset override. Declare a physical opening once and
+attach its `external_hazard` or `safety_door` roles; a room references that
+opening by its stable key. `user_config.model_version: 2` is mandatory; missing,
+older, and unknown versions stop before AppDaemon starts.
 
 Changing stable fault keys, Safety Mechanism IDs, MQTT topics, entity IDs, raw
 state codes, or recovery behavior requires a coordinated code, requirements,
@@ -57,16 +81,17 @@ test, and deployment change.
 Use a controlled cutover so two SafetyFunctions instances never run at once:
 
 1. Back up the old AppDaemon App configuration.
-2. Start SafetyComponent once to create its App-specific `user_config.yml`,
-   then leave SafetyComponent stopped.
-3. Copy the reviewed contents of the old SafetyFunctions
-   `config/user_config.yml` into the new `user_config.yml`.
+2. Start SafetyComponent. SafetyFunctions waits while the configuration panel
+   is available.
+3. Open **Safety Home → Konfiguracja**, import the reviewed version 2
+   `user_config.yml`, inspect it, and save. Alternatively copy the file into
+   the App-specific configuration directory while the App is stopped.
 4. If lifecycle continuity is required, copy the old
    `appdaemon/notification_state.json`, `appdaemon/recovery_state.json`, and
    `appdaemon/internal_environment_state.json` files into the new App's
    `appdaemon/` directory. Missing files are created by the backend as needed.
 5. Stop the separate AppDaemon App, or remove its `SafetyFunctions` entry.
-6. Start SafetyComponent and inspect the App log for configuration or entity
+6. Restart SafetyComponent and inspect the App log for configuration or entity
    validation errors.
 
 Do not run the old and new backends together. They would register duplicate

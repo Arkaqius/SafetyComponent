@@ -141,7 +141,7 @@ separate API Component registry:
 
 - `self.api_modules` stores API Component instances;
 - `self.sm_modules` continues to store only Safety Components;
-- `user_config.api_components` is validated independently from
+- `user_config.providers` is validated independently from
   `user_config.safety_components`;
 - the EventBus is the only provider-to-C-EXT data path, so the existing
   four-argument `SafetyComponent` constructor does not need provider-specific
@@ -151,10 +151,11 @@ separate API Component registry:
 - `SafetyFunctions.terminate()` stops the external runtime before publishing
   application availability offline.
 
-`AppCfgValidator` validates schemas for `user_config.site`,
-`user_config.api_components`, and `ExternalHazardComponent`. Its entity and area
-collection will include every configured opening. Enabling C-EXT while a
-required API Component or site field is absent is a startup configuration error.
+`AppCfgValidator` validates the generated runtime schemas for
+`user_config.site`, generated provider bindings, and
+`ExternalHazardComponent`. Its entity and area collection will include every
+configured opening. Enabling C-EXT while a required API Component or site field
+is absent is a startup configuration error.
 
 ## 7. Component roles
 
@@ -412,106 +413,115 @@ configured `garage_door` or `gate` with a directional cover actuator.
 Global policy and per-home binding remain separate.
 
 ```yaml
-SafetyFunctions:
-  app_config:
-    external_hazard_policy:
-      actuation_mode: manual_and_user_confirmed
-      decision_timeout_seconds: 1
-      clear_delay_seconds: 120
-      weather:
-        forecast_horizon_hours: 12
-        frost_watch_c: 2.0
-        frost_warning_c: 0.0
-        gust_watch_m_s: 15.0
-        gust_warning_m_s: 20.0
-        precipitation_warning_mm_h: 2.5
-        persistence_seconds: 120
-        hysteresis:
-          temperature_c: 0.5
-          gust_m_s: 1.0
-      outdoor_air_quality:
-        standard: european_aqi
-        warning_at: 60
-      providers:
-        OpenMeteoWeatherApiComponent:
-          base_url: "https://api.open-meteo.com/v1/forecast"
-          poll_interval_seconds: 600
-          request_timeout_seconds: 10
-          max_retries: 2
-          stale_after_seconds: 1200
-        ImgwWarningsApiComponent:
-          base_url: "https://danepubliczne.imgw.pl/api/data/warningsmeteo"
-          poll_interval_seconds: 300
-          request_timeout_seconds: 10
-          max_retries: 2
-          stale_after_seconds: 900
-        OpenMeteoAirQualityApiComponent:
-          base_url: "https://air-quality-api.open-meteo.com/v1/air-quality"
-          poll_interval_seconds: 1800
-          request_timeout_seconds: 10
-          max_retries: 2
-          stale_after_seconds: 2700
+system_config:
+  version: 2
 
-    faults:
-      ExternalWeatherExposure:
-        name: "Narażenie domu na zagrożenie pogodowe"
-        level: 2
-        related_sms:
-          - "sm_ext_weather_exposure"
-      OutdoorAirQualityExposure:
-        name: "Narażenie domu na zanieczyszczone powietrze"
-        level: 3
-        related_sms:
-          - "sm_ext_outdoor_air_quality_exposure"
-      ExternalHazardDataUnavailable:
-        name: "Brak danych o zagrożeniach zewnętrznych"
-        level: 3
-        related_sms:
-          - "sm_ext_provider_unavailable"
+calibration:
+  external_hazard:
+    default_hazards: [frost, wind, rain, storm, outdoor_air_pollution]
+    actuation_mode: manual_and_user_confirmed
+    clear_delay_seconds: 120
+    weather:
+      forecast_horizon_hours: 2
+      default_frost_watch_c: 2.0
+      default_frost_warning_c: 0.0
+      default_gust_watch_m_s: 15.0
+      default_gust_warning_m_s: 20.0
+      default_precipitation_warning_mm_h: 2.5
+      default_persistence_seconds: 120
+      default_hysteresis:
+        temperature_c: 0.5
+        gust_m_s: 1.0
+    outdoor_air_quality:
+      default_standard: european_aqi
+      default_warning_at: 60
 
-  user_config:
-    components_enabled:
-      ExternalHazardComponent: true
+runtime_cfg:
+  providers:
+    OpenMeteoWeatherApiComponent:
+      enabled: true
+      base_url: "https://api.open-meteo.com/v1/forecast"
+      poll_interval_seconds: 600
+      request_timeout_seconds: 10
+      max_retries: 2
+      stale_after_seconds: 1200
+    ImgwWarningsApiComponent:
+      enabled: true
+      base_url: "https://danepubliczne.imgw.pl/api/data/warningsmeteo"
+      poll_interval_seconds: 300
+      request_timeout_seconds: 10
+      max_retries: 2
+      stale_after_seconds: 900
+    OpenMeteoAirQualityApiComponent:
+      enabled: true
+      base_url: "https://air-quality-api.open-meteo.com/v1/air-quality"
+      poll_interval_seconds: 1800
+      request_timeout_seconds: 10
+      max_retries: 2
+      stale_after_seconds: 2700
 
+  faults:
+    ExternalWeatherExposure:
+      name: "Narażenie domu na zagrożenie pogodowe"
+      level: 2
+      related_sms:
+        - "sm_ext_weather_exposure"
+    OutdoorAirQualityExposure:
+      name: "Narażenie domu na zanieczyszczone powietrze"
+      level: 3
+      related_sms:
+        - "sm_ext_outdoor_air_quality_exposure"
+    ExternalHazardDataUnavailable:
+      name: "Brak danych o zagrożeniach zewnętrznych"
+      level: 3
+      related_sms:
+        - "sm_ext_provider_unavailable"
+
+user_config:
+  model_version: 2
+  components_enabled:
+    TemperatureComponent: false
+    SafetyDoorsComponent: false
+    ExternalHazardComponent: true
+    EntityMonitorComponent: false
+    InternalEnvironmentalHazardMonitorComponent: false
+
+  providers:
+    OpenMeteoWeatherApiComponent:
+      enabled: true
+    ImgwWarningsApiComponent:
+      enabled: true
+    OpenMeteoAirQualityApiComponent:
+      enabled: true
+
+  installation:
     site:
-      latitude: 00.0000
-      longitude: 00.0000
       timezone: Europe/Warsaw
       country_code: PL
       teryt_codes:
         - "0000"
-
-    api_components:
-      OpenMeteoWeatherApiComponent:
-        enabled: true
-      ImgwWarningsApiComponent:
-        enabled: true
-      OpenMeteoAirQualityApiComponent:
-        enabled: true
-
-    safety_components:
-      ExternalHazardComponent:
-        openings:
-          ExampleWindow:
-            area_id: example_room
-            entity_id: binary_sensor.example_window
-            friendly_name: "Example window"
-            kind: window
-            hazards:
-              - frost
-              - wind
-              - rain
-              - storm
-              - outdoor_air_pollution
-          ExampleGate:
-            area_id: example_driveway
-            entity_id: binary_sensor.example_driveway_gate
-            friendly_name: "Example driveway gate"
-            kind: gate
-            hazards: [frost, wind, rain, storm, outdoor_air_pollution]
-            actuator_entity_id: cover.example_driveway_gate
-            execution_policy: user_confirmed
-            confirmation_timeout_seconds: 180
+    component_settings:
+      external_hazard:
+        weather:
+          frost_watch_c: 3.0
+        outdoor_air_quality:
+          warning_at: 55
+    openings:
+      ExampleWindow:
+        area_id: example_room
+        entity_id: binary_sensor.example_window
+        friendly_name: "Example window"
+        kind: window
+        external_hazard: {}
+      ExampleGate:
+        area_id: example_driveway
+        entity_id: binary_sensor.example_driveway_gate
+        friendly_name: "Example driveway gate"
+        kind: gate
+        external_hazard:
+          actuator_entity_id: cover.example_driveway_gate
+          execution_policy: user_confirmed
+          confirmation_timeout_seconds: 180
 ```
 
 Provider network policy and the fault catalog belong to global application

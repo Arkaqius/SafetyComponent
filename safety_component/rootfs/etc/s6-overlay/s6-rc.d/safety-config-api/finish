@@ -1,0 +1,7 @@
+#!/command/with-contenv bashio
+# shellcheck shell=bash
+
+exit_code="$1"
+signal="$2"
+bashio::log.info \
+    "SafetyComponent configuration API exited with code ${exit_code} (signal ${signal})"

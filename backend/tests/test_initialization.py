@@ -1,9 +1,7 @@
 # tests/test_initialization.py
 
-import pytest
 from components.safetycomponents.temperature.temperature_component import TemperatureComponent
 from components.faults_manager.fault_manager import FaultManager
-from .fixtures.hass_fixture import mock_get_state, MockBehavior  # Import utilities from conftest.py
 
 
 def test_initialize_dicts_symptom(mocked_hass_app_basic):

@@ -11,6 +11,7 @@ import SafetyDoors from './pages/SafetyDoors';
 import ExternalHazards from './pages/ExternalHazards';
 import InternalHazards from './pages/InternalHazards';
 import EntityHealth from './pages/EntityHealth';
+import Configuration from './pages/Configuration';
 
 const MockHassProvider = import.meta.env.DEV ? lazy(() => import('./dev/MockHassProvider')) : null;
 
@@ -34,6 +35,7 @@ export default function App() {
           <Route path='internal-hazards' element={<InternalHazards />} />
           <Route path='entities' element={<EntityHealth />} />
           <Route path='history' element={<LogPage />} />
+          <Route path='configuration' element={<Configuration />} />
           <Route path='logs' element={<Navigate replace to='/history' />} />
           <Route path='*' element={<Navigate replace to='/' />} />
         </Route>
