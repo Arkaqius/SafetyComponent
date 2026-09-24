@@ -1306,10 +1306,41 @@ contracts as detailed in the feature architecture.
 
 ---
 
+### 8.8 Functional Safety and Platform Health Monitoring (C-FSM)
+
+**Scope:** C-FSM supports HARA `HZ‑SYSTEM‑FAIL‑01` / `SG‑003` by supervising
+whether the SafetyFunctions application, Home Assistant, and their host can
+continue to observe, evaluate, and report safety conditions. It is distinct
+from the household hazard state and from C-ENT's per-entity quality checks.
+The [Safety Monitoring Responsibility Boundaries architecture](<../features/Safety Monitoring Responsibility Boundaries.md>)
+defines monitor ownership and observer placement.
+
+| ID | Requirement |
+| --- | --- |
+| SYS-SR-FSM-001 | The system shall present hazard/fault state, safety-function coverage, and reporting-channel health separately. `no_faults` shall not assert that all functions were evaluated or that all reporting paths work. |
+| SYS-SR-FSM-002 | SafetyFunctions shall expose its startup, configuration validity, progress of safety-evaluation cycles, missed deadlines, and observable notification/MQTT failures while it runs. Its own heartbeat shall not be the sole evidence of its continued operation. |
+| SYS-SR-FSM-003 | An observer outside the failed process and reporting path shall detect complete loss of SafetyFunctions, Home Assistant, or the host and provide an installation-approved indication. In-process checks shall not claim to cover their own total failure. |
+| SYS-SR-FSM-004 | The platform monitor shall use validated Home Assistant or Supervisor telemetry for available memory, memory pressure, CPU, disk, swap, host temperature, restart history, and connectivity. The observation shall identify whether it measures the HA host or only an App container; container-only memory shall not be accepted as host-memory evidence. A missing, stale, malformed, or wrong-unit metric shall produce unknown coverage, not positive host-health evidence. |
+| SYS-SR-FSM-005 | Sustained insufficient memory available to Home Assistant, confirmed by memory pressure/PSI, shall produce a level-2 platform-health fault after calibrated qualification. Both measurements are required; if either is unsupported or unavailable the rule shall be reported as uncovered, not silently reduced to one signal. Clearing shall require fresh valid recovery evidence beyond a separate hysteresis margin; an isolated high-use sample shall not assert or clear the fault. |
+| SYS-SR-FSM-006 | Sustained CPU, storage, swap, and thermal pressure shall be diagnosed separately and correlated with missed safety-evaluation deadlines. Resource pressure alone shall not be presented as proof that a safety decision was missed. |
+| SYS-SR-FSM-007 | Confirmed Internet/WAN loss shall create a level-3 network fault, separately from local Home Assistant or MQTT loss and from failure of one cloud provider. Local safety evaluation shall remain available when only the WAN is lost, and outbound delivery shall follow the Local-Only policy in §3 and §4.6. |
+| SYS-SR-FSM-008 | The system shall monitor update information separately for Home Assistant Core, Operating System, Supervisor, and the SafetyComponent App when their update sources are available, retaining installed/offered versions, observation time, and source freshness. A confirmed available update shall be level-4 informational and shall not by itself mean that the running safety function has failed; monitoring shall not install an update or restart a service. |
+| SYS-SR-FSM-009 | A low battery in a still-functioning device shall be a level-4 informational maintenance condition. An unavailable safety input shall retain the severity and owner of its separate coverage fault; battery status shall neither suppress nor clear that fault. |
+| SYS-SR-FSM-010 | Each underlying failure shall have one fault owner. C-ENT shall retain entity-quality diagnostics and its existing per-entity faults; C-FSM shall own qualified platform and maintenance policy without duplicating a component-owned symptom. |
+| SYS-SR-FSM-011 | System configuration shall own thresholds, qualification and recovery timing, severity, freshness, and fault policy; installation configuration shall own site-specific source bindings and exclusions. Invalid configuration bindings shall be rejected before enabling the affected contract. Missing or incompatible runtime sources shall be visibly marked as uncovered, never silently reported healthy or used to disable unrelated safety mechanisms. |
+| SYS-SR-FSM-012 | Platform and maintenance monitors shall be observation-only: no restart, update installation, device control, or other recovery action shall be registered without a separately assessed policy. Diagnostics and user-facing text shall preserve stable machine codes and equivalent EN/PL/DE meaning. |
+
+C-NET remains the network/connectivity subdomain of C-FSM. C-ENT remains the
+quality owner for declared Home Assistant input entities, including C-FSM's
+telemetry dependencies where applicable. An unavailable safety input can coexist
+with a host-resource or battery condition; neither state implies that a
+household hazard has cleared.
+
+---
+
 **Other component allocations:** Water Leak is owned by C-LEAK; C-AQ retains
 indoor-air-quality responsibilities beyond the PM2.5 allocation above;
-intrusion/lock security by C-SEC, Privacy by C-PRIV, and Network/Platform Health
-by C-NET.
+intrusion/lock security by C-SEC, and Privacy by C-PRIV.
 
 ## 9 Non‑Functional Requirements (NFR)
 

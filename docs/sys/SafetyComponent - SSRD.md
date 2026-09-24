@@ -341,6 +341,29 @@ defines mechanism/fault identities, inputs, lifecycle, timing and verification.
 | SWR-IEHM-024 | System configuration shall own rules, profiles, thresholds, timing, severities and output policy; user configuration shall own detector/entity/area bindings and selection. Validation shall reject incomplete channels, contradictory state sets, wrong pollutant units, unsafe timing and unreviewed gas-output policy. | compiler and configuration schema |
 | SWR-IEHM-025 | The component shall register no recovery and make no detector hush/reset, fan, purifier, valve, lock, cover or HVAC call. Bounded isolated adapters shall keep binary alarms responsive during PM load or storage failures; tests/maintenance shall not downgrade live alarms. | lifecycle, isolation and negative-actuation tests |
 
+### 4.12 Functional Safety and Platform Health Monitoring
+
+The software refines [SYS section 8.8](<SafetyConcept - SYS.md#88-functional-safety-and-platform-health-monitoring-c-fsm>)
+and [HARA section 1.3.11](<SafetyConcept - HARA.md#1311-system-failure>).
+The [Safety Monitoring Responsibility Boundaries architecture](<../features/Safety Monitoring Responsibility Boundaries.md>)
+defines observer and fault ownership. C-ENT's existing entity diagnostics are
+inputs to this view, not a substitute for platform-specific severity policy.
+
+| ID | Requirement | Responsible element |
+| --- | --- | --- |
+| SWR-FSM-001 | The backend shall publish bounded, separate diagnostics for safety-evaluation progress, host/platform resources, network reachability, update information, device maintenance, and reporting-channel health. Each result shall include a source, observation time, validity/freshness, reason, and fault owner. | functional safety diagnostic registry |
+| SWR-FSM-002 | The application shall measure its own evaluation progress against configured deadlines and expose missed cycles or event-loop delay separately from the existing `sensor.safety_app_health` startup state and `sensor.safetysystem_state` fault summary. | application lifecycle and scheduler instrumentation |
+| SWR-FSM-003 | Resource checks shall validate numeric type, units, plausible range, source freshness, and host-versus-container scope. Missing or invalid required host-memory telemetry shall be `unknown` coverage rather than a passing sample or a fabricated low-memory assertion. | platform telemetry adapter |
+| SWR-FSM-004 | The memory rule shall require both low available memory and elevated memory pressure/PSI for a calibrated duration before asserting a level-2 fault. It shall require fresh samples beyond distinct recovery margins before HEAL. If either input is absent or invalid, the rule shall be uncovered and shall not assert a fabricated low-memory fault or positively clear an active one. | platform health policy and FaultManager |
+| SWR-FSM-005 | CPU, disk, swap, and thermal observations shall use independent calibration and retain persistence, recovery, and last-valid evidence. One high sample shall not create an urgent platform fault. | resource policies |
+| SWR-FSM-006 | Network observation shall distinguish local Home Assistant transport, MQTT transport, WAN reachability, and independent external providers; it shall not interpret one failed probe as proof of all Internet loss or treat an unknown route as online. Confirmed WAN loss shall assert a level-3 network fault. | network monitor and notification integration |
+| SWR-FSM-007 | The update adapter shall process Home Assistant `update` entities for Core, Operating System, Supervisor, and the SafetyComponent App individually, retaining installed/latest versions and observation age from a trustworthy source refresh contract rather than unchanged state timestamps alone. A confirmed available update shall create a level-4 informational condition for its product; unknown or unavailable entities shall not mean "up to date". The adapter shall call no install or restart service. | update monitor |
+| SWR-FSM-008 | Valid `sensor` battery percentages or `binary_sensor` low-battery states shall be associated with stable device identity and produce one level-4 maintenance condition per device below system-owned calibration or on a valid low assertion. Unavailable or invalid readings shall not prove low or full charge; the owning component's unavailable-input fault remains independent. | device maintenance policy |
+| SWR-FSM-009 | One underlying failure shall have one fault owner. A platform telemetry entity may be checked by C-ENT, but C-FSM shall not duplicate an existing component-owned unavailable-input symptom and C-ENT shall not be re-leveled to represent platform severity. | dependency registry and FaultManager integration |
+| SWR-FSM-010 | Source bindings and exclusions shall be validated installation data; severities, thresholds, timing, freshness, and fallback policy shall be validated system data. Invalid configured bindings shall fail validation; a required source that disappears at runtime shall be exposed as uncovered without disabling unrelated mechanisms. | configuration compiler and schemas |
+| SWR-FSM-011 | When SafetyFunctions is down, its in-process checks shall not be claimed as operational. An external Supervisor/watchdog shall evaluate absence of its heartbeat and report over a path independent of the failed application or Home Assistant channel. | deployment supervision boundary |
+| SWR-FSM-012 | The monitor shall register no recovery action and shall make no update-install, restart, actuator, or device-control service call. Tests shall cover stale and wrong-unit data, qualification/recovery, owner deduplication, outage combinations, and negative actuation. | runtime and contract tests |
+
 ## 5. Non-functional requirements
 
 | ID | Requirement |
@@ -377,6 +400,7 @@ valid measure of safety-logic verification.
 | SG-001 Unsafe Cold Exposure | `SYS-SR-TEMP-001/002/004/005/007/008/009/010` | `SWR-TEMP-*` |
 | SG-002 Temperature Prediction | `SYS-SR-TEMP-001/003/004/005/006/009/010` | `SWR-TEMP-*` |
 | SG-003 Sensor/Communication Fault Detection | `SYS-SR-ENT-001..009/012/014` plus component-specific unavailable-input requirements | `SWR-ENT-*`, `SWR-TEMP-004`, `SWR-DOOR-004/006`, `SWR-EXT-009` |
+| SG-003 Functional safety and platform health | `SYS-SR-FSM-001..012` | `SWR-FSM-001..012` |
 | SG-004 Unsafe Heat Exposure | `SYS-SR-TEMP-001/002/003/004/005/006/007/008/010` | `SWR-TEMP-*` |
 | SG-003 Heating supervision contribution | `SYS-SR-HSM-002/003/005/011/012/013` | `SWR-HSM-002/003/004/012/014/017/018/019/020` |
 | SG-010/012 Heating-system health and loss of heating | `SYS-SR-HSM-001..018` | `SWR-HSM-001..026` |
@@ -399,6 +423,7 @@ valid measure of safety-logic verification.
 | SWR-MQTT-* | `test_mqtt_entity_manager.py`, `test_safetyFunctions.py` |
 | SWR-EXT-* | provider contract tests, external hazard policy tests, EventBus/FaultManager/notification integration tests, negative-actuation tests |
 | SWR-ENT-* | entity health registry/check/state-machine tests, component dependency and common-entity integration tests, FaultManager/MQTT tests, frontend inventory/filter tests, negative-actuation tests |
+| SWR-FSM-* | source contract and unit/freshness tests, memory/PSI qualification and recovery tests, WAN/update/battery policy tests, fault-owner deduplication, independent-watchdog evidence, and negative-actuation tests |
 | SWR-HSM-* | normalized telemetry/code-profile tests, independent-need and phase tests, thermal/distribution/counter rules, timing/restart/clock tests, C-ENT/FaultManager integration, SET/HEAL correlation, frontend diagnostics/localization and negative-actuation tests; detailed mapping in the Heating System Monitoring architecture |
 | SWR-IEHM-* | detector/profile fixtures, binary alarm edge/latch tests, PM unit/window/coverage tests, health ownership, timing/restart/corruption tests, hazard-specific output/advice conflicts, incident/journal/UI/localization and negative-actuation tests; detailed mapping in the Internal Environmental Hazard Monitoring architecture |
 | SWR-NFR-005 | pytest-cov application-code report |
