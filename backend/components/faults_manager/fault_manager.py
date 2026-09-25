@@ -683,7 +683,17 @@ class FaultManager:
 
                 # Fetch and update the state of the safety mechanism directly
                 sm_fcn = getattr(symptom_data.module, symptom_data.sm_name)
-                sm_fcn(symptom_data.module.safety_mechanisms[symptom_data.name])
+                try:
+                    sm_fcn(symptom_data.module.safety_mechanisms[symptom_data.name])
+                except Exception:
+                    recorder = getattr(symptom_data.module, "record_evaluation", None)
+                    if callable(recorder):
+                        recorder(success=False)
+                    raise
+                else:
+                    recorder = getattr(symptom_data.module, "record_evaluation", None)
+                    if callable(recorder):
+                        recorder()
             else:
                 symptom_data.sm_state = SMState.ERROR
 

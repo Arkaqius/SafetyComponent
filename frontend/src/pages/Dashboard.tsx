@@ -18,6 +18,7 @@ import {
 import { useSafetyEntities } from '../hooks/useSafetyEntities';
 import { ENTITY_MONITOR_SUMMARY_ID } from '../domain/entityHealth';
 import { NOTIFICATION_DELIVERY_HEALTH_ID, readAcknowledgedNotificationTags } from '../domain/notificationHistory';
+import { EVALUATION_PROGRESS_ENTITY_ID } from '../domain/functionalSafety';
 
 export default function Dashboard() {
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
@@ -61,6 +62,7 @@ export default function Dashboard() {
             ? 'safe'
             : 'muted';
   const acknowledgedNotificationTags = new Set(readAcknowledgedNotificationTags(entities[NOTIFICATION_DELIVERY_HEALTH_ID]));
+  const progressState = entities[EVALUATION_PROGRESS_ENTITY_ID]?.state;
 
   return (
     <div className='page-stack'>
@@ -118,6 +120,26 @@ export default function Dashboard() {
         </button>
         <Link className='text-link' to='/entities'>
           Pokaż encje <Icon name='chevron' size={15} />
+        </Link>
+      </section>
+
+      <section className='entity-monitor-overview'>
+        <div>
+          <span className='section-kicker'>Functional safety</span>
+          <strong>Zdrowie funkcji bezpieczeństwa</strong>
+          <small>
+            {progressState === 'observed'
+              ? 'Wszystkie komponenty zakończyły ocenę; jakość wejść sprawdzaj osobno.'
+              : progressState === 'attention'
+                ? 'Przynajmniej jeden komponent wymaga uwagi.'
+                : 'Brak pełnego dowodu postępu ocen.'}
+          </small>
+        </div>
+        <StatusBadge tone={progressState === 'observed' ? 'info' : progressState === 'attention' ? 'danger' : 'muted'}>
+          {progressState === 'observed' ? 'Oceny wykonane' : progressState === 'attention' ? 'Wymaga uwagi' : 'Brak danych'}
+        </StatusBadge>
+        <Link className='text-link' to='/functional-safety'>
+          Szczegóły <Icon name='chevron' size={15} />
         </Link>
       </section>
 

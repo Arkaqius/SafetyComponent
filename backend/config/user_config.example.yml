@@ -77,3 +77,13 @@ user_config:
 
     detectors: {}
     monitored_entities: {}
+
+    # Optional host/maintenance sources. Missing sources are reported as
+    # uncovered; enable suitable diagnostic entities in Home Assistant first.
+    functional_safety:
+      # host_memory:
+      #   available_entity: sensor.home_assistant_host_memory_free
+      #   psi_entity: sensor.home_assistant_host_memory_psi_some_avg60
+      # host_cpu_entity: sensor.home_assistant_host_processor_use
+      updates: {}
+      remote_batteries: {}

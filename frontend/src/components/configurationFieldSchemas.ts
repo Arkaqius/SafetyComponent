@@ -4,6 +4,7 @@ export type FieldSpec = {
   help?: string;
   kind: 'text' | 'number' | 'boolean' | 'select' | 'list' | 'object';
   required?: boolean;
+  includeOnCreate?: boolean;
   initial?: unknown;
   options?: Array<[string, string]>;
   fields?: Record<string, FieldSpec>;
@@ -153,12 +154,18 @@ export const registrySchemas: Record<string, Record<string, FieldSpec>> = {
     ...monitorTiming,
   },
   component_overrides: monitorTiming,
+  remote_batteries: {
+    friendly_name: text('Nazwa urządzenia', true),
+    percentage_entity: { ...text('Poziom baterii (%)', false, 'Encja sensor.* z klasą battery i jednostką %. Nie dodawaj tu baterii hosta.'), includeOnCreate: true },
+    low_entity: text('Sygnalizacja niskiej baterii', false, 'Encja binary_sensor.* z klasą battery; on oznacza niski poziom.'),
+    enabled: yesNo('Monitoruj urządzenie'),
+  },
 };
 
 export function initialObject(schema: Record<string, FieldSpec>): Record<string, unknown> {
   return Object.fromEntries(
     Object.entries(schema)
-      .filter(([, field]) => field.required)
+      .filter(([, field]) => field.required || field.includeOnCreate)
       .map(([key, field]) => [key, structuredClone(field.initial)])
   );
 }

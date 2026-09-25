@@ -77,6 +77,7 @@ budżecie wykrycia.
 | Język | Wybierz polski, angielski lub niemiecki. Nazw encji nie edytuje się w tym formularzu — pochodzą z plików lokalizacji. |
 | Powiadomienia | Wpisz konkretne usługi `notify/<nazwa>`, po jednej w wierszu. `notify/notify` jest niejednoznaczne. Adres po kliknięciu powinien być ścieżką w HA, np. `/`. Encja WAN i lokalne urządzenia sygnalizacji są opcjonalne. |
 | Instalacja Home Assistant | Wybierz strefę czasową z listy, podaj dwuliterowy kod kraju, kody powiatów TERYT i — gdy komponent temperatury jest włączony — czujnik temperatury zewnętrznej. Współrzędne są pobierane z HA przy każdym starcie, nie wpisuje się ich w formularzu. |
+| Zdrowie systemu i konserwacja | Opcjonalnie wskaż parę czujników pamięci hosta: dostępną pamięć oraz PSI w procentach, a także czujnik obciążenia CPU hosta. Dla aktualizacji wybierz encje `update.*` osobno dla Core, OS, Supervisora i aplikacji. Każde zdalne urządzenie baterii dodaj raz, z sensorem procentowym i/lub binarnym. Czujniki hosta w integracji System Monitor mogą wymagać ręcznego włączenia. Niezwiązanych urządzeń nie dodawaj; istniejący wpis możesz wyłączyć. Progi i harmonogram testów są systemowe. Brak źródła oznacza brak pokrycia, nie stan prawidłowy. |
 | Ustawienia komponentów | Opcjonalnie zmień progi temperatury, czas drzwi/bram, czasy monitoringu lub progi pogody i jakości powietrza. Puste pole oznacza wartość systemową pokazaną pod polem. Lista domyślnych zagrożeń i horyzont prognozy pozostają w konfiguracji systemowej. |
 | Pomieszczenia | Dodaj wpis dla każdego monitorowanego pomieszczenia. Wskaż obszar HA i czujnik temperatury. Opcjonalnie wybierz otwór z sekcji „Drzwi, bramy i okna”, osłonę `cover.*` i indywidualne progi. |
 | Drzwi, bramy i okna | Każdy fizyczny otwór dodaj raz: obszar, encja czujnika, przyjazna nazwa i rodzaj. W razie potrzeby dodaj znane formularzowi role „Monitoring drzwi i bram” albo „Zagrożenia zewnętrzne” i wypełnij ich pola. Obecność roli włącza dany sposób monitorowania. |
@@ -84,6 +85,15 @@ budżecie wykrycia.
 | Dodatkowe monitorowane encje | Dodawaj wyłącznie encje, których nie używają inne komponenty. Ich zależności są monitorowane automatycznie. Wpisz encję i opis; opcjonalnie ustaw czasy i kontrole zdrowia. „Wyjątki monitoringu encji” obok dotyczą już istniejących zależności komponentów. |
 
 ## Dodawanie obiektów i kontrole zdrowia
+
+W sekcji **Zdrowie systemu i konserwacja** para pamięć/PSI musi dotyczyć
+tego samego hosta HA; pojedyncze pole nie wystarczy do zapisu. Gdy chcesz
+zrezygnować z tej pary, wybierz **Usuń obie encje pamięci**. WAN pozostaje
+w sekcji **Powiadomienia** i jest współdzielony z diagnozą sieci. Niska bateria
+urządzenia jest informacją konserwacyjną, nie dowodem awarii jego czujnika.
+Na stronie **Zdrowie funkcji bezpieczeństwa** zapis wyniku testu detektora
+oznacza wyłącznie potwierdzenie wykonanego ręcznie testu; przycisk nie uruchamia
+czujnika i nie kasuje alarmu.
 
 W sekcjach zasobów wpisz **Nowy identyfikator**, np. `LivingRoom` albo
 `EntranceDoor`, i kliknij **+ Dodaj obiekt**. Identyfikator jest techniczną,

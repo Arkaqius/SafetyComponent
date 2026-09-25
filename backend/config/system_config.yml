@@ -84,6 +84,32 @@ calibration:
       state_file: /config/appdaemon/internal_environment_state.json
       maximum_detectors: 64
 
+  functional_safety:
+    evaluation_interval_seconds: 15
+    memory_low_available_mib: 256
+    memory_recovery_available_mib: 384
+    memory_high_psi_percent: 10
+    memory_recovery_psi_percent: 5
+    memory_qualification_seconds: 120
+    memory_recovery_seconds: 120
+    cpu_high_percent: 90
+    cpu_recovery_percent: 70
+    cpu_qualification_seconds: 300
+    cpu_recovery_seconds: 120
+    wan_qualification_seconds: 60
+    wan_recovery_seconds: 60
+    battery_low_percent: 15
+    detector_test_interval_days: 180
+    detector_test_state_file: /config/appdaemon/detector_tests.json
+    resource_stale_after_seconds: 180
+    wan_stale_after_seconds: 180
+    update_stale_after_seconds: 86400
+    battery_stale_after_seconds: 86400
+    memory_fault_level: 2
+    wan_fault_level: 3
+    maintenance_fault_level: 4
+    cpu_fault_level: 4
+
 runtime_cfg:
   faults:
     RiskyTemperature:

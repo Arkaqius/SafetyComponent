@@ -51,6 +51,7 @@ class CalibrationSettings(StrictBaseModel):
     entity_monitor: EntityMonitorCalibration = Field(
         default_factory=EntityMonitorCalibration
     )
+    functional_safety: Dict[str, Any] = Field(default_factory=dict)
 
 
 class AppPolicy(StrictBaseModel):
@@ -78,6 +79,7 @@ class UserConfig(StrictBaseModel):
     safety_components: Dict[str, Dict[str, Any]]
     site: SiteConfig | None = None
     api_components: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+    functional_safety: Dict[str, Any] = Field(default_factory=dict)
 
     def enabled_components(self) -> Dict[str, Dict[str, Any]]:
         if not self.components_enabled:

@@ -130,6 +130,10 @@ export default function Configuration() {
   const weatherSystem = asMap(externalHazardSystem.weather);
   const airQualitySystem = asMap(externalHazardSystem.outdoor_air_quality);
   const detectorProfiles = stringList(systemDefaults.detector_profiles);
+  const functionalSafety = asMap(installation.functional_safety);
+  const hostMemory = asMap(functionalSafety.host_memory);
+  const updates = asMap(functionalSafety.updates);
+  const functionalSafetySystem = asMap(systemDefaults.functional_safety);
   const detectorSchema = detectorProfiles.length
     ? {
         ...registrySchemas.detectors,
@@ -277,6 +281,7 @@ export default function Configuration() {
           />
           <TextField
             label='Encja łączności WAN (opcjonalnie)'
+            help='Wspólna dla powiadomień i diagnostyki WAN. Stany on/online/connected oznaczają połączenie; off/offline/disconnected — brak. Sam stan nie dowodzi, że każdy serwis w Internecie działa.'
             value={stringValue(notification.wan_entity)}
             onChange={value => update(['notification', 'wan_entity'], value || null)}
           />
@@ -328,6 +333,68 @@ export default function Configuration() {
             onChange={value => update(['installation', 'common_entities', 'outside_temp'], value)}
           />
         </div>
+      </section>
+
+      <section className='panel configuration-section'>
+        <SectionHeader
+          title='Zdrowie systemu i konserwacja'
+          description='Opcjonalne źródła dla funkcjonalnego monitoringu bezpieczeństwa. Brak encji oznacza brak pokrycia, a nie stan prawidłowy.'
+        />
+        <p>Encja WAN ustawiona w sekcji Powiadomienia służy również do diagnostyki łączności. Czujniki diagnostyczne hosta trzeba najpierw włączyć w Home Assistant.</p>
+        <div className='configuration-grid'>
+          <TextField
+            label='Pamięć dostępna hosta'
+            help='Encja sensor.* podająca dostępną pamięć tego samego hosta co Home Assistant; wymagana razem z PSI.'
+            value={stringValue(hostMemory.available_entity)}
+            onChange={value => update(['installation', 'functional_safety', 'host_memory', 'available_entity'], value)}
+          />
+          <TextField
+            label='Presja pamięci hosta (PSI, %)'
+            help='Encja sensor.* memory PSI some, np. średnia 60 s. Obie encje muszą dotyczyć tego samego hosta.'
+            value={stringValue(hostMemory.psi_entity)}
+            onChange={value => update(['installation', 'functional_safety', 'host_memory', 'psi_entity'], value)}
+          />
+        </div>
+        <p>Systemowe progi pamięci: dostępna ≤ {String(functionalSafetySystem.memory_low_available_mib ?? '—')} MiB i PSI ≥ {String(functionalSafetySystem.memory_high_psi_percent ?? '—')}% przez {String(functionalSafetySystem.memory_qualification_seconds ?? '—')} s. Po zmianie konfiguracji uruchom aplikację ponownie.</p>
+        {functionalSafety.host_memory ? (
+          <button className='secondary-button' onClick={() => update(['installation', 'functional_safety', 'host_memory'], null)} type='button'>Usuń obie encje pamięci</button>
+        ) : null}
+        <div className='configuration-grid'>
+          <TextField
+            label='Obciążenie CPU hosta (%)'
+            help='Opcjonalna encja sensor.* procesora hosta Home Assistant. Wysokie obciążenie jest potwierdzane przez czas z system config.'
+            value={stringValue(functionalSafety.host_cpu_entity)}
+            onChange={value => update(['installation', 'functional_safety', 'host_cpu_entity'], value || null)}
+          />
+        </div>
+        <p>Systemowy próg CPU: ≥ {String(functionalSafetySystem.cpu_high_percent ?? '—')}% przez {String(functionalSafetySystem.cpu_qualification_seconds ?? '—')} s (L4).</p>
+        <fieldset className='configuration-fieldset'>
+          <legend>Aktualizacje</legend>
+          <div className='configuration-grid'>
+            {([
+              ['home_assistant_core', 'Home Assistant Core'],
+              ['home_assistant_os', 'Home Assistant OS'],
+              ['home_assistant_supervisor', 'Home Assistant Supervisor'],
+              ['safety_component', 'SafetyComponent App'],
+            ] as const).map(([key, label]) => (
+              <TextField
+                key={key}
+                label={`Encja aktualizacji: ${label}`}
+                help='Opcjonalna encja update.*; dostępna aktualizacja ma poziom informacyjny L4.'
+                value={stringValue(updates[key])}
+                onChange={value => update(['installation', 'functional_safety', 'updates', key], value || null)}
+              />
+            ))}
+          </div>
+        </fieldset>
+        <ConfigurationObjectEditor
+          label='Baterie urządzeń zdalnych'
+          description='Jedno urządzenie w jednym wpisie; możesz podać czujnik procentowy, binarny lub oba. Urządzenia wyłączone pomiń albo ustaw Monitoruj urządzenie na nie.'
+          value={asMap(functionalSafety.remote_batteries)}
+          onChange={value => update(['installation', 'functional_safety', 'remote_batteries'], value)}
+          schema={registrySchemas.remote_batteries}
+        />
+        <p>Systemowy próg niskiej baterii: {String(functionalSafetySystem.battery_low_percent ?? '—')}%. Testy detektorów są wymagane co {String(functionalSafetySystem.detector_test_interval_days ?? '—')} dni.</p>
       </section>
 
       <section className='panel configuration-section'>

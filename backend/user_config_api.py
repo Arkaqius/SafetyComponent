@@ -93,6 +93,7 @@ class UserConfigStore:
         entity_monitor = calibration.get("entity_monitor", {})
         external_hazard = calibration.get("external_hazard", {})
         system_defaults = {
+            "functional_safety": calibration.get("functional_safety", {}),
             "detector_profiles": sorted(
                 calibration.get("internal_environmental_hazard", {})
                 .get("profiles", {})

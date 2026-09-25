@@ -2,6 +2,9 @@ entity.safety_app_health: Safety app health
 entity.safety_system_state: Safety system state
 entity.entity_monitor_summary: Monitored entities
 entity.notification_delivery_health: Notification delivery health
+entity.safety_evaluation_progress: Safety evaluation progress
+entity.safety_detector_tests: Safety detector tests
+entity.functional_safety_sources: Functional safety sources
 entity.recovery_window: 'Window recovery: {location}'
 entity.temperature_low_threshold: 'Low temperature limit: {location}'
 entity.temperature_high_threshold: 'High temperature limit: {location}'
@@ -33,7 +36,20 @@ state.entity_health.unavailable: Unavailable
 state.notification_delivery.healthy: Healthy
 state.notification_delivery.degraded: Needs attention
 state.notification_delivery.queued: Queued
+state.safety_evaluation.observed: Evaluations completed
+state.safety_evaluation.attention: Evaluation needs attention
+state.safety_evaluation.unknown: Evaluation status unknown
+state.detector_tests.current: Tests current
+state.detector_tests.attention: Tests need attention
+state.detector_tests.unknown: Test history unavailable
+state.detector_tests.not_configured: No detectors configured
 fault.entity_health: 'Entity problem: {entity}'
+fault.host_memory_pressure: Host memory pressure
+fault.host_cpu_pressure: Sustained high host CPU load
+fault.wan_unavailable: WAN unavailable
+fault.update_available: 'Update available: {product}'
+fault.remote_battery_low: 'Low battery: {device}'
+fault.detector_test_due: 'Detector test needs attention: {detector}'
 hazard.label.smoke: Smoke
 hazard.label.flammable_gas: Flammable gas
 hazard.label.carbon_monoxide: Carbon monoxide

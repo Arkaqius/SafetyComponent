@@ -2,6 +2,9 @@ entity.safety_app_health: Stan aplikacji bezpieczeństwa
 entity.safety_system_state: Stan systemu bezpieczeństwa
 entity.entity_monitor_summary: Monitorowane encje
 entity.notification_delivery_health: Stan dostarczania powiadomień
+entity.safety_evaluation_progress: Postęp oceny bezpieczeństwa
+entity.safety_detector_tests: Testy czujników bezpieczeństwa
+entity.functional_safety_sources: Źródła diagnostyczne bezpieczeństwa
 entity.recovery_window: 'Działanie naprawcze: okna — {location}'
 entity.temperature_low_threshold: Dolny próg temperatury — {location}
 entity.temperature_high_threshold: Górny próg temperatury — {location}
@@ -33,7 +36,20 @@ state.entity_health.unavailable: Niedostępna
 state.notification_delivery.healthy: Sprawne
 state.notification_delivery.degraded: Wymaga uwagi
 state.notification_delivery.queued: Oczekuje w kolejce
+state.safety_evaluation.observed: Oceny wykonane
+state.safety_evaluation.attention: Ocena wymaga uwagi
+state.safety_evaluation.unknown: Stan ocen nieznany
+state.detector_tests.current: Testy aktualne
+state.detector_tests.attention: Testy wymagają uwagi
+state.detector_tests.unknown: Historia testów niedostępna
+state.detector_tests.not_configured: Brak skonfigurowanych czujników
 fault.entity_health: 'Problem z encją: {entity}'
+fault.host_memory_pressure: Niedobór pamięci hosta
+fault.host_cpu_pressure: Długotrwałe wysokie obciążenie CPU hosta
+fault.wan_unavailable: Brak łączności WAN
+fault.update_available: 'Dostępna aktualizacja: {product}'
+fault.remote_battery_low: 'Niska bateria: {device}'
+fault.detector_test_due: 'Test czujnika wymaga uwagi: {detector}'
 hazard.label.smoke: Dym
 hazard.label.flammable_gas: Gaz palny
 hazard.label.carbon_monoxide: Tlenek węgla

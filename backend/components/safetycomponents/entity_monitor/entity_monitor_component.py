@@ -254,6 +254,7 @@ class EntityMonitorComponent(SafetyComponent):
 
         for key in self._entities:
             self._evaluate_entity(key)
+        self.record_evaluation()
 
     def _evaluate_mechanism(
         self,

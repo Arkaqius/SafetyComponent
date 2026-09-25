@@ -2,10 +2,11 @@
 
 **Document role:** Non-normative architecture note
 
-Functional safety monitoring covers the complete path from a safety-relevant
-input to a decision and notification. It asks whether SafetyFunctions, Home
-Assistant, and their host can still provide that protection; it does not infer
-that the home is safe when monitoring is lost. This refines the system-failure
+Functional safety monitoring covers the observable path from a safety-relevant
+input through each component's completed decision to notification and, where
+applicable, confirmed recovery effect. It does not infer that the home is safe
+when monitoring is lost. Complete loss of the host or Home Assistant cannot be
+diagnosed by the failed application itself. This refines the system-failure
 hazard `HZ‑SYSTEM‑FAIL‑01` and safety goal `SG‑003` in the HARA. Not every part
 of the path can be supervised by SafetyFunctions itself. Monitoring
 responsibility remains with the layer that can still observe and report a
@@ -22,11 +23,11 @@ central component that owns every diagnostic decision:
 | External data providers | Each external API adapter and its consuming Safety Component | HTTP and schema result, source and retrieval freshness, last attempt, last success, consecutive failures, and provider-independent cache health. |
 | MQTT transport | A dedicated MQTT transport monitor, supported by broker and Home Assistant diagnostics | Connection and session state, observable publish failures, reconnects, queue pressure, message age, and an end-to-end or loopback heartbeat where the installation can provide one. |
 | Home Assistant and AppDaemon runtime | A runtime-platform monitor plus Home Assistant Supervisor | Home Assistant connectivity, AppDaemon add-on state, application process restarts, event-loop delay, missed evaluation deadlines, and component lifecycle failures. |
-| Host resources | Host/platform integrations or an external supervisor | Sustained CPU load, memory and swap pressure, disk space, host temperature and throttling, clock synchronization, and restart counters. |
-| Device maintenance | A dedicated maintenance policy using Home Assistant battery entities | Battery level, source quality, and device identity. A low battery is informational while the device remains usable; loss of a safety input remains owned by its safety component or Entity Monitor. |
-| SafetyFunctions self-diagnostics | An application self-monitor | Configuration validation, component initialization, scheduler progress, exception counters, persistence health, queue or worker liveness, and completion of safety-evaluation cycles. |
+| Host resources while the application runs | Home Assistant host/platform integrations | Sustained CPU load, memory and swap pressure, disk space, host temperature and throttling, and restart counters. This does not detect total host or power loss. |
+| Device maintenance | A dedicated maintenance policy using Home Assistant battery entities and detector test records | Remote-device battery level, source quality, and device identity; due dates and results of smoke, gas, and CO detector tests. A low battery is informational while the device remains usable; loss of a safety input remains owned by its safety component or Entity Monitor. |
+| SafetyFunctions self-diagnostics | Each Safety Component plus an aggregate application view | Configuration validity, component initialization, last completed evaluation, expected deadline, result, and missed deadline count per enabled component. Event-driven components also declare their input-health supervision contract; an idle period is not itself a missed evaluation. The aggregate cannot mark all components healthy from one heartbeat. |
 | Platform and add-on updates | Home Assistant Supervisor, with an optional SafetyFunctions consumer | Update availability, installed and offered versions, advisory severity, information freshness, and excessive update age. Installation and restart remain outside monitoring logic. |
-| Notification path | `NotificationManager` and channel-specific diagnostics | Home Assistant service acceptance, per-target attempts, retries, and observable channel errors without presenting acceptance as confirmed delivery to a physical phone. |
+| Notification and recovery paths | `NotificationManager` and `RecoveryManager`, aggregated by C-FSM | Home Assistant service acceptance, per-target attempts, retries, queue health, observable channel errors, actuator command, and owning component's postcondition evidence. Acceptance is neither physical-phone delivery nor achieved actuator effect. |
 
 These monitors may use a common diagnostic state model and evidence format, but
 each channel retains its own lifecycle, calibration, and fault ownership. A
@@ -51,11 +52,12 @@ Monitoring distinguishes three independent concepts:
    healthy source entity does not prove that its consumer completed a decision
    or that a message reached a physical phone.
 
-The functional safety view should show health by domain and an overall
-coverage summary, but must retain the underlying cause, source, age, last
-successful evaluation, and reporting path. Aggregation cannot turn an unknown
-domain into healthy. A fault level is a policy decision, not a synonym for a
-health-state label.
+The functional safety view should show one row per enabled component and an
+overall coverage summary, retaining the underlying cause, source, age, last
+completed evaluation, deadline, and reporting path. A component with no
+completed cycle is not healthy. Aggregation cannot turn an unknown domain into
+healthy. A fault level is a policy decision, not a synonym for a health-state
+label.
 
 ### Relationship to Entity Monitor
 
@@ -92,7 +94,7 @@ exposes memory, CPU, disk, and PSI metrics where supported, but its diagnostic
 sensors are disabled by default; installation setup must enable and identify
 the required entities. See the [System monitor integration](https://www.home-assistant.io/integrations/systemmonitor/).
 
-For batteries, use a bounded inventory of device-associated `sensor` entities
+For remote-device batteries, use a bounded inventory of device-associated `sensor` entities
 with the battery device class and `%` units, plus `binary_sensor` entities with
 the battery device class, where `on` means low. Do not scan every entity whose
 name contains "battery". Retain device identity, source timestamp, quality, and
@@ -112,6 +114,13 @@ an update entity or stale update information is unknown, not "up to date".
 Version discovery must not call the update-install action. See the
 [Home Assistant update entity](https://developers.home-assistant.io/blog/2022/03/20/update-entity/).
 
+Smoke, flammable-gas, and carbon-monoxide detector test schedules are
+maintenance evidence, not hazard-clear evidence. A valid test may come from a
+device-reported test result or an explicit operator attestation containing the
+detector identity, outcome, and time. A quiet detector, acknowledgement of a
+reminder, or a frontend button press without a recorded outcome cannot count as
+a passed test. An overdue or failed test must not silence a live alarm.
+
 ## Source and ownership boundaries
 
 The runtime shall rely on Home Assistant's existing integrations and Supervisor
@@ -125,11 +134,20 @@ optional selection; system configuration owns thresholds, debounce, fault
 levels, and default diagnostic policy. An unavailable runtime source leaves its
 domain uncovered without disabling unrelated safety mechanisms.
 
-Supervisor can observe the App or Home Assistant when one process fails; an
-external watchdog is required to detect complete host or Supervisor loss and
-to notify outside the failed Home Assistant/MQTT path. SafetyFunctions can
-publish a heartbeat while alive, but a missing heartbeat must be judged by a
-separate observer. Neither an AppDaemon timer nor a frontend view is an
+Installation bindings are grouped under `installation.functional_safety`:
+`host_memory.available_entity` and `host_memory.psi_entity`, optional
+`host_cpu_entity`, product-specific
+`updates` entities, and a `remote_batteries` registry keyed by physical device.
+The existing `notification.wan_entity` is shared with the notification route.
+The packaged `calibration.functional_safety` owns the numeric policy and
+durable detector-test schedule. Device entries may be disabled without changing
+the safety-input fault owned by their component.
+
+SafetyFunctions can observe host resource pressure while it runs, but it cannot
+detect or report its own complete loss, Home Assistant loss, or host power loss
+through the same failed path. Such coverage requires an independent observer
+and reporting path. Without one, the installation must present this as an
+uncovered boundary. Neither an AppDaemon timer nor a frontend view is an
 independent watchdog for the process that hosts it. A successful TCP check of
 the Ingress frontend alone does not prove that SafetyFunctions is evaluating.
 
@@ -155,9 +173,13 @@ must not block safety evaluation or turn an active fault into a clear state.
   available. Local-Only policy does not silently disable local safety checks.
 - Available and stale update data, version changes, and missing product update
 entities are distinguishable. No test of observation invokes installation.
-- A deliberately stalled AppDaemon evaluation is detected by an independent
-  observer; self-published MQTT availability is not accepted as sole evidence
-  of continued evaluation or physical-phone delivery.
+- A deliberately stalled component is overdue even if other components and
+  the MQTT heartbeat continue. In-process checks do not claim coverage after
+  complete application loss.
+- Notification acceptance, recipient delivery, recovery command, and verified
+  effect remain separate states. No verification scenario actuates equipment.
+- A missing, due, failed, and operator-attested detector test remain distinct;
+  an active detector alarm is unaffected by test maintenance state.
 
 ## Execution and recovery allocation
 
@@ -166,10 +188,10 @@ entities are distinguishable. No test of observation invokes installation.
 | SafetyFunctions | Validate safety-relevant Home Assistant inputs; evaluate component and external-provider health; expose application self-diagnostics while the application is running; convert loss of required coverage into the appropriate diagnostic fault. |
 | Home Assistant Supervisor and platform integrations | Manage the Home Assistant and add-on lifecycle, restart AppDaemon according to installation policy, expose host and add-on health, and report platform or add-on updates. SafetyFunctions may consume these results but should not duplicate Supervisor lifecycle ownership. |
 | MQTT broker and Home Assistant MQTT integration | Operate the transport and broker service. SafetyFunctions publishes availability and heartbeat information and records observable publish failures, but broker availability alone does not prove end-to-end delivery. |
-| Independent supervisor or watchdog | Detect complete loss of Home Assistant, AppDaemon, MQTT, or the host; perform an installation-approved restart or failover response; and provide an out-of-band indication when the normal Home Assistant/MQTT reporting path is unavailable. |
+| Independent supervisor or watchdog, when installed | Detect complete loss of Home Assistant, AppDaemon, MQTT, or the host and provide an out-of-band indication. Without this separate path, complete-loss detection is explicitly uncovered. |
 
-Host CPU load, memory pressure, disk space, temperature, clock synchronization,
-and restart counters are supporting diagnostic evidence. Missed evaluation
+Host CPU load, memory pressure, disk space, temperature, and restart counters
+are supporting diagnostic evidence while the application runs. Missed evaluation
 deadlines, event-loop delay, lost heartbeats, and unavailable safety inputs are
 more direct evidence that a safety function has lost coverage. Resource alarms
 therefore need persistence and hysteresis rather than reacting to isolated

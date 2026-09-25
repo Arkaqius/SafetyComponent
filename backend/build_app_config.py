@@ -235,6 +235,7 @@ def _build_app_config(
         "calibration": {
             "temperature": temperature,
             "entity_monitor": entity_monitor,
+            "functional_safety": copy.deepcopy(calibration.get("functional_safety", {})),
         },
         "external_hazard_policy": {
             "actuation_mode": external.get("actuation_mode"),

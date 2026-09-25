@@ -119,6 +119,9 @@ class Localizer:
             "sensor.safetysystem_state": "entity.safety_system_state",
             "sensor.entity_monitor_summary": "entity.entity_monitor_summary",
             "sensor.notification_delivery_health": "entity.notification_delivery_health",
+            "sensor.safety_evaluation_progress": "entity.safety_evaluation_progress",
+            "sensor.safety_detector_tests": "entity.safety_detector_tests",
+            "sensor.functional_safety_sources": "entity.functional_safety_sources",
         }
         key = built_in_keys.get(normalized_id)
         return self.text(key) if key else fallback
@@ -148,6 +151,10 @@ class Localizer:
             prefix = "state.entity_health"
         elif normalized_id == "sensor.notification_delivery_health":
             prefix = "state.notification_delivery"
+        elif normalized_id == "sensor.safety_evaluation_progress":
+            prefix = "state.safety_evaluation"
+        elif normalized_id == "sensor.safety_detector_tests":
+            prefix = "state.detector_tests"
         else:
             return None
         key = f"{prefix}.{normalized_state}"

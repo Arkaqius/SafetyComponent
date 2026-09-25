@@ -123,6 +123,35 @@ clear state semantics, health debounce, persistent-state policy, and the
 maximum detector count. The private configuration selects a profile and binds
 it to a detector; it cannot redefine the profile semantics.
 
+### 4.6 Functional safety
+
+`calibration.functional_safety` owns the sampling period, host-memory and PSI
+qualification/recovery margins, WAN outage qualification/recovery, source
+freshness, the remote-battery threshold, and detector-test interval and state
+store. These are packaged policy values. The installation binds host memory,
+update, and remote battery entities in `installation.functional_safety` and
+reuses `notification.wan_entity` for WAN evidence. Missing bindings do not
+create a positive healthy observation.
+The memory thresholds are packaged defaults, not a guarantee that
+256 MiB is a safe reserve for every host; review them against actual host
+capacity and workload before an installation relies on L2 memory detection.
+
+| Policy field | Packaged value | Effect |
+| --- | --- | --- |
+| `evaluation_interval_seconds` | 15 s | Periodic in-process sample; not an independent watchdog. |
+| `memory_low_available_mib` / `memory_recovery_available_mib` | 256 / 384 MiB | L2 assertion and recovery margins, requiring corroborating PSI. |
+| `memory_high_psi_percent` / `memory_recovery_psi_percent` | 10% / 5% | PSI qualification and recovery margins. |
+| `memory_qualification_seconds` / `memory_recovery_seconds` | 120 / 120 s | Sustained L2 assertion and distinct recovery duration. |
+| `cpu_high_percent` / `cpu_recovery_percent` | 90% / 70% | L4 host CPU qualification and recovery margins. |
+| `cpu_qualification_seconds` / `cpu_recovery_seconds` | 300 / 120 s | Sustained high CPU load and distinct recovery duration. |
+| `wan_qualification_seconds` / `wan_recovery_seconds` | 60 / 60 s | Sustained L3 WAN fault and recovery. |
+| `battery_low_percent` | 15% | L4 maintenance threshold per configured remote device. |
+| `detector_test_interval_days` | 180 days | L4 due/failed maintenance condition per configured detector. |
+| `resource_stale_after_seconds` / `wan_stale_after_seconds` | 180 / 180 s | Maximum age for accepted host and WAN evidence. |
+| `update_stale_after_seconds` / `battery_stale_after_seconds` | 86400 / 86400 s | Maximum age for accepted update and battery evidence. |
+| `detector_test_state_file` | `/config/appdaemon/detector_tests.json` | Durable operator-reported test results. |
+| `memory_fault_level` / `wan_fault_level` / `cpu_fault_level` / `maintenance_fault_level` | L2 / L3 / L4 / L4 | Fixed reviewed severities for host memory, WAN, CPU, and maintenance. |
+
 ## 5. Runtime configuration
 
 ### 5.1 Faults

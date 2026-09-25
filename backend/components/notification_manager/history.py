@@ -63,9 +63,9 @@ def restore_history(raw: Any) -> list[dict[str, Any]]:
                 continue
             if entry["result"] not in {"accepted_by_home_assistant", "failed"}:
                 continue
-            if type(entry["level"]) is not int or entry["level"] not in (1, 2, 3):
+            if type(entry["level"]) is not int or entry["level"] not in (1, 2, 3):  # noqa: E721 - reject bool and int subclasses
                 continue
-            if type(entry["attempt"]) is not int or entry["attempt"] < 1:
+            if type(entry["attempt"]) is not int or entry["attempt"] < 1:  # noqa: E721 - reject bool and int subclasses
                 continue
             restored = {
                 key: entry[key][:limit]
