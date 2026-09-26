@@ -9,6 +9,7 @@ from typing import Any, Mapping
 
 from components.core.memory_pressure import MemoryPressureRule
 from components.core.types_common import FaultState, SMState, Symptom
+from components.external_apis.home_assistant_state import HomeAssistantStateProvider
 
 UPDATE_PRODUCTS = (
     "home_assistant_core",
@@ -40,6 +41,7 @@ class FunctionalSafetyMonitor:
         *,
         wan_entity: str | None,
         detector_names: Mapping[str, str] | None = None,
+        state_provider: HomeAssistantStateProvider | None = None,
     ) -> None:
         self.hass_app = hass_app
         self.event_bus = event_bus
@@ -48,6 +50,8 @@ class FunctionalSafetyMonitor:
         self.policy = dict(policy)
         self.wan_entity = wan_entity
         self.detector_names = dict(detector_names or {})
+        self.state_provider = state_provider
+        self._reports: dict[str, dict[str, Any]] = {}
         self.safety_mechanisms: dict[str, None] = {}
         self.symptom_states: dict[str, FaultState] = {}
         self._enabled: set[str] = set()
@@ -180,6 +184,14 @@ class FunctionalSafetyMonitor:
         """Sample configured sources; unknown readings never heal active faults."""
 
         diagnostics: dict[str, Any] = {}
+        if self.state_provider is not None:
+            entities = set(self.bindings.get("updates", {}).values())
+            entities.update(self.bindings.get("host_memory", {}).values())
+            entities.update([self.wan_entity, self.bindings.get("host_cpu_entity")])
+            for binding in self.bindings.get("remote_batteries", {}).values():
+                if binding.get("enabled", True):
+                    entities.update(binding.get(key) for key in ("percentage_entity", "low_entity"))
+            self._reports = self.state_provider.poll({entity for entity in entities if entity})
         host = self.bindings.get("host_memory")
         if host:
             available, available_reason = self._number(host["available_entity"], {"MiB": 1, "GiB": 1024, "MB": 0.953674, "GB": 953.674}, "memory")
@@ -347,6 +359,8 @@ class FunctionalSafetyMonitor:
         self.event_bus.publish("symptom", symptom_id=symptom_id, state=next_state)
 
     def _snapshot(self, entity: str) -> dict[str, Any]:
+        if self.state_provider is not None:
+            return self._reports.get(entity, {})
         raw = self.hass_app.get_state(entity, attribute="all")
         return raw if isinstance(raw, dict) else {"state": raw, "attributes": {}}
 

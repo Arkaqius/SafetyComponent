@@ -50,6 +50,7 @@ from components.core.event_bus import EventBus
 from components.core.detector_test_monitor import DetectorTestMonitor
 from components.core.evaluation_progress import EvaluationProgress
 from components.core.functional_safety_monitor import FunctionalSafetyMonitor
+from components.external_apis.home_assistant_state import HomeAssistantStateProvider
 from components.core.derivative_monitor import DerivativeMonitor
 from components.core.localization import LocalizationSettings
 from components.core.mqtt_entity_manager import MqttEntityManager
@@ -222,6 +223,7 @@ class SafetyFunctions(hass.Hass):
                 functional_policy,
                 wan_entity=self.notification_cfg.get("wan_entity"),
                 detector_names=detector_names,
+                state_provider=HomeAssistantStateProvider.from_environment(),
             )
             self.sm_modules[self.functional_safety_monitor.component_name] = (
                 self.functional_safety_monitor
