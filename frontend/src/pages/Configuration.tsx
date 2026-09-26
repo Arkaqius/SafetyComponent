@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useConfig } from '@hakit/core';
 import ConfigurationObjectEditor from '../components/ConfigurationObjectEditor';
+import BatteryDiscovery from '../components/BatteryDiscovery';
 import { registrySchemas } from '../components/configurationFieldSchemas';
 import { importUserConfiguration, loadUserConfiguration, saveUserConfiguration, type ConfigurationMap } from '../userConfigurationApi';
 
@@ -131,6 +132,7 @@ export default function Configuration() {
   const airQualitySystem = asMap(externalHazardSystem.outdoor_air_quality);
   const detectorProfiles = stringList(systemDefaults.detector_profiles);
   const functionalSafety = asMap(installation.functional_safety);
+  const batteryMonitoring = asMap(functionalSafety.battery_monitoring);
   const hostMemory = asMap(functionalSafety.host_memory);
   const updates = asMap(functionalSafety.updates);
   const functionalSafetySystem = asMap(systemDefaults.functional_safety);
@@ -340,7 +342,10 @@ export default function Configuration() {
           title='Zdrowie systemu i konserwacja'
           description='Opcjonalne źródła dla funkcjonalnego monitoringu bezpieczeństwa. Brak encji oznacza brak pokrycia, a nie stan prawidłowy.'
         />
-        <p>Encja WAN ustawiona w sekcji Powiadomienia służy również do diagnostyki łączności. Czujniki diagnostyczne hosta trzeba najpierw włączyć w Home Assistant.</p>
+        <p>
+          Encja WAN ustawiona w sekcji Powiadomienia służy również do diagnostyki łączności. Czujniki diagnostyczne hosta trzeba najpierw
+          włączyć w Home Assistant.
+        </p>
         <div className='configuration-grid'>
           <TextField
             label='Pamięć dostępna hosta'
@@ -355,9 +360,19 @@ export default function Configuration() {
             onChange={value => update(['installation', 'functional_safety', 'host_memory', 'psi_entity'], value)}
           />
         </div>
-        <p>Systemowe progi pamięci: dostępna ≤ {String(functionalSafetySystem.memory_low_available_mib ?? '—')} MiB i PSI ≥ {String(functionalSafetySystem.memory_high_psi_percent ?? '—')}% przez {String(functionalSafetySystem.memory_qualification_seconds ?? '—')} s. Po zmianie konfiguracji uruchom aplikację ponownie.</p>
+        <p>
+          Systemowe progi pamięci: dostępna ≤ {String(functionalSafetySystem.memory_low_available_mib ?? '—')} MiB i PSI ≥{' '}
+          {String(functionalSafetySystem.memory_high_psi_percent ?? '—')}% przez{' '}
+          {String(functionalSafetySystem.memory_qualification_seconds ?? '—')} s. Po zmianie konfiguracji uruchom aplikację ponownie.
+        </p>
         {functionalSafety.host_memory ? (
-          <button className='secondary-button' onClick={() => update(['installation', 'functional_safety', 'host_memory'], null)} type='button'>Usuń obie encje pamięci</button>
+          <button
+            className='secondary-button'
+            onClick={() => update(['installation', 'functional_safety', 'host_memory'], null)}
+            type='button'
+          >
+            Usuń obie encje pamięci
+          </button>
         ) : null}
         <div className='configuration-grid'>
           <TextField
@@ -367,16 +382,21 @@ export default function Configuration() {
             onChange={value => update(['installation', 'functional_safety', 'host_cpu_entity'], value || null)}
           />
         </div>
-        <p>Systemowy próg CPU: ≥ {String(functionalSafetySystem.cpu_high_percent ?? '—')}% przez {String(functionalSafetySystem.cpu_qualification_seconds ?? '—')} s (L4).</p>
+        <p>
+          Systemowy próg CPU: ≥ {String(functionalSafetySystem.cpu_high_percent ?? '—')}% przez{' '}
+          {String(functionalSafetySystem.cpu_qualification_seconds ?? '—')} s (L4).
+        </p>
         <fieldset className='configuration-fieldset'>
           <legend>Aktualizacje</legend>
           <div className='configuration-grid'>
-            {([
-              ['home_assistant_core', 'Home Assistant Core'],
-              ['home_assistant_os', 'Home Assistant OS'],
-              ['home_assistant_supervisor', 'Home Assistant Supervisor'],
-              ['safety_component', 'SafetyComponent App'],
-            ] as const).map(([key, label]) => (
+            {(
+              [
+                ['home_assistant_core', 'Home Assistant Core'],
+                ['home_assistant_os', 'Home Assistant OS'],
+                ['home_assistant_supervisor', 'Home Assistant Supervisor'],
+                ['safety_component', 'SafetyComponent App'],
+              ] as const
+            ).map(([key, label]) => (
               <TextField
                 key={key}
                 label={`Encja aktualizacji: ${label}`}
@@ -387,14 +407,27 @@ export default function Configuration() {
             ))}
           </div>
         </fieldset>
-        <ConfigurationObjectEditor
-          label='Baterie urządzeń zdalnych'
-          description='Jedno urządzenie w jednym wpisie; możesz podać czujnik procentowy, binarny lub oba. Urządzenia wyłączone pomiń albo ustaw Monitoruj urządzenie na nie.'
-          value={asMap(functionalSafety.remote_batteries)}
-          onChange={value => update(['installation', 'functional_safety', 'remote_batteries'], value)}
-          schema={registrySchemas.remote_batteries}
+        <BatteryDiscovery
+          enabled={batteryMonitoring.enabled !== false}
+          excluded={stringList(batteryMonitoring.excluded_devices)}
+          staleAfterSeconds={Number(functionalSafetySystem.battery_stale_after_seconds ?? 86400)}
+          onEnabledChange={value => update(['installation', 'functional_safety', 'battery_monitoring', 'enabled'], value)}
+          onExcludedChange={value => update(['installation', 'functional_safety', 'battery_monitoring', 'excluded_devices'], value)}
         />
-        <p>Systemowy próg niskiej baterii: {String(functionalSafetySystem.battery_low_percent ?? '—')}%. Testy detektorów są wymagane co {String(functionalSafetySystem.detector_test_interval_days ?? '—')} dni.</p>
+        <details>
+          <summary>Zaawansowane: ręczne źródła baterii</summary>
+          <ConfigurationObjectEditor
+            label='Ręczne źródła baterii'
+            description='Jedno urządzenie w jednym wpisie; możesz podać czujnik procentowy, binarny lub oba. Urządzenia wyłączone pomiń albo ustaw Monitoruj urządzenie na nie.'
+            value={asMap(functionalSafety.remote_batteries)}
+            onChange={value => update(['installation', 'functional_safety', 'remote_batteries'], value)}
+            schema={registrySchemas.remote_batteries}
+          />
+        </details>
+        <p>
+          Systemowy próg niskiej baterii: {String(functionalSafetySystem.battery_low_percent ?? '—')}%. Testy detektorów są wymagane co{' '}
+          {String(functionalSafetySystem.detector_test_interval_days ?? '—')} dni.
+        </p>
       </section>
 
       <section className='panel configuration-section'>

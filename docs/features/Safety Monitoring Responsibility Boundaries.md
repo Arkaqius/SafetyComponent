@@ -107,6 +107,23 @@ input's component. See Home Assistant's [sensor](https://developers.home-assista
 and [binary sensor](https://developers.home-assistant.io/docs/core/entity/binary-sensor/)
 device-class contracts.
 
+Battery discovery reads the Home Assistant entity and device registries together
+with current states. Only enabled, device-associated entities matching these
+device-class and unit contracts are candidates. Candidates are grouped by the
+Home Assistant device registry ID, not by display name or entity-name patterns.
+Automatic monitoring is enabled by default; installation-owned device exclusions
+remove a whole discovered device, including matching manual bindings, from monitoring. Existing explicit
+`remote_batteries` bindings remain supported and take precedence for their
+entities so automatic discovery does not create a second maintenance condition.
+
+Safety Home fetches the inventory through authenticated `GET /api/batteries`
+and displays device names, readings, source quality, and a monitoring switch.
+Changing a switch edits the configuration draft only. Saving and restarting the
+App applies the exclusion. The running backend discovers its inventory at
+startup; refreshing the editor does not dynamically add devices to that running
+inventory. Newly discovered devices enter monitoring after an App restart.
+Discovery failure is unknown diagnostic coverage, not a healthy empty inventory.
+
 For updates, consume Home Assistant `update` entities for Core, Operating
 System, Supervisor, and the SafetyComponent App when exposed. Their state and
 installed/latest-version attributes are product-specific evidence; absence of
@@ -137,7 +154,12 @@ domain uncovered without disabling unrelated safety mechanisms.
 Installation bindings are grouped under `installation.functional_safety`:
 `host_memory.available_entity` and `host_memory.psi_entity`, optional
 `host_cpu_entity`, product-specific
-`updates` entities, and a `remote_batteries` registry keyed by physical device.
+`updates` entities, a `battery_monitoring` selection policy, and an optional
+manual `remote_batteries` registry. `battery_monitoring.enabled` defaults to
+`true`; `battery_monitoring.excluded_devices` contains Home Assistant device
+registry IDs and defaults to an empty list. Discovered runtime keys use
+`Battery<hex>` derived from device identity; renaming a device or entity does not
+change its exclusion or create a new maintenance identity.
 The existing `notification.wan_entity` is shared with the notification route.
 The packaged `calibration.functional_safety` owns the numeric policy and
 durable detector-test schedule. Device entries may be disabled without changing
@@ -168,6 +190,10 @@ must not block safety evaluation or turn an active fault into a clear state.
 - Low battery remains level 4 while the device works; a subsequent unavailable
   safety sensor retains both the maintenance and coverage context without a
   duplicate root-cause notification.
+- Percentage and low-battery entities on the same device produce one condition;
+  manual and automatic bindings do not double-monitor the same entities.
+  Exclusion survives device/entity renaming, and failed discovery remains
+  distinguishable from a successful inventory with no matching devices.
 - A local network outage, WAN outage, cloud-provider outage, and complete Home
   Assistant loss are distinguishable to the extent their observers remain
   available. Local-Only policy does not silently disable local safety checks.

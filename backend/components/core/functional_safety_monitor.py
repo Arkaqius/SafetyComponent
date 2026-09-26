@@ -9,6 +9,7 @@ from typing import Any, Mapping
 
 from components.core.memory_pressure import MemoryPressureRule
 from components.core.types_common import FaultState, SMState, Symptom
+from components.external_apis.battery_inventory import battery_entities, resolve_batteries
 from components.external_apis.home_assistant_state import HomeAssistantStateProvider
 
 UPDATE_PRODUCTS = (
@@ -52,6 +53,15 @@ class FunctionalSafetyMonitor:
         self.detector_names = dict(detector_names or {})
         self.state_provider = state_provider
         self._reports: dict[str, dict[str, Any]] = {}
+        battery_config = self.bindings.get("battery_monitoring", {})
+        self._battery_discovery: dict[str, Any] = {"status": "disabled", "devices": []}
+        if battery_config.get("enabled", True):
+            discover = getattr(state_provider, "discover_batteries", None)
+            self._battery_discovery = discover() if callable(discover) else {"status": "error", "devices": []}
+            self.bindings["remote_batteries"] = resolve_batteries(
+                self.bindings.get("remote_batteries", {}), self._battery_discovery,
+                battery_config.get("excluded_devices", []),
+            )
         self.safety_mechanisms: dict[str, None] = {}
         self.symptom_states: dict[str, FaultState] = {}
         self._enabled: set[str] = set()
@@ -190,7 +200,7 @@ class FunctionalSafetyMonitor:
             entities.update([self.wan_entity, self.bindings.get("host_cpu_entity")])
             for binding in self.bindings.get("remote_batteries", {}).values():
                 if binding.get("enabled", True):
-                    entities.update(binding.get(key) for key in ("percentage_entity", "low_entity"))
+                    entities.update(battery_entities(binding, "percentage") + battery_entities(binding, "low"))
             self._reports = self.state_provider.poll({entity for entity in entities if entity})
         host = self.bindings.get("host_memory")
         if host:
@@ -215,9 +225,15 @@ class FunctionalSafetyMonitor:
         diagnostics["wan"] = self._evaluate_wan()
         diagnostics["updates"] = self._evaluate_updates()
         diagnostics["remote_batteries"] = self._evaluate_batteries()
+        diagnostics["battery_discovery"] = {
+            "status": "observed" if self._battery_discovery["status"] == "ready" else "unknown" if self._battery_discovery["status"] == "error" else "disabled",
+            "device_count": len(self._battery_discovery["devices"]),
+            "reason": "inventory_unavailable" if self._battery_discovery["status"] == "error" else None,
+        }
         statuses = [diagnostics["memory"]["status"], diagnostics["cpu"]["status"], diagnostics["wan"]["status"]]
         statuses += [item["status"] for item in diagnostics["updates"].values()]
         statuses += [item["status"] for item in diagnostics["remote_batteries"].values()]
+        statuses.append(diagnostics["battery_discovery"]["status"])
         overall = "attention" if any(status in {"active", "high", "low", "available", "offline"} for status in statuses) else "unknown" if "unknown" in statuses else "observed"
         self.mqtt_entities.publish_sensor_state(
             self.summary_entity,
@@ -328,21 +344,26 @@ class FunctionalSafetyMonitor:
             if not binding.get("enabled", True):
                 continue
             readings: list[bool | None] = []
-            percentage = None
-            if entity := binding.get("percentage_entity"):
-                percentage, _ = self._number(entity, {"%": 1}, "battery")
-                readings.append(None if percentage is None or percentage > 100 else percentage <= self.policy["battery_low_percent"])
-            if entity := binding.get("low_entity"):
+            percentages: list[float] = []
+            for entity in battery_entities(binding, "percentage"):
+                value, _ = self._number(entity, {"%": 1}, "battery")
+                if value is not None and value <= 100:
+                    readings.append(value <= self.policy["battery_low_percent"])
+                    percentages.append(value)
+                else:
+                    readings.append(None)
+            for entity in battery_entities(binding, "low"):
                 snapshot = self._snapshot(entity)
                 attrs = snapshot.get("attributes") or {}
                 state = str(snapshot.get("state", "")).lower()
                 readings.append(state == "on" if attrs.get("device_class") == "battery" and state in {"on", "off"} and self._fresh(snapshot, "last_reported", "battery_stale_after_seconds", fallback="last_updated") else None)
-            status = "low" if True in readings else "unknown" if None in readings else "current"
+            status = "low" if True in readings else "unknown" if not readings or None in readings else "current"
             results[device] = {
                 "status": status,
                 "friendly_name": binding["friendly_name"],
-                "percentage": percentage,
-                "source_entities": [binding[key] for key in ("percentage_entity", "low_entity") if binding.get(key)],
+                "percentage": min(percentages) if percentages else None,
+                "device_id": binding.get("device_id"),
+                "source_entities": battery_entities(binding, "percentage") + battery_entities(binding, "low"),
             }
             if status != "unknown":
                 self._emit(f"RemoteBatteryLow{device}", status == "low")

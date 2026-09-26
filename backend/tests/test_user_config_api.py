@@ -21,6 +21,28 @@ from user_config_api import (
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 
 
+@pytest.mark.parametrize("available", [True, False])
+def test_battery_inventory_is_read_only_and_failure_is_explicit(tmp_path: Path, monkeypatch, available: bool) -> None:
+    store = _store(tmp_path)
+    before = store.user_path.read_bytes()
+    class Provider:
+        def discover_batteries(self):
+            return {"status": "ready", "devices": []}
+    monkeypatch.setattr("user_config_api.HomeAssistantStateProvider.from_environment", lambda: Provider() if available else None)
+    UserConfigRequestHandler.store = store
+    server = ConfigurationHttpServer(("127.0.0.1", 0), UserConfigRequestHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        with urlopen(f"http://127.0.0.1:{server.server_port}/api/batteries") as response:
+            assert json.load(response) == {"status": "ready" if available else "error", "devices": []}
+        assert store.user_path.read_bytes() == before
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
 @pytest.fixture(autouse=True)
 def _mock_home_assistant_location(monkeypatch) -> None:
     monkeypatch.setattr(

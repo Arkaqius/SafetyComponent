@@ -2247,6 +2247,17 @@ details summary:focus-visible {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.battery-discovery {
+  margin: 0.75rem 0;
+  padding: 1rem;
+  border: 1px solid var(--border-color, #475569);
+  border-radius: 0.75rem;
+}
+
+.battery-discovery > summary {
+  cursor: pointer;
+}
+
 .configuration-fieldset {
   border: 1px solid var(--border);
   border-radius: 13px;

@@ -33,6 +33,7 @@ export function getFunctionalSafetySources(entities: EntityMap): SourceView[] {
   add('memory', 'Pamięć hosta', attributes.memory);
   add('cpu', 'CPU hosta', attributes.cpu);
   add('wan', 'Łączność WAN', attributes.wan);
+  add('battery-discovery', 'Wykrywanie urządzeń bateryjnych', attributes.battery_discovery);
   const updates = attributes.updates;
   if (updates && typeof updates === 'object' && !Array.isArray(updates)) {
     Object.entries(updates).forEach(([key, value]) => add(`update-${key}`, `Aktualizacja: ${updateProductNames[key] ?? key}`, value));

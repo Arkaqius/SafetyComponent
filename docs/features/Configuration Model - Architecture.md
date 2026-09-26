@@ -166,9 +166,33 @@ configuration has no MQTT section or retired-discovery cleanup list.
 | `openings` | No | Stable physical opening registry used by room, Safety Doors, and External Hazard bindings. |
 | `detectors` | No | Internal environmental detector registry. |
 | `monitored_entities` | No | Explicit installation-owned Entity Monitor dependencies. |
+| `functional_safety` | No | Installation-owned host-memory/PSI, CPU, and update bindings, automatic battery-monitoring selection, and optional manual battery bindings. |
 
 Keys in `rooms`, `openings`, `detectors`, and `monitored_entities` use
 `^[A-Z][A-Za-z0-9]*$`. They are technical identities, not translated names.
+
+Automatic battery selection lives under
+`installation.functional_safety.battery_monitoring`:
+
+| Field | Default | Contract |
+| --- | --- | --- |
+| `enabled` | `true` | Enables automatic discovery of eligible device-associated Home Assistant battery entities. This switch does not disable explicit manual `remote_batteries` bindings. |
+| `excluded_devices` | `[]` | Home Assistant device registry IDs excluded when discovery is enabled, including matching manual bindings. These are device identities, not entity IDs or friendly names. |
+
+The private source stores only discovery selection and exclusions, not the
+discovered entity list. At backend startup, the Home Assistant battery inventory
+is grouped by device identity and merged with optional manual
+`functional_safety.remote_batteries` bindings without double-monitoring their
+entities. A percentage sensor and binary low-battery sensor belonging to one
+device supply one maintenance condition. Discovery failure is diagnostic
+unknown coverage; it does not create a passing empty inventory.
+
+The authenticated editor obtains candidate devices and readings from
+`GET /api/batteries`. Monitoring switches update `excluded_devices` in the
+unsaved draft. Saving and restarting the App applies the selection and refreshes
+the backend inventory; refreshing the editor alone does not change the running
+monitor. New devices therefore enter monitoring after an App restart. Thresholds
+and source freshness remain packaged system policy, not editable device fields.
 
 ### 3.3 Component settings
 

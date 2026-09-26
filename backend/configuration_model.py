@@ -370,6 +370,20 @@ class RemoteBatteryBinding(SourceModel):
         return self
 
 
+class BatteryMonitoring(SourceModel):
+    """Automatic device discovery with persistent registry-ID exclusions."""
+
+    enabled: bool = True
+    excluded_devices: list[str] = Field(default_factory=list, max_length=512)
+
+    @field_validator("excluded_devices")
+    @classmethod
+    def _device_ids(cls, value: list[str]) -> list[str]:
+        if any(not re.fullmatch(r"[0-9a-f]{32}", device) for device in value):
+            raise ValueError("excluded_devices must contain Home Assistant device registry IDs")
+        return list(dict.fromkeys(value))
+
+
 class FunctionalSafetyBindings(SourceModel):
     """Installation-owned sources; absence means uncovered, not healthy."""
 
@@ -377,6 +391,7 @@ class FunctionalSafetyBindings(SourceModel):
     host_cpu_entity: str | None = None
     updates: UpdateBindings = Field(default_factory=UpdateBindings)
     remote_batteries: dict[str, RemoteBatteryBinding] = Field(default_factory=dict)
+    battery_monitoring: BatteryMonitoring = Field(default_factory=BatteryMonitoring)
 
     @field_validator("host_cpu_entity")
     @classmethod

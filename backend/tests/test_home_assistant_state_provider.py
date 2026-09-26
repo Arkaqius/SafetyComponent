@@ -66,3 +66,16 @@ def test_live_reports_override_unchanged_cache_and_failure_does_not_heal(monkeyp
 def test_absent_supervisor_token_uses_legacy_cache(monkeypatch):
     monkeypatch.delenv("SUPERVISOR_TOKEN", raising=False)
     assert HomeAssistantStateProvider.from_environment() is None
+
+
+def test_discovery_uses_fixed_template_and_reports_transport_failure(monkeypatch):
+    from tests.test_battery_inventory import row
+    def open_inventory(request, timeout):
+        payload = json.loads(request.data)
+        assert "device_id(s.entity_id)" in payload["template"]
+        assert timeout == 3
+        return BytesIO(json.dumps([row()]).encode())
+    monkeypatch.setattr("components.external_apis.home_assistant_state.urlopen", open_inventory)
+    assert HomeAssistantStateProvider("test").discover_batteries()["status"] == "ready"
+    monkeypatch.setattr("components.external_apis.home_assistant_state.urlopen", lambda *_args, **_kwargs: BytesIO(b"null"))
+    assert HomeAssistantStateProvider("test").discover_batteries() == {"status": "error", "devices": []}

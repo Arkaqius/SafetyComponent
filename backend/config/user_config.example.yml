@@ -87,3 +87,6 @@ user_config:
       # host_cpu_entity: sensor.home_assistant_host_processor_use
       updates: {}
       remote_batteries: {}
+      battery_monitoring:
+        enabled: true
+        excluded_devices: []

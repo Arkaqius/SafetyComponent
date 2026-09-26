@@ -26,6 +26,7 @@ const progressTones: Record<keyof typeof progressLabels, StatusTone> = {
 };
 
 const sourceLabels: Record<string, string> = {
+  disabled: 'Wyłączone',
   active: 'Alarm aktywny',
   high: 'Trwałe wysokie obciążenie',
   offline: 'Brak WAN',

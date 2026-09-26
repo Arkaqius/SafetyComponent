@@ -9,6 +9,8 @@ from typing import Any
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
+from components.external_apis.battery_inventory import BATTERY_TEMPLATE, group_batteries
+
 
 REPORT_TEMPLATE = """
 {% set ns = namespace(rows=[]) %}
@@ -41,9 +43,29 @@ class HomeAssistantStateProvider:
         """Return no evidence on transport/schema failure; never reuse old data."""
         if not entities:
             return {}
+        rows = self.render(REPORT_TEMPLATE, {"entities": sorted(entities)})
+        if not isinstance(rows, list):
+            return {}
+        result: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            if not isinstance(row, dict) or row.get("entity_id") not in entities:
+                return {}
+            if not isinstance(row.get("attributes"), dict) or not isinstance(row.get("state"), str):
+                return {}
+            if not isinstance(row.get("last_reported"), str) or row["entity_id"] in result:
+                return {}
+            result[row["entity_id"]] = row
+        return result
+
+    def discover_batteries(self) -> dict[str, Any]:
+        """Read enabled HA battery states plus associated registry device IDs."""
+        return group_batteries(self.render(BATTERY_TEMPLATE, {}))
+
+    def render(self, template: str, variables: dict[str, Any]) -> Any:
+        """Render only provider-owned templates using existing App authorization."""
         request = Request(
             "http://supervisor/core/api/template",
-            data=json.dumps({"template": REPORT_TEMPLATE, "variables": {"entities": sorted(entities)}}).encode(),
+            data=json.dumps({"template": template, "variables": variables}).encode(),
             headers={"Authorization": f"Bearer {self._token}", "Content-Type": "application/json"},
             method="POST",
         )
@@ -51,21 +73,7 @@ class HomeAssistantStateProvider:
             with urlopen(request, timeout=3) as response:
                 body = response.read(512 * 1024 + 1)
             if len(body) > 512 * 1024:
-                return {}
-            rows = json.loads(body)
-            if not isinstance(rows, list):
-                return {}
-            result = {}
-            for row in rows:
-                if not isinstance(row, dict) or row.get("entity_id") not in entities:
-                    return {}
-                if not isinstance(row.get("attributes"), dict) or not isinstance(row.get("state"), str):
-                    return {}
-                if not isinstance(row.get("last_reported"), str):
-                    return {}
-                if row["entity_id"] in result:
-                    return {}
-                result[row["entity_id"]] = row
-            return result
+                return None
+            return json.loads(body)
         except (OSError, URLError, HTTPException, ValueError, TypeError):
-            return {}
+            return None

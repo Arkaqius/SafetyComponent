@@ -77,7 +77,7 @@ budżecie wykrycia.
 | Język | Wybierz polski, angielski lub niemiecki. Nazw encji nie edytuje się w tym formularzu — pochodzą z plików lokalizacji. |
 | Powiadomienia | Wpisz konkretne usługi `notify/<nazwa>`, po jednej w wierszu. `notify/notify` jest niejednoznaczne. Adres po kliknięciu powinien być ścieżką w HA, np. `/`. Encja WAN i lokalne urządzenia sygnalizacji są opcjonalne. |
 | Instalacja Home Assistant | Wybierz strefę czasową z listy, podaj dwuliterowy kod kraju, kody powiatów TERYT i — gdy komponent temperatury jest włączony — czujnik temperatury zewnętrznej. Współrzędne są pobierane z HA przy każdym starcie, nie wpisuje się ich w formularzu. |
-| Zdrowie systemu i konserwacja | Opcjonalnie wskaż parę czujników pamięci hosta: dostępną pamięć oraz PSI w procentach, a także czujnik obciążenia CPU hosta. Dla aktualizacji wybierz encje `update.*` osobno dla Core, OS, Supervisora i aplikacji. Każde zdalne urządzenie baterii dodaj raz, z sensorem procentowym i/lub binarnym. Czujniki hosta w integracji System Monitor mogą wymagać ręcznego włączenia. Niezwiązanych urządzeń nie dodawaj; istniejący wpis możesz wyłączyć. Progi i harmonogram testów są systemowe. Brak źródła oznacza brak pokrycia, nie stan prawidłowy. |
+| Zdrowie systemu i konserwacja | Opcjonalnie wskaż parę czujników pamięci hosta: dostępną pamięć oraz PSI w procentach, a także czujnik obciążenia CPU hosta. Dla aktualizacji wybierz encje `update.*` osobno dla Core, OS, Supervisora i aplikacji. Urządzenia z encjami baterii są pobierane automatycznie z HA; wybierz przełącznikiem, które monitorować. Czujniki hosta w integracji System Monitor mogą wymagać ręcznego włączenia. Progi i harmonogram testów są systemowe. Brak źródła oznacza brak pokrycia, nie stan prawidłowy. |
 | Ustawienia komponentów | Opcjonalnie zmień progi temperatury, czas drzwi/bram, czasy monitoringu lub progi pogody i jakości powietrza. Puste pole oznacza wartość systemową pokazaną pod polem. Lista domyślnych zagrożeń i horyzont prognozy pozostają w konfiguracji systemowej. |
 | Pomieszczenia | Dodaj wpis dla każdego monitorowanego pomieszczenia. Wskaż obszar HA i czujnik temperatury. Opcjonalnie wybierz otwór z sekcji „Drzwi, bramy i okna”, osłonę `cover.*` i indywidualne progi. |
 | Drzwi, bramy i okna | Każdy fizyczny otwór dodaj raz: obszar, encja czujnika, przyjazna nazwa i rodzaj. W razie potrzeby dodaj znane formularzowi role „Monitoring drzwi i bram” albo „Zagrożenia zewnętrzne” i wypełnij ich pola. Obecność roli włącza dany sposób monitorowania. |
@@ -94,6 +94,39 @@ urządzenia jest informacją konserwacyjną, nie dowodem awarii jego czujnika.
 Na stronie **Zdrowie funkcji bezpieczeństwa** zapis wyniku testu detektora
 oznacza wyłącznie potwierdzenie wykonanego ręcznie testu; przycisk nie uruchamia
 czujnika i nie kasuje alarmu.
+
+### Automatyczne monitorowanie baterii
+
+W **Zdrowiu systemu i konserwacji** lista baterii pokazuje urządzenia wykryte
+w Home Assistant, ich odczyty oraz jakość danych. Nie trzeba przepisywać
+wszystkich encji. Automatyczne monitorowanie jest domyślnie włączone i obejmuje
+wykryte urządzenia, których nie wykluczysz.
+
+1. Pobierz lub odśwież listę urządzeń w formularzu.
+2. Przy urządzeniu, którego nie chcesz śledzić, wyłącz **Monitoruj**. Możesz
+   ponownie włączyć ten sam przełącznik, aby usunąć wykluczenie.
+3. Kliknij **Zapisz konfigurację**, a następnie uruchom ponownie aplikację.
+   Sam przełącznik zmienia tylko formularz, nie działający monitoring.
+
+Wykluczenie jest zapisywane według identyfikatora urządzenia HA, dlatego zmiana
+nazwy urządzenia lub encji nie usuwa wyboru. Usunięcie i ponowne dodanie
+urządzenia w HA może utworzyć nową tożsamość — sprawdź wtedy listę ponownie.
+Backend pobiera swój zestaw urządzeń przy starcie; nowe urządzenie pojawi się
+w aktywnym monitoringu dopiero po restarcie aplikacji. Odświeżenie listy w GUI
+nie zmienia zestawu monitorowanego przez już uruchomiony backend.
+
+Wykrywanie obejmuje włączone encje powiązane z urządzeniem HA: procentowe
+sensory baterii i binarne sygnały niskiej baterii. Oba rodzaje odczytu jednego
+urządzenia tworzą jedną informację konserwacyjną. Encje wyłączone w HA, bez
+powiązania z urządzeniem albo bez właściwej klasy baterii nie są automatycznie
+dodawane. Istniejące ręczne wpisy pozostają obsługiwane bez podwójnego
+monitorowania ich encji; wyłączenie automatycznego wykrywania nie wyłącza tych
+wpisów.
+
+Nieudane pobranie listy oznacza brak wiarygodnych danych, a nie brak urządzeń
+lub dobrą kondycję baterii. Niedostępny odczyt nie oznacza pełnej baterii.
+Niska bateria pozostaje informacją L4; nie zastępuje ani nie kasuje diagnozy
+niedostępnego czujnika bezpieczeństwa.
 
 W sekcjach zasobów wpisz **Nowy identyfikator**, np. `LivingRoom` albo
 `EntranceDoor`, i kliknij **+ Dodaj obiekt**. Identyfikator jest techniczną,
