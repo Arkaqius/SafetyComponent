@@ -4,6 +4,17 @@ entity.entity_monitor_summary: Überwachte Entitäten
 entity.notification_delivery_health: Status der Benachrichtigungszustellung
 entity.safety_evaluation_progress: Fortschritt der Sicherheitsbewertung
 entity.safety_detector_tests: Tests der Sicherheitsmelder
+entity.safety_periodic_tests: Regelmäßige Sicherheitsprüfungen
+test.notification_delivery: Bestätigte Warnungszustellung
+test.backup_restore: Bestätigte Wiederherstellung der Sicherung
+fault.periodic_test_due: 'Regelmäßige Prüfung erfordert Aufmerksamkeit: {test}'
+fault.host_disk_low: Wenig freier Speicherplatz auf dem Host
+fault.host_temperature_high: Hohe Hosttemperatur
+fault.backup_needs_attention: Sicherung erfordert Aufmerksamkeit
+state.periodic_tests.current: Prüfungen aktuell
+state.periodic_tests.attention: Prüfungen erfordern Aufmerksamkeit
+state.periodic_tests.unknown: Prüfungsverlauf nicht verfügbar
+state.periodic_tests.not_configured: Keine Prüfungen konfiguriert
 entity.functional_safety_sources: Diagnosequellen der funktionalen Sicherheit
 entity.recovery_window: Fenstermaßnahme – {location}
 entity.temperature_low_threshold: Untere Temperaturgrenze – {location}

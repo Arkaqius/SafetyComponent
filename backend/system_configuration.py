@@ -154,6 +154,17 @@ class FunctionalSafetyCalibrationSource(SystemSourceModel):
     wan_fault_level: Literal[3]
     maintenance_fault_level: Literal[4]
     cpu_fault_level: Literal[4]
+    disk_low_free_mib: float = Field(gt=0, allow_inf_nan=False)
+    disk_recovery_free_mib: float = Field(gt=0, allow_inf_nan=False)
+    host_temperature_high_c: float = Field(gt=0, allow_inf_nan=False)
+    host_temperature_recovery_c: float = Field(ge=0, allow_inf_nan=False)
+    resource_qualification_seconds: int = Field(ge=1)
+    resource_recovery_seconds: int = Field(ge=1)
+    backup_max_age_hours: float = Field(gt=0, allow_inf_nan=False)
+    backup_stale_after_seconds: int = Field(ge=1)
+    notification_test_interval_days: int = Field(ge=1)
+    backup_restore_test_interval_days: int = Field(ge=1)
+    periodic_test_state_file: str
 
     @model_validator(mode="after")
     def _validate_hysteresis(self) -> "FunctionalSafetyCalibrationSource":
@@ -163,6 +174,10 @@ class FunctionalSafetyCalibrationSource(SystemSourceModel):
             raise ValueError("PSI recovery threshold must be below high threshold")
         if self.cpu_recovery_percent >= self.cpu_high_percent:
             raise ValueError("CPU recovery threshold must be below high threshold")
+        if self.disk_recovery_free_mib <= self.disk_low_free_mib:
+            raise ValueError("disk recovery threshold must exceed low threshold")
+        if self.host_temperature_recovery_c >= self.host_temperature_high_c:
+            raise ValueError("temperature recovery threshold must be below high threshold")
         return self
 
 

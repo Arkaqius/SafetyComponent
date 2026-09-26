@@ -384,16 +384,41 @@ class BatteryMonitoring(SourceModel):
         return list(dict.fromkeys(value))
 
 
+class BackupBindings(SourceModel):
+    """Timestamp of a successful backup and optional explicit failure signal."""
+
+    last_success_entity: str
+    failure_entity: str | None = None
+
+    @model_validator(mode="after")
+    def _sources(self) -> "BackupBindings":
+        for value, domain in ((self.last_success_entity, "sensor."), (self.failure_entity, "binary_sensor.")):
+            if value is not None and (not value.startswith(domain) or not _ENTITY_ID.fullmatch(value)):
+                raise ValueError(f"expected {domain} entity ID: {value}")
+        return self
+
+
+class PeriodicTestBindings(SourceModel):
+    """Operator-verified maintenance checks, never automatic actuator tests."""
+
+    notification_delivery: bool = True
+    backup_restore: bool = False
+
+
 class FunctionalSafetyBindings(SourceModel):
     """Installation-owned sources; absence means uncovered, not healthy."""
 
     host_memory: HostMemoryBindings | None = None
     host_cpu_entity: str | None = None
+    host_disk_free_entity: str | None = None
+    host_temperature_entity: str | None = None
+    backup: BackupBindings | None = None
+    periodic_tests: PeriodicTestBindings = Field(default_factory=PeriodicTestBindings)
     updates: UpdateBindings = Field(default_factory=UpdateBindings)
     remote_batteries: dict[str, RemoteBatteryBinding] = Field(default_factory=dict)
     battery_monitoring: BatteryMonitoring = Field(default_factory=BatteryMonitoring)
 
-    @field_validator("host_cpu_entity")
+    @field_validator("host_cpu_entity", "host_disk_free_entity", "host_temperature_entity")
     @classmethod
     def _cpu_entity(cls, value: str | None) -> str | None:
         if value is not None and (not value.startswith("sensor.") or not _ENTITY_ID.fullmatch(value)):

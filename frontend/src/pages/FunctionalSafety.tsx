@@ -6,6 +6,9 @@ import {
   getComponentProgress,
   getDetectorTests,
   getFunctionalSafetySources,
+  getPeriodicTests,
+  periodicTestResultMessage,
+  type PeriodicTestKey,
   NOTIFICATION_HEALTH_ENTITY_ID,
 } from '../domain/functionalSafety';
 import type { StatusTone } from '../domain/safety';
@@ -31,6 +34,8 @@ const sourceLabels: Record<string, string> = {
   high: 'Trwałe wysokie obciążenie',
   offline: 'Brak WAN',
   low: 'Niska bateria',
+  overdue: 'Zaległe',
+  failed: 'Błąd',
   available: 'Aktualizacja dostępna',
   current: 'Aktualny',
   online: 'Online',
@@ -50,8 +55,11 @@ export default function FunctionalSafety() {
   const { entities, recoveries } = useSafetyEntities();
   const connection = useHass(store => store.connection);
   const [testMessage, setTestMessage] = useState('');
+  const [periodicMessage, setPeriodicMessage] = useState('');
+  const [savingPeriodicTest, setSavingPeriodicTest] = useState(false);
   const progress = getComponentProgress(entities);
   const detectorTests = getDetectorTests(entities);
+  const periodicTests = getPeriodicTests(entities);
   const sources = getFunctionalSafetySources(entities);
   const notification = entities[NOTIFICATION_HEALTH_ENTITY_ID];
   const activeRecoveries = recoveries.filter(recovery => recovery.status !== 'do_not_perform');
@@ -79,6 +87,32 @@ export default function FunctionalSafety() {
       setTestMessage('Wysłano wynik do Home Assistant. Potwierdzeniem zapisu będzie aktualizacja stanu poniżej.');
     } catch {
       setTestMessage('Nie udało się wysłać wyniku. Sprawdź połączenie i spróbuj ponownie.');
+    }
+  };
+
+  const attestPeriodicTest = async (testKey: PeriodicTestKey, outcome: 'passed' | 'failed') => {
+    if (!connection) {
+      setPeriodicMessage('Brak połączenia z Home Assistant. Wynik nie został zapisany.');
+      return;
+    }
+    const instruction =
+      testKey === 'notification_delivery'
+        ? 'Czy sprawdziłeś rzeczywiste odebranie powiadomienia we wszystkich wymaganych kanałach? Przyjęcie wywołania przez HA nie wystarcza.'
+        : 'Czy wykonałeś odtworzenie kopii na osobnym systemie testowym i sprawdziłeś odtworzone dane? Nie odtwarzaj jej na działającym domu tylko w celu tego testu.';
+    if (
+      !window.confirm(
+        `${instruction}\nZapiszesz wyłącznie potwierdzenie operatora: ${outcome === 'passed' ? 'zaliczony' : 'niezaliczony'}.`
+      )
+    )
+      return;
+    setSavingPeriodicTest(true);
+    try {
+      await connection.sendMessagePromise<unknown>(periodicTestResultMessage(testKey, outcome));
+      setPeriodicMessage('Wysłano wynik do HA. Potwierdzeniem zapisu będzie aktualizacja historii testu poniżej.');
+    } catch {
+      setPeriodicMessage('Nie udało się wysłać wyniku. Sprawdź połączenie i spróbuj ponownie.');
+    } finally {
+      setSavingPeriodicTest(false);
     }
   };
 
@@ -138,7 +172,7 @@ export default function FunctionalSafety() {
         </div>
         <p>
           Poziomy alarmów: brak pamięci L2 (pamięć dostępna i PSI), utrata WAN L3, trwałe obciążenie CPU, dostępne aktualizacje i niska
-          bateria L4. Nieznane źródło nie oznacza sprawności.
+          bateria L4. Dysk, temperatura hosta i kopie zapasowe mają osobne progi systemowe. Nieznane źródło nie oznacza sprawności.
         </p>
         {sources.length === 0 ? (
           <p>Brak diagnostyki źródeł.</p>
@@ -152,16 +186,18 @@ export default function FunctionalSafety() {
                 </div>
                 <StatusBadge
                   tone={
-                    ['active', 'offline', 'low', 'high'].includes(source.status)
+                    ['active', 'offline', 'low', 'high', 'failed'].includes(source.status)
                       ? 'danger'
-                      : source.status === 'available'
+                      : ['available', 'overdue'].includes(source.status)
                         ? 'warning'
                         : source.status === 'unknown'
                           ? 'muted'
                           : 'info'
                   }
                 >
-                  {sourceLabels[source.status] ?? source.status}
+                  {source.status === 'low' && source.key === 'disk'
+                    ? 'Mało wolnego miejsca'
+                    : (sourceLabels[source.status] ?? 'Brak wiarygodnych danych')}
                 </StatusBadge>
               </article>
             ))}
@@ -276,6 +312,67 @@ export default function FunctionalSafety() {
                     Zapisz: zaliczony
                   </button>
                   <button className='text-button' onClick={() => void attestTest(test.detectorKey, 'failed')} type='button'>
+                    Zapisz: niezaliczony
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className='panel'>
+        <span className='section-kicker'>Konserwacja platformy</span>
+        <h2>Testy okresowe</h2>
+        <p>
+          Najpierw wykonaj test i sprawdź jego rzeczywisty efekt. Przyciski zapisują jedynie deklarację operatora — nie wysyłają
+          powiadomień, nie uruchamiają syren ani nie odtwarzają kopii. Przyjęcie wiadomości przez HA nie dowodzi odbioru na telefonie.
+        </p>
+        {periodicMessage && <p role='status'>{periodicMessage}</p>}
+        {periodicTests.length === 0 ? (
+          <p>Brak harmonogramu testów okresowych. Nie oznacza to, że testy zostały wykonane.</p>
+        ) : (
+          <div className='functional-safety-list'>
+            {periodicTests.map(test => (
+              <article className='functional-safety-row' key={test.testKey}>
+                <div>
+                  <strong>{test.friendlyName}</strong>
+                  <small>
+                    {test.status === 'current'
+                      ? 'Test aktualny'
+                      : test.status === 'failed'
+                        ? 'Ostatni test niezaliczony'
+                        : test.status === 'overdue'
+                          ? 'Test zaległy'
+                          : test.status === 'unknown'
+                            ? 'Brak wiarygodnej historii'
+                            : 'Wymagany pierwszy test'}
+                    {test.lastTestAt ? ` · ostatnio ${new Date(test.lastTestAt).toLocaleDateString('pl-PL')}` : ''}
+                    {test.dueAt ? ` · termin ${new Date(test.dueAt).toLocaleDateString('pl-PL')}` : ''}
+                    {test.intervalDays !== null ? ` · co ${test.intervalDays} dni` : ''}
+                  </small>
+                  <small>
+                    {test.testKey === 'notification_delivery'
+                      ? 'Sprawdź odbiór we wszystkich wymaganych kanałach.'
+                      : 'Odtworzenie wyłącznie na osobnym systemie testowym.'}{' '}
+                    Dowód: potwierdzenie operatora, nie test automatyczny.
+                  </small>
+                </div>
+                <div className='functional-safety-actions'>
+                  <button
+                    className='text-button'
+                    type='button'
+                    disabled={savingPeriodicTest}
+                    onClick={() => void attestPeriodicTest(test.testKey, 'passed')}
+                  >
+                    Zapisz: zaliczony
+                  </button>
+                  <button
+                    className='text-button'
+                    type='button'
+                    disabled={savingPeriodicTest}
+                    onClick={() => void attestPeriodicTest(test.testKey, 'failed')}
+                  >
                     Zapisz: niezaliczony
                   </button>
                 </div>

@@ -126,10 +126,11 @@ it to a detector; it cannot redefine the profile semantics.
 ### 4.6 Functional safety
 
 `calibration.functional_safety` owns the sampling period, host-memory and PSI
-qualification/recovery margins, WAN outage qualification/recovery, source
-freshness, the remote-battery threshold, and detector-test interval and state
-store. These are packaged policy values. The installation binds host memory,
-update, and remote battery entities in `installation.functional_safety` and
+qualification/recovery margins, CPU, disk and temperature policy, WAN outage
+qualification/recovery, source freshness, backup age, the remote-battery
+threshold, and detector/operational-test intervals and state stores. These are
+packaged policy values. The installation binds host memory, disk, temperature,
+backup, update, and remote battery entities in `installation.functional_safety` and
 reuses `notification.wan_entity` for WAN evidence. Missing bindings do not
 create a positive healthy observation.
 The memory thresholds are packaged defaults, not a guarantee that
@@ -144,13 +145,26 @@ capacity and workload before an installation relies on L2 memory detection.
 | `memory_qualification_seconds` / `memory_recovery_seconds` | 120 / 120 s | Sustained L2 assertion and distinct recovery duration. |
 | `cpu_high_percent` / `cpu_recovery_percent` | 90% / 70% | L4 host CPU qualification and recovery margins. |
 | `cpu_qualification_seconds` / `cpu_recovery_seconds` | 300 / 120 s | Sustained high CPU load and distinct recovery duration. |
+| `disk_low_free_mib` / `disk_recovery_free_mib` | 1024 / 2048 MiB | L4 low host-disk-space threshold and positive recovery margin. |
+| `host_temperature_high_c` / `host_temperature_recovery_c` | 80 / 70 °C | L4 host-temperature threshold and distinct recovery margin. |
+| `resource_qualification_seconds` / `resource_recovery_seconds` | 120 / 120 s | Sustained disk/thermal qualification and recovery. |
+| `backup_max_age_hours` | 48 h | Maximum age of a valid last-success backup timestamp before L4 overdue maintenance. |
+| `backup_stale_after_seconds` | 86400 s | Maximum observation age for an optional backup-failure source; not a substitute for backup-success age. |
 | `wan_qualification_seconds` / `wan_recovery_seconds` | 60 / 60 s | Sustained L3 WAN fault and recovery. |
 | `battery_low_percent` | 15% | L4 maintenance threshold per configured remote device. |
 | `detector_test_interval_days` | 180 days | L4 due/failed maintenance condition per configured detector. |
+| `notification_test_interval_days` | 30 days | Due date after an operator-attested notification-receipt pass. |
+| `backup_restore_test_interval_days` | 180 days | Due date after an operator-attested restore pass on a separate installation, when enabled. |
 | `resource_stale_after_seconds` / `wan_stale_after_seconds` | 180 / 180 s | Maximum age for accepted host and WAN evidence. |
 | `update_stale_after_seconds` / `battery_stale_after_seconds` | 86400 / 86400 s | Maximum age for accepted update and battery evidence. |
 | `detector_test_state_file` | `/config/appdaemon/detector_tests.json` | Durable operator-reported test results. |
+| `periodic_test_state_file` | `/config/appdaemon/periodic_tests.json` | Durable operational-test attestations, separate from detector records and editable configuration. |
 | `memory_fault_level` / `wan_fault_level` / `cpu_fault_level` / `maintenance_fault_level` | L2 / L3 / L4 / L4 | Fixed reviewed severities for host memory, WAN, CPU, and maintenance. |
+
+Disk and temperature baselines require review against the actual host and normal
+workload; they are maintenance limits, not hardware shutdown protection. Backup
+creation and a successful separate-installation restore are different evidence.
+Operational-test records never trigger a notification or backup operation.
 
 ## 5. Runtime configuration
 

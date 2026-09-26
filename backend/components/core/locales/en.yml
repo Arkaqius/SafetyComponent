@@ -4,6 +4,17 @@ entity.entity_monitor_summary: Monitored entities
 entity.notification_delivery_health: Notification delivery health
 entity.safety_evaluation_progress: Safety evaluation progress
 entity.safety_detector_tests: Safety detector tests
+entity.safety_periodic_tests: Safety periodic checks
+test.notification_delivery: Verified warning delivery
+test.backup_restore: Verified backup restoration
+fault.periodic_test_due: 'Periodic check needs attention: {test}'
+fault.host_disk_low: Low host disk space
+fault.host_temperature_high: High host temperature
+fault.backup_needs_attention: Backup needs attention
+state.periodic_tests.current: Checks current
+state.periodic_tests.attention: Checks need attention
+state.periodic_tests.unknown: Check history unavailable
+state.periodic_tests.not_configured: No checks configured
 entity.functional_safety_sources: Functional safety sources
 entity.recovery_window: 'Window recovery: {location}'
 entity.temperature_low_threshold: 'Low temperature limit: {location}'

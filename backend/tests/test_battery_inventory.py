@@ -104,5 +104,5 @@ def test_exclusion_disabled_and_failed_discovery_do_not_create_faults(options, s
     monitor, bus, mqtt, _ = make_discovered_monitor(**options)
     monitor.evaluate()
     assert not bus.events
-    assert not monitor.get_fault_definitions()
+    assert not any(fault.startswith("RemoteBatteryLow") for fault in monitor.get_fault_definitions())
     assert mqtt.states[-1][2]["battery_discovery"]["status"] == status

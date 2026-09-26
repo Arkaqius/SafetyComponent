@@ -166,7 +166,7 @@ configuration has no MQTT section or retired-discovery cleanup list.
 | `openings` | No | Stable physical opening registry used by room, Safety Doors, and External Hazard bindings. |
 | `detectors` | No | Internal environmental detector registry. |
 | `monitored_entities` | No | Explicit installation-owned Entity Monitor dependencies. |
-| `functional_safety` | No | Installation-owned host-memory/PSI, CPU, and update bindings, automatic battery-monitoring selection, and optional manual battery bindings. |
+| `functional_safety` | No | Installation-owned host-memory/PSI, CPU, free-disk-space, host-temperature, backup, and update bindings, operational-test selection, automatic battery-monitoring selection, and optional manual battery bindings. |
 
 Keys in `rooms`, `openings`, `detectors`, and `monitored_entities` use
 `^[A-Z][A-Za-z0-9]*$`. They are technical identities, not translated names.
@@ -193,6 +193,32 @@ unsaved draft. Saving and restarting the App applies the selection and refreshes
 the backend inventory; refreshing the editor alone does not change the running
 monitor. New devices therefore enter monitoring after an App restart. Thresholds
 and source freshness remain packaged system policy, not editable device fields.
+
+Additional bindings under `installation.functional_safety`:
+
+| Field | Default | Contract |
+| --- | --- | --- |
+| `host_disk_free_entity` | `null` | Host free-disk-space `sensor.*`; accepted storage units and freshness are validated at runtime. |
+| `host_temperature_entity` | `null` | Host-temperature `sensor.*`; accepted temperature units and freshness are validated at runtime. |
+| `backup` | `null` | Optional backup-monitoring object. Its `last_success_entity` is a `sensor.*` timestamp of the last successful backup; `failure_entity` is an optional `binary_sensor.*` problem source. |
+| `periodic_tests.notification_delivery` | `true` | Enables reminders and operator-attested actual notification-receipt results. It does not send a test notification. |
+| `periodic_tests.backup_restore` | `false` | Enables optional operator-attested restore tests on a separate installation. It does not restore HA. |
+
+Saving and restarting the App applies these bindings and selections. The editor
+does not expose disk/thermal limits, backup maximum age, or test intervals as
+user overrides; they are packaged calibration. A timestamp older than the backup
+maximum age is overdue, while invalid or future evidence is unknown. A backup
+created successfully is not evidence of a successful restore.
+
+Operational test outcomes are runtime records, not source configuration.
+Authenticated `safety_periodic_test_result` events carry `test_key`
+(`notification_delivery` or `backup_restore`) and `outcome` (`passed` or
+`failed`). The backend stamps an operator attestation and persists it separately
+from `user_config.yml`. `sensor.safety_periodic_tests` exposes each enabled
+test's key, `status` (`current`, `due`, `overdue`, `failed`, or `unknown`),
+`last_test_at`, `due_at`, `last_result`, `source`, and `interval_days`.
+`sensor.functional_safety_sources` retains separate disk, host-temperature, and
+backup diagnostics. Result submission changes no backup or notification route.
 
 ### 3.3 Component settings
 

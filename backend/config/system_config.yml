@@ -109,6 +109,17 @@ calibration:
     wan_fault_level: 3
     maintenance_fault_level: 4
     cpu_fault_level: 4
+    disk_low_free_mib: 1024
+    disk_recovery_free_mib: 2048
+    host_temperature_high_c: 80
+    host_temperature_recovery_c: 70
+    resource_qualification_seconds: 120
+    resource_recovery_seconds: 120
+    backup_max_age_hours: 48
+    backup_stale_after_seconds: 86400
+    notification_test_interval_days: 30
+    backup_restore_test_interval_days: 180
+    periodic_test_state_file: /config/appdaemon/periodic_tests.json
 
 runtime_cfg:
   faults:

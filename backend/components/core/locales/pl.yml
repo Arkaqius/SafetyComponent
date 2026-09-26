@@ -4,6 +4,17 @@ entity.entity_monitor_summary: Monitorowane encje
 entity.notification_delivery_health: Stan dostarczania powiadomień
 entity.safety_evaluation_progress: Postęp oceny bezpieczeństwa
 entity.safety_detector_tests: Testy czujników bezpieczeństwa
+entity.safety_periodic_tests: Okresowe przeglądy bezpieczeństwa
+test.notification_delivery: Potwierdzone dostarczenie ostrzeżenia
+test.backup_restore: Potwierdzone odtworzenie kopii zapasowej
+fault.periodic_test_due: 'Przegląd okresowy wymaga uwagi: {test}'
+fault.host_disk_low: Mało wolnego miejsca na dysku hosta
+fault.host_temperature_high: Wysoka temperatura hosta
+fault.backup_needs_attention: Kopia zapasowa wymaga uwagi
+state.periodic_tests.current: Przeglądy aktualne
+state.periodic_tests.attention: Przeglądy wymagają uwagi
+state.periodic_tests.unknown: Historia przeglądów niedostępna
+state.periodic_tests.not_configured: Brak skonfigurowanych przeglądów
 entity.functional_safety_sources: Źródła diagnostyczne bezpieczeństwa
 entity.recovery_window: 'Działanie naprawcze: okna — {location}'
 entity.temperature_low_threshold: Dolny próg temperatury — {location}

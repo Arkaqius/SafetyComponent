@@ -77,7 +77,7 @@ budżecie wykrycia.
 | Język | Wybierz polski, angielski lub niemiecki. Nazw encji nie edytuje się w tym formularzu — pochodzą z plików lokalizacji. |
 | Powiadomienia | Wpisz konkretne usługi `notify/<nazwa>`, po jednej w wierszu. `notify/notify` jest niejednoznaczne. Adres po kliknięciu powinien być ścieżką w HA, np. `/`. Encja WAN i lokalne urządzenia sygnalizacji są opcjonalne. |
 | Instalacja Home Assistant | Wybierz strefę czasową z listy, podaj dwuliterowy kod kraju, kody powiatów TERYT i — gdy komponent temperatury jest włączony — czujnik temperatury zewnętrznej. Współrzędne są pobierane z HA przy każdym starcie, nie wpisuje się ich w formularzu. |
-| Zdrowie systemu i konserwacja | Opcjonalnie wskaż parę czujników pamięci hosta: dostępną pamięć oraz PSI w procentach, a także czujnik obciążenia CPU hosta. Dla aktualizacji wybierz encje `update.*` osobno dla Core, OS, Supervisora i aplikacji. Urządzenia z encjami baterii są pobierane automatycznie z HA; wybierz przełącznikiem, które monitorować. Czujniki hosta w integracji System Monitor mogą wymagać ręcznego włączenia. Progi i harmonogram testów są systemowe. Brak źródła oznacza brak pokrycia, nie stan prawidłowy. |
+| Zdrowie systemu i konserwacja | Opcjonalnie wskaż parę czujników pamięci hosta: dostępną pamięć oraz PSI w procentach, a także CPU, wolne miejsce na dysku i temperaturę hosta. Wybierz źródło ostatniej udanej kopii i opcjonalną encję błędu kopii. Dla aktualizacji wybierz encje `update.*` osobno dla Core, OS, Supervisora i aplikacji. Urządzenia z encjami baterii są pobierane automatycznie z HA; wybierz przełącznikiem, które monitorować. Wybierz przypomnienia o potwierdzanych testach powiadomień i opcjonalnie odtworzenia kopii. Czujniki hosta w integracji System Monitor mogą wymagać ręcznego włączenia. Progi i harmonogramy są systemowe. Brak źródła oznacza brak pokrycia, nie stan prawidłowy. |
 | Ustawienia komponentów | Opcjonalnie zmień progi temperatury, czas drzwi/bram, czasy monitoringu lub progi pogody i jakości powietrza. Puste pole oznacza wartość systemową pokazaną pod polem. Lista domyślnych zagrożeń i horyzont prognozy pozostają w konfiguracji systemowej. |
 | Pomieszczenia | Dodaj wpis dla każdego monitorowanego pomieszczenia. Wskaż obszar HA i czujnik temperatury. Opcjonalnie wybierz otwór z sekcji „Drzwi, bramy i okna”, osłonę `cover.*` i indywidualne progi. |
 | Drzwi, bramy i okna | Każdy fizyczny otwór dodaj raz: obszar, encja czujnika, przyjazna nazwa i rodzaj. W razie potrzeby dodaj znane formularzowi role „Monitoring drzwi i bram” albo „Zagrożenia zewnętrzne” i wypełnij ich pola. Obecność roli włącza dany sposób monitorowania. |
@@ -94,6 +94,57 @@ urządzenia jest informacją konserwacyjną, nie dowodem awarii jego czujnika.
 Na stronie **Zdrowie funkcji bezpieczeństwa** zapis wyniku testu detektora
 oznacza wyłącznie potwierdzenie wykonanego ręcznie testu; przycisk nie uruchamia
 czujnika i nie kasuje alarmu.
+
+### Dysk, temperatura hosta i kopie zapasowe
+
+1. W sekcji **Zdrowie systemu i konserwacja** wybierz encję wolnego miejsca
+   na dysku i encję temperatury **hosta Home Assistant**. Nie wybieraj
+   temperatury pokoju ani pamięci lub dysku przypadkowego kontenera.
+2. Dla kopii zapasowych wybierz czujnik daty **ostatniej udanej kopii**.
+   Ostatnia próba nie wystarcza: mogła zakończyć się błędem. Opcjonalnie wybierz
+   binarną encję problemu kopii, w której `on` oznacza błąd.
+3. Zapisz konfigurację i uruchom ponownie aplikację. Na stronie
+   **Zdrowie funkcji bezpieczeństwa** sprawdź odczyty, jakość i stan źródeł.
+
+Zbyt mało miejsca lub zbyt wysoka temperatura musi utrzymać się przez czas
+kwalifikacji; pojedynczy skok nie daje ostrzeżenia. To przypomnienia L4,
+nie dowód, że host już przestał wykonywać funkcje bezpieczeństwa.
+Domyślne progi to 1024 MiB wolnego miejsca i 80 °C; powrót wymaga odpowiednio
+2048 MiB i 70 °C, z osobnym czasem potwierdzenia. Są ustawieniami systemowymi,
+nie uniwersalnymi granicami bezpieczeństwa sprzętu.
+
+Domyślnie kopia starsza niż 48 godzin wymaga uwagi. Nieprawidłowa lub przyszła
+data oraz niedostępne źródło dają stan nieznany, nie potwierdzenie dobrej kopii.
+Sukces utworzenia kopii **nie dowodzi**, że uda się ją odtworzyć. Monitoring
+nie tworzy ani nie odtwarza kopii automatycznie.
+
+### Potwierdzane testy powiadomień i odtworzenia kopii
+
+W konfiguracji możesz włączyć przypomnienia o testach. Test odbioru
+powiadomień jest domyślnie włączony, a test odtworzenia kopii — wyłączony.
+Zmiana wyboru wymaga zapisu i restartu. Interwały są systemowe: domyślnie
+30 dni dla powiadomień i 180 dni dla odtworzenia kopii.
+
+Na stronie **Zdrowie funkcji bezpieczeństwa** odszukaj test i zapisz wynik
+dopiero po jego rzeczywistym wykonaniu:
+
+- **Powiadomienia:** potwierdź, że wiadomość rzeczywiście dotarła do
+  zamierzonego odbiorcy. Samo przyjęcie przez HA lub brak błędu wysyłania
+  nie wystarcza. Zapis wyniku nie wysyła wiadomości testowej.
+- **Odtworzenie kopii:** wykonaj i sprawdź odtworzenie na **osobnej instalacji
+  testowej**. Nie odtwarzaj działającego domowego HA dla samego przypomnienia.
+  Przycisk zapisuje Twoje potwierdzenie; nie uruchamia odtworzenia.
+
+Wybierz wynik pozytywny tylko po sprawdzeniu rezultatu; w przeciwnym razie
+zapisz niepowodzenie. Brak wyniku oznacza test do wykonania, termin po
+pozytywnym wyniku może stać się zaległy, a błąd odczytu historii jest stanem
+nieznanym. Termin i zapisany wynik przetrwają restart. Zaległy, niewykonany
+lub nieudany test daje przypomnienie L4 i nie zmienia stanu alarmów.
+Panel nie uruchamia syren, urządzeń wykonawczych ani domowych automatyzacji.
+
+Diagnostyka detektorów (sabotaż, błąd własny, koniec żywotności) i serwis kotła
+nie należą do tej sekcji. Dotychczasowe baterie i testy detektorów pozostają
+bez zmian.
 
 ### Automatyczne monitorowanie baterii
 

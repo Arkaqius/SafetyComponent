@@ -134,6 +134,8 @@ export default function Configuration() {
   const functionalSafety = asMap(installation.functional_safety);
   const batteryMonitoring = asMap(functionalSafety.battery_monitoring);
   const hostMemory = asMap(functionalSafety.host_memory);
+  const backup = asMap(functionalSafety.backup);
+  const periodicTests = asMap(functionalSafety.periodic_tests);
   const updates = asMap(functionalSafety.updates);
   const functionalSafetySystem = asMap(systemDefaults.functional_safety);
   const detectorSchema = detectorProfiles.length
@@ -387,6 +389,72 @@ export default function Configuration() {
           {String(functionalSafetySystem.cpu_qualification_seconds ?? '—')} s (L4).
         </p>
         <fieldset className='configuration-fieldset'>
+          <legend>Dysk, temperatura i kopie zapasowe</legend>
+          <div className='configuration-grid'>
+            <TextField
+              label='Wolne miejsce na dysku hosta'
+              help='Opcjonalna encja sensor.* dla dysku Home Assistant, w MiB, GiB lub bajtach. Nie podawaj procentu zajętości.'
+              value={stringValue(functionalSafety.host_disk_free_entity)}
+              onChange={value => update(['installation', 'functional_safety', 'host_disk_free_entity'], value || null)}
+            />
+            <TextField
+              label='Temperatura hosta (°C)'
+              help='Opcjonalna encja sensor.* temperatury procesora lub hosta Home Assistant; nie temperatura pomieszczenia.'
+              value={stringValue(functionalSafety.host_temperature_entity)}
+              onChange={value => update(['installation', 'functional_safety', 'host_temperature_entity'], value || null)}
+            />
+            <TextField
+              label='Ostatnia udana kopia zapasowa'
+              help='Encja sensor.* z datą i czasem ostatniej udanej kopii (nie ostatniej próby). Wypełnienie włącza monitoring backupu.'
+              value={stringValue(backup.last_success_entity)}
+              onChange={value =>
+                update(['installation', 'functional_safety', 'backup'], value ? { ...backup, last_success_entity: value } : null)
+              }
+            />
+            <TextField
+              label='Błąd kopii zapasowej (opcjonalnie)'
+              help='Encja binary_sensor.*: on oznacza błąd. Najpierw podaj encję ostatniej udanej kopii.'
+              value={stringValue(backup.failure_entity)}
+              disabled={!backup.last_success_entity}
+              onChange={value => update(['installation', 'functional_safety', 'backup', 'failure_entity'], value || null)}
+            />
+          </div>
+          <p>
+            Progi systemowe: dysk ≤ {String(functionalSafetySystem.disk_low_free_mib ?? 1024)} MiB, powrót ≥{' '}
+            {String(functionalSafetySystem.disk_recovery_free_mib ?? 2048)} MiB; temperatura ≥{' '}
+            {String(functionalSafetySystem.host_temperature_high_c ?? 80)}°C, powrót ≤{' '}
+            {String(functionalSafetySystem.host_temperature_recovery_c ?? 70)}°C; maksymalny wiek kopii{' '}
+            {String(functionalSafetySystem.backup_max_age_hours ?? 48)} h. Progi dostarczane są z aplikacją.
+          </p>
+          {functionalSafety.backup ? (
+            <button
+              className='secondary-button'
+              type='button'
+              onClick={() => update(['installation', 'functional_safety', 'backup'], null)}
+            >
+              Wyłącz monitoring kopii zapasowych
+            </button>
+          ) : null}
+        </fieldset>
+        <fieldset className='configuration-fieldset'>
+          <legend>Testy okresowe potwierdzane przez operatora</legend>
+          <ToggleField
+            label='Przypominaj o sprawdzeniu dostarczenia powiadomień'
+            checked={periodicTests.notification_delivery !== false}
+            onChange={value => update(['installation', 'functional_safety', 'periodic_tests', 'notification_delivery'], value)}
+          />
+          <ToggleField
+            label='Przypominaj o odtworzeniu backupu na osobnym systemie testowym'
+            checked={periodicTests.backup_restore === true}
+            onChange={value => update(['installation', 'functional_safety', 'periodic_tests', 'backup_restore'], value)}
+          />
+          <p>
+            Interwały systemowe: powiadomienia {String(functionalSafetySystem.notification_test_interval_days ?? 30)} dni, odtworzenie kopii{' '}
+            {String(functionalSafetySystem.backup_restore_test_interval_days ?? 180)} dni. Wynik rzeczywiście wykonanego testu zapiszesz w
+            widoku Zdrowie funkcji. Te ustawienia nie wysyłają wiadomości, nie uruchamiają syren i nie odtwarzają backupu.
+          </p>
+        </fieldset>
+        <fieldset className='configuration-fieldset'>
           <legend>Aktualizacje</legend>
           <div className='configuration-grid'>
             {(
@@ -584,17 +652,19 @@ function TextField({
   onChange,
   help,
   defaultValue,
+  disabled = false,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   help?: string;
   defaultValue?: string;
+  disabled?: boolean;
 }) {
   return (
     <label className='configuration-field'>
       <span title={help}>{label}</span>
-      <input onChange={event => onChange(event.target.value)} value={value} />
+      <input disabled={disabled} onChange={event => onChange(event.target.value)} value={value} />
       <FieldHelp help={help} defaultValue={defaultValue} />
     </label>
   );

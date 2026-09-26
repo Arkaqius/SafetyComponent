@@ -48,6 +48,7 @@ from components.app_config_validator.app_cfg_validator import (
 from components.core.common_entities import CommonEntities
 from components.core.event_bus import EventBus
 from components.core.detector_test_monitor import DetectorTestMonitor
+from components.core.periodic_test_monitor import PeriodicTestMonitor
 from components.core.evaluation_progress import EvaluationProgress
 from components.core.functional_safety_monitor import FunctionalSafetyMonitor
 from components.external_apis.home_assistant_state import HomeAssistantStateProvider
@@ -206,6 +207,7 @@ class SafetyFunctions(hass.Hass):
         )
         self.functional_safety_monitor = None
         self.detector_test_monitor = None
+        self.periodic_test_monitor = None
         if functional_policy:
             detector_cfg = self.safety_components_cfg.get(
                 "InternalEnvironmentalHazardMonitorComponent", {}
@@ -337,6 +339,14 @@ class SafetyFunctions(hass.Hass):
 
         if self.functional_safety_monitor is not None:
             self.functional_safety_monitor.start()
+            self.periodic_test_monitor = PeriodicTestMonitor(
+                self, self.mqtt_entities,
+                self.runtime_config["user_config"].get("functional_safety", {}).get("periodic_tests", {"notification_delivery": True}),
+                intervals={"notification_delivery": functional_policy["notification_test_interval_days"], "backup_restore": functional_policy["backup_restore_test_interval_days"]},
+                state_store=JsonNotificationStateStore(functional_policy["periodic_test_state_file"]),
+                status_observer=self.functional_safety_monitor.observe_periodic_test,
+            )
+            self.periodic_test_monitor.start()
             detector_cfg = self.safety_components_cfg.get(
                 "InternalEnvironmentalHazardMonitorComponent", {}
             )
@@ -577,6 +587,9 @@ class SafetyFunctions(hass.Hass):
     def terminate(self) -> None:
         """Publish offline availability during a clean AppDaemon shutdown."""
         detector_monitor = getattr(self, "detector_test_monitor", None)
+        periodic_monitor = getattr(self, "periodic_test_monitor", None)
+        if periodic_monitor is not None:
+            periodic_monitor.stop()
         if detector_monitor is not None:
             detector_monitor.stop()
         external_runtime = getattr(self, "external_api_runtime", None)

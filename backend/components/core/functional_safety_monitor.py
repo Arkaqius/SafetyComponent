@@ -8,6 +8,7 @@ from time import monotonic
 from typing import Any, Mapping
 
 from components.core.memory_pressure import MemoryPressureRule
+from components.core.maintenance_evidence import ResourceRule, aware_time
 from components.core.types_common import FaultState, SMState, Symptom
 from components.external_apis.battery_inventory import battery_entities, resolve_batteries
 from components.external_apis.home_assistant_state import HomeAssistantStateProvider
@@ -73,6 +74,13 @@ class FunctionalSafetyMonitor:
         self._cpu_high_since: float | None = None
         self._cpu_recovery_since: float | None = None
         self._cpu_fault_active = False
+        self._resources: dict[str, ResourceRule] = {}
+        for key, low, threshold, recovery in (
+            ("disk", True, "disk_low_free_mib", "disk_recovery_free_mib"),
+            ("host_temperature", False, "host_temperature_high_c", "host_temperature_recovery_c"),
+        ):
+            if threshold in policy:
+                self._resources[key] = ResourceRule(float(policy[threshold]), float(policy[recovery]), float(policy["resource_qualification_seconds"]), float(policy["resource_recovery_seconds"]), low=low)
         self._memory = MemoryPressureRule(
             low_available_mib=float(policy["memory_low_available_mib"]),
             recovery_available_mib=float(policy["memory_recovery_available_mib"]),
@@ -96,6 +104,13 @@ class FunctionalSafetyMonitor:
             fault_sources.append(("HostCpuPressure", int(self.policy["cpu_fault_level"]), label("fault.host_cpu_pressure")))
         if self.wan_entity:
             fault_sources.append(("WanUnavailable", int(self.policy["wan_fault_level"]), label("fault.wan_unavailable")))
+        for field, fault, key in (("host_disk_free_entity", "HostDiskLow", "fault.host_disk_low"), ("host_temperature_entity", "HostTemperatureHigh", "fault.host_temperature_high"), ("backup", "BackupNeedsAttention", "fault.backup_needs_attention")):
+            if self.bindings.get(field):
+                fault_sources.append((fault, int(self.policy["maintenance_fault_level"]), label(key)))
+        periodic = self.bindings.get("periodic_tests", {"notification_delivery": True})
+        for test_key, enabled in periodic.items():
+            if enabled:
+                fault_sources.append((f"PeriodicTestDue{self._pascal(test_key)}", int(self.policy["maintenance_fault_level"]), label("fault.periodic_test_due", test=label(f"test.{test_key}"))))
         for product, entity in self.bindings.get("updates", {}).items():
             if entity:
                 fault_sources.append((f"UpdateAvailable{self._pascal(product)}", int(self.policy["maintenance_fault_level"]), label("fault.update_available", product=UPDATE_PRODUCT_NAMES[product])))
@@ -198,6 +213,8 @@ class FunctionalSafetyMonitor:
             entities = set(self.bindings.get("updates", {}).values())
             entities.update(self.bindings.get("host_memory", {}).values())
             entities.update([self.wan_entity, self.bindings.get("host_cpu_entity")])
+            entities.update([self.bindings.get("host_disk_free_entity"), self.bindings.get("host_temperature_entity")])
+            entities.update(self.bindings.get("backup", {}).values())
             for binding in self.bindings.get("remote_batteries", {}).values():
                 if binding.get("enabled", True):
                     entities.update(battery_entities(binding, "percentage") + battery_entities(binding, "low"))
@@ -221,6 +238,9 @@ class FunctionalSafetyMonitor:
             diagnostics["memory"] = {"status": "unknown", "reason": "not_configured"}
 
         diagnostics["cpu"] = self._evaluate_cpu()
+        diagnostics["disk"] = self._evaluate_resource("disk", "host_disk_free_entity", "HostDiskLow", "free_mib", {"MiB": 1, "GiB": 1024, "MB": 0.953674, "GB": 953.674, "B": 1 / 1048576}, "disk")
+        diagnostics["host_temperature"] = self._evaluate_resource("host_temperature", "host_temperature_entity", "HostTemperatureHigh", "temperature_c", {"°C": 1}, "temperature")
+        diagnostics["backup"] = self._evaluate_backup()
 
         diagnostics["wan"] = self._evaluate_wan()
         diagnostics["updates"] = self._evaluate_updates()
@@ -234,7 +254,8 @@ class FunctionalSafetyMonitor:
         statuses += [item["status"] for item in diagnostics["updates"].values()]
         statuses += [item["status"] for item in diagnostics["remote_batteries"].values()]
         statuses.append(diagnostics["battery_discovery"]["status"])
-        overall = "attention" if any(status in {"active", "high", "low", "available", "offline"} for status in statuses) else "unknown" if "unknown" in statuses else "observed"
+        statuses.extend(diagnostics[key]["status"] for key in ("disk", "host_temperature", "backup"))
+        overall = "attention" if any(status in {"active", "high", "low", "available", "offline", "overdue", "failed"} for status in statuses) else "unknown" if "unknown" in statuses else "observed"
         self.mqtt_entities.publish_sensor_state(
             self.summary_entity,
             overall,
@@ -280,6 +301,50 @@ class FunctionalSafetyMonitor:
             self._cpu_recovery_since = None
         status = "high" if self._cpu_fault_active else "qualifying" if self._cpu_high_since is not None else "normal"
         return {"status": status, "percent": percent, "source_entity": entity, "scope": "installation_declared_host"}
+
+    def observe_periodic_test(self, test_key: str, status: str) -> None:
+        """Translate attestations into informational maintenance faults."""
+        if status in {"due", "overdue", "failed", "current"}:
+            self._emit(f"PeriodicTestDue{self._pascal(test_key)}", status != "current")
+
+    def _evaluate_resource(self, key: str, field: str, fault: str, reading: str, units: Mapping[str, float], device_class: str) -> dict[str, Any]:
+        entity = self.bindings.get(field)
+        if not entity:
+            return {"status": "unknown", "reason": "not_configured"}
+        value, reason = self._number(entity, units, device_class)
+        rule = self._resources[key]
+        status = rule.observe(value)
+        if value is not None:
+            self._emit(fault, rule.active)
+        return {"status": status, reading: value, "source_entity": entity, "reason": reason}
+
+    def _evaluate_backup(self) -> dict[str, Any]:
+        binding = self.bindings.get("backup")
+        if not binding:
+            return {"status": "unknown", "reason": "not_configured", "source_entities": []}
+        entity = binding["last_success_entity"]
+        snapshot = self._snapshot(entity)
+        attrs = snapshot.get("attributes") or {}
+        completed = aware_time(snapshot.get("state")) if isinstance(attrs, dict) and attrs.get("device_class") == "timestamp" else None
+        age = (datetime.now(timezone.utc) - completed).total_seconds() / 3600 if completed else None
+        status = "unknown" if age is None else "overdue" if age > self.policy["backup_max_age_hours"] else "current"
+        reason = "invalid_timestamp" if age is None else None
+        # This state represents the time of a completed backup, not a periodic
+        # numeric sample. The authoritative poll and event age establish its
+        # meaning; last_reported may legitimately precede the next backup job.
+        failure = binding.get("failure_entity")
+        if failure:
+            problem = self._snapshot(failure)
+            state = problem.get("state")
+            problem_attrs = problem.get("attributes") or {}
+            valid = isinstance(problem_attrs, dict) and problem_attrs.get("device_class") == "problem" and state in {"on", "off"} and self._fresh(problem, "last_reported", "backup_stale_after_seconds", fallback="last_updated")
+            if valid and state == "on":
+                status, reason = "failed", "backup_failure"
+            elif not valid and status != "overdue":
+                status, reason = "unknown", "failure_source_unavailable"
+        if status != "unknown":
+            self._emit("BackupNeedsAttention", status in {"overdue", "failed"})
+        return {"status": status, "last_success_at": completed.isoformat() if completed else None, "age_hours": age, "source_entities": [value for value in binding.values() if value], "reason": reason}
 
     def _evaluate_wan(self) -> dict[str, Any]:
         if not self.wan_entity:
@@ -388,7 +453,7 @@ class FunctionalSafetyMonitor:
     def _number(self, entity: str, units: Mapping[str, float], device_class: str) -> tuple[float | None, str | None]:
         snapshot = self._snapshot(entity)
         attrs = snapshot.get("attributes", {})
-        allowed_classes = {"memory": {None, "data_size"}, "psi": {None}, "cpu": {None}, "battery": {"battery"}}
+        allowed_classes = {"memory": {None, "data_size"}, "disk": {None, "data_size"}, "temperature": {"temperature"}, "psi": {None}, "cpu": {None}, "battery": {"battery"}}
         if not isinstance(attrs, dict) or attrs.get("device_class") not in allowed_classes[device_class]:
             return None, "wrong_device_class"
         factor = units.get(str(attrs.get("unit_of_measurement", "")))
@@ -403,7 +468,8 @@ class FunctionalSafetyMonitor:
         freshness_key = "battery_stale_after_seconds" if device_class == "battery" else "resource_stale_after_seconds"
         if not self._fresh(snapshot, "last_reported", freshness_key, fallback="last_updated"):
             return None, "stale"
-        return value * factor, None
+        converted = value * factor
+        return (converted, None) if isfinite(converted) else (None, "invalid_value")
 
     def _fresh(self, snapshot: Mapping[str, Any], field: str, policy_key: str, *, fallback: str | None = None) -> bool:
         timestamp = snapshot.get(field) or (snapshot.get(fallback) if fallback else None)

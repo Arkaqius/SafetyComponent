@@ -28,6 +28,8 @@ central component that owns every diagnostic decision:
 | SafetyFunctions self-diagnostics | Each Safety Component plus an aggregate application view | Configuration validity, component initialization, last completed evaluation, expected deadline, result, and missed deadline count per enabled component. Event-driven components also declare their input-health supervision contract; an idle period is not itself a missed evaluation. The aggregate cannot mark all components healthy from one heartbeat. |
 | Platform and add-on updates | Home Assistant Supervisor, with an optional SafetyFunctions consumer | Update availability, installed and offered versions, advisory severity, information freshness, and excessive update age. Installation and restart remain outside monitoring logic. |
 | Notification and recovery paths | `NotificationManager` and `RecoveryManager`, aggregated by C-FSM | Home Assistant service acceptance, per-target attempts, retries, queue health, observable channel errors, actuator command, and owning component's postcondition evidence. Acceptance is neither physical-phone delivery nor achieved actuator effect. |
+| Backup maintenance | C-FSM using Home Assistant Backup evidence | Age of the last successful backup and an optional current failure source; a successful backup does not prove that it can be restored. |
+| Periodic operational tests | An authenticated operator with durable maintenance records | Explicit outcomes of notification-receipt tests and optional backup-restore tests on a separate installation; recording an outcome executes neither a test nor a restore. |
 
 These monitors may use a common diagnostic state model and evidence format, but
 each channel retains its own lifecycle, calibration, and fault ownership. A
@@ -81,6 +83,8 @@ belong to system configuration.
 | Sustained CPU, disk, swap, or thermal pressure | Possible precursor to missed deadlines | Diagnose the resource and correlate with evaluation lateness; isolated peaks are not faults. Severity and qualification are system policy. |
 | Internet/WAN loss | Cloud-dependent providers and mobile delivery may be impaired while local protection remains possible | Level 3 network fault; report the network state separately from local Home Assistant health and apply Local-Only mode/notification policy. A single failed public probe does not prove all Internet connectivity is lost. |
 | Update available for Home Assistant or the SafetyComponent App | Maintenance information, not evidence that the running version is malfunctioning | Level 4 informational condition per product; track installed/offered versions and age, and never install or restart automatically from this monitor. |
+| Sustained low free disk space or high host temperature | Maintenance precursor, not proof of a missed safety decision | Level 4 after independent qualification; fresh recovery samples and separate recovery margins are required. |
+| Backup too old, confirmed backup failure, or due/failed periodic operational test | Maintenance evidence is insufficient or requires attention | Level 4; backup creation, restore, notification receipt, and safety-function coverage remain distinct. |
 
 For memory, the level-2 rule uses **both** available memory and memory
 pressure/PSI; total-used percentage alone is not a substitute. Its exact
@@ -138,6 +142,46 @@ detector identity, outcome, and time. A quiet detector, acknowledgement of a
 reminder, or a frontend button press without a recorded outcome cannot count as
 a passed test. An overdue or failed test must not silence a live alarm.
 
+### Host storage, temperature, and backup maintenance
+
+Free-disk-space and host-temperature bindings measure the Home Assistant host,
+not an unrelated container. Disk values must use compatible storage units and
+temperature values must use compatible temperature units. Numeric plausibility,
+freshness, sustained qualification, and separate recovery margins apply before
+changing the L4 maintenance fault. Missing, stale, or wrong-unit input is unknown
+coverage and cannot positively clear an active condition.
+
+Backup monitoring reads the timestamp of the last successful Home Assistant
+backup and, optionally, a binary problem entity reporting a current backup
+failure. An old, valid success timestamp is overdue evidence, not malformed data.
+A future, invalid, unavailable, or transport-failed timestamp is unknown rather
+than evidence of a current backup. A configured failure source must provide
+fresh valid evidence; stale or unavailable failure input cannot prove success.
+The monitor never creates, deletes, downloads, or restores backups.
+
+### Periodic notification and restore tests
+
+Notification delivery tests require the operator to verify actual receipt at
+the intended destination. Home Assistant service acceptance, a queue entry, or
+a normal channel-health state cannot substitute for this confirmation. The
+editor enables notification tests by default; backup-restore tests are optional
+and disabled by default. Test intervals remain system policy.
+
+The health page records an explicit passed or failed operator attestation for
+`notification_delivery` or `backup_restore`. An untested enabled item is due;
+a recorded pass is current until its due date, then overdue; a recorded failure
+remains failed until superseded by a valid result. Unreadable durable history is
+unknown, not a new pass. Due, overdue, and failed items are L4 maintenance
+conditions. Recording a result does not send a message, activate a siren,
+operate household equipment, or restore Home Assistant.
+
+A backup restore test must use a separate test installation. Its pass means the
+operator actually verified that restore; it is not inferred from backup creation
+and does not authorize restoring the live home. Detector diagnostics such as
+tamper, internal failures, and end-of-life, and heating-system service remain
+outside this extension. Existing detector-test and battery monitoring contracts
+are unchanged.
+
 ## Source and ownership boundaries
 
 The runtime shall rely on Home Assistant's existing integrations and Supervisor
@@ -153,7 +197,9 @@ domain uncovered without disabling unrelated safety mechanisms.
 
 Installation bindings are grouped under `installation.functional_safety`:
 `host_memory.available_entity` and `host_memory.psi_entity`, optional
-`host_cpu_entity`, product-specific
+`host_cpu_entity`, `host_disk_free_entity`, `host_temperature_entity`, optional
+`backup.last_success_entity` and `backup.failure_entity`, `periodic_tests`
+selection, product-specific
 `updates` entities, a `battery_monitoring` selection policy, and an optional
 manual `remote_batteries` registry. `battery_monitoring.enabled` defaults to
 `true`; `battery_monitoring.excluded_devices` contains Home Assistant device
@@ -162,7 +208,7 @@ registry IDs and defaults to an empty list. Discovered runtime keys use
 change its exclusion or create a new maintenance identity.
 The existing `notification.wan_entity` is shared with the notification route.
 The packaged `calibration.functional_safety` owns the numeric policy and
-durable detector-test schedule. Device entries may be disabled without changing
+durable detector and operational-test schedules. Device entries may be disabled without changing
 the safety-input fault owned by their component.
 
 SafetyFunctions can observe host resource pressure while it runs, but it cannot
@@ -206,6 +252,15 @@ entities are distinguishable. No test of observation invokes installation.
   effect remain separate states. No verification scenario actuates equipment.
 - A missing, due, failed, and operator-attested detector test remain distinct;
   an active detector alarm is unaffected by test maintenance state.
+- Disk and thermal peaks remain diagnostic; sustained qualified conditions
+  assert L4, and missing or invalid observations cannot clear them.
+- An old valid backup timestamp, a future timestamp, stale failure evidence,
+  and unavailable backup transport are distinguishable. No observation creates
+  or restores a backup.
+- No record, a recorded pass, an expired pass, a failure, and unreadable
+  operational-test history remain distinct. A successful HA notification call
+  does not complete a recipient-receipt test. No test-result action sends a
+  notification, activates a siren, or restores the live installation.
 
 ## Execution and recovery allocation
 
