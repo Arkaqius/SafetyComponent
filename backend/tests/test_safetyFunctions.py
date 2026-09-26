@@ -42,6 +42,12 @@ def test_safety_functions_initialization(mocked_hass_app_with_temp_component) ->
     health_payloads = mqtt_payloads(mocked_hass, health_topic)
     assert "init" in health_payloads
     assert "running" in health_payloads
+    assert "sensor.safety_evaluation_progress" in app_instance.mqtt_entities.discovered_entities
+    progress_payload = mqtt_json_payloads(
+        mocked_hass,
+        mqtt_topic_for("sensor.safety_evaluation_progress", "attributes"),
+    )[-1]
+    assert progress_payload["components"]["TemperatureComponent"]["status"] == "observed"
     assert mqtt_payloads(mocked_hass, "safety_component/status") == [
         "offline",
         "online",

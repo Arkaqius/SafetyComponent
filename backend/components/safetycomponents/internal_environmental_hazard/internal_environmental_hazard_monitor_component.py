@@ -364,6 +364,7 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
         if "health" in kinds and self._kind_enabled(runtime.key, "health"):
             self._evaluate_health(runtime, classification, observed_at)
         self._publish_diagnostics(runtime)
+        self.record_evaluation()
 
     def _evaluate_alarm(
         self,

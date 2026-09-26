@@ -358,6 +358,7 @@ class SafetyDoorsComponent(SafetyComponent):
             return
         self._door_runtime[sm_name].timer_handle = None
         self.sm_safety_door_open_timeout(mechanism)
+        self.record_evaluation()
 
     def _schedule_timeout(
         self, mechanism: SafetyMechanism, delay_seconds: int

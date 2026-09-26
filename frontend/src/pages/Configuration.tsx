@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useConfig } from '@hakit/core';
 import ConfigurationObjectEditor from '../components/ConfigurationObjectEditor';
+import BatteryDiscovery from '../components/BatteryDiscovery';
 import { registrySchemas } from '../components/configurationFieldSchemas';
 import { importUserConfiguration, loadUserConfiguration, saveUserConfiguration, type ConfigurationMap } from '../userConfigurationApi';
 
@@ -130,6 +131,13 @@ export default function Configuration() {
   const weatherSystem = asMap(externalHazardSystem.weather);
   const airQualitySystem = asMap(externalHazardSystem.outdoor_air_quality);
   const detectorProfiles = stringList(systemDefaults.detector_profiles);
+  const functionalSafety = asMap(installation.functional_safety);
+  const batteryMonitoring = asMap(functionalSafety.battery_monitoring);
+  const hostMemory = asMap(functionalSafety.host_memory);
+  const backup = asMap(functionalSafety.backup);
+  const periodicTests = asMap(functionalSafety.periodic_tests);
+  const updates = asMap(functionalSafety.updates);
+  const functionalSafetySystem = asMap(systemDefaults.functional_safety);
   const detectorSchema = detectorProfiles.length
     ? {
         ...registrySchemas.detectors,
@@ -277,6 +285,7 @@ export default function Configuration() {
           />
           <TextField
             label='Encja łączności WAN (opcjonalnie)'
+            help='Wspólna dla powiadomień i diagnostyki WAN. Stany on/online/connected oznaczają połączenie; off/offline/disconnected — brak. Sam stan nie dowodzi, że każdy serwis w Internecie działa.'
             value={stringValue(notification.wan_entity)}
             onChange={value => update(['notification', 'wan_entity'], value || null)}
           />
@@ -328,6 +337,165 @@ export default function Configuration() {
             onChange={value => update(['installation', 'common_entities', 'outside_temp'], value)}
           />
         </div>
+      </section>
+
+      <section className='panel configuration-section'>
+        <SectionHeader
+          title='Zdrowie systemu i konserwacja'
+          description='Opcjonalne źródła dla funkcjonalnego monitoringu bezpieczeństwa. Brak encji oznacza brak pokrycia, a nie stan prawidłowy.'
+        />
+        <p>
+          Encja WAN ustawiona w sekcji Powiadomienia służy również do diagnostyki łączności. Czujniki diagnostyczne hosta trzeba najpierw
+          włączyć w Home Assistant.
+        </p>
+        <div className='configuration-grid'>
+          <TextField
+            label='Pamięć dostępna hosta'
+            help='Encja sensor.* podająca dostępną pamięć tego samego hosta co Home Assistant; wymagana razem z PSI.'
+            value={stringValue(hostMemory.available_entity)}
+            onChange={value => update(['installation', 'functional_safety', 'host_memory', 'available_entity'], value)}
+          />
+          <TextField
+            label='Presja pamięci hosta (PSI, %)'
+            help='Encja sensor.* memory PSI some, np. średnia 60 s. Obie encje muszą dotyczyć tego samego hosta.'
+            value={stringValue(hostMemory.psi_entity)}
+            onChange={value => update(['installation', 'functional_safety', 'host_memory', 'psi_entity'], value)}
+          />
+        </div>
+        <p>
+          Systemowe progi pamięci: dostępna ≤ {String(functionalSafetySystem.memory_low_available_mib ?? '—')} MiB i PSI ≥{' '}
+          {String(functionalSafetySystem.memory_high_psi_percent ?? '—')}% przez{' '}
+          {String(functionalSafetySystem.memory_qualification_seconds ?? '—')} s. Po zmianie konfiguracji uruchom aplikację ponownie.
+        </p>
+        {functionalSafety.host_memory ? (
+          <button
+            className='secondary-button'
+            onClick={() => update(['installation', 'functional_safety', 'host_memory'], null)}
+            type='button'
+          >
+            Usuń obie encje pamięci
+          </button>
+        ) : null}
+        <div className='configuration-grid'>
+          <TextField
+            label='Obciążenie CPU hosta (%)'
+            help='Opcjonalna encja sensor.* procesora hosta Home Assistant. Wysokie obciążenie jest potwierdzane przez czas z system config.'
+            value={stringValue(functionalSafety.host_cpu_entity)}
+            onChange={value => update(['installation', 'functional_safety', 'host_cpu_entity'], value || null)}
+          />
+        </div>
+        <p>
+          Systemowy próg CPU: ≥ {String(functionalSafetySystem.cpu_high_percent ?? '—')}% przez{' '}
+          {String(functionalSafetySystem.cpu_qualification_seconds ?? '—')} s (L4).
+        </p>
+        <fieldset className='configuration-fieldset'>
+          <legend>Dysk, temperatura i kopie zapasowe</legend>
+          <div className='configuration-grid'>
+            <TextField
+              label='Wolne miejsce na dysku hosta'
+              help='Opcjonalna encja sensor.* dla dysku Home Assistant, w MiB, GiB lub bajtach. Nie podawaj procentu zajętości.'
+              value={stringValue(functionalSafety.host_disk_free_entity)}
+              onChange={value => update(['installation', 'functional_safety', 'host_disk_free_entity'], value || null)}
+            />
+            <TextField
+              label='Temperatura hosta (°C)'
+              help='Opcjonalna encja sensor.* temperatury procesora lub hosta Home Assistant; nie temperatura pomieszczenia.'
+              value={stringValue(functionalSafety.host_temperature_entity)}
+              onChange={value => update(['installation', 'functional_safety', 'host_temperature_entity'], value || null)}
+            />
+            <TextField
+              label='Ostatnia udana kopia zapasowa'
+              help='Encja sensor.* z datą i czasem ostatniej udanej kopii (nie ostatniej próby). Wypełnienie włącza monitoring backupu.'
+              value={stringValue(backup.last_success_entity)}
+              onChange={value =>
+                update(['installation', 'functional_safety', 'backup'], value ? { ...backup, last_success_entity: value } : null)
+              }
+            />
+            <TextField
+              label='Błąd kopii zapasowej (opcjonalnie)'
+              help='Encja binary_sensor.*: on oznacza błąd. Najpierw podaj encję ostatniej udanej kopii.'
+              value={stringValue(backup.failure_entity)}
+              disabled={!backup.last_success_entity}
+              onChange={value => update(['installation', 'functional_safety', 'backup', 'failure_entity'], value || null)}
+            />
+          </div>
+          <p>
+            Progi systemowe: dysk ≤ {String(functionalSafetySystem.disk_low_free_mib ?? 1024)} MiB, powrót ≥{' '}
+            {String(functionalSafetySystem.disk_recovery_free_mib ?? 2048)} MiB; temperatura ≥{' '}
+            {String(functionalSafetySystem.host_temperature_high_c ?? 80)}°C, powrót ≤{' '}
+            {String(functionalSafetySystem.host_temperature_recovery_c ?? 70)}°C; maksymalny wiek kopii{' '}
+            {String(functionalSafetySystem.backup_max_age_hours ?? 48)} h. Progi dostarczane są z aplikacją.
+          </p>
+          {functionalSafety.backup ? (
+            <button
+              className='secondary-button'
+              type='button'
+              onClick={() => update(['installation', 'functional_safety', 'backup'], null)}
+            >
+              Wyłącz monitoring kopii zapasowych
+            </button>
+          ) : null}
+        </fieldset>
+        <fieldset className='configuration-fieldset'>
+          <legend>Testy okresowe potwierdzane przez operatora</legend>
+          <ToggleField
+            label='Przypominaj o sprawdzeniu dostarczenia powiadomień'
+            checked={periodicTests.notification_delivery !== false}
+            onChange={value => update(['installation', 'functional_safety', 'periodic_tests', 'notification_delivery'], value)}
+          />
+          <ToggleField
+            label='Przypominaj o odtworzeniu backupu na osobnym systemie testowym'
+            checked={periodicTests.backup_restore === true}
+            onChange={value => update(['installation', 'functional_safety', 'periodic_tests', 'backup_restore'], value)}
+          />
+          <p>
+            Interwały systemowe: powiadomienia {String(functionalSafetySystem.notification_test_interval_days ?? 30)} dni, odtworzenie kopii{' '}
+            {String(functionalSafetySystem.backup_restore_test_interval_days ?? 180)} dni. Wynik rzeczywiście wykonanego testu zapiszesz w
+            widoku Zdrowie funkcji. Te ustawienia nie wysyłają wiadomości, nie uruchamiają syren i nie odtwarzają backupu.
+          </p>
+        </fieldset>
+        <fieldset className='configuration-fieldset'>
+          <legend>Aktualizacje</legend>
+          <div className='configuration-grid'>
+            {(
+              [
+                ['home_assistant_core', 'Home Assistant Core'],
+                ['home_assistant_os', 'Home Assistant OS'],
+                ['home_assistant_supervisor', 'Home Assistant Supervisor'],
+                ['safety_component', 'SafetyComponent App'],
+              ] as const
+            ).map(([key, label]) => (
+              <TextField
+                key={key}
+                label={`Encja aktualizacji: ${label}`}
+                help='Opcjonalna encja update.*; dostępna aktualizacja ma poziom informacyjny L4.'
+                value={stringValue(updates[key])}
+                onChange={value => update(['installation', 'functional_safety', 'updates', key], value || null)}
+              />
+            ))}
+          </div>
+        </fieldset>
+        <BatteryDiscovery
+          enabled={batteryMonitoring.enabled !== false}
+          excluded={stringList(batteryMonitoring.excluded_devices)}
+          staleAfterSeconds={Number(functionalSafetySystem.battery_stale_after_seconds ?? 86400)}
+          onEnabledChange={value => update(['installation', 'functional_safety', 'battery_monitoring', 'enabled'], value)}
+          onExcludedChange={value => update(['installation', 'functional_safety', 'battery_monitoring', 'excluded_devices'], value)}
+        />
+        <details>
+          <summary>Zaawansowane: ręczne źródła baterii</summary>
+          <ConfigurationObjectEditor
+            label='Ręczne źródła baterii'
+            description='Jedno urządzenie w jednym wpisie; możesz podać czujnik procentowy, binarny lub oba. Urządzenia wyłączone pomiń albo ustaw Monitoruj urządzenie na nie.'
+            value={asMap(functionalSafety.remote_batteries)}
+            onChange={value => update(['installation', 'functional_safety', 'remote_batteries'], value)}
+            schema={registrySchemas.remote_batteries}
+          />
+        </details>
+        <p>
+          Systemowy próg niskiej baterii: {String(functionalSafetySystem.battery_low_percent ?? '—')}%. Testy detektorów są wymagane co{' '}
+          {String(functionalSafetySystem.detector_test_interval_days ?? '—')} dni.
+        </p>
       </section>
 
       <section className='panel configuration-section'>
@@ -484,17 +652,19 @@ function TextField({
   onChange,
   help,
   defaultValue,
+  disabled = false,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   help?: string;
   defaultValue?: string;
+  disabled?: boolean;
 }) {
   return (
     <label className='configuration-field'>
       <span title={help}>{label}</span>
-      <input onChange={event => onChange(event.target.value)} value={value} />
+      <input disabled={disabled} onChange={event => onChange(event.target.value)} value={value} />
       <FieldHelp help={help} defaultValue={defaultValue} />
     </label>
   );

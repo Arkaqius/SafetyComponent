@@ -100,7 +100,22 @@ class SafetyMechanism:
         allowing the callback to access the safety mechanism's properties and respond appropriately.
         """
         self.hass_app.log(f"Entity changed detected for {entity}, calling callback.")
-        self.callback(self)
+        if not self.isEnabled:
+            self.callback(self)
+            return
+        try:
+            self.callback(self)
+        except Exception:
+            owner = getattr(self.callback, "__self__", None)
+            recorder = getattr(owner, "record_evaluation", None)
+            if callable(recorder):
+                recorder(success=False)
+            raise
+        else:
+            owner = getattr(self.callback, "__self__", None)
+            recorder = getattr(owner, "record_evaluation", None)
+            if callable(recorder):
+                recorder()
 
     def extract_entities(self, kwargs: dict) -> List[str]:
         """

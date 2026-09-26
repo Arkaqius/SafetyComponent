@@ -19,6 +19,7 @@ import yaml
 from build_app_config import SYSTEM_CONFIG_PATH, compile_config, load_mapping
 from build_appdaemon_config import CORE_CONFIG_URL, fetch_core_config
 from configuration_model import validate_user_configuration_v2
+from components.external_apis.home_assistant_state import HomeAssistantStateProvider
 
 
 DEFAULT_USER_CONFIG_PATH = Path("/config/user_config.yml")
@@ -93,6 +94,7 @@ class UserConfigStore:
         entity_monitor = calibration.get("entity_monitor", {})
         external_hazard = calibration.get("external_hazard", {})
         system_defaults = {
+            "functional_safety": calibration.get("functional_safety", {}),
             "detector_profiles": sorted(
                 calibration.get("internal_environmental_hazard", {})
                 .get("profiles", {})
@@ -252,6 +254,11 @@ class UserConfigRequestHandler(BaseHTTPRequestHandler):
     server_version = "SafetyComponentConfig/1"
 
     def do_GET(self) -> None:  # noqa: N802 - stdlib handler contract
+        if self.path.rstrip("/") == "/api/batteries":
+            provider = HomeAssistantStateProvider.from_environment()
+            inventory = provider.discover_batteries() if provider else {"status": "error", "devices": []}
+            self._send_json(HTTPStatus.OK, inventory)
+            return
         if self.path.rstrip("/") != "/api/config":
             self._send_json(HTTPStatus.NOT_FOUND, {"error": "not_found"})
             return

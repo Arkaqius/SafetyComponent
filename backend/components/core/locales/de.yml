@@ -2,6 +2,20 @@ entity.safety_app_health: Status der Sicherheitsanwendung
 entity.safety_system_state: Status des Sicherheitssystems
 entity.entity_monitor_summary: Überwachte Entitäten
 entity.notification_delivery_health: Status der Benachrichtigungszustellung
+entity.safety_evaluation_progress: Fortschritt der Sicherheitsbewertung
+entity.safety_detector_tests: Tests der Sicherheitsmelder
+entity.safety_periodic_tests: Regelmäßige Sicherheitsprüfungen
+test.notification_delivery: Bestätigte Warnungszustellung
+test.backup_restore: Bestätigte Wiederherstellung der Sicherung
+fault.periodic_test_due: 'Regelmäßige Prüfung erfordert Aufmerksamkeit: {test}'
+fault.host_disk_low: Wenig freier Speicherplatz auf dem Host
+fault.host_temperature_high: Hohe Hosttemperatur
+fault.backup_needs_attention: Sicherung erfordert Aufmerksamkeit
+state.periodic_tests.current: Prüfungen aktuell
+state.periodic_tests.attention: Prüfungen erfordern Aufmerksamkeit
+state.periodic_tests.unknown: Prüfungsverlauf nicht verfügbar
+state.periodic_tests.not_configured: Keine Prüfungen konfiguriert
+entity.functional_safety_sources: Diagnosequellen der funktionalen Sicherheit
 entity.recovery_window: Fenstermaßnahme – {location}
 entity.temperature_low_threshold: Untere Temperaturgrenze – {location}
 entity.temperature_high_threshold: Obere Temperaturgrenze – {location}
@@ -33,7 +47,20 @@ state.entity_health.unavailable: Nicht verfügbar
 state.notification_delivery.healthy: Fehlerfrei
 state.notification_delivery.degraded: Prüfung erforderlich
 state.notification_delivery.queued: In Warteschlange
+state.safety_evaluation.observed: Bewertungen abgeschlossen
+state.safety_evaluation.attention: Bewertung erfordert Prüfung
+state.safety_evaluation.unknown: Bewertungsstatus unbekannt
+state.detector_tests.current: Tests aktuell
+state.detector_tests.attention: Tests erfordern Prüfung
+state.detector_tests.unknown: Testverlauf nicht verfügbar
+state.detector_tests.not_configured: Keine Melder konfiguriert
 fault.entity_health: 'Entitätsproblem: {entity}'
+fault.host_memory_pressure: Speicherdruck des Hosts
+fault.host_cpu_pressure: Anhaltend hohe CPU-Auslastung des Hosts
+fault.wan_unavailable: WAN nicht verfügbar
+fault.update_available: 'Update verfügbar: {product}'
+fault.remote_battery_low: 'Niedriger Batteriestand: {device}'
+fault.detector_test_due: 'Meldertest erfordert Prüfung: {detector}'
 hazard.label.smoke: Rauch
 hazard.label.flammable_gas: Brennbares Gas
 hazard.label.carbon_monoxide: Kohlenmonoxid

@@ -77,7 +77,7 @@ class SafetyHomeApiGateway:
         self, request_id: str, data: Mapping[str, Any]
     ) -> dict[str, Any]:
         limit = data.get("limit", DEFAULT_PAGE_SIZE)
-        if type(limit) is not int or not 1 <= limit <= MAX_PAGE_SIZE:
+        if type(limit) is not int or not 1 <= limit <= MAX_PAGE_SIZE:  # noqa: E721 - reject bool and int subclasses
             return self._error_response(request_id, "invalid_limit")
 
         cursor = data.get("cursor")

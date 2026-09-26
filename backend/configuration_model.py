@@ -310,6 +310,129 @@ class InstallationSite(SourceModel):
         return self
 
 
+class HostMemoryBindings(SourceModel):
+    """Host-available memory and PSI entities from the same HA host."""
+
+    available_entity: str
+    psi_entity: str
+
+    @field_validator("available_entity", "psi_entity")
+    @classmethod
+    def _entity_id(cls, value: str) -> str:
+        if not value.startswith("sensor.") or not _ENTITY_ID.fullmatch(value):
+            raise ValueError(f"expected sensor entity ID: {value}")
+        return value
+
+    @model_validator(mode="after")
+    def _different_sources(self) -> "HostMemoryBindings":
+        if self.available_entity == self.psi_entity:
+            raise ValueError("available memory and PSI need distinct entities")
+        return self
+
+
+class UpdateBindings(SourceModel):
+    """Optional Home Assistant update entities for known products."""
+
+    home_assistant_core: str | None = None
+    home_assistant_os: str | None = None
+    home_assistant_supervisor: str | None = None
+    safety_component: str | None = None
+
+    @field_validator("home_assistant_core", "home_assistant_os", "home_assistant_supervisor", "safety_component")
+    @classmethod
+    def _update_entity(cls, value: str | None) -> str | None:
+        if value is not None and not value.startswith("update."):
+            raise ValueError(f"expected update entity ID: {value}")
+        if value is not None and not _ENTITY_ID.fullmatch(value):
+            raise ValueError(f"invalid Home Assistant entity ID: {value}")
+        return value
+
+
+class RemoteBatteryBinding(SourceModel):
+    """One physical remote device, optionally exposing two battery forms."""
+
+    friendly_name: str = Field(min_length=1)
+    percentage_entity: str | None = None
+    low_entity: str | None = None
+    enabled: bool = True
+
+    @model_validator(mode="after")
+    def _validate_sources(self) -> "RemoteBatteryBinding":
+        if not self.percentage_entity and not self.low_entity:
+            raise ValueError("a remote battery needs percentage_entity or low_entity")
+        if self.percentage_entity is not None and not self.percentage_entity.startswith("sensor."):
+            raise ValueError("percentage_entity must be a sensor")
+        if self.low_entity is not None and not self.low_entity.startswith("binary_sensor."):
+            raise ValueError("low_entity must be a binary_sensor")
+        for value in (self.percentage_entity, self.low_entity):
+            if value is not None and not _ENTITY_ID.fullmatch(value):
+                raise ValueError(f"invalid Home Assistant entity ID: {value}")
+        return self
+
+
+class BatteryMonitoring(SourceModel):
+    """Automatic device discovery with persistent registry-ID exclusions."""
+
+    enabled: bool = True
+    excluded_devices: list[str] = Field(default_factory=list, max_length=512)
+
+    @field_validator("excluded_devices")
+    @classmethod
+    def _device_ids(cls, value: list[str]) -> list[str]:
+        if any(not re.fullmatch(r"[0-9a-f]{32}", device) for device in value):
+            raise ValueError("excluded_devices must contain Home Assistant device registry IDs")
+        return list(dict.fromkeys(value))
+
+
+class BackupBindings(SourceModel):
+    """Timestamp of a successful backup and optional explicit failure signal."""
+
+    last_success_entity: str
+    failure_entity: str | None = None
+
+    @model_validator(mode="after")
+    def _sources(self) -> "BackupBindings":
+        for value, domain in ((self.last_success_entity, "sensor."), (self.failure_entity, "binary_sensor.")):
+            if value is not None and (not value.startswith(domain) or not _ENTITY_ID.fullmatch(value)):
+                raise ValueError(f"expected {domain} entity ID: {value}")
+        return self
+
+
+class PeriodicTestBindings(SourceModel):
+    """Operator-verified maintenance checks, never automatic actuator tests."""
+
+    notification_delivery: bool = True
+    backup_restore: bool = False
+
+
+class FunctionalSafetyBindings(SourceModel):
+    """Installation-owned sources; absence means uncovered, not healthy."""
+
+    host_memory: HostMemoryBindings | None = None
+    host_cpu_entity: str | None = None
+    host_disk_free_entity: str | None = None
+    host_temperature_entity: str | None = None
+    backup: BackupBindings | None = None
+    periodic_tests: PeriodicTestBindings = Field(default_factory=PeriodicTestBindings)
+    updates: UpdateBindings = Field(default_factory=UpdateBindings)
+    remote_batteries: dict[str, RemoteBatteryBinding] = Field(default_factory=dict)
+    battery_monitoring: BatteryMonitoring = Field(default_factory=BatteryMonitoring)
+
+    @field_validator("host_cpu_entity", "host_disk_free_entity", "host_temperature_entity")
+    @classmethod
+    def _cpu_entity(cls, value: str | None) -> str | None:
+        if value is not None and (not value.startswith("sensor.") or not _ENTITY_ID.fullmatch(value)):
+            raise ValueError(f"expected sensor entity ID: {value}")
+        return value
+
+    @model_validator(mode="after")
+    def _validate_keys(self) -> "FunctionalSafetyBindings":
+        invalid = [key for key in self.remote_batteries if not _STABLE_KEY.fullmatch(key)]
+        if invalid:
+            raise ValueError("remote_batteries keys must use stable PascalCase identifiers: " + ", ".join(invalid))
+        return self
+
+
 class InstallationConfig(SourceModel):
     """Normalized physical installation used to generate component bindings."""
 
@@ -320,15 +443,17 @@ class InstallationConfig(SourceModel):
     openings: dict[str, InstallationOpening] = Field(default_factory=dict)
     detectors: dict[str, InternalDetectorConfig] = Field(default_factory=dict)
     monitored_entities: dict[str, ExplicitEntityConfig] = Field(default_factory=dict)
+    functional_safety: FunctionalSafetyBindings = Field(default_factory=FunctionalSafetyBindings)
 
     @model_validator(mode="after")
     def _validate_registry(self) -> "InstallationConfig":
-        for collection_name, collection in (
-            ("rooms", self.rooms),
-            ("openings", self.openings),
-            ("detectors", self.detectors),
-            ("monitored_entities", self.monitored_entities),
-        ):
+        registries: dict[str, set[str]] = {
+            "rooms": set(self.rooms),
+            "openings": set(self.openings),
+            "detectors": set(self.detectors),
+            "monitored_entities": set(self.monitored_entities),
+        }
+        for collection_name, collection in registries.items():
             invalid = [key for key in collection if not _STABLE_KEY.fullmatch(key)]
             if invalid:
                 raise ValueError(
@@ -561,6 +686,7 @@ def compile_user_config_v2(
         runtime_defaults.get("api_components", {}), provider_overrides
     )
     compiled["common_entities"] = copy.deepcopy(installation.common_entities)
+    compiled["functional_safety"] = installation.functional_safety.model_dump(exclude_none=True)
     if installation.site is None:
         compiled.pop("site", None)
     else:

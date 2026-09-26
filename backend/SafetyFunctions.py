@@ -47,6 +47,11 @@ from components.app_config_validator.app_cfg_validator import (
 )
 from components.core.common_entities import CommonEntities
 from components.core.event_bus import EventBus
+from components.core.detector_test_monitor import DetectorTestMonitor
+from components.core.periodic_test_monitor import PeriodicTestMonitor
+from components.core.evaluation_progress import EvaluationProgress
+from components.core.functional_safety_monitor import FunctionalSafetyMonitor
+from components.external_apis.home_assistant_state import HomeAssistantStateProvider
 from components.core.derivative_monitor import DerivativeMonitor
 from components.core.localization import LocalizationSettings
 from components.core.mqtt_entity_manager import MqttEntityManager
@@ -197,11 +202,59 @@ class SafetyFunctions(hass.Hass):
                             )
                         self.fault_dict[fault_name] = fault_config
 
+        functional_policy = self.runtime_config["app_config"]["calibration"].get(
+            "functional_safety"
+        )
+        self.functional_safety_monitor = None
+        self.detector_test_monitor = None
+        self.periodic_test_monitor = None
+        if functional_policy:
+            detector_cfg = self.safety_components_cfg.get(
+                "InternalEnvironmentalHazardMonitorComponent", {}
+            )
+            detector_names = {
+                key: value.get("friendly_name", key)
+                for key, value in detector_cfg.get("detectors", {}).items()
+                if value.get("enabled", True)
+            }
+            self.functional_safety_monitor = FunctionalSafetyMonitor(
+                self,
+                self.event_bus,
+                self.mqtt_entities,
+                self.runtime_config["user_config"].get("functional_safety", {}),
+                functional_policy,
+                wan_entity=self.notification_cfg.get("wan_entity"),
+                detector_names=detector_names,
+                state_provider=HomeAssistantStateProvider.from_environment(),
+            )
+            self.sm_modules[self.functional_safety_monitor.component_name] = (
+                self.functional_safety_monitor
+            )
+            symptoms, _ = self.functional_safety_monitor.get_symptoms_data(
+                self.sm_modules, {}
+            )
+            self.symptoms.update(symptoms)
+            self.fault_dict.update(self.functional_safety_monitor.get_fault_definitions())
+
         for fault_name in inactive_fault_names:
             if self.fault_dict.pop(fault_name, None) is not None:
                 self.mqtt_entities.remove_sensor(
                     f"sensor.fault_{fault_name}", remove_legacy_topic=True
                 )
+
+        expected_intervals: dict[str, int | None] = {
+            name: None for name in self.sm_modules
+        }
+        if "EntityMonitorComponent" in expected_intervals:
+            monitor_cfg = self.safety_components_cfg["EntityMonitorComponent"]
+            expected_intervals["EntityMonitorComponent"] = max(
+                15, 3 * int(monitor_cfg["evaluation_interval_seconds"])
+            )
+        if self.functional_safety_monitor is not None:
+            expected_intervals["FunctionalSafetyMonitor"] = max(
+                15, 3 * int(functional_policy["evaluation_interval_seconds"])
+            )
+        self.evaluation_progress = EvaluationProgress(expected_intervals)
 
         # Build fault models from the validated fault configuration.
         self.faults = cfg_pr.get_faults(self.fault_dict)
@@ -284,6 +337,34 @@ class SafetyFunctions(hass.Hass):
         # Enable configured symptoms after all managers and listeners exist.
         self.fm.enable_all_symptoms()
 
+        if self.functional_safety_monitor is not None:
+            self.functional_safety_monitor.start()
+            self.periodic_test_monitor = PeriodicTestMonitor(
+                self, self.mqtt_entities,
+                self.runtime_config["user_config"].get("functional_safety", {}).get("periodic_tests", {"notification_delivery": True}),
+                intervals={"notification_delivery": functional_policy["notification_test_interval_days"], "backup_restore": functional_policy["backup_restore_test_interval_days"]},
+                state_store=JsonNotificationStateStore(functional_policy["periodic_test_state_file"]),
+                status_observer=self.functional_safety_monitor.observe_periodic_test,
+            )
+            self.periodic_test_monitor.start()
+            detector_cfg = self.safety_components_cfg.get(
+                "InternalEnvironmentalHazardMonitorComponent", {}
+            )
+            detectors = detector_cfg.get("detectors", {})
+            if detectors:
+                test_store = JsonNotificationStateStore(
+                    functional_policy["detector_test_state_file"]
+                )
+                self.detector_test_monitor = DetectorTestMonitor(
+                    self,
+                    self.mqtt_entities,
+                    detectors,
+                    interval_days=functional_policy["detector_test_interval_days"],
+                    state_store=test_store,
+                    status_observer=self.functional_safety_monitor.observe_detector_test,
+                )
+                self.detector_test_monitor.start()
+
         # Remote polling starts only after managers, listeners and entities exist.
         if self.api_modules:
             runtime_cls = getattr(self, "_external_api_runtime_cls", ExternalApiRuntime)
@@ -295,6 +376,8 @@ class SafetyFunctions(hass.Hass):
             self.external_api_runtime.start()
 
         # Announce successful startup and begin MQTT heartbeat reporting.
+        self._publish_evaluation_progress()
+        self.run_every(self._publish_evaluation_progress, "now", 15)
         self._set_internal_entity("sensor.safety_app_health", "running")
         self._start_mqtt_reporting()
         self.log("Safety app started successfully", level="DEBUG")
@@ -481,8 +564,34 @@ class SafetyFunctions(hass.Hass):
         """Refresh MQTT sensor states used by ``expire_after``."""
         self.mqtt_entities.publish_heartbeat()
 
+    def record_safety_evaluation(self, component: str, *, success: bool) -> None:
+        """Accept evidence only after a component callback has completed."""
+
+        progress = getattr(self, "evaluation_progress", None)
+        if progress is not None:
+            progress.record(component, success=success)
+
+    def _publish_evaluation_progress(self, **_: Any) -> None:
+        """Publish component progress without treating it as input quality."""
+
+        snapshot = self.evaluation_progress.snapshot()
+        self.mqtt_entities.publish_sensor_state(
+            "sensor.safety_evaluation_progress",
+            snapshot["status"],
+            attributes={
+                "components": snapshot["components"],
+                "meaning": "Completed evaluation only; input and delivery quality are separate",
+            },
+        )
+
     def terminate(self) -> None:
         """Publish offline availability during a clean AppDaemon shutdown."""
+        detector_monitor = getattr(self, "detector_test_monitor", None)
+        periodic_monitor = getattr(self, "periodic_test_monitor", None)
+        if periodic_monitor is not None:
+            periodic_monitor.stop()
+        if detector_monitor is not None:
+            detector_monitor.stop()
         external_runtime = getattr(self, "external_api_runtime", None)
         if external_runtime is not None:
             try:
@@ -585,6 +694,14 @@ class SafetyFunctions(hass.Hass):
                 "description": "Overall safety system state based on fault conditions.",
             },
             icon="mdi:shield-check",
+            entity_category="diagnostic",
+        )
+
+        self.mqtt_entities.register_sensor(
+            "sensor.safety_evaluation_progress",
+            "Safety Evaluation Progress",
+            state="unknown",
+            icon="mdi:progress-check",
             entity_category="diagnostic",
         )
 

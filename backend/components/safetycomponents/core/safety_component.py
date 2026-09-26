@@ -166,6 +166,13 @@ class SafetyComponent:
         self.safety_mechanisms: dict = {}
         self.debounce_states: dict = {}
 
+    def record_evaluation(self, *, success: bool = True) -> None:
+        """Report one completed component evaluation to the application monitor."""
+
+        reporter = getattr(self.hass_app, "record_safety_evaluation", None)
+        if callable(reporter):
+            reporter(self.component_name, success=success)
+
     def get_symptoms_data(
         self, modules: dict, component_cfg: list[dict[str, Any]]
     ) -> tuple[dict[str, Symptom], dict[str, RecoveryAction]]:
@@ -579,6 +586,8 @@ def safety_mechanism_decorator(func: Callable) -> Callable:
             sm_return = func(self, sm, entities_changes)
 
         self.hass_app.log(f"{func.__name__} was ended!", level="DEBUG")
+        if entities_changes is None:
+            self.record_evaluation()
         return sm_return.result
 
     return safety_mechanism_wrapper
