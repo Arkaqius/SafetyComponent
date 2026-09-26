@@ -139,6 +139,36 @@ class EntityMonitorDefaults(SourceModel):
     )
 
 
+class FunctionalSafetyOverrides(SourceModel):
+    """Optional installation thresholds, qualification times and test intervals."""
+
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False, strict=True)
+
+    memory_low_available_mib: float | None = Field(default=None, gt=0)
+    memory_recovery_available_mib: float | None = Field(default=None, gt=0)
+    memory_high_psi_percent: float | None = Field(default=None, gt=0, le=100)
+    memory_recovery_psi_percent: float | None = Field(default=None, ge=0, lt=100)
+    memory_qualification_seconds: int | None = Field(default=None, ge=1)
+    memory_recovery_seconds: int | None = Field(default=None, ge=1)
+    cpu_high_percent: float | None = Field(default=None, gt=0, le=100)
+    cpu_recovery_percent: float | None = Field(default=None, ge=0, lt=100)
+    cpu_qualification_seconds: int | None = Field(default=None, ge=1)
+    cpu_recovery_seconds: int | None = Field(default=None, ge=1)
+    wan_qualification_seconds: int | None = Field(default=None, ge=1)
+    wan_recovery_seconds: int | None = Field(default=None, ge=1)
+    battery_low_percent: float | None = Field(default=None, gt=0, lt=100)
+    detector_test_interval_days: int | None = Field(default=None, ge=1, le=180)
+    disk_low_free_mib: float | None = Field(default=None, gt=0)
+    disk_recovery_free_mib: float | None = Field(default=None, gt=0)
+    host_temperature_high_c: float | None = Field(default=None, gt=0)
+    host_temperature_recovery_c: float | None = Field(default=None, ge=0)
+    resource_qualification_seconds: int | None = Field(default=None, ge=1)
+    resource_recovery_seconds: int | None = Field(default=None, ge=1)
+    backup_max_age_hours: float | None = Field(default=None, gt=0)
+    notification_test_interval_days: int | None = Field(default=None, ge=1)
+    backup_restore_test_interval_days: int | None = Field(default=None, ge=1)
+
+
 class ComponentSettings(SourceModel):
     """Installation-specific settings grouped by their owning component."""
 
@@ -148,6 +178,7 @@ class ComponentSettings(SourceModel):
         default_factory=ExternalHazardDefaults
     )
     entity_monitor: EntityMonitorDefaults = Field(default_factory=EntityMonitorDefaults)
+    functional_safety: FunctionalSafetyOverrides = Field(default_factory=FunctionalSafetyOverrides)
 
 
 class InstallationRoom(SourceModel):

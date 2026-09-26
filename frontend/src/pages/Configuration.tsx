@@ -3,6 +3,7 @@ import { useConfig } from '@hakit/core';
 import ConfigurationObjectEditor from '../components/ConfigurationObjectEditor';
 import BatteryDiscovery from '../components/BatteryDiscovery';
 import { registrySchemas } from '../components/configurationFieldSchemas';
+import { effectiveFunctionalSafetySettings, functionalSafetySettings } from '../domain/functionalSafetySettings';
 import { importUserConfiguration, loadUserConfiguration, saveUserConfiguration, type ConfigurationMap } from '../userConfigurationApi';
 
 const providerNames = ['OpenMeteoWeatherApiComponent', 'ImgwWarningsApiComponent', 'OpenMeteoAirQualityApiComponent'];
@@ -137,7 +138,9 @@ export default function Configuration() {
   const backup = asMap(functionalSafety.backup);
   const periodicTests = asMap(functionalSafety.periodic_tests);
   const updates = asMap(functionalSafety.updates);
-  const functionalSafetySystem = asMap(systemDefaults.functional_safety);
+  const functionalSafetyPackaged = asMap(systemDefaults.functional_safety);
+  const functionalSafetyOverrides = asMap(defaults.functional_safety);
+  const functionalSafetySystem = effectiveFunctionalSafetySettings(functionalSafetyPackaged, functionalSafetyOverrides);
   const detectorSchema = detectorProfiles.length
     ? {
         ...registrySchemas.detectors,
@@ -159,8 +162,8 @@ export default function Configuration() {
           <h2>Ustawienia SafetyComponent</h2>
           <p>
             Edytujesz wyłącznie prywatny <code>user_config.yml</code>. Polityka, kalibracja i parametry wykonawcze z{' '}
-            <code>system_config.yml</code> są dostarczane razem z aplikacją. W panelu widać ich wartości domyślne, ale nie można ich tu
-            zmienić.
+            <code>system_config.yml</code> są dostarczane razem z aplikacją. Wybrane progi i czasy można nadpisać dla instalacji w sekcji
+            Ustawienia komponentów; puste pola zachowują wartości systemowe.
           </p>
         </div>
         <div className='configuration-actions'>
@@ -363,7 +366,7 @@ export default function Configuration() {
           />
         </div>
         <p>
-          Systemowe progi pamięci: dostępna ≤ {String(functionalSafetySystem.memory_low_available_mib ?? '—')} MiB i PSI ≥{' '}
+          Progi instalacji: pamięć dostępna ≤ {String(functionalSafetySystem.memory_low_available_mib ?? '—')} MiB i PSI ≥{' '}
           {String(functionalSafetySystem.memory_high_psi_percent ?? '—')}% przez{' '}
           {String(functionalSafetySystem.memory_qualification_seconds ?? '—')} s. Po zmianie konfiguracji uruchom aplikację ponownie.
         </p>
@@ -379,13 +382,13 @@ export default function Configuration() {
         <div className='configuration-grid'>
           <TextField
             label='Obciążenie CPU hosta (%)'
-            help='Opcjonalna encja sensor.* procesora hosta Home Assistant. Wysokie obciążenie jest potwierdzane przez czas z system config.'
+            help='Opcjonalna encja sensor.* procesora hosta Home Assistant. Czas potwierdzenia można nadpisać w Ustawieniach komponentów.'
             value={stringValue(functionalSafety.host_cpu_entity)}
             onChange={value => update(['installation', 'functional_safety', 'host_cpu_entity'], value || null)}
           />
         </div>
         <p>
-          Systemowy próg CPU: ≥ {String(functionalSafetySystem.cpu_high_percent ?? '—')}% przez{' '}
+          Próg CPU instalacji: ≥ {String(functionalSafetySystem.cpu_high_percent ?? '—')}% przez{' '}
           {String(functionalSafetySystem.cpu_qualification_seconds ?? '—')} s (L4).
         </p>
         <fieldset className='configuration-fieldset'>
@@ -420,11 +423,11 @@ export default function Configuration() {
             />
           </div>
           <p>
-            Progi systemowe: dysk ≤ {String(functionalSafetySystem.disk_low_free_mib ?? 1024)} MiB, powrót ≥{' '}
+            Progi instalacji: dysk ≤ {String(functionalSafetySystem.disk_low_free_mib ?? 1024)} MiB, powrót ≥{' '}
             {String(functionalSafetySystem.disk_recovery_free_mib ?? 2048)} MiB; temperatura ≥{' '}
             {String(functionalSafetySystem.host_temperature_high_c ?? 80)}°C, powrót ≤{' '}
             {String(functionalSafetySystem.host_temperature_recovery_c ?? 70)}°C; maksymalny wiek kopii{' '}
-            {String(functionalSafetySystem.backup_max_age_hours ?? 48)} h. Progi dostarczane są z aplikacją.
+            {String(functionalSafetySystem.backup_max_age_hours ?? 48)} h. Nadpisania znajdziesz w Ustawieniach komponentów.
           </p>
           {functionalSafety.backup ? (
             <button
@@ -449,9 +452,9 @@ export default function Configuration() {
             onChange={value => update(['installation', 'functional_safety', 'periodic_tests', 'backup_restore'], value)}
           />
           <p>
-            Interwały systemowe: powiadomienia {String(functionalSafetySystem.notification_test_interval_days ?? 30)} dni, odtworzenie kopii{' '}
-            {String(functionalSafetySystem.backup_restore_test_interval_days ?? 180)} dni. Wynik rzeczywiście wykonanego testu zapiszesz w
-            widoku Zdrowie funkcji. Te ustawienia nie wysyłają wiadomości, nie uruchamiają syren i nie odtwarzają backupu.
+            Interwały instalacji: powiadomienia {String(functionalSafetySystem.notification_test_interval_days ?? 30)} dni, odtworzenie
+            kopii {String(functionalSafetySystem.backup_restore_test_interval_days ?? 180)} dni. Wynik rzeczywiście wykonanego testu
+            zapiszesz w widoku Zdrowie funkcji. Te ustawienia nie wysyłają wiadomości, nie uruchamiają syren i nie odtwarzają backupu.
           </p>
         </fieldset>
         <fieldset className='configuration-fieldset'>
@@ -493,7 +496,7 @@ export default function Configuration() {
           />
         </details>
         <p>
-          Systemowy próg niskiej baterii: {String(functionalSafetySystem.battery_low_percent ?? '—')}%. Testy detektorów są wymagane co{' '}
+          Próg niskiej baterii instalacji: {String(functionalSafetySystem.battery_low_percent ?? '—')}%. Testy detektorów są wymagane co{' '}
           {String(functionalSafetySystem.detector_test_interval_days ?? '—')} dni.
         </p>
       </section>
@@ -503,6 +506,39 @@ export default function Configuration() {
           title='Ustawienia komponentów'
           description='Ustawienia specyficzne dla instalacji. Puste pola używają pokazanej wartości systemowej; ustawienia pojedynczego zasobu mają wyższy priorytet.'
         />
+        <details>
+          <summary>Functional Safety — progi i harmonogramy</summary>
+          <p>
+            Wpisana wartość zastępuje systemowy default. Wyczyść pole, aby do niego wrócić. Progi powrotu muszą zachowywać margines: pamięć
+            i dysk powyżej progu alarmu; PSI, CPU i temperatura poniżej. Zmiany wymagają zapisu i restartu. Interwały testów przeliczają
+            termin od ostatniego wyniku — nie oznaczają wykonania nowego testu.
+          </p>
+          {functionalSafetySettings.map(([title, fields]) => (
+            <fieldset className='configuration-fieldset' key={title}>
+              <legend>{title}</legend>
+              <div className='configuration-grid'>
+                {fields.map(([key, label]) => (
+                  <NumberField
+                    key={key}
+                    label={label}
+                    optional
+                    defaultValue={String(functionalSafetyPackaged[key] ?? '')}
+                    help='Puste pole używa wartości systemowej. Poziom alarmu i kontrola jakości źródła pozostają bez zmian.'
+                    value={numberValue(functionalSafetyOverrides[key])}
+                    onChange={value => update(['installation', 'component_settings', 'functional_safety', key], value)}
+                  />
+                ))}
+              </div>
+            </fieldset>
+          ))}
+          <button
+            className='secondary-button'
+            type='button'
+            onClick={() => update(['installation', 'component_settings', 'functional_safety'], {})}
+          >
+            Przywróć domyślne ustawienia Functional Safety
+          </button>
+        </details>
         <fieldset className='configuration-fieldset'>
           <legend>Temperatura</legend>
           <div className='configuration-grid'>

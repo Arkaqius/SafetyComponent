@@ -8,8 +8,9 @@ Home Assistant App. The build compiler combines it with the private
 `user_config.yml` and generates the AppDaemon runtime configuration.
 
 The `default_` prefix identifies a system baseline that a user or asset may
-refine. Fields without that prefix are fixed software policy for the released
-system configuration. `default_hazards` is inherited by opening roles, which
+refine. Fields without that prefix are fixed software policy except the explicitly
+editable functional-safety calibration below, whose stable names are retained.
+`default_hazards` is inherited by opening roles, which
 may select their own applicable hazards; there is no installation-wide user
 override for the list.
 
@@ -129,10 +130,18 @@ it to a detector; it cannot redefine the profile semantics.
 qualification/recovery margins, CPU, disk and temperature policy, WAN outage
 qualification/recovery, source freshness, backup age, the remote-battery
 threshold, and detector/operational-test intervals and state stores. These are
-packaged policy values. The installation binds host memory, disk, temperature,
+packaged defaults and fixed runtime policy. The installation binds host memory, disk, temperature,
 backup, update, and remote battery entities in `installation.functional_safety` and
 reuses `notification.wan_entity` for WAN evidence. Missing bindings do not
 create a positive healthy observation.
+Thresholds, qualification/recovery durations, backup maximum age and test
+intervals may be overridden under
+`installation.component_settings.functional_safety`, using the same field names.
+Omitted or null values inherit packaged values. The compiler validates the
+complete merged calibration, including all recovery margins, before saving or
+starting the App. Detector-test interval overrides are limited to 1–180 days.
+Sampling cadence, all `*_stale_after_seconds` fields, state-file paths and fault
+levels remain system-only. See the [source contract](../features/Configuration%20Model%20-%20Architecture.md#33-component-settings).
 The memory thresholds are packaged defaults, not a guarantee that
 256 MiB is a safe reserve for every host; review them against actual host
 capacity and workload before an installation relies on L2 memory detection.

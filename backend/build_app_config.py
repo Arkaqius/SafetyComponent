@@ -21,6 +21,7 @@ from configuration_model import (
     validate_user_configuration_v2,
 )
 from system_configuration import (
+    FunctionalSafetyCalibrationSource,
     system_configuration_schema,
     validate_system_configuration,
 )
@@ -230,12 +231,20 @@ def _build_app_config(
         for name, provider in runtime_cfg.get("providers", {}).items()
     }
 
+    functional_safety = deep_merge(
+        calibration.get("functional_safety", {}),
+        source.installation.component_settings.functional_safety.model_dump(exclude_none=True),
+    )
+    # Validate after merging: a single override must also be compatible with
+    # the inherited counterpart, especially recovery thresholds.
+    functional_safety = FunctionalSafetyCalibrationSource.model_validate(functional_safety).model_dump()
+
     return {
         "validation": copy.deepcopy(validation),
         "calibration": {
             "temperature": temperature,
             "entity_monitor": entity_monitor,
-            "functional_safety": copy.deepcopy(calibration.get("functional_safety", {})),
+            "functional_safety": functional_safety,
         },
         "external_hazard_policy": {
             "actuation_mode": external.get("actuation_mode"),

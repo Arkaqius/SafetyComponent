@@ -70,8 +70,9 @@ The platform monitor must not repurpose those generic faults to express a
 different severity. It should consume the entity-quality result as evidence and
 own the host, runtime, network, update, and battery policy separately. A host
 metric or update entity is an installation binding only when Home Assistant
-cannot identify a unique suitable source; calibration, timing, and severities
-belong to system configuration.
+cannot identify a unique suitable source. System configuration supplies calibration
+and timing defaults; approved installation overrides refine them after validation.
+Severities, source freshness and technical scheduling remain system-owned.
 
 ### Severity boundaries
 
@@ -80,7 +81,7 @@ belong to system configuration.
 | Sustained insufficient memory available to Home Assistant | The host may fail to evaluate or report safety conditions | Level 2 platform-health fault, after calibrated qualification and recovery hysteresis. A high usage percentage alone is insufficient evidence of imminent exhaustion. |
 | Low battery with a still-functioning device | Maintenance is needed; safety coverage has not yet been shown lost | Level 4 informational condition. Do not convert it into a level-3 Entity Monitor failure. |
 | Unavailable or stale safety-device input | The dependent safety function may have lost coverage | Existing owning component or Entity Monitor fault and severity; a battery warning neither replaces nor clears it. |
-| Sustained CPU, disk, swap, or thermal pressure | Possible precursor to missed deadlines | Diagnose the resource and correlate with evaluation lateness; isolated peaks are not faults. Severity and qualification are system policy. |
+| Sustained CPU, disk, swap, or thermal pressure | Possible precursor to missed deadlines | Diagnose the resource and correlate with evaluation lateness; isolated peaks are not faults. Severity is system policy; qualification uses packaged defaults with validated installation overrides. |
 | Internet/WAN loss | Cloud-dependent providers and mobile delivery may be impaired while local protection remains possible | Level 3 network fault; report the network state separately from local Home Assistant health and apply Local-Only mode/notification policy. A single failed public probe does not prove all Internet connectivity is lost. |
 | Update available for Home Assistant or the SafetyComponent App | Maintenance information, not evidence that the running version is malfunctioning | Level 4 informational condition per product; track installed/offered versions and age, and never install or restart automatically from this monitor. |
 | Sustained low free disk space or high host temperature | Maintenance precursor, not proof of a missed safety decision | Level 4 after independent qualification; fresh recovery samples and separate recovery margins are required. |
@@ -165,7 +166,8 @@ Notification delivery tests require the operator to verify actual receipt at
 the intended destination. Home Assistant service acceptance, a queue entry, or
 a normal channel-health state cannot substitute for this confirmation. The
 editor enables notification tests by default; backup-restore tests are optional
-and disabled by default. Test intervals remain system policy.
+and disabled by default. Test intervals have packaged defaults and may be
+refined through validated installation component settings.
 
 The health page records an explicit passed or failed operator attestation for
 `notification_delivery` or `backup_restore`. An untested enabled item is due;
@@ -191,8 +193,8 @@ integration, device class, unit, and device identity; the installation confirms
 the exact binding when a unique trustworthy source cannot be established.
 SafetyFunctions validates state, units, timestamps, freshness, and source scope
 before using them. The user configuration contains bindings, exclusions, and
-optional selection; system configuration owns thresholds, debounce, fault
-levels, and default diagnostic policy. An unavailable runtime source leaves its
+optional selection and whitelisted calibration overrides; system configuration
+owns fault levels, source freshness and default diagnostic policy. An unavailable runtime source leaves its
 domain uncovered without disabling unrelated safety mechanisms.
 
 Installation bindings are grouped under `installation.functional_safety`:
@@ -207,8 +209,13 @@ registry IDs and defaults to an empty list. Discovered runtime keys use
 `Battery<hex>` derived from device identity; renaming a device or entity does not
 change its exclusion or create a new maintenance identity.
 The existing `notification.wan_entity` is shared with the notification route.
-The packaged `calibration.functional_safety` owns the numeric policy and
-durable detector and operational-test schedules. Device entries may be disabled without changing
+The packaged `calibration.functional_safety` supplies numeric defaults and owns
+technical scheduling, persistence and severity. Overrides live under
+`installation.component_settings.functional_safety`: absent/null fields inherit
+system values, and merged recovery thresholds must remain ordered. Changing a
+test interval recalculates its due date from the existing recorded completion,
+never records a new pass. Detector interval overrides shall not exceed 180 days.
+Device entries may be disabled without changing
 the safety-input fault owned by their component.
 
 SafetyFunctions can observe host resource pressure while it runs, but it cannot

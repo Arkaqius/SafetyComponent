@@ -77,8 +77,8 @@ budżecie wykrycia.
 | Język | Wybierz polski, angielski lub niemiecki. Nazw encji nie edytuje się w tym formularzu — pochodzą z plików lokalizacji. |
 | Powiadomienia | Wpisz konkretne usługi `notify/<nazwa>`, po jednej w wierszu. `notify/notify` jest niejednoznaczne. Adres po kliknięciu powinien być ścieżką w HA, np. `/`. Encja WAN i lokalne urządzenia sygnalizacji są opcjonalne. |
 | Instalacja Home Assistant | Wybierz strefę czasową z listy, podaj dwuliterowy kod kraju, kody powiatów TERYT i — gdy komponent temperatury jest włączony — czujnik temperatury zewnętrznej. Współrzędne są pobierane z HA przy każdym starcie, nie wpisuje się ich w formularzu. |
-| Zdrowie systemu i konserwacja | Opcjonalnie wskaż parę czujników pamięci hosta: dostępną pamięć oraz PSI w procentach, a także CPU, wolne miejsce na dysku i temperaturę hosta. Wybierz źródło ostatniej udanej kopii i opcjonalną encję błędu kopii. Dla aktualizacji wybierz encje `update.*` osobno dla Core, OS, Supervisora i aplikacji. Urządzenia z encjami baterii są pobierane automatycznie z HA; wybierz przełącznikiem, które monitorować. Wybierz przypomnienia o potwierdzanych testach powiadomień i opcjonalnie odtworzenia kopii. Czujniki hosta w integracji System Monitor mogą wymagać ręcznego włączenia. Progi i harmonogramy są systemowe. Brak źródła oznacza brak pokrycia, nie stan prawidłowy. |
-| Ustawienia komponentów | Opcjonalnie zmień progi temperatury, czas drzwi/bram, czasy monitoringu lub progi pogody i jakości powietrza. Puste pole oznacza wartość systemową pokazaną pod polem. Lista domyślnych zagrożeń i horyzont prognozy pozostają w konfiguracji systemowej. |
+| Zdrowie systemu i konserwacja | Wskaż źródła pamięci i PSI, CPU, wolnego miejsca, temperatury hosta, kopii i aktualizacji. Urządzenia bateryjne pobierane są automatycznie; wybierz, które monitorować. Włącz potrzebne testy okresowe. Progi i interwały można nadpisać w Ustawieniach komponentów; puste pola dziedziczą defaulty. Brak źródła oznacza brak pokrycia, nie stan prawidłowy. |
+| Ustawienia komponentów | Opcjonalnie zmień progi temperatury, czas drzwi/bram, czasy monitoringu, progi pogody i jakości powietrza oraz progi i harmonogramy Functional Safety. Puste pole oznacza wartość systemową pokazaną pod polem. Lista domyślnych zagrożeń i horyzont prognozy pozostają w konfiguracji systemowej. |
 | Pomieszczenia | Dodaj wpis dla każdego monitorowanego pomieszczenia. Wskaż obszar HA i czujnik temperatury. Opcjonalnie wybierz otwór z sekcji „Drzwi, bramy i okna”, osłonę `cover.*` i indywidualne progi. |
 | Drzwi, bramy i okna | Każdy fizyczny otwór dodaj raz: obszar, encja czujnika, przyjazna nazwa i rodzaj. W razie potrzeby dodaj znane formularzowi role „Monitoring drzwi i bram” albo „Zagrożenia zewnętrzne” i wypełnij ich pola. Obecność roli włącza dany sposób monitorowania. |
 | Detektory zagrożeń | Wskaż obszar, encję, nazwę, rodzaj zagrożenia i profil detektora z systemu. „Rodzaj gazu” jest wymagany tylko przy gazie palnym. |
@@ -110,7 +110,7 @@ Zbyt mało miejsca lub zbyt wysoka temperatura musi utrzymać się przez czas
 kwalifikacji; pojedynczy skok nie daje ostrzeżenia. To przypomnienia L4,
 nie dowód, że host już przestał wykonywać funkcje bezpieczeństwa.
 Domyślne progi to 1024 MiB wolnego miejsca i 80 °C; powrót wymaga odpowiednio
-2048 MiB i 70 °C, z osobnym czasem potwierdzenia. Są ustawieniami systemowymi,
+2048 MiB i 70 °C, z osobnym czasem potwierdzenia. Są wartościami domyślnymi,
 nie uniwersalnymi granicami bezpieczeństwa sprzętu.
 
 Domyślnie kopia starsza niż 48 godzin wymaga uwagi. Nieprawidłowa lub przyszła
@@ -122,7 +122,7 @@ nie tworzy ani nie odtwarza kopii automatycznie.
 
 W konfiguracji możesz włączyć przypomnienia o testach. Test odbioru
 powiadomień jest domyślnie włączony, a test odtworzenia kopii — wyłączony.
-Zmiana wyboru wymaga zapisu i restartu. Interwały są systemowe: domyślnie
+Zmiana wyboru wymaga zapisu i restartu. Domyślne interwały wynoszą
 30 dni dla powiadomień i 180 dni dla odtworzenia kopii.
 
 Na stronie **Zdrowie funkcji bezpieczeństwa** odszukaj test i zapisz wynik
@@ -145,6 +145,27 @@ Panel nie uruchamia syren, urządzeń wykonawczych ani domowych automatyzacji.
 Diagnostyka detektorów (sabotaż, błąd własny, koniec żywotności) i serwis kotła
 nie należą do tej sekcji. Dotychczasowe baterie i testy detektorów pozostają
 bez zmian.
+
+### Zmiana progów i harmonogramów Functional Safety
+
+W **Ustawienia komponentów** rozwiń **Functional Safety — progi i harmonogramy**.
+Pola są pogrupowane na pamięć, CPU/WAN, dysk/temperaturę oraz konserwację.
+Pod każdym polem znajdziesz wartość systemową. Wpisanie liczby zastępuje ją
+dla Twojej instalacji; wyczyszczenie pola przywraca dziedziczenie.
+Przycisk **Przywróć domyślne ustawienia Functional Safety** usuwa wszystkie
+nadpisania z formularza; zatwierdź zmianę zapisując konfigurację.
+
+Dobieraj progi do sprzętu i obciążenia. Powrót pamięci i dysku musi być powyżej
+progu alarmowego; powrót PSI, CPU i temperatury — poniżej. Formularz może przyjąć
+wartości robocze, ale zapis odrzuci niespójną parę, również gdy drugą wartość
+dziedziczysz z systemu. Czasy podawaj w jednostkach przy etykietach; sekundy
+i dni muszą być dodatnimi liczbami całkowitymi. Test detektorów można ustawić
+co 1–180 dni, nie rzadziej niż domyślnie; przestrzegaj też instrukcji urządzenia.
+
+Po zapisaniu uruchom aplikację ponownie. Termin testu będzie liczony od
+dotychczasowego wyniku, nie od zmiany interwału. Zmiana nie potwierdza wykonania
+testu. Poziomy L2/L3/L4, kontrola świeżości źródeł, częstotliwość pracy monitora
+i ścieżki plików pozostają systemowe i nie mają pól edycji.
 
 ### Automatyczne monitorowanie baterii
 

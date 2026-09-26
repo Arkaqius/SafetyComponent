@@ -50,6 +50,8 @@ user_config:
       safety_door: {}
       external_hazard: {}
       entity_monitor: {}
+      # Optional thresholds/timings; omitted or null fields inherit system defaults.
+      functional_safety: {}
 
     rooms:
       LivingRoom:

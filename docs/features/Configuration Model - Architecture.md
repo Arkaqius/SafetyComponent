@@ -191,8 +191,9 @@ The authenticated editor obtains candidate devices and readings from
 `GET /api/batteries`. Monitoring switches update `excluded_devices` in the
 unsaved draft. Saving and restarting the App applies the selection and refreshes
 the backend inventory; refreshing the editor alone does not change the running
-monitor. New devices therefore enter monitoring after an App restart. Thresholds
-and source freshness remain packaged system policy, not editable device fields.
+monitor. New devices therefore enter monitoring after an App restart. The battery
+threshold can be refined installation-wide through component settings; source
+freshness remains system-only. Neither is editable per device.
 
 Additional bindings under `installation.functional_safety`:
 
@@ -205,8 +206,9 @@ Additional bindings under `installation.functional_safety`:
 | `periodic_tests.backup_restore` | `false` | Enables optional operator-attested restore tests on a separate installation. It does not restore HA. |
 
 Saving and restarting the App applies these bindings and selections. The editor
-does not expose disk/thermal limits, backup maximum age, or test intervals as
-user overrides; they are packaged calibration. A timestamp older than the backup
+also exposes the approved calibration overrides under
+`installation.component_settings.functional_safety`; source bindings remain
+separate from these settings. A timestamp older than the backup
 maximum age is overdue, while invalid or future evidence is unknown. A backup
 created successfully is not evidence of a successful restore.
 
@@ -228,6 +230,22 @@ backup diagnostics. Result submission changes no backup or notification route.
 | `component_settings.safety_door` | Optional positive `timeout_seconds`. |
 | `component_settings.external_hazard` | Optional weather and outdoor-air-quality threshold overrides. The default hazard list and forecast horizon are system-owned; an opening may still select its applicable hazards. |
 | `component_settings.entity_monitor` | Optional `startup_grace_seconds`, positive `evaluation_interval_seconds`, and component override map keyed by stable dependency ID. Each component override may refine debounce, detection budget, and checks. |
+| `component_settings.functional_safety` | Optional calibration fields listed below; omitted or null values inherit system defaults. Effective recovery margins are checked after merging. |
+
+Functional-safety overrides use these exact fields:
+
+| Group | Editable fields | Constraints |
+| --- | --- | --- |
+| Memory | `memory_low_available_mib`, `memory_recovery_available_mib`, `memory_high_psi_percent`, `memory_recovery_psi_percent`, `memory_qualification_seconds`, `memory_recovery_seconds` | MiB positive; recovery memory above low. PSI assertion in (0,100], recovery in [0,100) below assertion; durations positive integer seconds. |
+| CPU/WAN | `cpu_high_percent`, `cpu_recovery_percent`, `cpu_qualification_seconds`, `cpu_recovery_seconds`, `wan_qualification_seconds`, `wan_recovery_seconds` | CPU assertion in (0,100], recovery in [0,100) below assertion; durations positive integer seconds. |
+| Disk/temperature | `disk_low_free_mib`, `disk_recovery_free_mib`, `host_temperature_high_c`, `host_temperature_recovery_c`, `resource_qualification_seconds`, `resource_recovery_seconds` | Disk MiB positive, recovery above low. Temperature assertion positive °C, recovery nonnegative below assertion; durations positive integer seconds. |
+| Maintenance | `battery_low_percent`, `backup_max_age_hours`, `detector_test_interval_days`, `notification_test_interval_days`, `backup_restore_test_interval_days` | Battery in (0,100); backup age positive hours; intervals positive integer days, detector interval at most 180. |
+
+All numeric overrides must be finite. Unknown keys are rejected, including
+attempts to override severity, sampling cadence, freshness limits or persistence
+paths. Saving/importing a candidate validates the merged policy, not only the
+partial user object. Applying changes requires an App restart. New test intervals
+recompute due dates from existing completion times without creating new passes.
 
 ### 3.4 Rooms and openings
 
@@ -359,8 +377,10 @@ an additional editable source of truth.
 Safety Home provides an authenticated Ingress page for editing the private
 `user_config.yml`. The page covers the editable root fields and the complete
 `installation` registry. It never writes `system_config.yml`; the API exposes
-only read-only calibration defaults as field help. Packaged policy remains a
-reviewed source-code and release artifact.
+only read-only calibration defaults as field help. Approved installation
+overrides are edited separately in private component settings; the packaged
+defaults remain unchanged. Packaged policy remains a reviewed source-code and
+release artifact.
 
 When the installation file does not exist, the API returns the public example
 as an unsaved draft with an `absent` revision. SafetyFunctions waits while the
