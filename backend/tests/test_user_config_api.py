@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import threading
 from pathlib import Path
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 import pytest
@@ -77,6 +78,43 @@ def test_read_returns_only_user_source_and_revision(tmp_path: Path) -> None:
         "home_assistant_binary_alarm"
     ]
     assert "system_config" not in result
+
+
+def test_restart_target_revalidates_saved_revision_without_writing(tmp_path: Path, monkeypatch) -> None:
+    store = _store(tmp_path)
+    original = store.read()
+    before = store.user_path.read_bytes()
+    monkeypatch.setattr("user_config_api.own_app_slug", lambda: "local_safety_component_dev")
+    assert store.restart_target(original["revision"]) == {"app_slug": "local_safety_component_dev"}
+    assert store.user_path.read_bytes() == before
+    with pytest.raises(RevisionConflictError):
+        store.restart_target("old-revision")
+    store.user_path.write_text("user_config: {}", encoding="utf-8")
+    with pytest.raises(ValueError):
+        store.restart_target(store._revision(store.user_path.read_bytes()))
+
+
+@pytest.mark.parametrize("confirmed", [True, False, "true"])
+def test_restart_preparation_http_requires_literal_confirmation(tmp_path: Path, monkeypatch, confirmed) -> None:
+    store = _store(tmp_path)
+    monkeypatch.setattr("user_config_api.own_app_slug", lambda: "local_safety_component_dev")
+    UserConfigRequestHandler.store = store
+    server = ConfigurationHttpServer(("127.0.0.1", 0), UserConfigRequestHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        request = Request(f"http://127.0.0.1:{server.server_port}/api/config/restart-target", data=json.dumps({"confirmed": confirmed, "revision": store.read()["revision"]}).encode(), headers={"Content-Type": "application/json"})
+        if confirmed is True:
+            with urlopen(request) as response:
+                assert json.load(response) == {"app_slug": "local_safety_component_dev"}
+        else:
+            with pytest.raises(HTTPError) as error:
+                urlopen(request)
+            assert error.value.code == 422
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
 
 
 def test_first_start_serves_example_without_creating_user_file(tmp_path: Path) -> None:

@@ -1,11 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useConfig } from '@hakit/core';
+import { useConfig, useHass } from '@hakit/core';
 import { NavLink, useLocation } from 'react-router-dom';
 import ConfigurationObjectEditor from '../components/ConfigurationObjectEditor';
 import BatteryDiscovery from '../components/BatteryDiscovery';
 import { registrySchemas } from '../components/configurationFieldSchemas';
 import { effectiveFunctionalSafetySettings, functionalSafetySettings } from '../domain/functionalSafetySettings';
-import { importUserConfiguration, loadUserConfiguration, saveUserConfiguration, type ConfigurationMap } from '../userConfigurationApi';
+import {
+  importUserConfiguration,
+  loadUserConfiguration,
+  saveUserConfiguration,
+  prepareConfigurationRestart,
+  type ConfigurationMap,
+} from '../userConfigurationApi';
+import { canRestartConfiguration, configurationRestartMessage } from '../domain/configurationRestart';
 
 const providerNames = ['OpenMeteoWeatherApiComponent', 'ImgwWarningsApiComponent', 'OpenMeteoAirQualityApiComponent'];
 const registrySections = [
@@ -24,6 +31,9 @@ export default function Configuration() {
     : 'general';
   const [template, setTemplate] = useState<ConfigurationMap | null>(null);
   const haConfig = useConfig();
+  const connection = useHass(store => store.connection);
+  const [restarting, setRestarting] = useState(false);
+  const [restartMessage, setRestartMessage] = useState('');
   const [draft, setDraft] = useState<ConfigurationMap | null>(null);
   const [systemDefaults, setSystemDefaults] = useState<ConfigurationMap>({});
   const [revision, setRevision] = useState('');
@@ -55,14 +65,18 @@ export default function Configuration() {
     void load();
   }, [load]);
 
-  const update = useCallback((path: string[], value: unknown) => {
-    setDraft(current => (current ? updatePath(current, path, value) : current));
-    setDirty(true);
-    setSaveState('idle');
-  }, []);
+  const update = useCallback(
+    (path: string[], value: unknown) => {
+      if (restarting) return;
+      setDraft(current => (current ? updatePath(current, path, value) : current));
+      setDirty(true);
+      setSaveState('idle');
+    },
+    [restarting]
+  );
 
   const save = async () => {
-    if (!draft) return;
+    if (!draft || restarting) return;
     setSaveState('saving');
     setError(null);
     try {
@@ -82,6 +96,7 @@ export default function Configuration() {
   const resetDraft = () => {
     if (
       !template ||
+      restarting ||
       !window.confirm(
         'Przywrócić formularz do publicznego szablonu? Usuniesz z formularza wszystkie własne powiązania i nadpisania. Prywatny plik nie zmieni się, dopóki nie klikniesz „Zapisz”. Możesz anulować reset przez „Odrzuć zmiany”.'
       )
@@ -93,7 +108,36 @@ export default function Configuration() {
     setValidationError(null);
   };
 
+  const restartApp = async () => {
+    if (!connection || !canRestartConfiguration(dirty, setupRequired, Boolean(validationError), saveState === 'saving' || restarting))
+      return;
+    if (
+      !window.confirm(
+        'Uruchomić ponownie aplikację SafetyComponent i zastosować zapisane zmiany? Monitoring bezpieczeństwa oraz ten panel będą chwilowo niedostępne. Restart nie kasuje konfiguracji ani historii i nie restartuje całego Home Assistant.'
+      )
+    )
+      return;
+    setRestarting(true);
+    setRestartMessage('Sprawdzanie zapisanego configu przed restartem…');
+    try {
+      const appSlug = await prepareConfigurationRestart(revision);
+      const services = await connection.sendMessagePromise<Record<string, Record<string, unknown>>>({ type: 'get_services' });
+      setRestartMessage('Wysyłanie żądania restartu. Panel może chwilowo utracić połączenie.');
+      await connection.sendMessagePromise<unknown>(configurationRestartMessage(appSlug, services));
+      setRestartMessage(
+        'HA przyjął żądanie restartu. Odśwież panel i sprawdź logi oraz stan SafetyComponent — przyjęcie żądania nie potwierdza poprawnego uruchomienia backendu.'
+      );
+    } catch (caught) {
+      setRestartMessage(
+        'Restart nie został potwierdzony. Jeśli panel utracił połączenie, odśwież go i sprawdź stan aplikacji przed ponowną próbą.'
+      );
+      setError(caught instanceof Error ? caught.message : 'Nie udało się zlecić restartu.');
+      setRestarting(false);
+    }
+  };
+
   const importFile = async (file: File) => {
+    if (restarting) return;
     if (!/\.ya?ml$/i.test(file.name)) {
       setError('Wybierz plik .yml lub .yaml');
       return;
@@ -209,17 +253,43 @@ export default function Configuration() {
             ref={fileInputRef}
             type='file'
           />
-          <button className='secondary-button' onClick={() => fileInputRef.current?.click()} type='button'>
+          <button className='secondary-button' disabled={restarting} onClick={() => fileInputRef.current?.click()} type='button'>
             Wczytaj user_config YAML
           </button>
-          <button className='secondary-button' disabled={!dirty || saveState === 'saving'} onClick={() => void load()} type='button'>
+          <button
+            className='secondary-button'
+            disabled={restarting || !dirty || saveState === 'saving'}
+            onClick={() => void load()}
+            type='button'
+          >
             Odrzuć zmiany
           </button>
-          <button className='secondary-button' disabled={!template || saveState === 'saving'} onClick={resetDraft} type='button'>
+          <button
+            className='secondary-button'
+            disabled={restarting || !template || saveState === 'saving'}
+            onClick={resetDraft}
+            type='button'
+          >
             Resetuj formularz do szablonu
           </button>
-          <button className='primary-button' disabled={!dirty || saveState === 'saving'} onClick={() => void save()} type='button'>
+          <button
+            className='primary-button'
+            disabled={restarting || !dirty || saveState === 'saving'}
+            onClick={() => void save()}
+            type='button'
+          >
             {saveState === 'saving' ? 'Zapisywanie…' : setupRequired ? 'Utwórz user_config.yml' : 'Zapisz konfigurację'}
+          </button>
+          <button
+            className='secondary-button'
+            disabled={
+              !connection || !canRestartConfiguration(dirty, setupRequired, Boolean(validationError), saveState === 'saving' || restarting)
+            }
+            onClick={() => void restartApp()}
+            title='Najpierw zapisz lub odrzuć zmiany. Restart dotyczy tylko aplikacji SafetyComponent.'
+            type='button'
+          >
+            {restarting ? 'Restart aplikacji…' : 'Uruchom ponownie aplikację'}
           </button>
         </div>
       </section>
@@ -260,6 +330,11 @@ export default function Configuration() {
         </div>
       ) : null}
       {error ? <div className='configuration-message configuration-message-error'>{error}</div> : null}
+      {restartMessage && (
+        <div className='configuration-message configuration-message-warning' role='status'>
+          {restartMessage}
+        </div>
+      )}
       {saveState === 'saved' ? (
         <div className='configuration-message configuration-message-success'>
           Konfiguracja została zapisana i zweryfikowana. Uruchom ponownie aplikację SafetyComponent, aby zastosować zmiany.

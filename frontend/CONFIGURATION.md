@@ -21,7 +21,7 @@ można obejrzeć lub wczytać do formularza.
    **Zapisz konfigurację**. Panel sprawdzi pola i zgodność z ustawieniami
    systemowymi. Zapis zastępuje dotychczasowy prywatny plik, więc przed większą
    zmianą zachowaj jego kopię.
-4. Uruchom ponownie aplikację. Dopiero restart stosuje nową konfigurację i
+4. Kliknij **Uruchom ponownie aplikację** i potwierdź ostrzeżenie. Dopiero restart stosuje nową konfigurację i
    sprawdza dostępność encji. Sprawdź logi oraz stany czujników SafetyComponent.
    Nie uruchamiaj alarmów ani urządzeń wykonawczych tylko dla testu formularza.
 
@@ -37,6 +37,15 @@ zapisze pliku, nie zrestartuje aplikacji ani nie usunie historii testów lub
 powiadomień. Uzupełnij szablon rzeczywistymi danymi przed osobnym zapisem.
 Jeżeli rezygnujesz z resetu, ponownie wczytaj zapisaną konfigurację; reset
 nie jest przyciskiem zastosowania samych domyślnych progów.
+
+**Uruchom ponownie aplikację** to osobna operacja: nie kasuje danych, tylko
+restartuje tę instalację SafetyComponent przez HA. Najpierw zapisz albo odrzuć
+zmiany; przy niezapisanym szkicu, błędnym pliku lub pierwszej konfiguracji
+przycisk jest zablokowany. Backend ponownie sprawdzi zapisany plik i jego rewizję,
+a HA sprawdzi uprawnienia administratora do restartu. Monitoring i panel będą
+chwilowo niedostępne. Po restarcie odśwież panel i sprawdź logi oraz stan aplikacji;
+przyjęcie żądania nie jest dowodem poprawnego startu funkcji bezpieczeństwa.
+Nie restartuje to całego HA ani hosta. W lokalnym podglądzie restart jest niedostępny.
 
 ## Przykład: mały dom
 

@@ -410,7 +410,18 @@ with the revision that was read by the browser. Before replacing the file it:
 4. atomically replaces `/config/user_config.yml` only after those checks pass.
 
 Saving does not apply a partial configuration to a running SafetyFunctions
-instance. The operator restarts the Home Assistant App, and the normal startup
+instance. A separate confirmed Restart App control shall require a saved,
+valid configuration and no unsaved editor changes. The configuration API shall
+revalidate the saved revision with the startup compiler before returning only
+the calling App's identity from Supervisor `/addons/self/info`. The frontend
+shall invoke the advertised HA `hassio.app_restart` (or `hassio.addon_restart`)
+admin action for that target over the authenticated user connection. It shall
+not request host/Core restart, expose Supervisor credentials, select a client
+supplied target, or grant the App manager/admin rights. The UI shall warn about
+the temporary monitoring interruption and distinguish request acceptance from
+successful SafetyFunctions initialization. Restart shall not erase configuration
+or runtime journals; stale or invalid saved configurations shall be rejected.
+The operator restarts the Home Assistant App, and the normal startup
 compiler recreates `apps.yaml` before AppDaemon starts. Entity existence and
 other checks requiring a live Home Assistant connection remain part of
 SafetyFunctions initialization.

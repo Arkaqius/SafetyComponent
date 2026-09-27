@@ -20,6 +20,7 @@ from build_app_config import SYSTEM_CONFIG_PATH, compile_config, load_mapping
 from build_appdaemon_config import CORE_CONFIG_URL, fetch_core_config
 from configuration_model import validate_user_configuration_v2
 from components.external_apis.home_assistant_state import HomeAssistantStateProvider
+from components.external_apis.supervisor_app import own_app_slug
 
 
 DEFAULT_USER_CONFIG_PATH = Path("/config/user_config.yml")
@@ -228,6 +229,24 @@ class UserConfigStore:
             "setup_required": False,
         }
 
+    def restart_target(self, expected_revision: str) -> dict[str, str]:
+        """Validate the saved revision and return only this App's restart target."""
+        with self._write_lock:
+            if not self.user_path.exists():
+                raise ValueError("Save a valid installation configuration before restart")
+            raw = self.user_path.read_bytes()
+            if expected_revision != self._revision(raw):
+                raise RevisionConflictError("Configuration changed; reload before restarting")
+            compile_config(
+                system_path=self.system_path,
+                user_path=self.user_path,
+                home_assistant_config=self.home_assistant_config_provider(),
+            )
+            slug = own_app_slug()
+            if self.user_path.read_bytes() != raw:
+                raise RevisionConflictError("Configuration changed during restart validation")
+        return {"app_slug": slug}
+
     def _validate_with_compiler(self, document: dict[str, Any]) -> None:
         """Compile a temporary candidate without touching the installation file."""
 
@@ -298,6 +317,9 @@ class UserConfigRequestHandler(BaseHTTPRequestHandler):
         self._send_json(HTTPStatus.OK, saved)
 
     def do_POST(self) -> None:  # noqa: N802 - stdlib handler contract
+        if self.path.rstrip("/") == "/api/config/restart-target":
+            self._prepare_restart()
+            return
         if self.path.rstrip("/") != "/api/config/import":
             self._send_json(HTTPStatus.NOT_FOUND, {"error": "not_found"})
             return
@@ -314,6 +336,27 @@ class UserConfigRequestHandler(BaseHTTPRequestHandler):
             )
             return
         self._send_json(HTTPStatus.OK, imported)
+
+    def _prepare_restart(self) -> None:
+        """Prepare an explicitly confirmed restart; HA performs the admin action."""
+        try:
+            if self.headers.get_content_type() != "application/json":
+                raise ValueError("application/json is required")
+            payload = self._read_payload()
+            revision = payload.get("revision")
+            if payload.get("confirmed") is not True or not isinstance(revision, str):
+                raise ValueError("Explicit confirmation and saved revision are required")
+            target = self.store.restart_target(revision)
+        except RevisionConflictError as exc:
+            self._send_json(HTTPStatus.CONFLICT, {"error": "revision_conflict", "message": str(exc)})
+            return
+        except RuntimeError:
+            self._send_json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "restart_unavailable"})
+            return
+        except (OSError, ValueError, yaml.YAMLError):
+            self._send_json(HTTPStatus.UNPROCESSABLE_ENTITY, {"error": "invalid_saved_configuration"})
+            return
+        self._send_json(HTTPStatus.OK, target)
 
     def _read_payload(self) -> dict[str, Any]:
         try:
