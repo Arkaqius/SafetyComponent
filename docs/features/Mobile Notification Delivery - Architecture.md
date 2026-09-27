@@ -176,6 +176,8 @@ Each entry shall contain:
 
 Kinds `new`, `update`, `repeat`, and `acknowledged` shall record `SET`;
 `resolved` shall record `CLEARED`; `clear` shall record `SHADOWED`.
+An explicit operator-requested test shall use kind `test` and state `TEST`,
+never a fabricated fault lifecycle state.
 Acknowledgement therefore remains visibly distinct from healing. Shadowing
 removes a notification and shall not be presented as a healed fault. The journal shall not expose raw
 transport exception text, unfiltered fault events, or inferred group members.
@@ -265,6 +267,31 @@ shadowed fault sends the Companion
 `clear_notification` command with the same tag. Pending attempts and scheduled
 repeats for that tag are removed in both cases.
 
+### 4.5 Explicit test and full notification reset
+
+Authenticated operator events `safety_notification_test` and
+`safety_notification_reset` shall require the literal payload
+`{"confirmed": true}`. Each action shall have an independent 60-second rate
+limit. Neither action changes FaultManager state or constitutes a maintenance
+test result.
+
+The test action shall submit an identifiable level-3 mobile-only notification
+to the configured destinations through NotificationManager's normal bounded
+retry and per-target history path. It shall not activate local annunciators,
+actuators, or household routines. Home Assistant acceptance shall not record
+a passed receipt test; the operator must verify receipt and separately submit
+the periodic test result.
+
+The full reset shall clear old notification history, counters, queued
+deliveries, acknowledgements, and prior delivery diagnostics. It shall preserve
+active fault state and local-annunciator restrictions, rebuild currently active
+notifications without acknowledgement, and reissue their warnings through the
+normal delivery policy. New submission attempts may therefore immediately
+populate counters, queue, and history again. Reset shall not heal, acknowledge,
+silence, or suppress a still-active fault, and shall not reset detector or
+periodic-test records. The frontend shall obtain explicit confirmation because
+the old journal is removed and active warnings may be sent again.
+
 ## 5. Failure behavior
 
 - Failure of one configured target shall not prevent attempts to other targets.
@@ -281,6 +308,9 @@ repeats for that tag are removed in both cases.
 
 ## 6. Verification contract
 
+Automated tests shall cover confirmed-only test/reset events, independent
+rate limits, mobile-only test delivery and `TEST` history, reset persistence,
+preserved active faults and local restrictions, and active-warning reissue.
 Automated tests shall cover exact L1-L3 new and quiet payloads, explicit target
 routing, correct clear commands, partial failures, retry bounds, WAN queue and
 flush, deadlines, acknowledgement, controlled repeats, restart restoration,

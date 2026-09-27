@@ -8,6 +8,7 @@ import {
   getFunctionalSafetySources,
   getPeriodicTests,
   periodicTestResultMessage,
+  notificationOperatorMessage,
   type PeriodicTestKey,
   NOTIFICATION_HEALTH_ENTITY_ID,
 } from '../domain/functionalSafety';
@@ -29,6 +30,9 @@ const progressTones: Record<keyof typeof progressLabels, StatusTone> = {
 };
 
 const sourceLabels: Record<string, string> = {
+  healthy: 'Sprawne',
+  degraded: 'Wymaga uwagi',
+  queued: 'Oczekuje w kolejce',
   disabled: 'Wyłączone',
   active: 'Alarm aktywny',
   high: 'Trwałe wysokie obciążenie',
@@ -52,7 +56,7 @@ function countAttribute(attributes: Record<string, unknown>, key: string): numbe
 }
 
 export default function FunctionalSafety() {
-  const { entities, recoveries } = useSafetyEntities();
+  const { entities } = useSafetyEntities();
   const connection = useHass(store => store.connection);
   const [testMessage, setTestMessage] = useState('');
   const [periodicMessage, setPeriodicMessage] = useState('');
@@ -62,10 +66,28 @@ export default function FunctionalSafety() {
   const periodicTests = getPeriodicTests(entities);
   const sources = getFunctionalSafetySources(entities);
   const notification = entities[NOTIFICATION_HEALTH_ENTITY_ID];
-  const activeRecoveries = recoveries.filter(recovery => recovery.status !== 'do_not_perform');
   const accepted = notification ? countAttribute(notification.attributes, 'accepted_attempts') : null;
   const failed = notification ? countAttribute(notification.attributes, 'failed_attempts') : null;
   const queued = notification ? countAttribute(notification.attributes, 'queued_count') : null;
+  const [operatorBusy, setOperatorBusy] = useState(false);
+  const operatorAction = async (action: 'test' | 'reset') => {
+    const prompt =
+      action === 'test'
+        ? 'Wysłać testowe powiadomienie do skonfigurowanych usług notify? Test nie uruchomi syren i nie zapisze wyniku jako zaliczony.'
+        : 'Usunąć historię, kolejkę, liczniki i potwierdzenia powiadomień? Historii nie można przywrócić. Aktywne usterki zostaną ponownie zgłoszone. Reset nie kasuje usterek i nie steruje syrenami.';
+    if (!connection || !window.confirm(prompt)) return;
+    setOperatorBusy(true);
+    try {
+      await connection.sendMessagePromise<unknown>(notificationOperatorMessage(action));
+      setPeriodicMessage(
+        'HA przyjął żądanie. Sprawdź wynik w diagnostyce lub na urządzeniach; samo przyjęcie żądania nie jest dowodem wykonania.'
+      );
+    } catch {
+      setPeriodicMessage('Nie udało się wysłać żądania.');
+    } finally {
+      setOperatorBusy(false);
+    }
+  };
 
   const attestTest = async (detectorKey: string, outcome: 'passed' | 'failed') => {
     if (!connection) {
@@ -127,7 +149,15 @@ export default function FunctionalSafety() {
         </p>
       </header>
 
-      <section className='panel'>
+      {periodicMessage && (
+        <p className='panel' role='status'>
+          {periodicMessage}
+        </p>
+      )}
+
+      <h2>Źródła diagnostyczne</h2>
+      <details className='panel functional-safety-group'>
+        <summary>Postęp funkcji — ocena per komponent ({progress.length})</summary>
         <div className='panel-header'>
           <div>
             <span className='section-kicker'>Ocena per komponent</span>
@@ -161,13 +191,13 @@ export default function FunctionalSafety() {
             ))}
           </div>
         )}
-      </section>
+      </details>
 
-      <section className='panel'>
+      <section className='page-stack'>
         <div className='panel-header'>
           <div>
             <span className='section-kicker'>Platforma i konserwacja</span>
-            <h2>Źródła diagnostyczne</h2>
+            <h3>Platforma i konserwacja</h3>
           </div>
         </div>
         <p>
@@ -178,34 +208,60 @@ export default function FunctionalSafety() {
           <p>Brak diagnostyki źródeł.</p>
         ) : (
           <div className='functional-safety-list'>
-            {sources.map(source => (
-              <article className='functional-safety-row' key={source.key}>
-                <div>
-                  <strong>{source.label}</strong>
-                  {source.detail ? <small>{source.detail}</small> : null}
-                </div>
-                <StatusBadge
-                  tone={
-                    ['active', 'offline', 'low', 'high', 'failed'].includes(source.status)
-                      ? 'danger'
-                      : ['available', 'overdue'].includes(source.status)
-                        ? 'warning'
-                        : source.status === 'unknown'
-                          ? 'muted'
-                          : 'info'
-                  }
-                >
-                  {source.status === 'low' && source.key === 'disk'
-                    ? 'Mało wolnego miejsca'
-                    : (sourceLabels[source.status] ?? 'Brak wiarygodnych danych')}
-                </StatusBadge>
-              </article>
+            {(['host', 'wan', 'updates', 'batteries'] as const).map(group => (
+              <details className='panel functional-safety-group' key={group}>
+                <summary>
+                  {{ host: 'Host i kopie zapasowe', wan: 'Łączność WAN', updates: 'Aktualizacje', batteries: 'Baterie urządzeń' }[group]} (
+                  {sources.filter(source => source.group === group).length})
+                </summary>
+                {group === 'wan' && (
+                  <p>
+                    Ostatni raport encji jest dowodem odczytu źródła, nie niezależnym potwierdzeniem czasu testu Ping. Ostatnia ocena
+                    monitora nie oznacza wykonania nowego testu WAN.
+                  </p>
+                )}
+                {group === 'batteries' && (
+                  <p>
+                    Inwentarz urządzeń (nie monitor):{' '}
+                    {sources.find(source => source.group === 'inventory')?.evidence.join(' · ') ?? 'Brak danych o wykrywaniu'}
+                  </p>
+                )}
+                {sources
+                  .filter(source => source.group === group)
+                  .map(source => (
+                    <article className='functional-safety-row' key={source.key}>
+                      <div>
+                        <strong>{source.label}</strong>
+                        {source.detail ? <small>{source.detail}</small> : null}
+                        {source.evidence.map((line, index) => (
+                          <small key={index}>{line}</small>
+                        ))}
+                      </div>
+                      <StatusBadge
+                        tone={
+                          ['active', 'offline', 'low', 'high', 'failed'].includes(source.status)
+                            ? 'danger'
+                            : ['available', 'overdue'].includes(source.status)
+                              ? 'warning'
+                              : source.status === 'unknown'
+                                ? 'muted'
+                                : 'info'
+                        }
+                      >
+                        {source.status === 'low' && source.key === 'disk'
+                          ? 'Mało wolnego miejsca'
+                          : (sourceLabels[source.status] ?? 'Brak wiarygodnych danych')}
+                      </StatusBadge>
+                    </article>
+                  ))}
+              </details>
             ))}
           </div>
         )}
       </section>
 
-      <section className='panel'>
+      <details className='panel functional-safety-group'>
+        <summary>Powiadomienia</summary>
         <div className='panel-header'>
           <div>
             <span className='section-kicker'>Ścieżka ostrzegania</span>
@@ -214,7 +270,9 @@ export default function FunctionalSafety() {
         </div>
         {notification ? (
           <>
-            <StatusBadge tone={notification.state === 'healthy' ? 'info' : 'warning'}>{notification.state}</StatusBadge>
+            <StatusBadge tone={notification.state === 'healthy' ? 'info' : notification.state === 'unknown' ? 'muted' : 'warning'}>
+              {String(notification.attributes.state_label ?? sourceLabels[notification.state] ?? 'Brak wiarygodnych danych')}
+            </StatusBadge>
             <div className='functional-safety-metrics'>
               <span>
                 Przyjęte przez HA: <strong>{accepted ?? '—'}</strong>
@@ -227,53 +285,29 @@ export default function FunctionalSafety() {
               </span>
             </div>
             <p>Przyjęcie wywołania przez Home Assistant nie potwierdza dostarczenia na fizyczny telefon.</p>
+            <small>
+              Ostatni reset:{' '}
+              {typeof notification.attributes.last_reset_at === 'number'
+                ? new Date(notification.attributes.last_reset_at * 1000).toLocaleString('pl-PL')
+                : 'brak'}
+            </small>
+            <button
+              className='secondary-button'
+              type='button'
+              disabled={operatorBusy || !connection}
+              onClick={() => void operatorAction('reset')}
+            >
+              Resetuj powiadomienia i historię
+            </button>
+            <p>Reset nie usuwa wiadomości już dostarczonych na telefony. Bieżące zagrożenia zostaną ponownie zgłoszone.</p>
           </>
         ) : (
           <p>Brak diagnostyki kanału powiadomień. Nie zakładamy, że działa.</p>
         )}
-      </section>
+      </details>
 
-      <section className='panel'>
-        <div className='panel-header'>
-          <div>
-            <span className='section-kicker'>Ścieżka wykonania</span>
-            <h2>Działania i efekt</h2>
-          </div>
-        </div>
-        {activeRecoveries.length === 0 ? (
-          <p>Brak aktywnych działań. Nie oznacza to testu aktuatorów.</p>
-        ) : (
-          <div className='functional-safety-list'>
-            {activeRecoveries.map(recovery => (
-              <article className='functional-safety-row' key={recovery.proposalId}>
-                <div>
-                  <strong>{recovery.name}</strong>
-                  <small>{recovery.instruction || recovery.description}</small>
-                </div>
-                <StatusBadge
-                  tone={
-                    recovery.status === 'confirmed'
-                      ? 'safe'
-                      : recovery.status === 'failed' || recovery.status === 'timed_out'
-                        ? 'danger'
-                        : 'warning'
-                  }
-                >
-                  {recovery.status === 'confirmed'
-                    ? 'Potwierdzony efekt'
-                    : recovery.status === 'failed'
-                      ? 'Niepowodzenie'
-                      : recovery.status === 'timed_out'
-                        ? 'Brak potwierdzenia w terminie'
-                        : 'Efekt niepotwierdzony'}
-                </StatusBadge>
-              </article>
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section className='panel'>
+      <details className='panel functional-safety-group'>
+        <summary>Testy czujników dymu, gazu i czadu</summary>
         <div className='panel-header'>
           <div>
             <span className='section-kicker'>Konserwacja</span>
@@ -319,16 +353,20 @@ export default function FunctionalSafety() {
             ))}
           </div>
         )}
-      </section>
+      </details>
 
-      <section className='panel'>
+      <details className='panel functional-safety-group'>
+        <summary>Testy okresowe</summary>
         <span className='section-kicker'>Konserwacja platformy</span>
         <h2>Testy okresowe</h2>
         <p>
-          Najpierw wykonaj test i sprawdź jego rzeczywisty efekt. Przyciski zapisują jedynie deklarację operatora — nie wysyłają
-          powiadomień, nie uruchamiają syren ani nie odtwarzają kopii. Przyjęcie wiadomości przez HA nie dowodzi odbioru na telefonie.
+          Wyślij testowe powiadomienie i sprawdź rzeczywisty odbiór. Przyciski „Zapisz” tylko zapisują deklarację operatora. Żaden przycisk
+          nie uruchamia syren ani nie odtwarza kopii. Przyjęcie przez HA nie dowodzi odbioru na telefonie.
         </p>
-        {periodicMessage && <p role='status'>{periodicMessage}</p>}
+        <button className='primary-button' type='button' disabled={operatorBusy || !connection} onClick={() => void operatorAction('test')}>
+          Wyślij testowe powiadomienie
+        </button>
+        <p>Test i reset są ograniczone do jednego żądania na minutę dla każdej operacji.</p>
         {periodicTests.length === 0 ? (
           <p>Brak harmonogramu testów okresowych. Nie oznacza to, że testy zostały wykonane.</p>
         ) : (
@@ -380,16 +418,7 @@ export default function FunctionalSafety() {
             ))}
           </div>
         )}
-      </section>
-
-      <section className='panel'>
-        <span className='section-kicker'>Granica obserwacji</span>
-        <h2>Awaria całej aplikacji lub hosta</h2>
-        <p>
-          Ten widok działa przez Home Assistant i nie wykryje jego całkowitego zaniku ani utraty zasilania hosta. Takie pokrycie wymaga
-          niezależnego obserwatora i osobnego kanału alarmowego.
-        </p>
-      </section>
+      </details>
     </div>
   );
 }

@@ -389,6 +389,16 @@ validates and previews the source without persisting it. The first successful
 save creates `/config/user_config.yml`; a subsequent App restart compiles and
 starts SafetyFunctions.
 
+The operator editor divides installation settings into subpages sharing one
+complete configuration draft and one read revision. Navigating between
+subpages shall preserve unsaved values; saving shall validate and replace the
+whole source, not only the visible subpage. An explicitly confirmed installation
+reset shall load the public template into this draft only. Reset shall not
+delete or write the private file, restart the App, alter system configuration,
+or clear notification and maintenance runtime records. The existing revision
+guard and separate Save action remain required before the template replaces
+the installation's saved configuration.
+
 The local configuration API accepts a complete `user_config` object together
 with the revision that was read by the browser. Before replacing the file it:
 

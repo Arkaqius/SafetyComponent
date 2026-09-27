@@ -4,6 +4,7 @@ export type ConfigurationMap = Record<string, unknown>;
 
 export interface UserConfigurationDocument {
   user_config: ConfigurationMap;
+  template_user_config?: ConfigurationMap;
   system_defaults?: ConfigurationMap;
   revision: string;
   restart_required: boolean;
@@ -93,8 +94,10 @@ let mockDocument: UserConfigurationDocument = {
   },
 };
 
+const mockTemplate = structuredClone(mockDocument.user_config);
+
 export async function loadUserConfiguration(): Promise<UserConfigurationDocument> {
-  if (MOCK_MODE) return structuredClone(mockDocument);
+  if (MOCK_MODE) return { ...structuredClone(mockDocument), template_user_config: structuredClone(mockTemplate) };
   return requestConfiguration(CONFIG_ENDPOINT, { cache: 'no-store' });
 }
 

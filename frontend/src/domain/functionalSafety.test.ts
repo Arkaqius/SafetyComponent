@@ -6,8 +6,72 @@ import {
   getFunctionalSafetySources,
   getPeriodicTests,
   periodicTestResultMessage,
+  notificationOperatorMessage,
 } from './functionalSafety.js';
 import type { EntityMap } from './safety.js';
+
+test('operator commands require explicit confirmation and differ from attestations', () => {
+  assert.deepEqual(notificationOperatorMessage('test'), {
+    type: 'fire_event',
+    event_type: 'safety_notification_test',
+    event_data: { confirmed: true },
+  });
+  assert.deepEqual(notificationOperatorMessage('reset'), {
+    type: 'fire_event',
+    event_type: 'safety_notification_reset',
+    event_data: { confirmed: true },
+  });
+});
+
+test('battery raw readings and source times remain visible without implying health', () => {
+  const rows = getFunctionalSafetySources({
+    'sensor.functional_safety_sources': {
+      state: 'unknown',
+      attributes: {
+        remote_batteries: {
+          D: {
+            status: 'unknown',
+            friendly_name: 'Remote',
+            percentage: null,
+            sources: [
+              {
+                entity_id: 'sensor.battery',
+                state: '73',
+                unit: '%',
+                last_reported: '2026-09-01T00:00:00Z',
+                last_updated: '2026-08-01T00:00:00Z',
+              },
+            ],
+          },
+        },
+      },
+    },
+  });
+  assert.equal(rows[0].group, 'batteries');
+  assert.equal(rows[0].status, 'unknown');
+  assert.ok(rows[0].evidence.some(line => line.includes('73 %')));
+  assert.ok(rows[0].evidence.some(line => line.includes('Ostatni raport')));
+});
+
+test('dev offered version never replaces publisher stable version', () => {
+  const rows = getFunctionalSafetySources({
+    'sensor.functional_safety_sources': {
+      state: 'attention',
+      attributes: {
+        updates: {
+          safety_component: {
+            status: 'available',
+            installed_version: '0.3.1-dev6',
+            latest_version: '0.3.1-dev7',
+            stable_release: { status: 'current', version: 'v0.3.1', checked_at: '2026-09-27T00:00:00Z' },
+          },
+        },
+      },
+    },
+  });
+  assert.equal(rows[0].group, 'updates');
+  assert.ok(rows[0].evidence.includes('Najnowsza stabilna wg wydawcy: v0.3.1'));
+});
 
 test('keeps missing and observed components separate', () => {
   const entities: EntityMap = {

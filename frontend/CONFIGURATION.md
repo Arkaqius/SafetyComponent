@@ -25,6 +25,19 @@ można obejrzeć lub wczytać do formularza.
    sprawdza dostępność encji. Sprawdź logi oraz stany czujników SafetyComponent.
    Nie uruchamiaj alarmów ani urządzeń wykonawczych tylko dla testu formularza.
 
+## Podstrony i reset instalacji
+
+Formularz jest podzielony na podstrony tematyczne. Przechodzenie między nimi
+zachowuje wspólny szkic; **Zapisz konfigurację** zapisuje cały dokument, nie
+tylko widoczną podstronę.
+
+Przycisk resetu konfiguracji instalacji po potwierdzeniu zastępuje **szkic**
+publicznym szablonem. Usunie z formularza Twoje encje i nadpisania, ale nie
+zapisze pliku, nie zrestartuje aplikacji ani nie usunie historii testów lub
+powiadomień. Uzupełnij szablon rzeczywistymi danymi przed osobnym zapisem.
+Jeżeli rezygnujesz z resetu, ponownie wczytaj zapisaną konfigurację; reset
+nie jest przyciskiem zastosowania samych domyślnych progów.
+
 ## Przykład: mały dom
 
 Fikcyjny dom ma salon, sypialnię, wejście, hol i pomieszczenie techniczne.
@@ -141,6 +154,41 @@ pozytywnym wyniku może stać się zaległy, a błąd odczytu historii jest stan
 nieznanym. Termin i zapisany wynik przetrwają restart. Zaległy, niewykonany
 lub nieudany test daje przypomnienie L4 i nie zmienia stanu alarmów.
 Panel nie uruchamia syren, urządzeń wykonawczych ani domowych automatyzacji.
+
+W **Testach okresowych** możesz osobno wybrać **Wyślij testowe powiadomienie**
+i potwierdzić wysyłkę. Wiadomość L3 trafi wyłącznie do skonfigurowanych mobilnych
+odbiorców przez normalną kolejkę i ponawianie; próby zobaczysz w historii jako
+`TEST`. To nie uruchamia syren i nie zapisuje zaliczonego testu. Sprawdź faktyczny
+odbiór, a dopiero potem zapisz wynik. Ponowna wysyłka jest ograniczona do jednej
+na 60 sekund.
+
+W grupie **Powiadomienia** reset usuwa starą historię, liczniki, kolejkę i
+potwierdzenia użytkownika. Po potwierdzeniu nadal aktywne ostrzeżenia zostaną
+wysłane ponownie; mogą od razu pojawić się nowe wpisy i liczniki. Reset nie
+kasuje alarmów, nie zmienia ograniczeń sygnalizacji lokalnej i nie usuwa historii
+testów konserwacyjnych. Nie służy do wyciszenia aktywnego zagrożenia. Również
+reset można wykonać najwyżej raz na 60 sekund.
+
+### Odczyty i grupy diagnostyczne
+
+Platforma, WAN, aktualizacje, baterie i postęp komponentów mają osobne,
+początkowo zwinięte grupy. Rozwiń potrzebną grupę, aby zobaczyć dane źródłowe.
+Wykrywanie baterii opisuje pobraną listę urządzeń, nie dodatkowy monitor.
+Przy baterii porównaj ocenę z surowym odczytem encji, jednostką i czasem
+ostatniego raportu lub zmiany danych. Nieaktualny procent nie dowodzi dobrej
+baterii, a zmiana wartości i kolejny raport tej samej wartości to różne rzeczy.
+
+Przy WAN czas ostatniego raportu HA jest tylko przybliżeniem ostatniej kontroli
+źródła. Czas oceny SafetyFunctions nie jest czasem nowego testu Ping; ani sam
+raport, ani ocena nie dowodzą wykonania nowej udanej próby połączenia.
+Aktualizacje pokazują wersję zainstalowaną i najnowszą oferowaną przez źródło
+HA, czas obserwacji oraz informacje o wydaniu, gdy są dostępne. Wersja Dev lub
+beta nie oznacza najnowszej stabilnej; brak potwierdzonego źródła stabilnego
+wydania pozostaje informacją nieznaną. Monitoring nie instaluje aktualizacji.
+Najnowsze stabilne wydanie jest sprawdzane osobno w repozytorium wydawcy
+na GitHubie, w tle, najwyżej raz na godzinę. Błąd odczytu nie jest dowodem,
+że instalacja jest aktualna; wersja oferowana przez encję HA pozostaje
+osobnym polem.
 
 Diagnostyka detektorów (sabotaż, błąd własny, koniec żywotności) i serwis kotła
 nie należą do tej sekcji. Dotychczasowe baterie i testy detektorów pozostają

@@ -61,6 +61,23 @@ completed cycle is not healthy. Aggregation cannot turn an unknown domain into
 healthy. A fault level is a policy decision, not a synonym for a health-state
 label.
 
+Safety Home groups the diagnostics into initially collapsed platform, WAN,
+update, battery, and component-progress sections. Battery discovery is inventory
+metadata, not a separate battery-health monitor. Battery rows retain each raw
+source state, unit, report/update timestamp and source identity alongside the
+validated percentage and quality; an invalid or stale raw reading is not a
+passing observation. WAN rows distinguish the latest source report from the
+monitor's evaluation time. A Home Assistant report timestamp is only a proxy
+for the source's latest test, not proof of a new successful Internet probe.
+Update rows retain installed and source-offered latest versions, observation
+time, and release information. Dev or beta source versions shall not be
+relabeled as the latest stable release without independent evidence.
+
+The host-loss assurance boundary and recovery-effect contract remain documented
+even when their explanatory cards are omitted from this health page. Recovery
+evidence belongs to the dedicated recovery view; absence of a card does not
+extend in-process coverage or prove an actuator effect.
+
 ### Relationship to Entity Monitor
 
 `EntityMonitorComponent` remains the authority for availability, freshness,
@@ -177,6 +194,16 @@ unknown, not a new pass. Due, overdue, and failed items are L4 maintenance
 conditions. Recording a result does not send a message, activate a siren,
 operate household equipment, or restore Home Assistant.
 
+A separate explicitly confirmed `safety_notification_test` action submits a
+mobile-only level-3 test through NotificationManager's retry/history path.
+It does not attest receipt or complete the periodic test. The operator verifies
+actual receipt before recording the result. A confirmed
+`safety_notification_reset` clears old delivery records, queue, counters and
+acknowledgements, then reissues currently active warnings without changing
+fault state or local-annunciator restrictions. Both actions are individually
+rate-limited to once per 60 seconds. Their detailed contract belongs to the
+[notification architecture](<Mobile Notification Delivery - Architecture.md#45-explicit-test-and-full-notification-reset>).
+
 A backup restore test must use a separate test installation. Its pass means the
 operator actually verified that restore; it is not inferred from backup creation
 and does not authorize restoring the live home. Detector diagnostics such as
@@ -286,6 +313,14 @@ therefore need persistence and hysteresis rather than reacting to isolated
 peaks.
 
 ## Common diagnostic rules
+
+Stable-release metadata is provided by an isolated read-only publisher provider
+using GitHub's latest non-draft, non-prerelease release for Home Assistant Core,
+OS, Supervisor, and SafetyComponent. It refreshes in a background worker with a
+one-hour cache, two-second request timeouts and a 256 KiB response limit. It does
+not block safety evaluation or make fault decisions. Missing or failed metadata
+is explicitly unknown. The version offered by a Home Assistant update entity
+is displayed separately and is not assumed to be the latest stable release.
 
 - Keep the actual hazard state separate from the health of the channel that
   reports it. Missing or stale data is not evidence that a hazard is clear.

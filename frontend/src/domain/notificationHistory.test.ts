@@ -73,6 +73,14 @@ test('filters attempts independently by result and fault state', () => {
   assert.deepEqual(filterNotificationHistory(entries, 'accepted_by_home_assistant', 'SET'), [entry]);
 });
 
+test('operator notification test is journaled without masquerading as a fault', () => {
+  const attempt = { ...entry, kind: 'test' as const, fault_state: 'TEST' as const };
+  assert.deepEqual(readNotificationHistory({ state: '1', attributes: { version: 1, entries: [attempt] } }), [attempt]);
+  assert.equal(notificationState('TEST'), 'Test — nie alarm');
+  assert.equal(notificationKind('test'), 'Test powiadomienia');
+  assert.deepEqual(filterNotificationHistory([attempt], 'all', 'TEST'), [attempt]);
+});
+
 test('reads bounded acknowledged tags from delivery diagnostics', () => {
   assert.deepEqual(
     readAcknowledgedNotificationTags({

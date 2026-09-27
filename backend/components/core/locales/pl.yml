@@ -7,6 +7,8 @@ entity.safety_detector_tests: Testy czujników bezpieczeństwa
 entity.safety_periodic_tests: Okresowe przeglądy bezpieczeństwa
 test.notification_delivery: Potwierdzone dostarczenie ostrzeżenia
 test.backup_restore: Potwierdzone odtworzenie kopii zapasowej
+notification.test.title: Test powiadomienia SafetyFunctions
+notification.test.message: 'To jest test, nie alarm zagrożenia. Sprawdź odbiór w każdym skonfigurowanym kanale, a następnie zapisz wynik w Safety Home.'
 fault.periodic_test_due: 'Przegląd okresowy wymaga uwagi: {test}'
 fault.host_disk_low: Mało wolnego miejsca na dysku hosta
 fault.host_temperature_high: Wysoka temperatura hosta
@@ -47,6 +49,7 @@ state.entity_health.unavailable: Niedostępna
 state.notification_delivery.healthy: Sprawne
 state.notification_delivery.degraded: Wymaga uwagi
 state.notification_delivery.queued: Oczekuje w kolejce
+state.notification_delivery.unknown: Brak dowodu dostarczenia
 state.safety_evaluation.observed: Oceny wykonane
 state.safety_evaluation.attention: Ocena wymaga uwagi
 state.safety_evaluation.unknown: Stan ocen nieznany

@@ -121,6 +121,19 @@ def test_missing_and_wrong_unit_sources_remain_unknown_without_faults() -> None:
     assert mqtt.states[-1][2]["updates"]["home_assistant_core"]["status"] == "unknown"
 
 
+def test_raw_battery_report_is_visible_but_never_validated_when_stale() -> None:
+    monitor, bus, mqtt = make_monitor({"sensor.battery": snapshot("73", unit="%", kind="battery", old=True), "binary_sensor.wan": snapshot("on")})
+    monitor.evaluate()
+    item = mqtt.states[-1][2]["remote_batteries"]["Remote"]
+    assert item["status"] == "unknown"
+    assert item["percentage"] is None
+    assert item["sources"][0]["state"] == "73"
+    assert item["sources"][0]["last_reported"]
+    assert mqtt.states[-1][2]["wan"]["checked_at"]
+    assert mqtt.states[-1][2]["wan"]["sources"][0]["last_reported"]
+    assert not any(event["symptom_id"] == "fsm_RemoteBatteryLowRemote" for event in bus.events)
+
+
 def test_update_and_low_battery_are_separate_level_four_conditions() -> None:
     monitor, bus, mqtt = make_monitor({
         "sensor.memory": snapshot("800", unit="MiB", kind="data_size"),

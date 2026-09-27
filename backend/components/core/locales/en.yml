@@ -7,6 +7,8 @@ entity.safety_detector_tests: Safety detector tests
 entity.safety_periodic_tests: Safety periodic checks
 test.notification_delivery: Verified warning delivery
 test.backup_restore: Verified backup restoration
+notification.test.title: SafetyFunctions notification test
+notification.test.message: 'This is a test, not a hazard alert. Check receipt in every configured channel, then record the result in Safety Home.'
 fault.periodic_test_due: 'Periodic check needs attention: {test}'
 fault.host_disk_low: Low host disk space
 fault.host_temperature_high: High host temperature
@@ -47,6 +49,7 @@ state.entity_health.unavailable: Unavailable
 state.notification_delivery.healthy: Healthy
 state.notification_delivery.degraded: Needs attention
 state.notification_delivery.queued: Queued
+state.notification_delivery.unknown: No delivery evidence
 state.safety_evaluation.observed: Evaluations completed
 state.safety_evaluation.attention: Evaluation needs attention
 state.safety_evaluation.unknown: Evaluation status unknown

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import re
 import time
 from collections.abc import Callable, Mapping
@@ -29,6 +30,8 @@ from components.notification_manager.state_store import (
 _STATE_VERSION = 1
 _ACK_PREFIX = "SAFETY_ACK_"
 _UI_ACK_EVENT = "safety_notification_acknowledge"
+TEST_NOTIFICATION_EVENT = "safety_notification_test"
+RESET_NOTIFICATIONS_EVENT = "safety_notification_reset"
 
 
 class NotificationManager:
@@ -81,6 +84,7 @@ class NotificationManager:
             None if self.notification_config.get("wan_entity") else True
         )
         self._started = False
+        self._operator_action_at: dict[str, float] = {}
         self._counters: dict[str, int] = {
             "accepted_attempts": 0,
             "failed_attempts": 0,
@@ -126,6 +130,8 @@ class NotificationManager:
         if callable(listen_event):
             listen_event(self.handle_mobile_action, "mobile_app_notification_action")
             listen_event(self.handle_ui_acknowledgement, _UI_ACK_EVENT)
+            listen_event(self.handle_test_notification, TEST_NOTIFICATION_EVENT)
+            listen_event(self.handle_reset_notifications, RESET_NOTIFICATIONS_EVENT)
         self.hass_app.run_every(self.tick, "now", 1)
         self._publish_diagnostics()
 
@@ -133,6 +139,58 @@ class NotificationManager:
         """Persist lifecycle state during a controlled shutdown."""
 
         self._persist_state()
+
+    def _accept_operator_action(self, action: str, data: Mapping[str, Any]) -> bool:
+        """Require explicit confirmation and bound repeated operator requests."""
+        if not isinstance(data, Mapping) or data.get("confirmed") is not True:
+            return False
+        now = self._clock()
+        previous = self._operator_action_at.get(action)
+        if previous is not None and now - previous < 60:
+            return False
+        self._operator_action_at[action] = now
+        return True
+
+    def handle_test_notification(self, event: str, data: Mapping[str, Any], *args: Any, **kwargs: Any) -> None:
+        """Send a mobile-only test through normal delivery without attesting receipt."""
+        if not self._accept_operator_action("test", data):
+            return
+        self._queue_delivery(
+            tag="safety-notification-operator-test", level=3,
+            title=self.localizer.text("notification.test.title"),
+            message=self.localizer.text("notification.test.message"), kind="test",
+        )
+
+    def handle_reset_notifications(self, event: str, data: Mapping[str, Any], *args: Any, **kwargs: Any) -> None:
+        """Reset old notification data, then reissue still-active safety warnings."""
+        if not self._accept_operator_action("reset", data):
+            return
+        active = {tag: dict(record) for tag, record in self.active_notification.items()}
+        self.active_notification.clear()
+        self.pending_deliveries.clear()
+        self.notification_history.clear()
+        for key in self._counters:
+            self._counters[key] = 0
+        self._last_attempt_at = None
+        self._last_success_at = None
+        self._last_result = "reset"
+        self._last_error = None
+        self._channel_status = {
+            service: {"status": "not_attempted", "last_attempt_at": None, "last_error": ""}
+            for service in self.mobile_provider.services
+        }
+        # Reset is not a safety acknowledgement or an actuator command. Preserve
+        # annunciator restrictions and rebuild live warnings with fresh repeats.
+        for tag, record in active.items():
+            record.update(acknowledged=False, acknowledged_at=None, repeat_count=0)
+            level = int(record["level"])
+            repeat = self.notification_config["level_one_repeat"]
+            record["next_repeat_at"] = self._clock() + repeat["interval_seconds"] if level == 1 and repeat["enabled"] else None
+            self.active_notification[tag] = record
+            if level in (1, 2, 3):
+                self._queue_delivery(tag=tag, level=level, title=str(record["title"]), message=str(record["message"]), kind="new")
+        self._persist_state()
+        self._publish_diagnostics()
 
     def notify(
         self,
@@ -613,7 +671,7 @@ class NotificationManager:
             )
         else:
             active_record = self.active_notification.get(delivery.tag, {})
-            acknowledged = delivery.kind == "acknowledged" or bool(
+            acknowledged = delivery.kind in {"acknowledged", "test"} or bool(
                 active_record.get("acknowledged", False)
             )
             result = self.mobile_provider.send(
@@ -763,6 +821,7 @@ class NotificationManager:
             "last_success_at": self._last_success_at,
             "last_result": self._last_result,
             "last_error": self._last_error,
+            "operator_action_at": self._operator_action_at,
             "channel_status": self._channel_status,
             "local_annunciator": (
                 self.local_annunciator.snapshot()
@@ -819,6 +878,15 @@ class NotificationManager:
             self._last_success_at = snapshot.get("last_success_at")
             self._last_result = str(snapshot.get("last_result", "restored"))
             self._last_error = snapshot.get("last_error")
+            actions = snapshot.get("operator_action_at", {})
+            if isinstance(actions, Mapping):
+                self._operator_action_at = {
+                    key: float(value) for key, value in actions.items()
+                    if key in {"test", "reset"}
+                    and isinstance(value, (int, float))
+                    and not isinstance(value, bool)
+                    and math.isfinite(value)
+                }
             restored_channels = snapshot.get("channel_status", {})
             if isinstance(restored_channels, Mapping):
                 for service in self.mobile_provider.services:
@@ -851,6 +919,8 @@ class NotificationManager:
             state = "queued"
         elif self._last_error:
             state = "degraded"
+        elif self._last_result == "reset":
+            state = "unknown"
         else:
             state = "healthy"
         attributes = {
@@ -875,6 +945,8 @@ class NotificationManager:
             "last_success_at": self._last_success_at,
             "last_result": self._last_result,
             "last_error": self._last_error or "",
+            "last_reset_at": self._operator_action_at.get("reset"),
+            "last_test_request_at": self._operator_action_at.get("test"),
             "channels": self._channel_status,
             "delivery_confirmation": "Home Assistant acceptance only; device delivery is not confirmed",
         }

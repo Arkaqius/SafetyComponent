@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useConfig } from '@hakit/core';
+import { NavLink, useLocation } from 'react-router-dom';
 import ConfigurationObjectEditor from '../components/ConfigurationObjectEditor';
 import BatteryDiscovery from '../components/BatteryDiscovery';
 import { registrySchemas } from '../components/configurationFieldSchemas';
@@ -16,6 +17,12 @@ const registrySections = [
 type SaveState = 'idle' | 'saving' | 'saved';
 
 export default function Configuration() {
+  const location = useLocation();
+  const requestedPage = location.pathname.split('/')[2];
+  const page = ['general', 'notifications', 'site', 'health', 'settings', 'rooms', 'openings', 'detectors'].includes(requestedPage)
+    ? requestedPage
+    : 'general';
+  const [template, setTemplate] = useState<ConfigurationMap | null>(null);
   const haConfig = useConfig();
   const [draft, setDraft] = useState<ConfigurationMap | null>(null);
   const [systemDefaults, setSystemDefaults] = useState<ConfigurationMap>({});
@@ -32,6 +39,7 @@ export default function Configuration() {
     try {
       const document = await loadUserConfiguration();
       setDraft(document.user_config);
+      setTemplate(document.template_user_config ?? null);
       setSystemDefaults(document.system_defaults ?? {});
       setRevision(document.revision);
       setSetupRequired(document.setup_required);
@@ -69,6 +77,20 @@ export default function Configuration() {
       setSaveState('idle');
       setError(caught instanceof Error ? caught.message : 'Nie udało się zapisać konfiguracji');
     }
+  };
+
+  const resetDraft = () => {
+    if (
+      !template ||
+      !window.confirm(
+        'Przywrócić formularz do publicznego szablonu? Usuniesz z formularza wszystkie własne powiązania i nadpisania. Prywatny plik nie zmieni się, dopóki nie klikniesz „Zapisz”. Możesz anulować reset przez „Odrzuć zmiany”.'
+      )
+    )
+      return;
+    setDraft(structuredClone(template));
+    setDirty(true);
+    setSaveState('idle');
+    setValidationError(null);
   };
 
   const importFile = async (file: File) => {
@@ -193,11 +215,33 @@ export default function Configuration() {
           <button className='secondary-button' disabled={!dirty || saveState === 'saving'} onClick={() => void load()} type='button'>
             Odrzuć zmiany
           </button>
+          <button className='secondary-button' disabled={!template || saveState === 'saving'} onClick={resetDraft} type='button'>
+            Resetuj formularz do szablonu
+          </button>
           <button className='primary-button' disabled={!dirty || saveState === 'saving'} onClick={() => void save()} type='button'>
             {saveState === 'saving' ? 'Zapisywanie…' : setupRequired ? 'Utwórz user_config.yml' : 'Zapisz konfigurację'}
           </button>
         </div>
       </section>
+
+      <nav className='configuration-subpages' aria-label='Podstrony konfiguracji'>
+        {(
+          [
+            ['general', 'Ogólne'],
+            ['notifications', 'Powiadomienia'],
+            ['site', 'Instalacja HA'],
+            ['health', 'Zdrowie systemu'],
+            ['settings', 'Ustawienia komponentów'],
+            ['rooms', 'Pomieszczenia'],
+            ['openings', 'Drzwi i okna'],
+            ['detectors', 'Detektory'],
+          ] as const
+        ).map(([key, label]) => (
+          <NavLink className={`secondary-button${page === key ? ' active' : ''}`} key={key} to={`/configuration/${key}`}>
+            {label}
+          </NavLink>
+        ))}
+      </nav>
 
       {setupRequired ? (
         <div className='configuration-message configuration-message-warning'>
@@ -222,7 +266,7 @@ export default function Configuration() {
         </div>
       ) : null}
 
-      <section className='panel configuration-section'>
+      <section className='panel configuration-section' hidden={page !== 'general'}>
         <SectionHeader
           title='Funkcje i integracje'
           description='Włącz komponenty bezpieczeństwa oraz źródła danych używane w tej instalacji.'
@@ -253,7 +297,7 @@ export default function Configuration() {
         </div>
       </section>
 
-      <section className='panel configuration-section'>
+      <section className='panel configuration-section' hidden={page !== 'general'}>
         <SectionHeader title='Język' description='Nazwy encji są definiowane w plikach lokalizacji, poza konfiguracją użytkownika.' />
         <div className='configuration-grid'>
           <SelectField
@@ -270,7 +314,7 @@ export default function Configuration() {
         </div>
       </section>
 
-      <section className='panel configuration-section'>
+      <section className='panel configuration-section' hidden={page !== 'notifications'}>
         <SectionHeader title='Powiadomienia' description='Miejsca docelowe powiadomień Home Assistant.' />
         <div className='configuration-grid'>
           <TextField
@@ -305,7 +349,7 @@ export default function Configuration() {
         </div>
       </section>
 
-      <section className='panel configuration-section'>
+      <section className='panel configuration-section' hidden={page !== 'site'}>
         <SectionHeader
           title='Instalacja Home Assistant'
           description='Dane administracyjne i wspólne encje. Współrzędne są pobierane z Home Assistant przy każdym uruchomieniu aplikacji.'
@@ -342,7 +386,7 @@ export default function Configuration() {
         </div>
       </section>
 
-      <section className='panel configuration-section'>
+      <section className='panel configuration-section' hidden={page !== 'health'}>
         <SectionHeader
           title='Zdrowie systemu i konserwacja'
           description='Opcjonalne źródła dla funkcjonalnego monitoringu bezpieczeństwa. Brak encji oznacza brak pokrycia, a nie stan prawidłowy.'
@@ -501,7 +545,7 @@ export default function Configuration() {
         </p>
       </section>
 
-      <section className='panel configuration-section'>
+      <section className='panel configuration-section' hidden={page !== 'settings'}>
         <SectionHeader
           title='Ustawienia komponentów'
           description='Ustawienia specyficzne dla instalacji. Puste pola używają pokazanej wartości systemowej; ustawienia pojedynczego zasobu mają wyższy priorytet.'
@@ -647,7 +691,7 @@ export default function Configuration() {
       </section>
 
       {registrySections.map(section => (
-        <section className='panel configuration-section' key={section.key}>
+        <section className='panel configuration-section' hidden={page !== section.key} key={section.key}>
           <SectionHeader title={section.title} description={section.description} />
           <ConfigurationObjectEditor
             label={section.title}

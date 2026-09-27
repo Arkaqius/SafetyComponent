@@ -52,6 +52,7 @@ from components.core.periodic_test_monitor import PeriodicTestMonitor
 from components.core.evaluation_progress import EvaluationProgress
 from components.core.functional_safety_monitor import FunctionalSafetyMonitor
 from components.external_apis.home_assistant_state import HomeAssistantStateProvider
+from components.external_apis.stable_releases import StableReleaseProvider
 from components.core.derivative_monitor import DerivativeMonitor
 from components.core.localization import LocalizationSettings
 from components.core.mqtt_entity_manager import MqttEntityManager
@@ -217,6 +218,7 @@ class SafetyFunctions(hass.Hass):
                 for key, value in detector_cfg.get("detectors", {}).items()
                 if value.get("enabled", True)
             }
+            state_provider = HomeAssistantStateProvider.from_environment()
             self.functional_safety_monitor = FunctionalSafetyMonitor(
                 self,
                 self.event_bus,
@@ -225,7 +227,8 @@ class SafetyFunctions(hass.Hass):
                 functional_policy,
                 wan_entity=self.notification_cfg.get("wan_entity"),
                 detector_names=detector_names,
-                state_provider=HomeAssistantStateProvider.from_environment(),
+                state_provider=state_provider,
+                stable_release_provider=StableReleaseProvider() if state_provider else None,
             )
             self.sm_modules[self.functional_safety_monitor.component_name] = (
                 self.functional_safety_monitor

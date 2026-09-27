@@ -99,6 +99,21 @@ def test_first_start_serves_example_without_creating_user_file(tmp_path: Path) -
     assert store.read()["revision"] == saved["revision"]
 
 
+def test_reset_template_is_public_and_read_does_not_modify_private_source(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    original = store.read()
+    draft = original["user_config"]
+    draft["installation"]["component_settings"]["temperature"] = {"low_temperature_c": 17.0}
+    store.save(draft, original["revision"])
+    before = store.user_path.read_bytes()
+
+    result = store.read()
+
+    assert store.user_path.read_bytes() == before
+    assert result["user_config"] != result["template_user_config"]
+    assert result["template_user_config"] == yaml.safe_load(store.example_path.read_text(encoding="utf-8"))["user_config"]
+
+
 def test_first_start_rejects_save_after_another_session_created_file(
     tmp_path: Path,
 ) -> None:

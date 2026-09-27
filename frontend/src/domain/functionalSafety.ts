@@ -7,6 +7,16 @@ export const DETECTOR_TEST_RESULT_EVENT = 'safety_detector_test_result';
 export const PERIODIC_TESTS_ENTITY_ID = 'sensor.safety_periodic_tests';
 export const PERIODIC_TEST_RESULT_EVENT = 'safety_periodic_test_result';
 export const FUNCTIONAL_SAFETY_SOURCES_ENTITY_ID = 'sensor.functional_safety_sources';
+export const TEST_NOTIFICATION_EVENT = 'safety_notification_test';
+export const RESET_NOTIFICATIONS_EVENT = 'safety_notification_reset';
+
+export function notificationOperatorMessage(action: 'test' | 'reset') {
+  return {
+    type: 'fire_event',
+    event_type: action === 'test' ? TEST_NOTIFICATION_EVENT : RESET_NOTIFICATIONS_EVENT,
+    event_data: { confirmed: true },
+  };
+}
 const updateProductNames: Record<string, string> = {
   home_assistant_core: 'Home Assistant Core',
   home_assistant_os: 'Home Assistant OS',
@@ -19,6 +29,8 @@ export interface SourceView {
   label: string;
   status: string;
   detail: string;
+  group: 'host' | 'wan' | 'updates' | 'batteries' | 'inventory';
+  evidence: string[];
 }
 
 export function getFunctionalSafetySources(entities: EntityMap): SourceView[] {
@@ -46,10 +58,27 @@ export function getFunctionalSafetySources(entities: EntityMap): SourceView[] {
       label,
       status: item.status,
       detail: detail || (typeof item.reason === 'string' ? (reasons[item.reason] ?? 'Brak wiarygodnych danych') : ''),
+      group: key.startsWith('update-')
+        ? 'updates'
+        : key.startsWith('battery-') && key !== 'battery-discovery'
+          ? 'batteries'
+          : key === 'battery-discovery'
+            ? 'inventory'
+            : key === 'wan'
+              ? 'wan'
+              : 'host',
+      evidence: sourceEvidence(item),
     });
   };
-  add('memory', 'Pamięć hosta', attributes.memory);
-  add('cpu', 'CPU hosta', attributes.cpu);
+  const memory = attributes.memory as Record<string, unknown> | undefined;
+  const cpu = attributes.cpu as Record<string, unknown> | undefined;
+  add(
+    'memory',
+    'Pamięć hosta',
+    attributes.memory,
+    memory ? `Dostępna: ${numberOrNull(memory.available_mib) ?? '—'} MiB · PSI: ${numberOrNull(memory.psi_percent) ?? '—'}%` : ''
+  );
+  add('cpu', 'CPU hosta', attributes.cpu, cpu ? `${numberOrNull(cpu.percent) ?? '—'}%` : '');
   const metricDetail = (value: unknown, field: string, unit: string) => {
     const item = value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
     const number = numberOrNull(item[field]);
@@ -101,6 +130,40 @@ export function getFunctionalSafetySources(entities: EntityMap): SourceView[] {
     });
   }
   return rows;
+}
+
+function sourceEvidence(item: Record<string, unknown>): string[] {
+  const lines: string[] = [];
+  const time = (label: string, value: unknown) => {
+    const date = validDate(value);
+    lines.push(`${label}: ${date ? new Date(date).toLocaleString('pl-PL') : 'brak danych'}`);
+  };
+  if ('installed_version' in item) {
+    lines.push(`Zainstalowana: ${typeof item.installed_version === 'string' ? item.installed_version : '—'}`);
+    const latest = typeof item.latest_version === 'string' ? item.latest_version : '';
+    lines.push(`Najnowsza wg encji HA: ${latest || '—'}`);
+    const stable = item.stable_release && typeof item.stable_release === 'object' ? (item.stable_release as Record<string, unknown>) : {};
+    lines.push(
+      `Najnowsza stabilna wg wydawcy: ${stable.status === 'current' && typeof stable.version === 'string' ? stable.version : 'brak wiarygodnych danych'}`
+    );
+    time('Sprawdzenie stabilnego wydania', stable.checked_at);
+    time('Ostatni raport źródła', item.observed_at);
+  }
+  if (Array.isArray(item.sources))
+    for (const raw of item.sources) {
+      if (!raw || typeof raw !== 'object') continue;
+      const source = raw as Record<string, unknown>;
+      lines.push(
+        `${String(source.entity_id ?? 'Źródło')}: ${String(source.state ?? 'brak danych')}${typeof source.unit === 'string' ? ` ${source.unit}` : ''} (odczyt źródłowy)`
+      );
+      time('Ostatni raport', source.last_reported);
+      time('Ostatnia zmiana wartości/atrybutów', source.last_updated);
+    }
+  if ('checked_at' in item) time('Ostatnia ocena monitora', item.checked_at);
+  if ('percentage' in item) lines.unshift(`Wiarygodny poziom baterii: ${numberOrNull(item.percentage) ?? '—'}%`);
+  if ('device_count' in item)
+    lines.push(`Urządzenia w inwentarzu: ${numberOrNull(item.device_count) ?? '—'} (wykrywanie nie jest monitorem stanu baterii)`);
+  return lines;
 }
 
 export type PeriodicTestKey = 'notification_delivery' | 'backup_restore';

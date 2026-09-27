@@ -4084,6 +4084,30 @@ details summary:focus-visible {
   padding: 0 18px 18px;
 }
 
+.configuration-subpages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.configuration-subpages .active {
+  outline: 2px solid var(--color-primary, #41bdb0);
+}
+
+.configuration-section[hidden] {
+  display: none !important;
+}
+
+.functional-safety-group > summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: 8px 0;
+}
+
+.functional-safety-group[open] > summary {
+  margin-bottom: 16px;
+}
+
 .notification-message {
   white-space: pre-wrap;
 }

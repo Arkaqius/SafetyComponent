@@ -18,6 +18,7 @@ _STATES = {
     "acknowledged": "SET",
     "resolved": "CLEARED",
     "clear": "SHADOWED",
+    "test": "TEST",
 }
 
 

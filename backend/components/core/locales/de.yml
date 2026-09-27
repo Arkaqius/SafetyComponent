@@ -7,6 +7,8 @@ entity.safety_detector_tests: Tests der Sicherheitsmelder
 entity.safety_periodic_tests: Regelmäßige Sicherheitsprüfungen
 test.notification_delivery: Bestätigte Warnungszustellung
 test.backup_restore: Bestätigte Wiederherstellung der Sicherung
+notification.test.title: SafetyFunctions Benachrichtigungstest
+notification.test.message: 'Dies ist ein Test, kein Gefahrenalarm. Prüfen Sie den Empfang in jedem konfigurierten Kanal und speichern Sie danach das Ergebnis in Safety Home.'
 fault.periodic_test_due: 'Regelmäßige Prüfung erfordert Aufmerksamkeit: {test}'
 fault.host_disk_low: Wenig freier Speicherplatz auf dem Host
 fault.host_temperature_high: Hohe Hosttemperatur
@@ -47,6 +49,7 @@ state.entity_health.unavailable: Nicht verfügbar
 state.notification_delivery.healthy: Fehlerfrei
 state.notification_delivery.degraded: Prüfung erforderlich
 state.notification_delivery.queued: In Warteschlange
+state.notification_delivery.unknown: Kein Zustellnachweis
 state.safety_evaluation.observed: Bewertungen abgeschlossen
 state.safety_evaluation.attention: Bewertung erfordert Prüfung
 state.safety_evaluation.unknown: Bewertungsstatus unbekannt

@@ -12,6 +12,7 @@ from components.core.maintenance_evidence import ResourceRule, aware_time
 from components.core.types_common import FaultState, SMState, Symptom
 from components.external_apis.battery_inventory import battery_entities, resolve_batteries
 from components.external_apis.home_assistant_state import HomeAssistantStateProvider
+from components.external_apis.stable_releases import StableReleaseProvider
 
 UPDATE_PRODUCTS = (
     "home_assistant_core",
@@ -44,6 +45,7 @@ class FunctionalSafetyMonitor:
         wan_entity: str | None,
         detector_names: Mapping[str, str] | None = None,
         state_provider: HomeAssistantStateProvider | None = None,
+        stable_release_provider: StableReleaseProvider | None = None,
     ) -> None:
         self.hass_app = hass_app
         self.event_bus = event_bus
@@ -53,6 +55,7 @@ class FunctionalSafetyMonitor:
         self.wan_entity = wan_entity
         self.detector_names = dict(detector_names or {})
         self.state_provider = state_provider
+        self.stable_release_provider = stable_release_provider
         self._reports: dict[str, dict[str, Any]] = {}
         battery_config = self.bindings.get("battery_monitoring", {})
         self._battery_discovery: dict[str, Any] = {"status": "disabled", "devices": []}
@@ -250,6 +253,11 @@ class FunctionalSafetyMonitor:
             "device_count": len(self._battery_discovery["devices"]),
             "reason": "inventory_unavailable" if self._battery_discovery["status"] == "error" else None,
         }
+        for key in ("memory", "cpu", "disk", "host_temperature", "backup", "wan"):
+            item = diagnostics[key]
+            sources = item.get("source_entities", [item.get("source_entity")])
+            item["sources"] = [self._source_evidence(entity) for entity in sources if entity]
+            item["checked_at"] = datetime.now(timezone.utc).isoformat()
         statuses = [diagnostics["memory"]["status"], diagnostics["cpu"]["status"], diagnostics["wan"]["status"]]
         statuses += [item["status"] for item in diagnostics["updates"].values()]
         statuses += [item["status"] for item in diagnostics["remote_batteries"].values()]
@@ -379,10 +387,11 @@ class FunctionalSafetyMonitor:
 
     def _evaluate_updates(self) -> dict[str, Any]:
         results: dict[str, Any] = {}
+        stable = self.stable_release_provider.poll() if self.stable_release_provider else {}
         for product in UPDATE_PRODUCTS:
             entity = self.bindings.get("updates", {}).get(product)
             if not entity:
-                results[product] = {"status": "unknown", "reason": "not_configured"}
+                results[product] = {"status": "unknown", "reason": "not_configured", "installed_version": None, "latest_version": None, "stable_release": stable.get(product, {"status": "unknown", "version": None})}
                 continue
             snapshot = self._snapshot(entity)
             state = str(snapshot.get("state", "")).lower()
@@ -398,6 +407,9 @@ class FunctionalSafetyMonitor:
                 "installed_version": attrs.get("installed_version"),
                 "latest_version": attrs.get("latest_version"),
                 "observed_at": snapshot.get("last_reported"),
+                "checked_at": datetime.now(timezone.utc).isoformat(),
+                "release_url": attrs.get("release_url"),
+                "stable_release": stable.get(product, {"status": "unknown", "version": None}),
             }
             if valid:
                 self._emit(f"UpdateAvailable{self._pascal(product)}", state == "on")
@@ -429,10 +441,23 @@ class FunctionalSafetyMonitor:
                 "percentage": min(percentages) if percentages else None,
                 "device_id": binding.get("device_id"),
                 "source_entities": battery_entities(binding, "percentage") + battery_entities(binding, "low"),
+                "sources": [self._source_evidence(entity) for entity in battery_entities(binding, "percentage") + battery_entities(binding, "low")],
             }
             if status != "unknown":
                 self._emit(f"RemoteBatteryLow{device}", status == "low")
         return results
+
+    def _source_evidence(self, entity: str) -> dict[str, Any]:
+        """Expose raw report metadata separately from validated policy evidence."""
+        snapshot = self._snapshot(entity)
+        attrs = snapshot.get("attributes") or {}
+        return {
+            "entity_id": entity,
+            "state": snapshot.get("state"),
+            "unit": attrs.get("unit_of_measurement") if isinstance(attrs, dict) else None,
+            "last_reported": snapshot.get("last_reported"),
+            "last_updated": snapshot.get("last_updated"),
+        }
 
     def _emit(self, fault: str, active: bool) -> None:
         symptom_id = f"fsm_{fault}"

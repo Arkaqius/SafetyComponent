@@ -132,6 +132,7 @@ class UserConfigStore:
 
         return {
             "user_config": user_config,
+            "template_user_config": load_mapping(self.example_path)["user_config"],
             "system_defaults": system_defaults,
             "revision": ABSENT_REVISION if setup_required else self._revision(raw),
             "restart_required": False,

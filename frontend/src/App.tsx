@@ -37,7 +37,7 @@ export default function App() {
           <Route path='entities' element={<EntityHealth />} />
           <Route path='functional-safety' element={<FunctionalSafety />} />
           <Route path='history' element={<LogPage />} />
-          <Route path='configuration' element={<Configuration />} />
+          <Route path='configuration/*' element={<Configuration />} />
           <Route path='logs' element={<Navigate replace to='/history' />} />
           <Route path='*' element={<Navigate replace to='/' />} />
         </Route>
