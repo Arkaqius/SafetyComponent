@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useHass } from '@hakit/core';
 import StatusBadge from '../components/StatusBadge';
 import {
@@ -10,8 +10,10 @@ import {
   periodicTestResultMessage,
   notificationOperatorMessage,
   type PeriodicTestKey,
+  FUNCTIONAL_SAFETY_SOURCES_ENTITY_ID,
   NOTIFICATION_HEALTH_ENTITY_ID,
 } from '../domain/functionalSafety';
+import { fetchFunctionalSafetyDiagnostics, type FunctionalSafetyDiagnosticsPayload } from '../domain/functionalSafetyApi';
 import type { StatusTone } from '../domain/safety';
 import { useSafetyEntities } from '../hooks/useSafetyEntities';
 
@@ -61,10 +63,36 @@ export default function FunctionalSafety() {
   const [testMessage, setTestMessage] = useState('');
   const [periodicMessage, setPeriodicMessage] = useState('');
   const [savingPeriodicTest, setSavingPeriodicTest] = useState(false);
+  const [diagnosticsApi, setDiagnosticsApi] = useState<{
+    status: 'loading' | 'ready' | 'error';
+    data: FunctionalSafetyDiagnosticsPayload | null;
+  }>({ status: 'loading', data: null });
+  useEffect(() => {
+    let disposed = false;
+    const load = async () => {
+      try {
+        const data = await fetchFunctionalSafetyDiagnostics();
+        if (!disposed) setDiagnosticsApi({ status: 'ready', data });
+      } catch {
+        if (!disposed) setDiagnosticsApi(current => ({ status: 'error', data: current.data }));
+      }
+    };
+    void load();
+    const timer = window.setInterval(() => void load(), 15_000);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
+  }, []);
   const progress = getComponentProgress(entities);
   const detectorTests = getDetectorTests(entities);
   const periodicTests = getPeriodicTests(entities);
-  const sources = getFunctionalSafetySources(entities);
+  const sources = getFunctionalSafetySources(entities, diagnosticsApi.data?.diagnostics);
+  const functionalSafetySummary = entities[FUNCTIONAL_SAFETY_SOURCES_ENTITY_ID];
+  const totalBatteries = functionalSafetySummary ? countAttribute(functionalSafetySummary.attributes, 'remote_battery_count') : null;
+  const omittedBatteries = functionalSafetySummary
+    ? countAttribute(functionalSafetySummary.attributes, 'remote_battery_omitted_count')
+    : null;
   const notification = entities[NOTIFICATION_HEALTH_ENTITY_ID];
   const accepted = notification ? countAttribute(notification.attributes, 'accepted_attempts') : null;
   const failed = notification ? countAttribute(notification.attributes, 'failed_attempts') : null;
@@ -156,6 +184,18 @@ export default function FunctionalSafety() {
       )}
 
       <h2>Źródła diagnostyczne</h2>
+      {diagnosticsApi.status === 'loading' ? <p role='status'>Pobieranie pełnej diagnostyki z backendu…</p> : null}
+      {diagnosticsApi.status === 'ready' && diagnosticsApi.data ? (
+        <p>Pełna diagnostyka z backendu · aktualizacja {new Date(diagnosticsApi.data.generated_at).toLocaleString('pl-PL')}</p>
+      ) : null}
+      {diagnosticsApi.status === 'error' ? (
+        <p role='status'>
+          Pełna diagnostyka API jest niedostępna — pokazujemy ograniczony stan encji Home Assistant.
+          {omittedBatteries !== null && omittedBatteries > 0
+            ? ` Pominięte baterie: ${omittedBatteries} z ${totalBatteries ?? 'nieznanej liczby'}.`
+            : ''}
+        </p>
+      ) : null}
       <details className='panel functional-safety-group'>
         <summary>Postęp funkcji — ocena per komponent ({progress.length})</summary>
         <div className='panel-header'>

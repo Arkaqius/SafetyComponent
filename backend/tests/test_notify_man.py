@@ -60,9 +60,9 @@ def test_l1_uses_explicit_group_and_exact_cross_platform_profile() -> None:
 
     service_call = notify_calls(hass)[-1]
     assert service_call.args == ("notify/mobile_app_example_phone",)
-    assert service_call.kwargs["return_result"] is True
-    assert service_call.kwargs["timeout"] == 5
-    assert service_call.kwargs["hass_timeout"] == 5
+    assert "return_result" not in service_call.kwargs
+    assert "timeout" not in service_call.kwargs
+    assert "hass_timeout" not in service_call.kwargs
     assert service_call.kwargs["title"] == "Immediate action needed"
     assert service_call.kwargs["message"] == (
         "Smoke alarm needs your attention.\nLocation: Kitchen"
@@ -208,9 +208,6 @@ def test_shadowed_fault_uses_companion_clear_command() -> None:
 
     hass.call_service.assert_called_once_with(
         "notify/mobile_app_example_phone",
-        return_result=True,
-        timeout=5,
-        hass_timeout=5,
         message="clear_notification",
         data={"tag": "tag-clear"},
     )
@@ -601,73 +598,47 @@ def test_restored_retry_uses_current_explicit_service_configuration() -> None:
     )
 
 
-def test_missing_appdaemon_result_is_retried_as_transport_failure() -> None:
+def test_appdaemon_submission_without_result_is_accepted() -> None:
     hass = make_hass()
     hass.call_service.return_value = None
     manager = NotificationManager(hass, {})
 
     manager.notify("Fault", 3, FaultState.SET, None, "legacy-tag")
 
-    assert "legacy-tag:active" in manager.pending_deliveries
-    assert manager._last_result == "failed_retry_scheduled"
-    assert manager._counters["accepted_attempts"] == 0
-    assert manager._counters["failed_attempts"] == 1
-    assert manager._last_success_at is None
+    assert manager.pending_deliveries == {}
+    assert manager._last_result == "accepted_by_home_assistant"
+    assert manager._counters["accepted_attempts"] == 1
+    assert manager._counters["failed_attempts"] == 0
+    assert manager._last_success_at is not None
 
 
-def test_unsupported_return_result_switches_to_compatibility_mode() -> None:
+def test_notify_submissions_never_probe_unsupported_result_options() -> None:
     hass = make_hass()
-    hass.call_service.side_effect = [
-        {
-            "success": False,
-            "error": {
-                "code": "invalid_format",
-                "message": "not a valid option at 'return_result'",
-            },
-        },
-        None,
-        None,
-    ]
+    hass.call_service.side_effect = [None, None]
     manager = NotificationManager(hass, {})
 
-    manager.notify("Fault", 3, FaultState.SET, None, "compatibility-tag-one")
-    manager.notify("Fault", 3, FaultState.SET, None, "compatibility-tag-two")
+    manager.notify("Fault", 3, FaultState.SET, None, "submission-one")
+    manager.notify("Fault", 3, FaultState.SET, None, "submission-two")
 
     calls = notify_calls(hass)
-    assert len(calls) == 3
-    assert calls[0].kwargs["return_result"] is True
-    assert "return_result" not in calls[1].kwargs
-    assert "timeout" not in calls[1].kwargs
-    assert "hass_timeout" not in calls[1].kwargs
-    assert "return_result" not in calls[2].kwargs
+    assert len(calls) == 2
+    assert all("return_result" not in item.kwargs for item in calls)
+    assert all("timeout" not in item.kwargs for item in calls)
+    assert all("hass_timeout" not in item.kwargs for item in calls)
     assert manager.pending_deliveries == {}
     assert manager._last_result == "accepted_by_home_assistant"
     assert manager._counters["accepted_attempts"] == 2
     assert manager._counters["failed_attempts"] == 0
-    hass.log.assert_any_call(
-        "AppDaemon does not support notify return_result; "
-        "using compatibility submission mode",
-        level="WARNING",
-    )
 
 
-def test_compatibility_mode_preserves_reported_transport_failure() -> None:
+def test_submission_preserves_reported_transport_failure() -> None:
     hass = make_hass()
-    hass.call_service.side_effect = [
-        {
-            "success": False,
-            "error": {
-                "code": "invalid_format",
-                "message": "not a valid option at 'return_result'",
-            },
-        },
-        {"success": False, "error": "offline"},
-    ]
+    hass.call_service.return_value = {"success": False, "error": "offline"}
     manager = NotificationManager(hass, {})
 
-    manager.notify("Fault", 3, FaultState.SET, None, "compatibility-failure")
+    manager.notify("Fault", 3, FaultState.SET, None, "submission-failure")
 
-    assert "compatibility-failure:active" in manager.pending_deliveries
+    assert "submission-failure:active" in manager.pending_deliveries
     assert manager._last_result == "failed_retry_scheduled"
     assert manager._counters["accepted_attempts"] == 0
     assert manager._counters["failed_attempts"] == 1

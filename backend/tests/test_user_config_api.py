@@ -17,9 +17,65 @@ from user_config_api import (
     UserConfigRequestHandler,
     UserConfigStore,
 )
+from components.core.functional_safety_diagnostics import (
+    InMemoryFunctionalSafetyDiagnosticsStore,
+)
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
+
+
+def test_functional_safety_diagnostics_api_returns_full_runtime_snapshot(
+    tmp_path: Path,
+) -> None:
+    payload = {
+        "schema_version": 1,
+        "generated_at": "2026-09-28T20:12:21+00:00",
+        "overall_state": "attention",
+        "diagnostics": {
+            "remote_batteries": {
+                "Remote": {"sources": [{"entity_id": "sensor.battery", "state": "10"}]}
+            }
+        },
+    }
+    UserConfigRequestHandler.store = _store(tmp_path)
+    UserConfigRequestHandler.diagnostics_store = (
+        InMemoryFunctionalSafetyDiagnosticsStore(payload)
+    )
+    server = ConfigurationHttpServer(("127.0.0.1", 0), UserConfigRequestHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        with urlopen(
+            f"http://127.0.0.1:{server.server_port}/api/functional-safety"
+        ) as response:
+            assert json.load(response) == payload
+            assert response.headers["Cache-Control"] == "no-store"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def test_functional_safety_diagnostics_api_fails_closed_before_evaluation(
+    tmp_path: Path,
+) -> None:
+    UserConfigRequestHandler.store = _store(tmp_path)
+    UserConfigRequestHandler.diagnostics_store = (
+        InMemoryFunctionalSafetyDiagnosticsStore()
+    )
+    server = ConfigurationHttpServer(("127.0.0.1", 0), UserConfigRequestHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        with pytest.raises(HTTPError) as error:
+            urlopen(f"http://127.0.0.1:{server.server_port}/api/functional-safety")
+        assert error.value.code == 503
+        assert json.load(error.value)["error"] == "functional_safety_unavailable"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
 
 
 @pytest.mark.parametrize("available", [True, False])

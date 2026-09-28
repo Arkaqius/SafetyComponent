@@ -21,8 +21,6 @@ class MobilePushProvider:
         self.hass_app = hass_app
         self.services = tuple(str(service) for service in config["services"])
         self.default_url = str(config["default_url"])
-        self.hass_timeout_seconds = int(config["hass_timeout_seconds"])
-        self._supports_return_result: bool | None = None
         self.profiles = {
             int(level): dict(profile) for level, profile in config["profiles"].items()
         }
@@ -153,29 +151,8 @@ class MobilePushProvider:
             if title is not None:
                 kwargs["title"] = title
             try:
-                if self._supports_return_result is False:
-                    response = self.hass_app.call_service(service, **kwargs)
-                    results.append(self._compatibility_result(service, response))
-                else:
-                    response = self.hass_app.call_service(
-                        service,
-                        return_result=True,
-                        timeout=self.hass_timeout_seconds,
-                        hass_timeout=self.hass_timeout_seconds,
-                        **kwargs,
-                    )
-                    if self._return_result_is_unsupported(response):
-                        self._supports_return_result = False
-                        self.hass_app.log(
-                            "AppDaemon does not support notify return_result; "
-                            "using compatibility submission mode",
-                            level="WARNING",
-                        )
-                        response = self.hass_app.call_service(service, **kwargs)
-                        results.append(self._compatibility_result(service, response))
-                    else:
-                        self._supports_return_result = True
-                        results.append(self._explicit_result(service, response))
+                response = self.hass_app.call_service(service, **kwargs)
+                results.append(self._submission_result(service, response))
             except (
                 Exception
             ) as exc:  # AppDaemon/plugin exceptions are transport failures.
@@ -185,41 +162,16 @@ class MobilePushProvider:
         return DeliveryBatchResult(tuple(results))
 
     @staticmethod
-    def _return_result_is_unsupported(response: Any) -> bool:
-        """Recognize the HA validation error caused by older AppDaemon releases."""
+    def _submission_result(service: str, response: Any) -> TargetDeliveryResult:
+        """Accept a submission unless AppDaemon reports an explicit failure."""
 
-        if not isinstance(response, Mapping) or response.get("success") is True:
-            return False
-        error = response.get("error")
-        if isinstance(error, Mapping):
-            code = str(error.get("code", "")).lower()
-            message = str(error.get("message", "")).lower()
-        else:
-            code = ""
-            message = str(error or response).lower()
-        return (
-            code in {"", "invalid_format"}
-            and "return_result" in message
-            and "not a valid option" in message
-        )
-
-    @staticmethod
-    def _explicit_result(service: str, response: Any) -> TargetDeliveryResult:
-        """Convert a requested Home Assistant result into a delivery outcome."""
-
+        if response is None:
+            return TargetDeliveryResult(service, DeliveryDisposition.ACCEPTED)
         if isinstance(response, Mapping) and response.get("success") is True:
             return TargetDeliveryResult(service, DeliveryDisposition.ACCEPTED)
         error = (
             str(response.get("error") or response)
             if isinstance(response, Mapping)
-            else "Home Assistant service result was not returned"
+            else str(response)
         )
         return TargetDeliveryResult(service, DeliveryDisposition.FAILED, error)
-
-    @staticmethod
-    def _compatibility_result(service: str, response: Any) -> TargetDeliveryResult:
-        """Accept an older AppDaemon submission unless it reports a failure."""
-
-        if response is None:
-            return TargetDeliveryResult(service, DeliveryDisposition.ACCEPTED)
-        return MobilePushProvider._explicit_result(service, response)

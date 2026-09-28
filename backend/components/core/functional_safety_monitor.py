@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from math import isfinite
 from time import monotonic
 from typing import Any, Mapping
 
+from components.core.functional_safety_diagnostics import (
+    DIAGNOSTICS_SCHEMA_VERSION,
+    FunctionalSafetyDiagnosticsStore,
+)
 from components.core.memory_pressure import MemoryPressureRule
 from components.core.maintenance_evidence import ResourceRule, aware_time
 from components.core.types_common import FaultState, SMState, Symptom
@@ -27,6 +32,10 @@ UPDATE_PRODUCT_NAMES = {
     "safety_component": "SafetyComponent App",
 }
 
+MAX_SUMMARY_ATTRIBUTE_BYTES = 12 * 1024
+MAX_REMOTE_BATTERY_SUMMARIES = 24
+MAX_SUMMARY_TEXT_LENGTH = 160
+
 
 class FunctionalSafetyMonitor:
     """Own L2 memory, L3 WAN, and L4 update/battery policy faults."""
@@ -46,6 +55,7 @@ class FunctionalSafetyMonitor:
         detector_names: Mapping[str, str] | None = None,
         state_provider: HomeAssistantStateProvider | None = None,
         stable_release_provider: StableReleaseProvider | None = None,
+        diagnostics_store: FunctionalSafetyDiagnosticsStore | None = None,
     ) -> None:
         self.hass_app = hass_app
         self.event_bus = event_bus
@@ -56,6 +66,7 @@ class FunctionalSafetyMonitor:
         self.detector_names = dict(detector_names or {})
         self.state_provider = state_provider
         self.stable_release_provider = stable_release_provider
+        self.diagnostics_store = diagnostics_store
         self._reports: dict[str, dict[str, Any]] = {}
         battery_config = self.bindings.get("battery_monitoring", {})
         self._battery_discovery: dict[str, Any] = {"status": "disabled", "devices": []}
@@ -264,11 +275,13 @@ class FunctionalSafetyMonitor:
         statuses.append(diagnostics["battery_discovery"]["status"])
         statuses.extend(diagnostics[key]["status"] for key in ("disk", "host_temperature", "backup"))
         overall = "attention" if any(status in {"active", "high", "low", "available", "offline", "overdue", "failed"} for status in statuses) else "unknown" if "unknown" in statuses else "observed"
+        observed_at = datetime.now(timezone.utc).isoformat()
         self.mqtt_entities.publish_sensor_state(
             self.summary_entity,
             overall,
-            attributes={"observed_at": datetime.now(timezone.utc).isoformat(), **diagnostics},
+            attributes=self._bounded_summary(diagnostics, observed_at=observed_at),
         )
+        self._save_full_diagnostics(diagnostics, overall, observed_at)
         self.record_evaluation()
 
     def stop(self) -> None:
@@ -458,6 +471,199 @@ class FunctionalSafetyMonitor:
             "last_reported": snapshot.get("last_reported"),
             "last_updated": snapshot.get("last_updated"),
         }
+
+    def _bounded_summary(
+        self,
+        diagnostics: Mapping[str, Any],
+        *,
+        observed_at: str | None = None,
+    ) -> dict[str, Any]:
+        """Build a Recorder-safe summary without copying raw source snapshots."""
+
+        attributes: dict[str, Any] = {
+            "observed_at": observed_at or datetime.now(timezone.utc).isoformat(),
+            "memory": self._select_fields(
+                diagnostics.get("memory"),
+                "status",
+                "reason",
+                "available_mib",
+                "psi_percent",
+                "source_entities",
+                "checked_at",
+            ),
+            "cpu": self._select_fields(
+                diagnostics.get("cpu"),
+                "status",
+                "reason",
+                "percent",
+                "source_entity",
+                "checked_at",
+            ),
+            "disk": self._select_fields(
+                diagnostics.get("disk"),
+                "status",
+                "reason",
+                "free_mib",
+                "source_entity",
+                "checked_at",
+            ),
+            "host_temperature": self._select_fields(
+                diagnostics.get("host_temperature"),
+                "status",
+                "reason",
+                "temperature_c",
+                "source_entity",
+                "checked_at",
+            ),
+            "backup": self._select_fields(
+                diagnostics.get("backup"),
+                "status",
+                "reason",
+                "last_success_at",
+                "age_hours",
+                "source_entities",
+                "checked_at",
+            ),
+            "wan": self._select_fields(
+                diagnostics.get("wan"),
+                "status",
+                "reason",
+                "source_entity",
+                "checked_at",
+            ),
+            "battery_discovery": self._select_fields(
+                diagnostics.get("battery_discovery"),
+                "status",
+                "reason",
+                "device_count",
+            ),
+        }
+        updates = diagnostics.get("updates")
+        attributes["updates"] = {
+            str(key): self._select_fields(
+                value,
+                "status",
+                "reason",
+                "source_entity",
+                "installed_version",
+                "latest_version",
+                "observed_at",
+                "checked_at",
+                "stable_release",
+            )
+            for key, value in sorted(updates.items())
+        } if isinstance(updates, Mapping) else {}
+
+        batteries = diagnostics.get("remote_batteries")
+        battery_items = list(batteries.items()) if isinstance(batteries, Mapping) else []
+        battery_items.sort(
+            key=lambda item: (
+                self._status_priority(item[1]),
+                str(item[0]).casefold(),
+            )
+        )
+        selected_batteries = battery_items[:MAX_REMOTE_BATTERY_SUMMARIES]
+        attributes["remote_batteries"] = {
+            str(key): self._select_fields(
+                value,
+                "status",
+                "reason",
+                "friendly_name",
+                "percentage",
+                "device_id",
+                "source_entities",
+            )
+            for key, value in selected_batteries
+        }
+        attributes["remote_battery_count"] = len(battery_items)
+        attributes["remote_battery_omitted_count"] = len(battery_items) - len(selected_batteries)
+
+        while (
+            self._serialized_size(attributes) > MAX_SUMMARY_ATTRIBUTE_BYTES
+            and attributes["remote_batteries"]
+        ):
+            attributes["remote_batteries"].popitem()
+            attributes["remote_battery_omitted_count"] += 1
+        if self._serialized_size(attributes) > MAX_SUMMARY_ATTRIBUTE_BYTES:
+            for item in attributes["updates"].values():
+                item.pop("stable_release", None)
+                item.pop("source_entity", None)
+            for key in ("memory", "cpu", "disk", "host_temperature", "backup", "wan"):
+                attributes[key].pop("source_entity", None)
+                attributes[key].pop("source_entities", None)
+        return attributes
+
+    def _save_full_diagnostics(
+        self,
+        diagnostics: Mapping[str, Any],
+        overall: str,
+        observed_at: str,
+    ) -> None:
+        """Expose the same evaluation to the UI without enlarging the HA entity."""
+
+        if self.diagnostics_store is None:
+            return
+        try:
+            self.diagnostics_store.save(
+                {
+                    "schema_version": DIAGNOSTICS_SCHEMA_VERSION,
+                    "generated_at": observed_at,
+                    "overall_state": overall,
+                    "diagnostics": diagnostics,
+                }
+            )
+        except (OSError, TypeError, ValueError) as exc:
+            logger = getattr(self.hass_app, "log", None)
+            if callable(logger):
+                logger(
+                    f"Functional safety diagnostics snapshot unavailable: {exc}",
+                    level="WARNING",
+                )
+
+    @classmethod
+    def _select_fields(cls, value: Any, *fields: str) -> dict[str, Any]:
+        """Copy only bounded scalar evidence needed by the summary and UI."""
+
+        if not isinstance(value, Mapping):
+            return {}
+        selected: dict[str, Any] = {}
+        for field in fields:
+            if field not in value:
+                continue
+            item = value[field]
+            if field == "stable_release":
+                selected[field] = cls._select_fields(
+                    item, "status", "version", "checked_at"
+                )
+            elif field == "source_entities" and isinstance(item, (list, tuple)):
+                selected[field] = [
+                    cls._bounded_text(source) for source in item[:4]
+                ]
+            elif isinstance(item, str):
+                selected[field] = cls._bounded_text(item)
+            elif item is None or isinstance(item, (bool, int, float)):
+                selected[field] = item
+        return selected
+
+    @staticmethod
+    def _bounded_text(value: Any) -> str:
+        return str(value)[:MAX_SUMMARY_TEXT_LENGTH]
+
+    @staticmethod
+    def _status_priority(value: Any) -> int:
+        if not isinstance(value, Mapping):
+            return 0
+        return 1 if value.get("status") in {"current", "normal"} else 0
+
+    @staticmethod
+    def _serialized_size(attributes: Mapping[str, Any]) -> int:
+        return len(
+            json.dumps(
+                attributes,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        )
 
     def _emit(self, fault: str, active: bool) -> None:
         symptom_id = f"fsm_{fault}"

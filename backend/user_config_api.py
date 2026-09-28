@@ -19,6 +19,12 @@ import yaml
 from build_app_config import SYSTEM_CONFIG_PATH, compile_config, load_mapping
 from build_appdaemon_config import CORE_CONFIG_URL, fetch_core_config
 from configuration_model import validate_user_configuration_v2
+from components.core.functional_safety_diagnostics import (
+    DEFAULT_FUNCTIONAL_SAFETY_DIAGNOSTICS_PATH,
+    DIAGNOSTICS_SCHEMA_VERSION,
+    FunctionalSafetyDiagnosticsStore,
+    JsonFunctionalSafetyDiagnosticsStore,
+)
 from components.external_apis.home_assistant_state import HomeAssistantStateProvider
 from components.external_apis.supervisor_app import own_app_slug
 
@@ -271,9 +277,15 @@ class UserConfigRequestHandler(BaseHTTPRequestHandler):
     """Expose a same-origin JSON API for the Safety Home configuration page."""
 
     store: UserConfigStore
+    diagnostics_store: FunctionalSafetyDiagnosticsStore = (
+        JsonFunctionalSafetyDiagnosticsStore()
+    )
     server_version = "SafetyComponentConfig/1"
 
     def do_GET(self) -> None:  # noqa: N802 - stdlib handler contract
+        if self.path.rstrip("/") == "/api/functional-safety":
+            self._send_functional_safety_diagnostics()
+            return
         if self.path.rstrip("/") == "/api/batteries":
             provider = HomeAssistantStateProvider.from_environment()
             inventory = provider.discover_batteries() if provider else {"status": "error", "devices": []}
@@ -289,6 +301,33 @@ class UserConfigRequestHandler(BaseHTTPRequestHandler):
                 HTTPStatus.INTERNAL_SERVER_ERROR,
                 {"error": "configuration_unavailable", "message": str(exc)},
             )
+
+    def _send_functional_safety_diagnostics(self) -> None:
+        """Return the monitor's full snapshot without involving HA Recorder."""
+
+        try:
+            payload = self.diagnostics_store.load()
+            if not payload:
+                raise ValueError("functional safety diagnostics not evaluated yet")
+            if payload.get("schema_version") != DIAGNOSTICS_SCHEMA_VERSION:
+                raise ValueError("unsupported functional safety diagnostics schema")
+            if payload.get("overall_state") not in {
+                "observed",
+                "attention",
+                "unknown",
+            }:
+                raise ValueError("invalid functional safety overall state")
+            if not isinstance(payload.get("generated_at"), str) or not isinstance(
+                payload.get("diagnostics"), dict
+            ):
+                raise ValueError("invalid functional safety diagnostics snapshot")
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            self._send_json(
+                HTTPStatus.SERVICE_UNAVAILABLE,
+                {"error": "functional_safety_unavailable", "message": str(exc)},
+            )
+            return
+        self._send_json(HTTPStatus.OK, payload)
 
     def do_PUT(self) -> None:  # noqa: N802 - stdlib handler contract
         if self.path.rstrip("/") != "/api/config":
@@ -401,9 +440,17 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8100)
     parser.add_argument("--user", type=Path, default=DEFAULT_USER_CONFIG_PATH)
     parser.add_argument("--system", type=Path, default=SYSTEM_CONFIG_PATH)
+    parser.add_argument(
+        "--functional-safety-diagnostics",
+        type=Path,
+        default=DEFAULT_FUNCTIONAL_SAFETY_DIAGNOSTICS_PATH,
+    )
     args = parser.parse_args()
 
     UserConfigRequestHandler.store = UserConfigStore(args.user, args.system)
+    UserConfigRequestHandler.diagnostics_store = JsonFunctionalSafetyDiagnosticsStore(
+        args.functional_safety_diagnostics
+    )
     server = ConfigurationHttpServer((args.host, args.port), UserConfigRequestHandler)
     print(f"config-api: listening on {args.host}:{args.port}", flush=True)
     server.serve_forever()

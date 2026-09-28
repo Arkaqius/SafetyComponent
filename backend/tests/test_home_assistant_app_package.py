@@ -52,7 +52,7 @@ def test_app_runs_backend_and_frontend_under_s6() -> None:
     assert all(b"\r\n" not in script.read_bytes() for script in scripts)
 
 
-def test_ingress_proxies_only_the_user_configuration_api() -> None:
+def test_ingress_proxies_same_origin_backend_apis() -> None:
     nginx = (
         APP_ROOT / "rootfs" / "etc" / "nginx" / "http.d" / "safety-component.conf"
     ).read_text(encoding="utf-8")
@@ -67,6 +67,7 @@ def test_ingress_proxies_only_the_user_configuration_api() -> None:
     ).read_text(encoding="utf-8")
 
     assert "location /api/config" in nginx
+    assert "location = /api/functional-safety" in nginx
     assert "proxy_pass http://127.0.0.1:8100" in nginx
     assert "--user /config/user_config.yml" in api_run
     assert "--system /opt/safety-component/backend/config/system_config.yml" in api_run

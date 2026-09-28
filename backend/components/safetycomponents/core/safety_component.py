@@ -44,6 +44,8 @@ from components.core.event_bus import EventBus
 from components.core.mqtt_entity_manager import MqttEntityManager
 from components.core.types_common import FaultState, Symptom, RecoveryAction, SMState
 
+UNAVAILABLE_NUMERIC_STATES = frozenset({"", "none", "unknown", "unavailable"})
+
 NO_NEEDED = False
 
 _COMPONENT_REGISTRY: Dict[str, Type["SafetyComponent"]] = {}
@@ -329,8 +331,11 @@ class SafetyComponent:
     @staticmethod
     def get_num_sensor_val(hass_app: hass, sensor_id: str) -> float | None:
         """Fetch and convert temperature from a sensor."""
+        raw_value = hass_app.get_state(sensor_id)
+        if raw_value is None or str(raw_value).strip().casefold() in UNAVAILABLE_NUMERIC_STATES:
+            return None
         try:
-            return float(hass_app.get_state(sensor_id))
+            return float(raw_value)
         except (ValueError, TypeError) as e:
             hass_app.log(f"Conversion error: {e}", level="WARNING")
             return None
