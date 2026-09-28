@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from math import isfinite
 from time import monotonic
@@ -26,6 +27,10 @@ UPDATE_PRODUCT_NAMES = {
     "home_assistant_supervisor": "Home Assistant Supervisor",
     "safety_component": "SafetyComponent App",
 }
+
+MAX_SUMMARY_ATTRIBUTE_BYTES = 12 * 1024
+MAX_REMOTE_BATTERY_SUMMARIES = 24
+MAX_SUMMARY_TEXT_LENGTH = 160
 
 
 class FunctionalSafetyMonitor:
@@ -267,7 +272,7 @@ class FunctionalSafetyMonitor:
         self.mqtt_entities.publish_sensor_state(
             self.summary_entity,
             overall,
-            attributes={"observed_at": datetime.now(timezone.utc).isoformat(), **diagnostics},
+            attributes=self._bounded_summary(diagnostics),
         )
         self.record_evaluation()
 
@@ -458,6 +463,167 @@ class FunctionalSafetyMonitor:
             "last_reported": snapshot.get("last_reported"),
             "last_updated": snapshot.get("last_updated"),
         }
+
+    def _bounded_summary(self, diagnostics: Mapping[str, Any]) -> dict[str, Any]:
+        """Build a Recorder-safe summary without copying raw source snapshots."""
+
+        attributes: dict[str, Any] = {
+            "observed_at": datetime.now(timezone.utc).isoformat(),
+            "memory": self._select_fields(
+                diagnostics.get("memory"),
+                "status",
+                "reason",
+                "available_mib",
+                "psi_percent",
+                "source_entities",
+                "checked_at",
+            ),
+            "cpu": self._select_fields(
+                diagnostics.get("cpu"),
+                "status",
+                "reason",
+                "percent",
+                "source_entity",
+                "checked_at",
+            ),
+            "disk": self._select_fields(
+                diagnostics.get("disk"),
+                "status",
+                "reason",
+                "free_mib",
+                "source_entity",
+                "checked_at",
+            ),
+            "host_temperature": self._select_fields(
+                diagnostics.get("host_temperature"),
+                "status",
+                "reason",
+                "temperature_c",
+                "source_entity",
+                "checked_at",
+            ),
+            "backup": self._select_fields(
+                diagnostics.get("backup"),
+                "status",
+                "reason",
+                "last_success_at",
+                "age_hours",
+                "source_entities",
+                "checked_at",
+            ),
+            "wan": self._select_fields(
+                diagnostics.get("wan"),
+                "status",
+                "reason",
+                "source_entity",
+                "checked_at",
+            ),
+            "battery_discovery": self._select_fields(
+                diagnostics.get("battery_discovery"),
+                "status",
+                "reason",
+                "device_count",
+            ),
+        }
+        updates = diagnostics.get("updates")
+        attributes["updates"] = {
+            str(key): self._select_fields(
+                value,
+                "status",
+                "reason",
+                "source_entity",
+                "installed_version",
+                "latest_version",
+                "observed_at",
+                "checked_at",
+                "stable_release",
+            )
+            for key, value in sorted(updates.items())
+        } if isinstance(updates, Mapping) else {}
+
+        batteries = diagnostics.get("remote_batteries")
+        battery_items = list(batteries.items()) if isinstance(batteries, Mapping) else []
+        battery_items.sort(
+            key=lambda item: (
+                self._status_priority(item[1]),
+                str(item[0]).casefold(),
+            )
+        )
+        selected_batteries = battery_items[:MAX_REMOTE_BATTERY_SUMMARIES]
+        attributes["remote_batteries"] = {
+            str(key): self._select_fields(
+                value,
+                "status",
+                "reason",
+                "friendly_name",
+                "percentage",
+                "device_id",
+                "source_entities",
+            )
+            for key, value in selected_batteries
+        }
+        attributes["remote_battery_count"] = len(battery_items)
+        attributes["remote_battery_omitted_count"] = len(battery_items) - len(selected_batteries)
+
+        while (
+            self._serialized_size(attributes) > MAX_SUMMARY_ATTRIBUTE_BYTES
+            and attributes["remote_batteries"]
+        ):
+            attributes["remote_batteries"].popitem()
+            attributes["remote_battery_omitted_count"] += 1
+        if self._serialized_size(attributes) > MAX_SUMMARY_ATTRIBUTE_BYTES:
+            for item in attributes["updates"].values():
+                item.pop("stable_release", None)
+                item.pop("source_entity", None)
+            for key in ("memory", "cpu", "disk", "host_temperature", "backup", "wan"):
+                attributes[key].pop("source_entity", None)
+                attributes[key].pop("source_entities", None)
+        return attributes
+
+    @classmethod
+    def _select_fields(cls, value: Any, *fields: str) -> dict[str, Any]:
+        """Copy only bounded scalar evidence needed by the summary and UI."""
+
+        if not isinstance(value, Mapping):
+            return {}
+        selected: dict[str, Any] = {}
+        for field in fields:
+            if field not in value:
+                continue
+            item = value[field]
+            if field == "stable_release":
+                selected[field] = cls._select_fields(
+                    item, "status", "version", "checked_at"
+                )
+            elif field == "source_entities" and isinstance(item, (list, tuple)):
+                selected[field] = [
+                    cls._bounded_text(source) for source in item[:4]
+                ]
+            elif isinstance(item, str):
+                selected[field] = cls._bounded_text(item)
+            elif item is None or isinstance(item, (bool, int, float)):
+                selected[field] = item
+        return selected
+
+    @staticmethod
+    def _bounded_text(value: Any) -> str:
+        return str(value)[:MAX_SUMMARY_TEXT_LENGTH]
+
+    @staticmethod
+    def _status_priority(value: Any) -> int:
+        if not isinstance(value, Mapping):
+            return 0
+        return 1 if value.get("status") in {"current", "normal"} else 0
+
+    @staticmethod
+    def _serialized_size(attributes: Mapping[str, Any]) -> int:
+        return len(
+            json.dumps(
+                attributes,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        )
 
     def _emit(self, fault: str, active: bool) -> None:
         symptom_id = f"fsm_{fault}"

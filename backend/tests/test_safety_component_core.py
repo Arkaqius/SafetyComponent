@@ -73,6 +73,25 @@ def test_validate_entities_reports_missing_and_type_errors():
     assert component.validate_entities(sm_args, {"temps": List[str]}) is False
 
 
+@pytest.mark.parametrize("state", [None, "", "none", "unknown", "unavailable", " UNKNOWN "])
+def test_numeric_sensor_unavailable_states_are_silent(state):
+    hass_app = Mock()
+    hass_app.get_state.return_value = state
+
+    assert SafetyComponent.get_num_sensor_val(hass_app, "sensor.temperature") is None
+
+    hass_app.log.assert_not_called()
+
+
+def test_numeric_sensor_malformed_value_keeps_conversion_warning():
+    hass_app = Mock()
+    hass_app.get_state.return_value = "not-a-number"
+
+    assert SafetyComponent.get_num_sensor_val(hass_app, "sensor.temperature") is None
+
+    hass_app.log.assert_called_once()
+
+
 def test_process_symptom_emits_event():
     component = _make_component()
     events = []

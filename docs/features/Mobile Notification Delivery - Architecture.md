@@ -61,9 +61,10 @@ flowchart LR
   platform limitation;
 - sends the Companion command `message: clear_notification` with the stable
   tag when a notification must be removed;
-- requests a Home Assistant service result with bounded AppDaemon and Home
-  Assistant timeouts and reports each configured service as `accepted` or
-  `failed`; a missing result is a retryable failure.
+- submits through the bundled AppDaemon-compatible service shape without
+  `return_result`, `timeout`, or `hass_timeout`; an explicit AppDaemon failure
+  is retryable, while a submission returning no result is recorded as accepted
+  by Home Assistant but never as confirmed device delivery.
 
 The provider shall never fall back to `notify.notify`. Installation routing
 shall use an explicit group such as `notify/safety_recipients` or an explicit
@@ -205,10 +206,10 @@ The installation config owns:
 - optional WAN-state entity and its online states;
 - optional local annunciator entities.
 
-System configuration owns the bounded `mobile.hass_timeout_seconds`, severity
-profiles, retry limits and backoff, L1 repeat policy, persistence path, and
-additional-info allowlist. Runtime requires AppDaemon 4.5 or newer so
-`return_result`, `timeout`, and `hass_timeout` are available.
+System configuration owns the retained `mobile.hass_timeout_seconds`
+compatibility field, severity profiles, retry limits and backoff, L1 repeat
+policy, persistence path, and additional-info allowlist. The bundled runtime
+does not pass result or timeout options to notify service calls.
 
 Each installation shall explicitly configure its Home Assistant-relative
 destination and notification services. The public example uses `/` and

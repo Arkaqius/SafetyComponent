@@ -93,10 +93,9 @@ class ImgwWarningsApiComponent(ExternalApiComponent):
         payload: Any,
         retrieved_at: datetime,
     ) -> list[dict[str, Any]]:
-        if not isinstance(payload, list):
-            raise ValueError("IMGW warnings payload must be a list")
+        raw_warnings = self._warning_items(payload)
         warnings: list[dict[str, Any]] = []
-        for raw_warning in payload:
+        for raw_warning in raw_warnings:
             if not isinstance(raw_warning, dict):
                 raise ValueError("IMGW warning must be a mapping")
             warning_id = self._text(raw_warning.get("id"), limit=200)
@@ -122,6 +121,18 @@ class ImgwWarningsApiComponent(ExternalApiComponent):
                 }
             )
         return warnings
+
+    @staticmethod
+    def _warning_items(payload: Any) -> list[Any]:
+        """Normalize the current IMGW list or explicit no-warning response."""
+
+        if isinstance(payload, list):
+            return payload
+        if isinstance(payload, Mapping):
+            message = " ".join(str(payload.get("message", "")).split()).casefold()
+            if message == "brak ostrzeżeń meteorologicznych":
+                return []
+        raise ValueError("IMGW warnings payload has an unsupported schema")
 
     @staticmethod
     def _hazard_type(name: str) -> HazardType | None:

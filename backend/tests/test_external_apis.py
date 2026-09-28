@@ -90,6 +90,29 @@ def test_imgw_filters_warnings_by_configured_teryt_and_preserves_authority() -> 
     assert evidence["warnings"][0]["locally_applicable"] is True
 
 
+def test_imgw_current_no_warning_schema_is_a_healthy_empty_feed() -> None:
+    component = _component(ImgwWarningsApiComponent)
+    payload = {"message": "Brak ostrzeżeń meteorologicznych"}
+
+    observations = component.normalize(payload, RETRIEVED_AT)
+    component.last_attempt_at = RETRIEVED_AT
+    evidence = component.build_evidence(payload, observations)
+
+    assert observations == ()
+    assert evidence == {
+        "observation_count": 0,
+        "warning_count": 0,
+        "warnings": [],
+    }
+
+
+def test_imgw_unknown_object_schema_remains_fail_safe() -> None:
+    component = _component(ImgwWarningsApiComponent)
+
+    with pytest.raises(ValueError, match="unsupported schema"):
+        component.normalize({"message": "Unknown response"}, RETRIEVED_AT)
+
+
 @pytest.mark.parametrize(
     ("payload", "expected_state", "expected_detail"),
     [

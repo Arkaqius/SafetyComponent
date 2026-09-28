@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -121,17 +122,50 @@ def test_missing_and_wrong_unit_sources_remain_unknown_without_faults() -> None:
     assert mqtt.states[-1][2]["updates"]["home_assistant_core"]["status"] == "unknown"
 
 
-def test_raw_battery_report_is_visible_but_never_validated_when_stale() -> None:
+def test_battery_summary_omits_raw_source_snapshots_when_stale() -> None:
     monitor, bus, mqtt = make_monitor({"sensor.battery": snapshot("73", unit="%", kind="battery", old=True), "binary_sensor.wan": snapshot("on")})
     monitor.evaluate()
     item = mqtt.states[-1][2]["remote_batteries"]["Remote"]
     assert item["status"] == "unknown"
     assert item["percentage"] is None
-    assert item["sources"][0]["state"] == "73"
-    assert item["sources"][0]["last_reported"]
+    assert item["source_entities"] == ["sensor.battery"]
+    assert "sources" not in item
     assert mqtt.states[-1][2]["wan"]["checked_at"]
-    assert mqtt.states[-1][2]["wan"]["sources"][0]["last_reported"]
+    assert "sources" not in mqtt.states[-1][2]["wan"]
     assert not any(event["symptom_id"] == "fsm_RemoteBatteryLowRemote" for event in bus.events)
+
+
+def test_functional_safety_summary_stays_below_recorder_limit() -> None:
+    monitor, _, _ = make_monitor({})
+    diagnostics = {
+        "memory": {"status": "normal", "sources": [{"state": "raw" * 10_000}]},
+        "cpu": {"status": "normal"},
+        "disk": {"status": "normal"},
+        "host_temperature": {"status": "normal"},
+        "backup": {"status": "current"},
+        "wan": {"status": "online", "sources": [{"state": "raw" * 10_000}]},
+        "updates": {},
+        "battery_discovery": {"status": "observed", "device_count": 200},
+        "remote_batteries": {
+            f"Battery{index:03d}": {
+                "status": "low" if index == 199 else "current",
+                "friendly_name": "Remote battery " + ("x" * 1_000),
+                "percentage": index % 100,
+                "source_entities": [f"sensor.battery_{index}_{suffix}" for suffix in range(10)],
+                "sources": [{"state": "raw" * 1_000}],
+            }
+            for index in range(200)
+        },
+    }
+
+    attributes = monitor._bounded_summary(diagnostics)
+    serialized = json.dumps(attributes, ensure_ascii=False).encode("utf-8")
+
+    assert len(serialized) < 16 * 1024
+    assert attributes["remote_battery_count"] == 200
+    assert attributes["remote_battery_omitted_count"] > 0
+    assert next(iter(attributes["remote_batteries"])) == "Battery199"
+    assert all("sources" not in item for item in attributes["remote_batteries"].values())
 
 
 def test_update_and_low_battery_are_separate_level_four_conditions() -> None:
