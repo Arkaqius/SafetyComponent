@@ -220,7 +220,11 @@ from `user_config.yml`. `sensor.safety_periodic_tests` exposes each enabled
 test's key, `status` (`current`, `due`, `overdue`, `failed`, or `unknown`),
 `last_test_at`, `due_at`, `last_result`, `source`, and `interval_days`.
 `sensor.functional_safety_sources` retains separate disk, host-temperature, and
-backup diagnostics. Result submission changes no backup or notification route.
+backup summaries within a bounded Home Assistant attribute contract. Full raw
+source evidence is supplied on demand by the authenticated same-origin
+`GET /api/functional-safety` endpoint from the same monitor evaluation; it is
+not installation configuration and is not stored by Home Assistant Recorder.
+Result submission changes no backup or notification route.
 
 ### 3.3 Component settings
 

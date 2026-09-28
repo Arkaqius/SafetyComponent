@@ -33,10 +33,10 @@ export interface SourceView {
   evidence: string[];
 }
 
-export function getFunctionalSafetySources(entities: EntityMap): SourceView[] {
+export function getFunctionalSafetySources(entities: EntityMap, fullDiagnostics?: Record<string, unknown> | null): SourceView[] {
   const entity = entities[FUNCTIONAL_SAFETY_SOURCES_ENTITY_ID];
   if (!entity || !['observed', 'attention', 'unknown'].includes(entity.state)) return [];
-  const attributes = entity.attributes;
+  const attributes = fullDiagnostics ?? entity.attributes;
   const rows: SourceView[] = [];
   const add = (key: string, label: string, value: unknown, detail = '') => {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return;

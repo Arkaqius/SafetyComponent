@@ -8,6 +8,7 @@ import {
   periodicTestResultMessage,
   notificationOperatorMessage,
 } from './functionalSafety.js';
+import { parseFunctionalSafetyDiagnostics } from './functionalSafetyApi.js';
 import type { EntityMap } from './safety.js';
 
 test('operator commands require explicit confirmation and differ from attestations', () => {
@@ -24,33 +25,49 @@ test('operator commands require explicit confirmation and differ from attestatio
 });
 
 test('battery raw readings and source times remain visible without implying health', () => {
-  const rows = getFunctionalSafetySources({
-    'sensor.functional_safety_sources': {
-      state: 'unknown',
-      attributes: {
-        remote_batteries: {
-          D: {
-            status: 'unknown',
-            friendly_name: 'Remote',
-            percentage: null,
-            sources: [
-              {
-                entity_id: 'sensor.battery',
-                state: '73',
-                unit: '%',
-                last_reported: '2026-09-01T00:00:00Z',
-                last_updated: '2026-08-01T00:00:00Z',
-              },
-            ],
-          },
-        },
+  const rows = getFunctionalSafetySources(
+    {
+      'sensor.functional_safety_sources': {
+        state: 'unknown',
+        attributes: { remote_battery_count: 1, remote_battery_omitted_count: 1 },
       },
     },
-  });
+    {
+      remote_batteries: {
+        D: {
+          status: 'unknown',
+          friendly_name: 'Remote',
+          percentage: null,
+          sources: [
+            {
+              entity_id: 'sensor.battery',
+              state: '73',
+              unit: '%',
+              last_reported: '2026-09-01T00:00:00Z',
+              last_updated: '2026-08-01T00:00:00Z',
+            },
+          ],
+        },
+      },
+    }
+  );
   assert.equal(rows[0].group, 'batteries');
   assert.equal(rows[0].status, 'unknown');
   assert.ok(rows[0].evidence.some(line => line.includes('73 %')));
   assert.ok(rows[0].evidence.some(line => line.includes('Ostatni raport')));
+});
+
+test('functional safety API accepts only a versioned complete snapshot', () => {
+  const payload = {
+    schema_version: 1,
+    generated_at: '2026-09-28T20:12:21Z',
+    overall_state: 'observed',
+    diagnostics: { remote_batteries: {} },
+  };
+  assert.deepEqual(parseFunctionalSafetyDiagnostics(payload), payload);
+  assert.equal(parseFunctionalSafetyDiagnostics({ ...payload, schema_version: 2 }), null);
+  assert.equal(parseFunctionalSafetyDiagnostics({ ...payload, generated_at: 'broken' }), null);
+  assert.equal(parseFunctionalSafetyDiagnostics({ ...payload, diagnostics: [] }), null);
 });
 
 test('dev offered version never replaces publisher stable version', () => {

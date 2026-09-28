@@ -6,6 +6,9 @@ import json
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from components.core.functional_safety_diagnostics import (
+    InMemoryFunctionalSafetyDiagnosticsStore,
+)
 from components.core.functional_safety_monitor import FunctionalSafetyMonitor
 from components.core.types_common import FaultState, SMState
 
@@ -133,6 +136,28 @@ def test_battery_summary_omits_raw_source_snapshots_when_stale() -> None:
     assert mqtt.states[-1][2]["wan"]["checked_at"]
     assert "sources" not in mqtt.states[-1][2]["wan"]
     assert not any(event["symptom_id"] == "fsm_RemoteBatteryLowRemote" for event in bus.events)
+
+
+def test_full_diagnostics_store_retains_raw_evidence_outside_entity() -> None:
+    monitor, _, mqtt = make_monitor(
+        {
+            "sensor.battery": snapshot("73", unit="%", kind="battery", old=True),
+            "binary_sensor.wan": snapshot("on"),
+        }
+    )
+    store = InMemoryFunctionalSafetyDiagnosticsStore()
+    monitor.diagnostics_store = store
+
+    monitor.evaluate()
+
+    payload = store.load()
+    battery = payload["diagnostics"]["remote_batteries"]["Remote"]
+    assert payload["schema_version"] == 1
+    assert payload["overall_state"] == mqtt.states[-1][1]
+    assert payload["generated_at"] == mqtt.states[-1][2]["observed_at"]
+    assert battery["sources"][0]["state"] == "73"
+    assert battery["sources"][0]["last_reported"]
+    assert "sources" not in mqtt.states[-1][2]["remote_batteries"]["Remote"]
 
 
 def test_functional_safety_summary_stays_below_recorder_limit() -> None:

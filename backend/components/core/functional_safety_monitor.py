@@ -8,6 +8,10 @@ from math import isfinite
 from time import monotonic
 from typing import Any, Mapping
 
+from components.core.functional_safety_diagnostics import (
+    DIAGNOSTICS_SCHEMA_VERSION,
+    FunctionalSafetyDiagnosticsStore,
+)
 from components.core.memory_pressure import MemoryPressureRule
 from components.core.maintenance_evidence import ResourceRule, aware_time
 from components.core.types_common import FaultState, SMState, Symptom
@@ -51,6 +55,7 @@ class FunctionalSafetyMonitor:
         detector_names: Mapping[str, str] | None = None,
         state_provider: HomeAssistantStateProvider | None = None,
         stable_release_provider: StableReleaseProvider | None = None,
+        diagnostics_store: FunctionalSafetyDiagnosticsStore | None = None,
     ) -> None:
         self.hass_app = hass_app
         self.event_bus = event_bus
@@ -61,6 +66,7 @@ class FunctionalSafetyMonitor:
         self.detector_names = dict(detector_names or {})
         self.state_provider = state_provider
         self.stable_release_provider = stable_release_provider
+        self.diagnostics_store = diagnostics_store
         self._reports: dict[str, dict[str, Any]] = {}
         battery_config = self.bindings.get("battery_monitoring", {})
         self._battery_discovery: dict[str, Any] = {"status": "disabled", "devices": []}
@@ -269,11 +275,13 @@ class FunctionalSafetyMonitor:
         statuses.append(diagnostics["battery_discovery"]["status"])
         statuses.extend(diagnostics[key]["status"] for key in ("disk", "host_temperature", "backup"))
         overall = "attention" if any(status in {"active", "high", "low", "available", "offline", "overdue", "failed"} for status in statuses) else "unknown" if "unknown" in statuses else "observed"
+        observed_at = datetime.now(timezone.utc).isoformat()
         self.mqtt_entities.publish_sensor_state(
             self.summary_entity,
             overall,
-            attributes=self._bounded_summary(diagnostics),
+            attributes=self._bounded_summary(diagnostics, observed_at=observed_at),
         )
+        self._save_full_diagnostics(diagnostics, overall, observed_at)
         self.record_evaluation()
 
     def stop(self) -> None:
@@ -464,11 +472,16 @@ class FunctionalSafetyMonitor:
             "last_updated": snapshot.get("last_updated"),
         }
 
-    def _bounded_summary(self, diagnostics: Mapping[str, Any]) -> dict[str, Any]:
+    def _bounded_summary(
+        self,
+        diagnostics: Mapping[str, Any],
+        *,
+        observed_at: str | None = None,
+    ) -> dict[str, Any]:
         """Build a Recorder-safe summary without copying raw source snapshots."""
 
         attributes: dict[str, Any] = {
-            "observed_at": datetime.now(timezone.utc).isoformat(),
+            "observed_at": observed_at or datetime.now(timezone.utc).isoformat(),
             "memory": self._select_fields(
                 diagnostics.get("memory"),
                 "status",
@@ -579,6 +592,33 @@ class FunctionalSafetyMonitor:
                 attributes[key].pop("source_entity", None)
                 attributes[key].pop("source_entities", None)
         return attributes
+
+    def _save_full_diagnostics(
+        self,
+        diagnostics: Mapping[str, Any],
+        overall: str,
+        observed_at: str,
+    ) -> None:
+        """Expose the same evaluation to the UI without enlarging the HA entity."""
+
+        if self.diagnostics_store is None:
+            return
+        try:
+            self.diagnostics_store.save(
+                {
+                    "schema_version": DIAGNOSTICS_SCHEMA_VERSION,
+                    "generated_at": observed_at,
+                    "overall_state": overall,
+                    "diagnostics": diagnostics,
+                }
+            )
+        except (OSError, TypeError, ValueError) as exc:
+            logger = getattr(self.hass_app, "log", None)
+            if callable(logger):
+                logger(
+                    f"Functional safety diagnostics snapshot unavailable: {exc}",
+                    level="WARNING",
+                )
 
     @classmethod
     def _select_fields(cls, value: Any, *fields: str) -> dict[str, Any]:

@@ -73,6 +73,18 @@ Update rows retain installed and source-offered latest versions, observation
 time, and release information. Dev or beta source versions shall not be
 relabeled as the latest stable release without independent evidence.
 
+The Home Assistant entity is the bounded automation and Recorder contract. It
+contains aggregate state, allowlisted validated evidence, source identifiers,
+and omission counts, but not raw source snapshots. The same monitor evaluation
+also produces one versioned full-diagnostics snapshot for the authenticated
+same-origin `GET /api/functional-safety` endpoint. Safety Home reads raw source
+values and timestamps from that endpoint only while the page is open; the API
+does not independently re-evaluate policy and its response is not published to
+Home Assistant Recorder. The runtime handoff is atomic and ephemeral. A
+missing, malformed, or unsupported snapshot returns an unavailable response;
+the frontend may show the bounded entity as a clearly identified fallback but
+shall not infer omitted details or healthy coverage.
+
 The host-loss assurance boundary and recovery-effect contract remain documented
 even when their explanatory cards are omitted from this health page. Recovery
 evidence belongs to the dedicated recovery view; absence of a card does not
