@@ -1343,7 +1343,22 @@ household hazard has cleared.
 
 ---
 
-**Other component allocations:** Water Leak is owned by C-LEAK; C-AQ retains
+### 8.9 Water-Leak Monitoring (C-LEAK)
+
+Water-leak detection remains a distinct C-LEAK safety decision under
+HZ‑WATER‑01 / SG‑009 even when it shares the binary-detector runtime and
+operator screen with C-ALARM. The input is an explicitly bound water-leak
+sensor with a validated wet/dry state profile. It is not a smoke, gas or CO
+signal. See the [Internal Environmental Hazard Monitoring architecture](<../features/Internal Environmental Hazard Monitoring - Architecture.md>).
+
+| ID | Requirement |
+| --- | --- |
+| SYS-SR-LEAK-001 | Each configured leak sensor shall retain its own detector identity, indoor area, source health and immediate wet-state symptom. One valid assertion shall create an independent L2 `WaterLeakDetected` fault and notify occupants within the SG‑009 response budget. |
+| SYS-SR-LEAK-002 | An unavailable, malformed or ambiguous source shall not prove dry state or clear an active leak. Recovery shall require fresh authoritative dry evidence for the configured clear duration; another dry sensor shall not negate a wet sensor. |
+| SYS-SR-LEAK-003 | The interface shall show leak alarm and source health separately and provide localized manual shutoff guidance. A leak binding alone shall not authorize valve operation; any automatic supply shutoff shall require an independently validated valve, installation binding and actuation policy. |
+| SYS-SR-LEAK-004 | Leak-sensor functional tests shall require an explicit device result or operator attestation after an actual test, with system-owned intervals and maintenance severity. A test result shall not suppress a live leak alarm. |
+
+**Other component allocations:** C-AQ retains
 indoor-air-quality responsibilities beyond the PM2.5 allocation above;
 intrusion/lock security by C-SEC, and Privacy by C-PRIV.
 

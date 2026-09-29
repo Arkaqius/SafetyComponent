@@ -172,6 +172,11 @@ runtime_cfg:
       level: 1
       related_sms:
         - sm_iehm_carbon_monoxide
+    WaterLeakDetected:
+      name: Wykryto zalanie
+      level: 2
+      related_sms:
+        - sm_iehm_water_leak
     InternalEnvironmentalDetectorUnavailable:
       name: Czujnik zagrożenia środowiskowego jest niedostępny
       level: 3

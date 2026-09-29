@@ -17,10 +17,11 @@ from components.safetycomponents.internal_environmental_hazard.state_store impor
 
 GAS_ENTITY = "binary_sensor.bathroom_gasleak_detector"
 CO_ENTITY = "binary_sensor.bathroom_carbonoxide_detector"
+LEAK_ENTITY = "binary_sensor.utility_water_leak"
 
 
-def _configuration(*, health_failure_seconds: int = 5) -> dict:
-    return {
+def _configuration(*, health_failure_seconds: int = 5, include_leak: bool = False) -> dict:
+    config = {
         "profiles": {
             "binary": {
                 "version": "1.0",
@@ -62,6 +63,16 @@ def _configuration(*, health_failure_seconds: int = 5) -> dict:
             "maximum_detectors": 8,
         },
     }
+    if include_leak:
+        config["detectors"]["UtilityLeak"] = {
+            "area_id": "utility",
+            "entity_id": LEAK_ENTITY,
+            "friendly_name": "Utility leak",
+            "hazard": "water_leak",
+            "profile": "binary",
+            "enabled": True,
+        }
+    return config
 
 
 def _snapshot(state: str, at: datetime) -> dict:
@@ -78,6 +89,7 @@ def _build_component(
     *,
     now: datetime,
     health_failure_seconds: int = 5,
+    include_leak: bool = False,
 ) -> tuple[InternalEnvironmentalHazardMonitorComponent, MagicMock, list[dict]]:
     hass_app = MagicMock()
     hass_app.localizer = None
@@ -99,7 +111,7 @@ def _build_component(
     component._now = lambda: now  # type: ignore[method-assign]
     symptoms, recovery = component.get_symptoms_data(
         {component.component_name: component},
-        _configuration(health_failure_seconds=health_failure_seconds),
+        _configuration(health_failure_seconds=health_failure_seconds, include_leak=include_leak),
     )
     assert recovery == {}
     for symptom in symptoms.values():
@@ -170,6 +182,47 @@ def test_co_binary_alarm_does_not_require_numeric_measurement() -> None:
     event = _event(events, mechanism.name)
     assert event["state"] == FaultState.SET
     assert "observed_value" not in event["additional_info"]
+
+
+def test_water_leak_alarm_latches_independently_without_actuation() -> None:
+    now = datetime(2026, 9, 13, 10, 0, tzinfo=timezone.utc)
+    states = {
+        GAS_ENTITY: _snapshot("off", now),
+        CO_ENTITY: _snapshot("off", now),
+        LEAK_ENTITY: _snapshot("on", now),
+    }
+    component, hass_app, events = _build_component(states, now=now, include_leak=True)
+    leak_name = "InternalEnv_water_leak_UtilityLeak"
+    assert component.sm_iehm_water_leak(component.safety_mechanisms[leak_name]) is True
+    assert _event(events, leak_name)["state"] == FaultState.SET
+    assert _event(events, leak_name)["additional_info"]["hazard"] == "water leak"
+    assert component.get_output_inhibitions() == ()
+    assert [call for call in hass_app.call_service.call_args_list if not call.args or call.args[0] != "mqtt/publish"] == []
+
+
+def test_water_leak_unavailable_does_not_clear_until_authoritative_off() -> None:
+    now = datetime(2026, 9, 13, 10, 0, tzinfo=timezone.utc)
+    states = {
+        GAS_ENTITY: _snapshot("off", now),
+        CO_ENTITY: _snapshot("off", now),
+        LEAK_ENTITY: _snapshot("on", now),
+    }
+    component, _hass_app, events = _build_component(states, now=now, include_leak=True)
+    leak_name = "InternalEnv_water_leak_UtilityLeak"
+    mechanism = component.safety_mechanisms[leak_name]
+    assert component.sm_iehm_water_leak(mechanism)
+
+    states[LEAK_ENTITY] = _snapshot("unavailable", now)
+    assert component.sm_iehm_water_leak(mechanism)
+    assert _event(events, leak_name)["state"] == FaultState.SET
+
+    clear_at = now + timedelta(seconds=1)
+    states[LEAK_ENTITY] = _snapshot("off", clear_at)
+    component._now = lambda: clear_at  # type: ignore[method-assign]
+    assert component.sm_iehm_water_leak(mechanism)
+    component._now = lambda: clear_at + timedelta(seconds=30)  # type: ignore[method-assign]
+    component._alarm_clear_elapsed(detector_key="UtilityLeak")
+    assert _event(events, leak_name)["state"] == FaultState.CLEARED
 
 
 def test_unavailable_or_test_state_never_clears_active_alarm() -> None:
@@ -328,7 +381,7 @@ def test_unconfigured_hazard_fault_is_inactive() -> None:
         now=now,
     )
 
-    assert component.get_inactive_fault_names() == {"InternalSmokeDetected"}
+    assert component.get_inactive_fault_names() == {"InternalSmokeDetected", "WaterLeakDetected"}
 
 
 def test_diagnostic_payload_keeps_alarm_and_health_separate() -> None:

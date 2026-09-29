@@ -67,11 +67,14 @@ fault.detector_test_due: 'Detector test needs attention: {detector}'
 hazard.label.smoke: Smoke
 hazard.label.flammable_gas: Flammable gas
 hazard.label.carbon_monoxide: Carbon monoxide
+hazard.label.water_leak: Water leak
 hazard.guidance.smoke: Leave the affected area and call emergency services.
 hazard.guidance.flammable_gas: Leave the affected area, avoid electrical switches,
   and call emergency services from a safe place.
 hazard.guidance.carbon_monoxide: Leave the affected area immediately and call emergency
   services.
+hazard.guidance.water_leak: Check the leak from a safe place and shut off water manually
+  if it is safe to do so. Avoid wet electrical equipment.
 notification.title.1: Immediate action needed
 notification.title.2: Safety issue detected
 notification.title.3: Please check your home

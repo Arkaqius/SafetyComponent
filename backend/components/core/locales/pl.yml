@@ -67,11 +67,14 @@ fault.detector_test_due: 'Test czujnika wymaga uwagi: {detector}'
 hazard.label.smoke: Dym
 hazard.label.flammable_gas: Gaz palny
 hazard.label.carbon_monoxide: Tlenek węgla
+hazard.label.water_leak: Zalanie
 hazard.guidance.smoke: Opuść zagrożone miejsce i wezwij służby ratunkowe.
 hazard.guidance.flammable_gas: Opuść zagrożone miejsce, nie używaj przełączników elektrycznych
   i wezwij służby z bezpiecznego miejsca.
 hazard.guidance.carbon_monoxide: Natychmiast opuść zagrożone miejsce i wezwij służby
   ratunkowe.
+hazard.guidance.water_leak: Sprawdź wyciek z bezpiecznego miejsca i ręcznie zakręć
+  wodę, jeśli możesz to zrobić bezpiecznie. Nie dotykaj mokrych urządzeń elektrycznych.
 notification.title.1: Wymagane natychmiastowe działanie
 notification.title.2: Wykryto zagrożenie w domu
 notification.title.3: Sprawdź, co dzieje się w domu

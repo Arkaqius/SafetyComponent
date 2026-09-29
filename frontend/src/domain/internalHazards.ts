@@ -124,7 +124,7 @@ function internalEnvironmentStatus(
 }
 
 function hazardPriority(hazard: string): number {
-  return { smoke: 0, flammable_gas: 1, carbon_monoxide: 2 }[hazard] ?? 3;
+  return { smoke: 0, flammable_gas: 1, carbon_monoxide: 2, water_leak: 3 }[hazard] ?? 4;
 }
 
 function latestDetectorUpdate(detectors: InternalDetectorView[]): string | undefined {

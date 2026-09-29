@@ -67,12 +67,15 @@ fault.detector_test_due: 'Meldertest erfordert Prüfung: {detector}'
 hazard.label.smoke: Rauch
 hazard.label.flammable_gas: Brennbares Gas
 hazard.label.carbon_monoxide: Kohlenmonoxid
+hazard.label.water_leak: Wasseraustritt
 hazard.guidance.smoke: Verlassen Sie den betroffenen Bereich und rufen Sie den Rettungsdienst.
 hazard.guidance.flammable_gas: Verlassen Sie den betroffenen Bereich, betätigen Sie
   keine elektrischen Schalter und rufen Sie den Rettungsdienst von einem sicheren
   Ort aus.
 hazard.guidance.carbon_monoxide: Verlassen Sie den betroffenen Bereich sofort und
   rufen Sie den Rettungsdienst.
+hazard.guidance.water_leak: Prüfen Sie das Leck aus sicherer Entfernung und sperren
+  Sie das Wasser manuell ab, sofern dies gefahrlos möglich ist. Berühren Sie keine nassen Elektrogeräte.
 notification.title.1: Sofortiges Handeln erforderlich
 notification.title.2: Sicherheitsproblem erkannt
 notification.title.3: Bitte prüfen Sie Ihr Zuhause

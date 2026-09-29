@@ -341,6 +341,21 @@ defines mechanism/fault identities, inputs, lifecycle, timing and verification.
 | SWR-IEHM-024 | System configuration shall own rules, profiles, thresholds, timing, severities and output policy; user configuration shall own detector/entity/area bindings and selection. Validation shall reject incomplete channels, contradictory state sets, wrong pollutant units, unsafe timing and unreviewed gas-output policy. | compiler and configuration schema |
 | SWR-IEHM-025 | The component shall register no recovery and make no detector hush/reset, fan, purifier, valve, lock, cover or HVAC call. Bounded isolated adapters shall keep binary alarms responsive during PM load or storage failures; tests/maintenance shall not downgrade live alarms. | lifecycle, isolation and negative-actuation tests |
 
+### 4.11.1 Water-Leak Alarm Channel (C-LEAK)
+
+The shared binary-detector runtime shall implement the independent C-LEAK
+decision specified by [SYS section 8.9](<SafetyConcept - SYS.md#89-water-leak-monitoring-c-leak>).
+The technical `sm_iehm_water_leak` mechanism and `WaterLeakDetected` fault shall
+not merge C-LEAK with C-ALARM severity or recovery evidence.
+
+| ID | Requirement | Responsible element |
+| --- | --- | --- |
+| SWR-LEAK-001 | The configuration compiler shall accept `water_leak` only as an explicit detector hazard with a system-owned disjoint alarm/clear profile and installation-owned entity and area binding. | source schema and compiler |
+| SWR-LEAK-002 | A valid asserted wet state shall set `InternalEnv_water_leak_<DetectorKey>` immediately; unknown, unavailable, test or malformed state shall neither assert a confirmed new leak nor clear an active one. | binary detector evaluator |
+| SWR-LEAK-003 | A leak shall clear only after fresh authoritative dry evidence satisfies the profile clear interval; independent leak detectors shall retain separate symptoms. | alarm latch and FaultManager |
+| SWR-LEAK-004 | MQTT and SafetyHome shall present leak alarm, source state and coverage separately. Localized guidance shall describe safe manual response without claiming an automatic valve action or safe electrical conditions. | diagnostics and notification |
+| SWR-LEAK-005 | Periodic test records shall include configured leak sensors, require explicit attestation or device evidence, and shall not trigger a sensor, valve or other actuator. | maintenance monitor |
+
 ### 4.12 Functional Safety and Platform Health Monitoring
 
 The software refines [SYS section 8.8](<SafetyConcept - SYS.md#88-functional-safety-and-platform-health-monitoring-c-fsm>)
@@ -413,6 +428,7 @@ valid measure of safety-logic verification.
 | SG-003 Internal detector supervision | `SYS-SR-IEHM-002/008/010/012/013` | `SWR-IEHM-002/003/012/014/016/017/018` |
 | SG-005 Indoor PM2.5 | `SYS-SR-IEHM-006/007/010/012/014/016` | `SWR-IEHM-008/009/010/011/015/016/021/023` |
 | SG-006/007/008 Smoke, flammable gas and CO | `SYS-SR-IEHM-001..005/008..020` | `SWR-IEHM-001..007/012..025` |
+| SG-009 Water leak | `SYS-SR-LEAK-001..004` | `SWR-LEAK-001..005` |
 | SG-015 Door/Gate Open-Duration Contribution | `SYS-SR-DOOR-001..011` | `SWR-DOOR-*` |
 | SG-011/017/018 External Weather Exposure | `SYS-SR-EXT-001..005/010..013/040..043/050..052` | `SWR-EXT-*` |
 | SG-019 Outdoor Pollution Exposure | `SYS-SR-EXT-001..005/020..023/040..043/050..052` | `SWR-EXT-*` |
@@ -432,6 +448,7 @@ valid measure of safety-logic verification.
 | SWR-FSM-* | source contract and unit/freshness tests, memory/PSI and disk/thermal qualification and recovery tests, WAN/update/battery/backup policy tests, durable operational-test attestation tests, fault-owner deduplication, independent-watchdog evidence, and negative-actuation tests |
 | SWR-HSM-* | normalized telemetry/code-profile tests, independent-need and phase tests, thermal/distribution/counter rules, timing/restart/clock tests, C-ENT/FaultManager integration, SET/HEAL correlation, frontend diagnostics/localization and negative-actuation tests; detailed mapping in the Heating System Monitoring architecture |
 | SWR-IEHM-* | detector/profile fixtures, binary alarm edge/latch tests, PM unit/window/coverage tests, health ownership, timing/restart/corruption tests, hazard-specific output/advice conflicts, incident/journal/UI/localization and negative-actuation tests; detailed mapping in the Internal Environmental Hazard Monitoring architecture |
+| SWR-LEAK-* | water-leak profile/configuration tests, independent latch and positive-clear tests, unavailable-source hold, L2 fault configuration, periodic test inventory, frontend leak-state display and negative-actuation tests |
 | SWR-NFR-005 | pytest-cov application-code report |
 
 ## 8. Assurance boundary
