@@ -17,6 +17,35 @@ function entity(state: string, friendlyName: string, attributes: Record<string, 
 
 /** Deterministic entity contract used only by the local visual demo. */
 export const MOCK_ENTITIES: EntityMap = {
+  'sensor.functional_safety_sources': entity('attention', 'Źródła zdrowia systemu', {
+    memory: { status: 'normal', available_mib: 1800, psi_percent: 0, checked_at: timestamp(0) },
+    cpu: { status: 'normal', usage_percent: 12, checked_at: timestamp(0) },
+    wan: {
+      status: 'online',
+      checked_at: timestamp(0),
+      sources: [{ entity_id: 'binary_sensor.example_wan', state: 'on', last_reported: timestamp(1), last_updated: timestamp(120) }],
+    },
+    battery_discovery: { status: 'ready', device_count: 1 },
+    remote_batteries: {
+      example_remote: {
+        status: 'low',
+        friendly_name: 'Przykładowy pilot',
+        percentage: 12,
+        sources: [
+          { entity_id: 'sensor.example_remote_battery', state: '12', unit: '%', last_reported: timestamp(5), last_updated: timestamp(60) },
+        ],
+      },
+    },
+    updates: {
+      safety_component: {
+        status: 'current',
+        installed_version: '0.3.1-dev6',
+        latest_version: '0.3.1-dev6',
+        observed_at: timestamp(1),
+        stable_release: { status: 'current', version: 'v0.3.1', checked_at: timestamp(5) },
+      },
+    },
+  }),
   'sensor.notification_history': entity('3', 'Historia powiadomień', {
     version: 1,
     limit: 100,

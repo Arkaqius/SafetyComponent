@@ -1,8 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useConfig } from '@hakit/core';
+import { useConfig, useHass } from '@hakit/core';
+import { NavLink, useLocation } from 'react-router-dom';
 import ConfigurationObjectEditor from '../components/ConfigurationObjectEditor';
+import BatteryDiscovery from '../components/BatteryDiscovery';
 import { registrySchemas } from '../components/configurationFieldSchemas';
-import { importUserConfiguration, loadUserConfiguration, saveUserConfiguration, type ConfigurationMap } from '../userConfigurationApi';
+import { effectiveFunctionalSafetySettings, functionalSafetySettings } from '../domain/functionalSafetySettings';
+import {
+  importUserConfiguration,
+  loadUserConfiguration,
+  saveUserConfiguration,
+  prepareConfigurationRestart,
+  type ConfigurationMap,
+} from '../userConfigurationApi';
+import { canRestartConfiguration, configurationRestartMessage } from '../domain/configurationRestart';
 
 const providerNames = ['OpenMeteoWeatherApiComponent', 'ImgwWarningsApiComponent', 'OpenMeteoAirQualityApiComponent'];
 const registrySections = [
@@ -14,7 +24,16 @@ const registrySections = [
 type SaveState = 'idle' | 'saving' | 'saved';
 
 export default function Configuration() {
+  const location = useLocation();
+  const requestedPage = location.pathname.split('/')[2];
+  const page = ['general', 'notifications', 'site', 'health', 'settings', 'rooms', 'openings', 'detectors'].includes(requestedPage)
+    ? requestedPage
+    : 'general';
+  const [template, setTemplate] = useState<ConfigurationMap | null>(null);
   const haConfig = useConfig();
+  const connection = useHass(store => store.connection);
+  const [restarting, setRestarting] = useState(false);
+  const [restartMessage, setRestartMessage] = useState('');
   const [draft, setDraft] = useState<ConfigurationMap | null>(null);
   const [systemDefaults, setSystemDefaults] = useState<ConfigurationMap>({});
   const [revision, setRevision] = useState('');
@@ -30,6 +49,7 @@ export default function Configuration() {
     try {
       const document = await loadUserConfiguration();
       setDraft(document.user_config);
+      setTemplate(document.template_user_config ?? null);
       setSystemDefaults(document.system_defaults ?? {});
       setRevision(document.revision);
       setSetupRequired(document.setup_required);
@@ -45,14 +65,18 @@ export default function Configuration() {
     void load();
   }, [load]);
 
-  const update = useCallback((path: string[], value: unknown) => {
-    setDraft(current => (current ? updatePath(current, path, value) : current));
-    setDirty(true);
-    setSaveState('idle');
-  }, []);
+  const update = useCallback(
+    (path: string[], value: unknown) => {
+      if (restarting) return;
+      setDraft(current => (current ? updatePath(current, path, value) : current));
+      setDirty(true);
+      setSaveState('idle');
+    },
+    [restarting]
+  );
 
   const save = async () => {
-    if (!draft) return;
+    if (!draft || restarting) return;
     setSaveState('saving');
     setError(null);
     try {
@@ -69,7 +93,51 @@ export default function Configuration() {
     }
   };
 
+  const resetDraft = () => {
+    if (
+      !template ||
+      restarting ||
+      !window.confirm(
+        'Przywrócić formularz do publicznego szablonu? Usuniesz z formularza wszystkie własne powiązania i nadpisania. Prywatny plik nie zmieni się, dopóki nie klikniesz „Zapisz”. Możesz anulować reset przez „Odrzuć zmiany”.'
+      )
+    )
+      return;
+    setDraft(structuredClone(template));
+    setDirty(true);
+    setSaveState('idle');
+    setValidationError(null);
+  };
+
+  const restartApp = async () => {
+    if (!connection || !canRestartConfiguration(dirty, setupRequired, Boolean(validationError), saveState === 'saving' || restarting))
+      return;
+    if (
+      !window.confirm(
+        'Uruchomić ponownie aplikację SafetyComponent i zastosować zapisane zmiany? Monitoring bezpieczeństwa oraz ten panel będą chwilowo niedostępne. Restart nie kasuje konfiguracji ani historii i nie restartuje całego Home Assistant.'
+      )
+    )
+      return;
+    setRestarting(true);
+    setRestartMessage('Sprawdzanie zapisanego configu przed restartem…');
+    try {
+      const appSlug = await prepareConfigurationRestart(revision);
+      const services = await connection.sendMessagePromise<Record<string, Record<string, unknown>>>({ type: 'get_services' });
+      setRestartMessage('Wysyłanie żądania restartu. Panel może chwilowo utracić połączenie.');
+      await connection.sendMessagePromise<unknown>(configurationRestartMessage(appSlug, services));
+      setRestartMessage(
+        'HA przyjął żądanie restartu. Odśwież panel i sprawdź logi oraz stan SafetyComponent — przyjęcie żądania nie potwierdza poprawnego uruchomienia backendu.'
+      );
+    } catch (caught) {
+      setRestartMessage(
+        'Restart nie został potwierdzony. Jeśli panel utracił połączenie, odśwież go i sprawdź stan aplikacji przed ponowną próbą.'
+      );
+      setError(caught instanceof Error ? caught.message : 'Nie udało się zlecić restartu.');
+      setRestarting(false);
+    }
+  };
+
   const importFile = async (file: File) => {
+    if (restarting) return;
     if (!/\.ya?ml$/i.test(file.name)) {
       setError('Wybierz plik .yml lub .yaml');
       return;
@@ -130,6 +198,15 @@ export default function Configuration() {
   const weatherSystem = asMap(externalHazardSystem.weather);
   const airQualitySystem = asMap(externalHazardSystem.outdoor_air_quality);
   const detectorProfiles = stringList(systemDefaults.detector_profiles);
+  const functionalSafety = asMap(installation.functional_safety);
+  const batteryMonitoring = asMap(functionalSafety.battery_monitoring);
+  const hostMemory = asMap(functionalSafety.host_memory);
+  const backup = asMap(functionalSafety.backup);
+  const periodicTests = asMap(functionalSafety.periodic_tests);
+  const updates = asMap(functionalSafety.updates);
+  const functionalSafetyPackaged = asMap(systemDefaults.functional_safety);
+  const functionalSafetyOverrides = asMap(defaults.functional_safety);
+  const functionalSafetySystem = effectiveFunctionalSafetySettings(functionalSafetyPackaged, functionalSafetyOverrides);
   const detectorSchema = detectorProfiles.length
     ? {
         ...registrySchemas.detectors,
@@ -151,8 +228,8 @@ export default function Configuration() {
           <h2>Ustawienia SafetyComponent</h2>
           <p>
             Edytujesz wyłącznie prywatny <code>user_config.yml</code>. Polityka, kalibracja i parametry wykonawcze z{' '}
-            <code>system_config.yml</code> są dostarczane razem z aplikacją. W panelu widać ich wartości domyślne, ale nie można ich tu
-            zmienić.
+            <code>system_config.yml</code> są dostarczane razem z aplikacją. Wybrane progi i czasy można nadpisać dla instalacji w sekcji
+            Ustawienia komponentów; puste pola zachowują wartości systemowe.
           </p>
         </div>
         <div className='configuration-actions'>
@@ -176,17 +253,65 @@ export default function Configuration() {
             ref={fileInputRef}
             type='file'
           />
-          <button className='secondary-button' onClick={() => fileInputRef.current?.click()} type='button'>
+          <button className='secondary-button' disabled={restarting} onClick={() => fileInputRef.current?.click()} type='button'>
             Wczytaj user_config YAML
           </button>
-          <button className='secondary-button' disabled={!dirty || saveState === 'saving'} onClick={() => void load()} type='button'>
+          <button
+            className='secondary-button'
+            disabled={restarting || !dirty || saveState === 'saving'}
+            onClick={() => void load()}
+            type='button'
+          >
             Odrzuć zmiany
           </button>
-          <button className='primary-button' disabled={!dirty || saveState === 'saving'} onClick={() => void save()} type='button'>
+          <button
+            className='secondary-button'
+            disabled={restarting || !template || saveState === 'saving'}
+            onClick={resetDraft}
+            type='button'
+          >
+            Resetuj formularz do szablonu
+          </button>
+          <button
+            className='primary-button'
+            disabled={restarting || !dirty || saveState === 'saving'}
+            onClick={() => void save()}
+            type='button'
+          >
             {saveState === 'saving' ? 'Zapisywanie…' : setupRequired ? 'Utwórz user_config.yml' : 'Zapisz konfigurację'}
+          </button>
+          <button
+            className='secondary-button'
+            disabled={
+              !connection || !canRestartConfiguration(dirty, setupRequired, Boolean(validationError), saveState === 'saving' || restarting)
+            }
+            onClick={() => void restartApp()}
+            title='Najpierw zapisz lub odrzuć zmiany. Restart dotyczy tylko aplikacji SafetyComponent.'
+            type='button'
+          >
+            {restarting ? 'Restart aplikacji…' : 'Uruchom ponownie aplikację'}
           </button>
         </div>
       </section>
+
+      <nav className='configuration-subpages' aria-label='Podstrony konfiguracji'>
+        {(
+          [
+            ['general', 'Ogólne'],
+            ['notifications', 'Powiadomienia'],
+            ['site', 'Instalacja HA'],
+            ['health', 'Zdrowie systemu'],
+            ['settings', 'Ustawienia komponentów'],
+            ['rooms', 'Pomieszczenia'],
+            ['openings', 'Drzwi i okna'],
+            ['detectors', 'Detektory'],
+          ] as const
+        ).map(([key, label]) => (
+          <NavLink className={`secondary-button${page === key ? ' active' : ''}`} key={key} to={`/configuration/${key}`}>
+            {label}
+          </NavLink>
+        ))}
+      </nav>
 
       {setupRequired ? (
         <div className='configuration-message configuration-message-warning'>
@@ -205,13 +330,18 @@ export default function Configuration() {
         </div>
       ) : null}
       {error ? <div className='configuration-message configuration-message-error'>{error}</div> : null}
+      {restartMessage && (
+        <div className='configuration-message configuration-message-warning' role='status'>
+          {restartMessage}
+        </div>
+      )}
       {saveState === 'saved' ? (
         <div className='configuration-message configuration-message-success'>
           Konfiguracja została zapisana i zweryfikowana. Uruchom ponownie aplikację SafetyComponent, aby zastosować zmiany.
         </div>
       ) : null}
 
-      <section className='panel configuration-section'>
+      <section className='panel configuration-section' hidden={page !== 'general'}>
         <SectionHeader
           title='Funkcje i integracje'
           description='Włącz komponenty bezpieczeństwa oraz źródła danych używane w tej instalacji.'
@@ -242,7 +372,7 @@ export default function Configuration() {
         </div>
       </section>
 
-      <section className='panel configuration-section'>
+      <section className='panel configuration-section' hidden={page !== 'general'}>
         <SectionHeader title='Język' description='Nazwy encji są definiowane w plikach lokalizacji, poza konfiguracją użytkownika.' />
         <div className='configuration-grid'>
           <SelectField
@@ -259,7 +389,7 @@ export default function Configuration() {
         </div>
       </section>
 
-      <section className='panel configuration-section'>
+      <section className='panel configuration-section' hidden={page !== 'notifications'}>
         <SectionHeader title='Powiadomienia' description='Miejsca docelowe powiadomień Home Assistant.' />
         <div className='configuration-grid'>
           <TextField
@@ -277,6 +407,7 @@ export default function Configuration() {
           />
           <TextField
             label='Encja łączności WAN (opcjonalnie)'
+            help='Wspólna dla powiadomień i diagnostyki WAN. Stany on/online/connected oznaczają połączenie; off/offline/disconnected — brak. Sam stan nie dowodzi, że każdy serwis w Internecie działa.'
             value={stringValue(notification.wan_entity)}
             onChange={value => update(['notification', 'wan_entity'], value || null)}
           />
@@ -293,7 +424,7 @@ export default function Configuration() {
         </div>
       </section>
 
-      <section className='panel configuration-section'>
+      <section className='panel configuration-section' hidden={page !== 'site'}>
         <SectionHeader
           title='Instalacja Home Assistant'
           description='Dane administracyjne i wspólne encje. Współrzędne są pobierane z Home Assistant przy każdym uruchomieniu aplikacji.'
@@ -330,11 +461,203 @@ export default function Configuration() {
         </div>
       </section>
 
-      <section className='panel configuration-section'>
+      <section className='panel configuration-section' hidden={page !== 'health'}>
+        <SectionHeader
+          title='Zdrowie systemu i konserwacja'
+          description='Opcjonalne źródła dla funkcjonalnego monitoringu bezpieczeństwa. Brak encji oznacza brak pokrycia, a nie stan prawidłowy.'
+        />
+        <p>
+          Encja WAN ustawiona w sekcji Powiadomienia służy również do diagnostyki łączności. Czujniki diagnostyczne hosta trzeba najpierw
+          włączyć w Home Assistant.
+        </p>
+        <div className='configuration-grid'>
+          <TextField
+            label='Pamięć dostępna hosta'
+            help='Encja sensor.* podająca dostępną pamięć tego samego hosta co Home Assistant; wymagana razem z PSI.'
+            value={stringValue(hostMemory.available_entity)}
+            onChange={value => update(['installation', 'functional_safety', 'host_memory', 'available_entity'], value)}
+          />
+          <TextField
+            label='Presja pamięci hosta (PSI, %)'
+            help='Encja sensor.* memory PSI some, np. średnia 60 s. Obie encje muszą dotyczyć tego samego hosta.'
+            value={stringValue(hostMemory.psi_entity)}
+            onChange={value => update(['installation', 'functional_safety', 'host_memory', 'psi_entity'], value)}
+          />
+        </div>
+        <p>
+          Progi instalacji: pamięć dostępna ≤ {String(functionalSafetySystem.memory_low_available_mib ?? '—')} MiB i PSI ≥{' '}
+          {String(functionalSafetySystem.memory_high_psi_percent ?? '—')}% przez{' '}
+          {String(functionalSafetySystem.memory_qualification_seconds ?? '—')} s. Po zmianie konfiguracji uruchom aplikację ponownie.
+        </p>
+        {functionalSafety.host_memory ? (
+          <button
+            className='secondary-button'
+            onClick={() => update(['installation', 'functional_safety', 'host_memory'], null)}
+            type='button'
+          >
+            Usuń obie encje pamięci
+          </button>
+        ) : null}
+        <div className='configuration-grid'>
+          <TextField
+            label='Obciążenie CPU hosta (%)'
+            help='Opcjonalna encja sensor.* procesora hosta Home Assistant. Czas potwierdzenia można nadpisać w Ustawieniach komponentów.'
+            value={stringValue(functionalSafety.host_cpu_entity)}
+            onChange={value => update(['installation', 'functional_safety', 'host_cpu_entity'], value || null)}
+          />
+        </div>
+        <p>
+          Próg CPU instalacji: ≥ {String(functionalSafetySystem.cpu_high_percent ?? '—')}% przez{' '}
+          {String(functionalSafetySystem.cpu_qualification_seconds ?? '—')} s (L4).
+        </p>
+        <fieldset className='configuration-fieldset'>
+          <legend>Dysk, temperatura i kopie zapasowe</legend>
+          <div className='configuration-grid'>
+            <TextField
+              label='Wolne miejsce na dysku hosta'
+              help='Opcjonalna encja sensor.* dla dysku Home Assistant, w MiB, GiB lub bajtach. Nie podawaj procentu zajętości.'
+              value={stringValue(functionalSafety.host_disk_free_entity)}
+              onChange={value => update(['installation', 'functional_safety', 'host_disk_free_entity'], value || null)}
+            />
+            <TextField
+              label='Temperatura hosta (°C)'
+              help='Opcjonalna encja sensor.* temperatury procesora lub hosta Home Assistant; nie temperatura pomieszczenia.'
+              value={stringValue(functionalSafety.host_temperature_entity)}
+              onChange={value => update(['installation', 'functional_safety', 'host_temperature_entity'], value || null)}
+            />
+            <TextField
+              label='Ostatnia udana kopia zapasowa'
+              help='Encja sensor.* z datą i czasem ostatniej udanej kopii (nie ostatniej próby). Wypełnienie włącza monitoring backupu.'
+              value={stringValue(backup.last_success_entity)}
+              onChange={value =>
+                update(['installation', 'functional_safety', 'backup'], value ? { ...backup, last_success_entity: value } : null)
+              }
+            />
+            <TextField
+              label='Błąd kopii zapasowej (opcjonalnie)'
+              help='Encja binary_sensor.*: on oznacza błąd. Najpierw podaj encję ostatniej udanej kopii.'
+              value={stringValue(backup.failure_entity)}
+              disabled={!backup.last_success_entity}
+              onChange={value => update(['installation', 'functional_safety', 'backup', 'failure_entity'], value || null)}
+            />
+          </div>
+          <p>
+            Progi instalacji: dysk ≤ {String(functionalSafetySystem.disk_low_free_mib ?? 1024)} MiB, powrót ≥{' '}
+            {String(functionalSafetySystem.disk_recovery_free_mib ?? 2048)} MiB; temperatura ≥{' '}
+            {String(functionalSafetySystem.host_temperature_high_c ?? 80)}°C, powrót ≤{' '}
+            {String(functionalSafetySystem.host_temperature_recovery_c ?? 70)}°C; maksymalny wiek kopii{' '}
+            {String(functionalSafetySystem.backup_max_age_hours ?? 48)} h. Nadpisania znajdziesz w Ustawieniach komponentów.
+          </p>
+          {functionalSafety.backup ? (
+            <button
+              className='secondary-button'
+              type='button'
+              onClick={() => update(['installation', 'functional_safety', 'backup'], null)}
+            >
+              Wyłącz monitoring kopii zapasowych
+            </button>
+          ) : null}
+        </fieldset>
+        <fieldset className='configuration-fieldset'>
+          <legend>Testy okresowe potwierdzane przez operatora</legend>
+          <ToggleField
+            label='Przypominaj o sprawdzeniu dostarczenia powiadomień'
+            checked={periodicTests.notification_delivery !== false}
+            onChange={value => update(['installation', 'functional_safety', 'periodic_tests', 'notification_delivery'], value)}
+          />
+          <ToggleField
+            label='Przypominaj o odtworzeniu backupu na osobnym systemie testowym'
+            checked={periodicTests.backup_restore === true}
+            onChange={value => update(['installation', 'functional_safety', 'periodic_tests', 'backup_restore'], value)}
+          />
+          <p>
+            Interwały instalacji: powiadomienia {String(functionalSafetySystem.notification_test_interval_days ?? 30)} dni, odtworzenie
+            kopii {String(functionalSafetySystem.backup_restore_test_interval_days ?? 180)} dni. Wynik rzeczywiście wykonanego testu
+            zapiszesz w widoku Zdrowie funkcji. Te ustawienia nie wysyłają wiadomości, nie uruchamiają syren i nie odtwarzają backupu.
+          </p>
+        </fieldset>
+        <fieldset className='configuration-fieldset'>
+          <legend>Aktualizacje</legend>
+          <div className='configuration-grid'>
+            {(
+              [
+                ['home_assistant_core', 'Home Assistant Core'],
+                ['home_assistant_os', 'Home Assistant OS'],
+                ['home_assistant_supervisor', 'Home Assistant Supervisor'],
+                ['safety_component', 'SafetyComponent App'],
+              ] as const
+            ).map(([key, label]) => (
+              <TextField
+                key={key}
+                label={`Encja aktualizacji: ${label}`}
+                help='Opcjonalna encja update.*; dostępna aktualizacja ma poziom informacyjny L4.'
+                value={stringValue(updates[key])}
+                onChange={value => update(['installation', 'functional_safety', 'updates', key], value || null)}
+              />
+            ))}
+          </div>
+        </fieldset>
+        <BatteryDiscovery
+          enabled={batteryMonitoring.enabled !== false}
+          excluded={stringList(batteryMonitoring.excluded_devices)}
+          staleAfterSeconds={Number(functionalSafetySystem.battery_stale_after_seconds ?? 86400)}
+          onEnabledChange={value => update(['installation', 'functional_safety', 'battery_monitoring', 'enabled'], value)}
+          onExcludedChange={value => update(['installation', 'functional_safety', 'battery_monitoring', 'excluded_devices'], value)}
+        />
+        <details>
+          <summary>Zaawansowane: ręczne źródła baterii</summary>
+          <ConfigurationObjectEditor
+            label='Ręczne źródła baterii'
+            description='Jedno urządzenie w jednym wpisie; możesz podać czujnik procentowy, binarny lub oba. Urządzenia wyłączone pomiń albo ustaw Monitoruj urządzenie na nie.'
+            value={asMap(functionalSafety.remote_batteries)}
+            onChange={value => update(['installation', 'functional_safety', 'remote_batteries'], value)}
+            schema={registrySchemas.remote_batteries}
+          />
+        </details>
+        <p>
+          Próg niskiej baterii instalacji: {String(functionalSafetySystem.battery_low_percent ?? '—')}%. Testy detektorów są wymagane co{' '}
+          {String(functionalSafetySystem.detector_test_interval_days ?? '—')} dni.
+        </p>
+      </section>
+
+      <section className='panel configuration-section' hidden={page !== 'settings'}>
         <SectionHeader
           title='Ustawienia komponentów'
           description='Ustawienia specyficzne dla instalacji. Puste pola używają pokazanej wartości systemowej; ustawienia pojedynczego zasobu mają wyższy priorytet.'
         />
+        <details>
+          <summary>Functional Safety — progi i harmonogramy</summary>
+          <p>
+            Wpisana wartość zastępuje systemowy default. Wyczyść pole, aby do niego wrócić. Progi powrotu muszą zachowywać margines: pamięć
+            i dysk powyżej progu alarmu; PSI, CPU i temperatura poniżej. Zmiany wymagają zapisu i restartu. Interwały testów przeliczają
+            termin od ostatniego wyniku — nie oznaczają wykonania nowego testu.
+          </p>
+          {functionalSafetySettings.map(([title, fields]) => (
+            <fieldset className='configuration-fieldset' key={title}>
+              <legend>{title}</legend>
+              <div className='configuration-grid'>
+                {fields.map(([key, label]) => (
+                  <NumberField
+                    key={key}
+                    label={label}
+                    optional
+                    defaultValue={String(functionalSafetyPackaged[key] ?? '')}
+                    help='Puste pole używa wartości systemowej. Poziom alarmu i kontrola jakości źródła pozostają bez zmian.'
+                    value={numberValue(functionalSafetyOverrides[key])}
+                    onChange={value => update(['installation', 'component_settings', 'functional_safety', key], value)}
+                  />
+                ))}
+              </div>
+            </fieldset>
+          ))}
+          <button
+            className='secondary-button'
+            type='button'
+            onClick={() => update(['installation', 'component_settings', 'functional_safety'], {})}
+          >
+            Przywróć domyślne ustawienia Functional Safety
+          </button>
+        </details>
         <fieldset className='configuration-fieldset'>
           <legend>Temperatura</legend>
           <div className='configuration-grid'>
@@ -443,7 +766,7 @@ export default function Configuration() {
       </section>
 
       {registrySections.map(section => (
-        <section className='panel configuration-section' key={section.key}>
+        <section className='panel configuration-section' hidden={page !== section.key} key={section.key}>
           <SectionHeader title={section.title} description={section.description} />
           <ConfigurationObjectEditor
             label={section.title}
@@ -484,17 +807,19 @@ function TextField({
   onChange,
   help,
   defaultValue,
+  disabled = false,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   help?: string;
   defaultValue?: string;
+  disabled?: boolean;
 }) {
   return (
     <label className='configuration-field'>
       <span title={help}>{label}</span>
-      <input onChange={event => onChange(event.target.value)} value={value} />
+      <input disabled={disabled} onChange={event => onChange(event.target.value)} value={value} />
       <FieldHelp help={help} defaultValue={defaultValue} />
     </label>
   );

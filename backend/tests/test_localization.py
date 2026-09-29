@@ -61,6 +61,18 @@ def test_entity_monitor_presentation_is_localized() -> None:
     )
 
 
+@pytest.mark.parametrize("language", ["en", "pl", "de"])
+def test_functional_safety_diagnostics_are_localized(language: str) -> None:
+    localizer = Localizer({"language": language})
+
+    for entity_id, state in (
+        ("sensor.safety_evaluation_progress", "unknown"),
+        ("sensor.safety_detector_tests", "attention"),
+    ):
+        assert localizer.entity_name(entity_id, "fallback") != "fallback"
+        assert localizer.state_label(entity_id, state)
+
+
 @pytest.mark.parametrize(
     ("language", "entity_name", "queued_label", "ack_label"),
     [

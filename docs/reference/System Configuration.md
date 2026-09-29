@@ -8,8 +8,9 @@ Home Assistant App. The build compiler combines it with the private
 `user_config.yml` and generates the AppDaemon runtime configuration.
 
 The `default_` prefix identifies a system baseline that a user or asset may
-refine. Fields without that prefix are fixed software policy for the released
-system configuration. `default_hazards` is inherited by opening roles, which
+refine. Fields without that prefix are fixed software policy except the explicitly
+editable functional-safety calibration below, whose stable names are retained.
+`default_hazards` is inherited by opening roles, which
 may select their own applicable hazards; there is no installation-wide user
 override for the list.
 
@@ -122,6 +123,57 @@ per-opening `confirmation_timeout_seconds` contract.
 clear state semantics, health debounce, persistent-state policy, and the
 maximum detector count. The private configuration selects a profile and binds
 it to a detector; it cannot redefine the profile semantics.
+
+### 4.6 Functional safety
+
+`calibration.functional_safety` owns the sampling period, host-memory and PSI
+qualification/recovery margins, CPU, disk and temperature policy, WAN outage
+qualification/recovery, source freshness, backup age, the remote-battery
+threshold, and detector/operational-test intervals and state stores. These are
+packaged defaults and fixed runtime policy. The installation binds host memory, disk, temperature,
+backup, update, and remote battery entities in `installation.functional_safety` and
+reuses `notification.wan_entity` for WAN evidence. Missing bindings do not
+create a positive healthy observation.
+Thresholds, qualification/recovery durations, backup maximum age and test
+intervals may be overridden under
+`installation.component_settings.functional_safety`, using the same field names.
+Omitted or null values inherit packaged values. The compiler validates the
+complete merged calibration, including all recovery margins, before saving or
+starting the App. Detector-test interval overrides are limited to 1–180 days.
+Sampling cadence, all `*_stale_after_seconds` fields, state-file paths and fault
+levels remain system-only. See the [source contract](../features/Configuration%20Model%20-%20Architecture.md#33-component-settings).
+The memory thresholds are packaged defaults, not a guarantee that
+256 MiB is a safe reserve for every host; review them against actual host
+capacity and workload before an installation relies on L2 memory detection.
+
+| Policy field | Packaged value | Effect |
+| --- | --- | --- |
+| `evaluation_interval_seconds` | 15 s | Periodic in-process sample; not an independent watchdog. |
+| `memory_low_available_mib` / `memory_recovery_available_mib` | 256 / 384 MiB | L2 assertion and recovery margins, requiring corroborating PSI. |
+| `memory_high_psi_percent` / `memory_recovery_psi_percent` | 10% / 5% | PSI qualification and recovery margins. |
+| `memory_qualification_seconds` / `memory_recovery_seconds` | 120 / 120 s | Sustained L2 assertion and distinct recovery duration. |
+| `cpu_high_percent` / `cpu_recovery_percent` | 90% / 70% | L4 host CPU qualification and recovery margins. |
+| `cpu_qualification_seconds` / `cpu_recovery_seconds` | 300 / 120 s | Sustained high CPU load and distinct recovery duration. |
+| `disk_low_free_mib` / `disk_recovery_free_mib` | 1024 / 2048 MiB | L4 low host-disk-space threshold and positive recovery margin. |
+| `host_temperature_high_c` / `host_temperature_recovery_c` | 80 / 70 °C | L4 host-temperature threshold and distinct recovery margin. |
+| `resource_qualification_seconds` / `resource_recovery_seconds` | 120 / 120 s | Sustained disk/thermal qualification and recovery. |
+| `backup_max_age_hours` | 48 h | Maximum age of a valid last-success backup timestamp before L4 overdue maintenance. |
+| `backup_stale_after_seconds` | 86400 s | Maximum observation age for an optional backup-failure source; not a substitute for backup-success age. |
+| `wan_qualification_seconds` / `wan_recovery_seconds` | 60 / 60 s | Sustained L3 WAN fault and recovery. |
+| `battery_low_percent` | 15% | L4 maintenance threshold per configured remote device. |
+| `detector_test_interval_days` | 180 days | L4 due/failed maintenance condition per configured detector. |
+| `notification_test_interval_days` | 30 days | Due date after an operator-attested notification-receipt pass. |
+| `backup_restore_test_interval_days` | 180 days | Due date after an operator-attested restore pass on a separate installation, when enabled. |
+| `resource_stale_after_seconds` / `wan_stale_after_seconds` | 180 / 180 s | Maximum age for accepted host and WAN evidence. |
+| `update_stale_after_seconds` / `battery_stale_after_seconds` | 86400 / 86400 s | Maximum age for accepted update and battery evidence. |
+| `detector_test_state_file` | `/config/appdaemon/detector_tests.json` | Durable operator-reported test results. |
+| `periodic_test_state_file` | `/config/appdaemon/periodic_tests.json` | Durable operational-test attestations, separate from detector records and editable configuration. |
+| `memory_fault_level` / `wan_fault_level` / `cpu_fault_level` / `maintenance_fault_level` | L2 / L3 / L4 / L4 | Fixed reviewed severities for host memory, WAN, CPU, and maintenance. |
+
+Disk and temperature baselines require review against the actual host and normal
+workload; they are maintenance limits, not hardware shutdown protection. Backup
+creation and a successful separate-installation restore are different evidence.
+Operational-test records never trigger a notification or backup operation.
 
 ## 5. Runtime configuration
 

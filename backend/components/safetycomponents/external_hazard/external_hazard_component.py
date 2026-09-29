@@ -379,6 +379,7 @@ class ExternalHazardComponent(SafetyComponent):
                 continue
             getattr(self, self._sm_name_for(mechanism.name))(mechanism)
         self._publish_aggregate()
+        self.record_evaluation()
 
     def _sm_name_for(self, symptom_id: str) -> str:
         if symptom_id.startswith("ExternalWeatherExposure"):

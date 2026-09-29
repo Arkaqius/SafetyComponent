@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import ConfigDict, Field, ValidationError
+from pydantic import ConfigDict, Field, ValidationError, model_validator
 
 from components.core.mqtt_entity_manager import MqttSettings
 from components.core.pydantic_utils import StrictBaseModel
@@ -127,6 +127,60 @@ class InternalHazardCalibrationSource(SystemSourceModel):
     persistence: InternalEnvironmentPersistence
 
 
+class FunctionalSafetyCalibrationSource(SystemSourceModel):
+    """Installation-independent qualification and maintenance policy."""
+
+    evaluation_interval_seconds: int = Field(ge=5)
+    memory_low_available_mib: float = Field(gt=0)
+    memory_recovery_available_mib: float = Field(gt=0)
+    memory_high_psi_percent: float = Field(gt=0, le=100)
+    memory_recovery_psi_percent: float = Field(ge=0, lt=100)
+    memory_qualification_seconds: int = Field(ge=1)
+    memory_recovery_seconds: int = Field(ge=1)
+    cpu_high_percent: float = Field(gt=0, le=100)
+    cpu_recovery_percent: float = Field(ge=0, lt=100)
+    cpu_qualification_seconds: int = Field(ge=1)
+    cpu_recovery_seconds: int = Field(ge=1)
+    wan_qualification_seconds: int = Field(ge=1)
+    wan_recovery_seconds: int = Field(ge=1)
+    battery_low_percent: float = Field(gt=0, lt=100)
+    detector_test_interval_days: int = Field(ge=1)
+    detector_test_state_file: str
+    resource_stale_after_seconds: int = Field(ge=1)
+    wan_stale_after_seconds: int = Field(ge=1)
+    update_stale_after_seconds: int = Field(ge=1)
+    battery_stale_after_seconds: int = Field(ge=1)
+    memory_fault_level: Literal[2]
+    wan_fault_level: Literal[3]
+    maintenance_fault_level: Literal[4]
+    cpu_fault_level: Literal[4]
+    disk_low_free_mib: float = Field(gt=0, allow_inf_nan=False)
+    disk_recovery_free_mib: float = Field(gt=0, allow_inf_nan=False)
+    host_temperature_high_c: float = Field(gt=0, allow_inf_nan=False)
+    host_temperature_recovery_c: float = Field(ge=0, allow_inf_nan=False)
+    resource_qualification_seconds: int = Field(ge=1)
+    resource_recovery_seconds: int = Field(ge=1)
+    backup_max_age_hours: float = Field(gt=0, allow_inf_nan=False)
+    backup_stale_after_seconds: int = Field(ge=1)
+    notification_test_interval_days: int = Field(ge=1)
+    backup_restore_test_interval_days: int = Field(ge=1)
+    periodic_test_state_file: str
+
+    @model_validator(mode="after")
+    def _validate_hysteresis(self) -> "FunctionalSafetyCalibrationSource":
+        if self.memory_recovery_available_mib <= self.memory_low_available_mib:
+            raise ValueError("memory recovery threshold must exceed low threshold")
+        if self.memory_recovery_psi_percent >= self.memory_high_psi_percent:
+            raise ValueError("PSI recovery threshold must be below high threshold")
+        if self.cpu_recovery_percent >= self.cpu_high_percent:
+            raise ValueError("CPU recovery threshold must be below high threshold")
+        if self.disk_recovery_free_mib <= self.disk_low_free_mib:
+            raise ValueError("disk recovery threshold must exceed low threshold")
+        if self.host_temperature_recovery_c >= self.host_temperature_high_c:
+            raise ValueError("temperature recovery threshold must be below high threshold")
+        return self
+
+
 class CalibrationSource(SystemSourceModel):
     """All packaged safety calibration."""
 
@@ -135,6 +189,7 @@ class CalibrationSource(SystemSourceModel):
     safety_door: SafetyDoorCalibrationSource
     external_hazard: ExternalHazardCalibrationSource
     internal_environmental_hazard: InternalHazardCalibrationSource
+    functional_safety: FunctionalSafetyCalibrationSource
 
 
 class ProviderRuntimeSource(SystemSourceModel):

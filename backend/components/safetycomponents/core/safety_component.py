@@ -44,6 +44,8 @@ from components.core.event_bus import EventBus
 from components.core.mqtt_entity_manager import MqttEntityManager
 from components.core.types_common import FaultState, Symptom, RecoveryAction, SMState
 
+UNAVAILABLE_NUMERIC_STATES = frozenset({"", "none", "unknown", "unavailable"})
+
 NO_NEEDED = False
 
 _COMPONENT_REGISTRY: Dict[str, Type["SafetyComponent"]] = {}
@@ -165,6 +167,13 @@ class SafetyComponent:
         # Initialize dictionaries that need to be unique to each instance
         self.safety_mechanisms: dict = {}
         self.debounce_states: dict = {}
+
+    def record_evaluation(self, *, success: bool = True) -> None:
+        """Report one completed component evaluation to the application monitor."""
+
+        reporter = getattr(self.hass_app, "record_safety_evaluation", None)
+        if callable(reporter):
+            reporter(self.component_name, success=success)
 
     def get_symptoms_data(
         self, modules: dict, component_cfg: list[dict[str, Any]]
@@ -322,8 +331,11 @@ class SafetyComponent:
     @staticmethod
     def get_num_sensor_val(hass_app: hass, sensor_id: str) -> float | None:
         """Fetch and convert temperature from a sensor."""
+        raw_value = hass_app.get_state(sensor_id)
+        if raw_value is None or str(raw_value).strip().casefold() in UNAVAILABLE_NUMERIC_STATES:
+            return None
         try:
-            return float(hass_app.get_state(sensor_id))
+            return float(raw_value)
         except (ValueError, TypeError) as e:
             hass_app.log(f"Conversion error: {e}", level="WARNING")
             return None
@@ -579,6 +591,8 @@ def safety_mechanism_decorator(func: Callable) -> Callable:
             sm_return = func(self, sm, entities_changes)
 
         self.hass_app.log(f"{func.__name__} was ended!", level="DEBUG")
+        if entities_changes is None:
+            self.record_evaluation()
         return sm_return.result
 
     return safety_mechanism_wrapper

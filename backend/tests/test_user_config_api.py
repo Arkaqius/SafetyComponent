@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import threading
 from pathlib import Path
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 import pytest
@@ -16,9 +17,87 @@ from user_config_api import (
     UserConfigRequestHandler,
     UserConfigStore,
 )
+from components.core.functional_safety_diagnostics import (
+    InMemoryFunctionalSafetyDiagnosticsStore,
+)
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
+
+
+def test_functional_safety_diagnostics_api_returns_full_runtime_snapshot(
+    tmp_path: Path,
+) -> None:
+    payload = {
+        "schema_version": 1,
+        "generated_at": "2026-09-28T20:12:21+00:00",
+        "overall_state": "attention",
+        "diagnostics": {
+            "remote_batteries": {
+                "Remote": {"sources": [{"entity_id": "sensor.battery", "state": "10"}]}
+            }
+        },
+    }
+    UserConfigRequestHandler.store = _store(tmp_path)
+    UserConfigRequestHandler.diagnostics_store = (
+        InMemoryFunctionalSafetyDiagnosticsStore(payload)
+    )
+    server = ConfigurationHttpServer(("127.0.0.1", 0), UserConfigRequestHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        with urlopen(
+            f"http://127.0.0.1:{server.server_port}/api/functional-safety"
+        ) as response:
+            assert json.load(response) == payload
+            assert response.headers["Cache-Control"] == "no-store"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def test_functional_safety_diagnostics_api_fails_closed_before_evaluation(
+    tmp_path: Path,
+) -> None:
+    UserConfigRequestHandler.store = _store(tmp_path)
+    UserConfigRequestHandler.diagnostics_store = (
+        InMemoryFunctionalSafetyDiagnosticsStore()
+    )
+    server = ConfigurationHttpServer(("127.0.0.1", 0), UserConfigRequestHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        with pytest.raises(HTTPError) as error:
+            urlopen(f"http://127.0.0.1:{server.server_port}/api/functional-safety")
+        assert error.value.code == 503
+        assert json.load(error.value)["error"] == "functional_safety_unavailable"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+@pytest.mark.parametrize("available", [True, False])
+def test_battery_inventory_is_read_only_and_failure_is_explicit(tmp_path: Path, monkeypatch, available: bool) -> None:
+    store = _store(tmp_path)
+    before = store.user_path.read_bytes()
+    class Provider:
+        def discover_batteries(self):
+            return {"status": "ready", "devices": []}
+    monkeypatch.setattr("user_config_api.HomeAssistantStateProvider.from_environment", lambda: Provider() if available else None)
+    UserConfigRequestHandler.store = store
+    server = ConfigurationHttpServer(("127.0.0.1", 0), UserConfigRequestHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        with urlopen(f"http://127.0.0.1:{server.server_port}/api/batteries") as response:
+            assert json.load(response) == {"status": "ready" if available else "error", "devices": []}
+        assert store.user_path.read_bytes() == before
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
 
 
 @pytest.fixture(autouse=True)
@@ -57,6 +136,43 @@ def test_read_returns_only_user_source_and_revision(tmp_path: Path) -> None:
     assert "system_config" not in result
 
 
+def test_restart_target_revalidates_saved_revision_without_writing(tmp_path: Path, monkeypatch) -> None:
+    store = _store(tmp_path)
+    original = store.read()
+    before = store.user_path.read_bytes()
+    monkeypatch.setattr("user_config_api.own_app_slug", lambda: "local_safety_component_dev")
+    assert store.restart_target(original["revision"]) == {"app_slug": "local_safety_component_dev"}
+    assert store.user_path.read_bytes() == before
+    with pytest.raises(RevisionConflictError):
+        store.restart_target("old-revision")
+    store.user_path.write_text("user_config: {}", encoding="utf-8")
+    with pytest.raises(ValueError):
+        store.restart_target(store._revision(store.user_path.read_bytes()))
+
+
+@pytest.mark.parametrize("confirmed", [True, False, "true"])
+def test_restart_preparation_http_requires_literal_confirmation(tmp_path: Path, monkeypatch, confirmed) -> None:
+    store = _store(tmp_path)
+    monkeypatch.setattr("user_config_api.own_app_slug", lambda: "local_safety_component_dev")
+    UserConfigRequestHandler.store = store
+    server = ConfigurationHttpServer(("127.0.0.1", 0), UserConfigRequestHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        request = Request(f"http://127.0.0.1:{server.server_port}/api/config/restart-target", data=json.dumps({"confirmed": confirmed, "revision": store.read()["revision"]}).encode(), headers={"Content-Type": "application/json"})
+        if confirmed is True:
+            with urlopen(request) as response:
+                assert json.load(response) == {"app_slug": "local_safety_component_dev"}
+        else:
+            with pytest.raises(HTTPError) as error:
+                urlopen(request)
+            assert error.value.code == 422
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
 def test_first_start_serves_example_without_creating_user_file(tmp_path: Path) -> None:
     store = UserConfigStore(
         user_path=tmp_path / "user_config.yml",
@@ -75,6 +191,21 @@ def test_first_start_serves_example_without_creating_user_file(tmp_path: Path) -
     assert saved["setup_required"] is False
     assert store.user_path.exists()
     assert store.read()["revision"] == saved["revision"]
+
+
+def test_reset_template_is_public_and_read_does_not_modify_private_source(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    original = store.read()
+    draft = original["user_config"]
+    draft["installation"]["component_settings"]["temperature"] = {"low_temperature_c": 17.0}
+    store.save(draft, original["revision"])
+    before = store.user_path.read_bytes()
+
+    result = store.read()
+
+    assert store.user_path.read_bytes() == before
+    assert result["user_config"] != result["template_user_config"]
+    assert result["template_user_config"] == yaml.safe_load(store.example_path.read_text(encoding="utf-8"))["user_config"]
 
 
 def test_first_start_rejects_save_after_another_session_created_file(

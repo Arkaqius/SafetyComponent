@@ -4,6 +4,7 @@ export type ConfigurationMap = Record<string, unknown>;
 
 export interface UserConfigurationDocument {
   user_config: ConfigurationMap;
+  template_user_config?: ConfigurationMap;
   system_defaults?: ConfigurationMap;
   revision: string;
   restart_required: boolean;
@@ -93,8 +94,10 @@ let mockDocument: UserConfigurationDocument = {
   },
 };
 
+const mockTemplate = structuredClone(mockDocument.user_config);
+
 export async function loadUserConfiguration(): Promise<UserConfigurationDocument> {
-  if (MOCK_MODE) return structuredClone(mockDocument);
+  if (MOCK_MODE) return { ...structuredClone(mockDocument), template_user_config: structuredClone(mockTemplate) };
   return requestConfiguration(CONFIG_ENDPOINT, { cache: 'no-store' });
 }
 
@@ -131,6 +134,27 @@ export async function importUserConfiguration(source: string): Promise<Configura
     throw new Error('Plik nie zawiera poprawnej sekcji user_config');
   }
   return body.user_config as ConfigurationMap;
+}
+
+export async function prepareConfigurationRestart(revision: string): Promise<string> {
+  if (MOCK_MODE) throw new Error('Restart jest dostępny tylko w zainstalowanej aplikacji HA.');
+  const response = await fetch('api/config/restart-target', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ confirmed: true, revision }),
+  });
+  const body = (await response.json().catch(() => ({}))) as { app_slug?: unknown } & ApiErrorBody;
+  if (!response.ok) {
+    const message =
+      body.error === 'revision_conflict'
+        ? 'Konfiguracja zmieniła się w innej sesji. Wczytaj ją ponownie przed restartem.'
+        : body.error === 'invalid_saved_configuration'
+          ? 'Zapisany config nie przeszedł walidacji. Popraw go przed restartem.'
+          : 'Nie można przygotować restartu. Sprawdź połączenie z Supervisor i logi aplikacji.';
+    throw new Error(message);
+  }
+  if (typeof body.app_slug !== 'string') throw new Error('Brak identyfikatora aplikacji.');
+  return body.app_slug;
 }
 
 async function requestConfiguration(url: string, init: RequestInit): Promise<UserConfigurationDocument> {

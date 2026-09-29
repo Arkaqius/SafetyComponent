@@ -50,6 +50,7 @@ export default function NotificationHistory({ entries, total, status, onRefresh 
             <option value='SET'>Usterka aktywna</option>
             <option value='CLEARED'>Usterka ustąpiła</option>
             <option value='SHADOWED'>Usterka przesłonięta</option>
+            <option value='TEST'>Test powiadomienia</option>
           </select>
         </label>
       </div>

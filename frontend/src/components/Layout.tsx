@@ -42,6 +42,12 @@ const menuItems: Array<{ title: string; path: string; icon: IconName; descriptio
     description: 'Monitoring i audyt źródeł danych',
   },
   {
+    title: 'Zdrowie systemu',
+    path: '/functional-safety',
+    icon: 'activity',
+    description: 'Postęp ocen i kanały ostrzegania',
+  },
+  {
     title: 'Historia',
     path: '/history',
     icon: 'history',

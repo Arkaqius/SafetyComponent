@@ -32,6 +32,34 @@ def test_example_installation_config_compiles() -> None:
     assert compiled["SafetyFunctions"]["user_config"]["site"]["longitude"] == 20.0
     assert "installation" not in compiled["SafetyFunctions"]["user_config"]
     assert "model_version" not in compiled["SafetyFunctions"]["user_config"]
+    assert compiled["SafetyFunctions"]["user_config"]["functional_safety"]["remote_batteries"] == {}
+    assert compiled["SafetyFunctions"]["app_config"]["calibration"]["functional_safety"]["memory_low_available_mib"] == 256
+
+
+def test_functional_safety_bindings_compile_and_reject_invalid_battery(tmp_path) -> None:
+    source = yaml.safe_load((BACKEND_DIR / "config" / "user_config.example.yml").read_text(encoding="utf-8"))
+    bindings = source["user_config"]["installation"]["functional_safety"]
+    bindings["host_memory"] = {
+        "available_entity": "sensor.host_memory_available",
+        "psi_entity": "sensor.host_memory_psi_some",
+    }
+    bindings["host_cpu_entity"] = "sensor.host_processor_use"
+    bindings["updates"] = {"home_assistant_core": "update.home_assistant_core_update"}
+    bindings["remote_batteries"] = {
+        "SmokeDetector": {"friendly_name": "Smoke detector", "percentage_entity": "sensor.smoke_battery"}
+    }
+    path = tmp_path / "user.yml"
+    path.write_text(yaml.safe_dump(source), encoding="utf-8")
+    compiled = compile_config(user_path=path)["SafetyFunctions"]["user_config"]["functional_safety"]
+    assert compiled["host_memory"]["psi_entity"] == "sensor.host_memory_psi_some"
+    assert compiled["host_cpu_entity"] == "sensor.host_processor_use"
+    assert compiled["updates"]["home_assistant_core"] == "update.home_assistant_core_update"
+    assert compiled["remote_batteries"]["SmokeDetector"]["percentage_entity"] == "sensor.smoke_battery"
+
+    bindings["remote_batteries"]["SmokeDetector"] = {"friendly_name": "Smoke detector"}
+    path.write_text(yaml.safe_dump(source), encoding="utf-8")
+    with pytest.raises(ValueError, match="percentage_entity or low_entity"):
+        compile_config(user_path=path)
 
 
 def test_documented_example_house_compiles() -> None:

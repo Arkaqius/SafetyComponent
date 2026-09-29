@@ -10,8 +10,8 @@ export const NOTIFICATION_HISTORY_PAGE_SIZE = 20;
 export interface NotificationEntry {
   id: string;
   tag: string;
-  kind: 'new' | 'update' | 'repeat' | 'acknowledged' | 'resolved' | 'clear';
-  fault_state: 'SET' | 'CLEARED' | 'SHADOWED';
+  kind: 'new' | 'update' | 'repeat' | 'acknowledged' | 'resolved' | 'clear' | 'test';
+  fault_state: 'SET' | 'CLEARED' | 'SHADOWED' | 'TEST';
   level: number;
   title: string;
   message: string;
@@ -52,6 +52,7 @@ const states: Record<NotificationEntry['kind'], NotificationEntry['fault_state']
   acknowledged: 'SET',
   resolved: 'CLEARED',
   clear: 'SHADOWED',
+  test: 'TEST',
 };
 
 export function readNotificationHistory(entity?: EntitySnapshot): NotificationEntry[] {
@@ -157,11 +158,12 @@ export function notificationKind(kind: NotificationEntry['kind']): string {
     update: 'Aktualizacja',
     repeat: 'Przypomnienie',
     acknowledged: 'Potwierdzenie użytkownika',
+    test: 'Test powiadomienia',
     resolved: 'Usterka ustąpiła',
     clear: 'Usunięcie powiadomienia',
   }[kind];
 }
 
 export function notificationState(state: NotificationEntry['fault_state']): string {
-  return { SET: 'Usterka aktywna', CLEARED: 'Usterka ustąpiła', SHADOWED: 'Usterka przesłonięta' }[state];
+  return { SET: 'Usterka aktywna', CLEARED: 'Usterka ustąpiła', SHADOWED: 'Usterka przesłonięta', TEST: 'Test — nie alarm' }[state];
 }

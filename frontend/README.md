@@ -82,6 +82,15 @@ Szczegółowa [instrukcja konfiguracji](CONFIGURATION.md) prowadzi przez pola i
 działania w formularzu. YAML pozostaje opcją importu, a nie wymaganym sposobem
 konfiguracji.
 
+Podstrony konfiguracji zachowują jeden wspólny szkic. Reset instalacji ładuje
+szablon tylko do formularza; wymaga osobnego zapisu i restartu. Nie kasuje
+prywatnego pliku ani danych konserwacyjnych samym kliknięciem.
+
+Widok zdrowia ma zwijalne grupy diagnostyczne z odczytami i czasami raportów.
+Osobne, potwierdzane przyciski wysyłają mobilne powiadomienie testowe albo
+resetują stare dane powiadomień i ponawiają nadal aktywne ostrzeżenia.
+Wysyłka testu nie potwierdza jego odbioru, a reset nie kasuje alarmów.
+
 Po pierwszym starcie aplikacji otwórz **Konfiguracja**. Panel pokaże szkic
 `user_config.yml`; zastąp przykładowe encje i obszary danymi domu albo użyj
 **Wczytaj user_config YAML**, aby wczytać istniejący plik `.yml`/`.yaml` w

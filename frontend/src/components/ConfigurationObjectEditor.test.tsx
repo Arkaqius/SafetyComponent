@@ -38,6 +38,10 @@ test('new objects include all required typed fields', () => {
     hazard: 'smoke',
     profile: '',
   });
+  assert.deepEqual(initialObject(registrySchemas.remote_batteries), {
+    friendly_name: '',
+    percentage_entity: '',
+  });
 });
 
 test('dependent fields follow the selected detector and actuation type', () => {

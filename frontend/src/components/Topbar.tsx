@@ -21,12 +21,14 @@ const pageLabels: Record<string, { eyebrow: string; title: string }> = {
   '/entities': { eyebrow: 'Diagnostyka danych', title: 'Encje i urządzenia' },
   '/history': { eyebrow: 'Diagnostyka', title: 'Historia powiadomień i stanów' },
   '/configuration': { eyebrow: 'Ustawienia aplikacji', title: 'Konfiguracja instalacji' },
+  '/functional-safety': { eyebrow: 'Diagnostyka bezpieczeństwa', title: 'Zdrowie funkcji bezpieczeństwa' },
 };
 
 export default function Topbar({ menuButtonRef, navigationOpen, onMenuClick }: TopbarProps) {
   const location = useLocation();
   const { healthEntity, summary, connection } = useSafetyEntities();
-  const page = pageLabels[location.pathname] ?? pageLabels['/'];
+  const pagePath = location.pathname.startsWith('/configuration/') ? '/configuration' : location.pathname;
+  const page = pageLabels[pagePath] ?? pageLabels['/'];
   const healthState = normalizeState(healthEntity?.state);
   const isConnected = connection.ready && !connection.cannotConnect;
   const safetyLabel = summary.activeFaultCount > 0 ? 'Aktywna usterka' : 'Brak aktywnych usterek';

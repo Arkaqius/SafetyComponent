@@ -100,6 +100,15 @@ service returns the private editable source to the authenticated browser and
 never returns Supervisor credentials, packaged system policy, generated
 runtime configuration, or persistence state.
 
+The configuration editor shall offer a separate confirmed App restart. A
+read-only preparation request under `/api/config/restart-target` shall validate
+the persisted source revision and return only the caller's own Supervisor App
+slug. The browser shall request the App restart using the authenticated HA
+admin service; it shall not use the Supervisor token or request a host/Core
+restart. No additional manager/admin role shall be granted to the App. The
+editor shall reject unsaved drafts and warn about the temporary interruption
+of safety monitoring. HA acceptance shall not establish backend health.
+
 ## 5. Home Assistant communication
 
 The App requests `homeassistant_api: true`. AppDaemon authenticates through the

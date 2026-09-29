@@ -61,9 +61,10 @@ flowchart LR
   platform limitation;
 - sends the Companion command `message: clear_notification` with the stable
   tag when a notification must be removed;
-- requests a Home Assistant service result with bounded AppDaemon and Home
-  Assistant timeouts and reports each configured service as `accepted` or
-  `failed`; a missing result is a retryable failure.
+- submits through the bundled AppDaemon-compatible service shape without
+  `return_result`, `timeout`, or `hass_timeout`; an explicit AppDaemon failure
+  is retryable, while a submission returning no result is recorded as accepted
+  by Home Assistant but never as confirmed device delivery.
 
 The provider shall never fall back to `notify.notify`. Installation routing
 shall use an explicit group such as `notify/safety_recipients` or an explicit
@@ -176,6 +177,8 @@ Each entry shall contain:
 
 Kinds `new`, `update`, `repeat`, and `acknowledged` shall record `SET`;
 `resolved` shall record `CLEARED`; `clear` shall record `SHADOWED`.
+An explicit operator-requested test shall use kind `test` and state `TEST`,
+never a fabricated fault lifecycle state.
 Acknowledgement therefore remains visibly distinct from healing. Shadowing
 removes a notification and shall not be presented as a healed fault. The journal shall not expose raw
 transport exception text, unfiltered fault events, or inferred group members.
@@ -203,10 +206,10 @@ The installation config owns:
 - optional WAN-state entity and its online states;
 - optional local annunciator entities.
 
-System configuration owns the bounded `mobile.hass_timeout_seconds`, severity
-profiles, retry limits and backoff, L1 repeat policy, persistence path, and
-additional-info allowlist. Runtime requires AppDaemon 4.5 or newer so
-`return_result`, `timeout`, and `hass_timeout` are available.
+System configuration owns the retained `mobile.hass_timeout_seconds`
+compatibility field, severity profiles, retry limits and backoff, L1 repeat
+policy, persistence path, and additional-info allowlist. The bundled runtime
+does not pass result or timeout options to notify service calls.
 
 Each installation shall explicitly configure its Home Assistant-relative
 destination and notification services. The public example uses `/` and
@@ -265,6 +268,31 @@ shadowed fault sends the Companion
 `clear_notification` command with the same tag. Pending attempts and scheduled
 repeats for that tag are removed in both cases.
 
+### 4.5 Explicit test and full notification reset
+
+Authenticated operator events `safety_notification_test` and
+`safety_notification_reset` shall require the literal payload
+`{"confirmed": true}`. Each action shall have an independent 60-second rate
+limit. Neither action changes FaultManager state or constitutes a maintenance
+test result.
+
+The test action shall submit an identifiable level-3 mobile-only notification
+to the configured destinations through NotificationManager's normal bounded
+retry and per-target history path. It shall not activate local annunciators,
+actuators, or household routines. Home Assistant acceptance shall not record
+a passed receipt test; the operator must verify receipt and separately submit
+the periodic test result.
+
+The full reset shall clear old notification history, counters, queued
+deliveries, acknowledgements, and prior delivery diagnostics. It shall preserve
+active fault state and local-annunciator restrictions, rebuild currently active
+notifications without acknowledgement, and reissue their warnings through the
+normal delivery policy. New submission attempts may therefore immediately
+populate counters, queue, and history again. Reset shall not heal, acknowledge,
+silence, or suppress a still-active fault, and shall not reset detector or
+periodic-test records. The frontend shall obtain explicit confirmation because
+the old journal is removed and active warnings may be sent again.
+
 ## 5. Failure behavior
 
 - Failure of one configured target shall not prevent attempts to other targets.
@@ -281,6 +309,9 @@ repeats for that tag are removed in both cases.
 
 ## 6. Verification contract
 
+Automated tests shall cover confirmed-only test/reset events, independent
+rate limits, mobile-only test delivery and `TEST` history, reset persistence,
+preserved active faults and local restrictions, and active-warning reissue.
 Automated tests shall cover exact L1-L3 new and quiet payloads, explicit target
 routing, correct clear commands, partial failures, retry bounds, WAN queue and
 flush, deadlines, acknowledgement, controlled repeats, restart restoration,
