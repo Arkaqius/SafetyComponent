@@ -68,6 +68,23 @@ test('falls back to detector diagnostics when the summary is absent', () => {
   assert.equal(view.detectors[0]?.status, 'unavailable');
 });
 
+test('shows water-leak alarm as an independent detector', () => {
+  const view = getInternalEnvironmentMonitoring({
+    'sensor.internal_environment_utility_leak': entity('healthy', {
+      friendly_name: 'Utility leak',
+      hazard: 'water_leak',
+      source_entity_id: 'binary_sensor.utility_water_leak',
+      classification: 'alarm',
+      alarm_active: true,
+      health_fault_active: false,
+    }),
+  });
+
+  assert.equal(view.status, 'active_hazard');
+  assert.equal(view.detectors[0]?.hazard, 'water_leak');
+  assert.equal(view.detectors[0]?.status, 'alarm');
+});
+
 function entity(state: string, attributes: Record<string, unknown>) {
   return {
     state,

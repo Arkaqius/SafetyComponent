@@ -10,7 +10,7 @@ from pydantic import Field, ValidationError, field_validator, model_validator
 from components.core.pydantic_utils import StrictBaseModel, log_extra_keys
 
 COMPONENT_NAME = "InternalEnvironmentalHazardMonitorComponent"
-HazardKind = Literal["smoke", "flammable_gas", "carbon_monoxide"]
+HazardKind = Literal["smoke", "flammable_gas", "carbon_monoxide", "water_leak"]
 _DETECTOR_KEY = re.compile(r"^[A-Za-z0-9]+$")
 
 

@@ -1,4 +1,4 @@
-"""Internal smoke, flammable-gas, and carbon-monoxide monitoring."""
+"""Internal smoke, gas, carbon-monoxide, and water-leak monitoring."""
 
 from .internal_environmental_hazard_monitor_component import (
     InternalEnvironmentalHazardMonitorComponent,

@@ -18,7 +18,7 @@ const providerNames = ['OpenMeteoWeatherApiComponent', 'ImgwWarningsApiComponent
 const registrySections = [
   { key: 'rooms', title: 'Pomieszczenia', description: 'Czujniki temperatury, obszary i przypisane otwory.' },
   { key: 'openings', title: 'Drzwi, bramy i okna', description: 'Fizyczne otwory oraz ich role bezpieczeństwa.' },
-  { key: 'detectors', title: 'Detektory zagrożeń', description: 'Czujniki dymu, gazu i tlenku węgla.' },
+  { key: 'detectors', title: 'Detektory zagrożeń', description: 'Czujniki dymu, gazu, tlenku węgla i zalania.' },
 ] as const;
 
 type SaveState = 'idle' | 'saving' | 'saved';

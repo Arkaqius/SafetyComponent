@@ -82,6 +82,12 @@ user_config:
         friendly_name: Czujnik dymu w holu
         hazard: smoke
         profile: home_assistant_binary_alarm
+      UtilityLeak:
+        area_id: utility_room
+        entity_id: binary_sensor.example_utility_water_leak
+        friendly_name: Czujnik zalania w pomieszczeniu technicznym
+        hazard: water_leak
+        profile: home_assistant_binary_alarm
 
     # These are additional inputs not already owned by another component.
     monitored_entities:

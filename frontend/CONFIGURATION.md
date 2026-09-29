@@ -72,9 +72,9 @@ instalacji. Przykładowe progi nie są zaleceniem bezpieczeństwa.
    odwołuje się do `LivingRoomWindow`. To jedno fizyczne okno, więc nie
    dodawaj drugiej kopii jego czujnika. Gdy nie ustawisz listy zagrożeń okna,
    dziedziczy ono systemowe zagrożenia domyślne.
-5. W **Detektorach zagrożeń** dodaj `HallSmoke` z profilem
+5. W **Detektorach zagrożeń** dodaj `HallSmoke` i `UtilityLeak` z profilem
    `home_assistant_binary_alarm` z konfiguracji systemowej. Użyj go tylko,
-   jeśli rzeczywista encja dymu raportuje stany zgodne z tym profilem.
+   jeśli rzeczywiste encje dymu i zalania raportują stany zgodne z tym profilem.
 6. W **Dodatkowych monitorowanych encjach** dodaj `UtilityHumidity` z
    kontrolami **Skończona liczba** i **Zakres liczbowy 0–100**. To dodatkowy
    czujnik, którego nie używa żaden z powyższych komponentów.
@@ -103,8 +103,16 @@ budżecie wykrycia.
 | Ustawienia komponentów | Opcjonalnie zmień progi temperatury, czas drzwi/bram, czasy monitoringu, progi pogody i jakości powietrza oraz progi i harmonogramy Functional Safety. Puste pole oznacza wartość systemową pokazaną pod polem. Lista domyślnych zagrożeń i horyzont prognozy pozostają w konfiguracji systemowej. |
 | Pomieszczenia | Dodaj wpis dla każdego monitorowanego pomieszczenia. Wskaż obszar HA i czujnik temperatury. Opcjonalnie wybierz otwór z sekcji „Drzwi, bramy i okna”, osłonę `cover.*` i indywidualne progi. |
 | Drzwi, bramy i okna | Każdy fizyczny otwór dodaj raz: obszar, encja czujnika, przyjazna nazwa i rodzaj. W razie potrzeby dodaj znane formularzowi role „Monitoring drzwi i bram” albo „Zagrożenia zewnętrzne” i wypełnij ich pola. Obecność roli włącza dany sposób monitorowania. |
-| Detektory zagrożeń | Wskaż obszar, encję, nazwę, rodzaj zagrożenia i profil detektora z systemu. „Rodzaj gazu” jest wymagany tylko przy gazie palnym. |
+| Detektory zagrożeń | Wskaż obszar, encję, nazwę, rodzaj zagrożenia i profil detektora z systemu. Dostępne są także czujniki zalania (`water_leak`). „Rodzaj gazu” jest wymagany tylko przy gazie palnym. |
 | Dodatkowe monitorowane encje | Dodawaj wyłącznie encje, których nie używają inne komponenty. Ich zależności są monitorowane automatycznie. Wpisz encję i opis; opcjonalnie ustaw czasy i kontrole zdrowia. „Wyjątki monitoringu encji” obok dotyczą już istniejących zależności komponentów. |
+
+Przy dodawaniu czujnika zalania wybierz **Zalanie / wyciek wody** oraz encję
+`binary_sensor.*`, która podaje `on` przy wykryciu wody i `off` przy stanie
+suchym. Profil `home_assistant_binary_alarm` stosuj tylko po sprawdzeniu tych
+stanów w swojej integracji; `unknown` i `unavailable` nie oznaczają suchości.
+Po zapisaniu uruchom aplikację ponownie. Alarm jest zgłaszany jako L2 i nie
+zamyka automatycznie zaworu wody. Wynik fizycznego testu czujnika można zapisać
+w **Zdrowiu systemu → Testy czujników**; sam przycisk nie uruchamia testu.
 
 ## Dodawanie obiektów i kontrole zdrowia
 

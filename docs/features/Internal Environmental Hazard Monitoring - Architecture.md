@@ -2,14 +2,14 @@
 
 **Component:** `InternalEnvironmentalHazardMonitorComponent`
 
-**Logical allocations:** C-ALARM (smoke, flammable gas, CO); C-AQ (indoor PM2.5)
+**Logical allocations:** C-ALARM (smoke, flammable gas, CO); C-LEAK (water leak); C-AQ (indoor PM2.5)
 
 **Document role:** Normative feature architecture, English source language
 
 ## 1. Purpose and allocation
 
-The component shall report asserted smoke, flammable-gas and carbon-monoxide
-alarms and elevated measured indoor PM2.5. It shall preserve separate hazard,
+The component shall report asserted smoke, flammable-gas, carbon-monoxide and
+water-leak alarms and elevated measured indoor PM2.5. It shall preserve separate hazard,
 detector-health and evidence-quality state. It shall not infer that a home is
 safe merely because no detector currently reports an alarm.
 
@@ -17,9 +17,9 @@ The controlling contracts are
 [HARA section 1.3](<../sys/SafetyConcept - HARA.md#13-safety-goals>),
 [SYS section 8.7](<../sys/SafetyConcept - SYS.md#87-internal-environmental-hazard-monitoring-c-alarm-and-c-aq>)
 and [SSRD section 4.11](<../sys/SafetyComponent - SSRD.md#411-internal-environmental-hazard-monitoring>).
-HARA hazards HZ‑FIRE‑01, HZ‑GAS‑01, HZ‑CO‑01, HZ‑AQ‑01 and
-HZ‑SYSTEM‑FAIL‑01 establish SG‑003 and SG‑005..008. One component shall
-implement the two logical allocations without merging their safety priorities.
+HARA hazards HZ‑FIRE‑01, HZ‑GAS‑01, HZ‑CO‑01, HZ‑WATER‑01, HZ‑AQ‑01 and
+HZ‑SYSTEM‑FAIL‑01 establish SG‑003 and SG‑005..009. One runtime component may
+implement these logical allocations without merging their safety priorities.
 
 Autonomous detector sounders and manufacturer alarm algorithms shall remain
 independent of HA, MQTT, AppDaemon and mobile transport. Numeric CO/gas
@@ -28,7 +28,7 @@ or manufacturer-defined concentration/time behavior. PM2.5 shall not be used
 as a smoke, CO, CO2 or combustible-gas detector. Outdoor pollution monitoring
 shall remain with ExternalHazardComponent.
 
-The component shall observe and notify. Gas cutoff, ventilation, purification,
+The component shall observe and notify. Water/gas cutoff, ventilation, purification,
 opening/lock control, detector hush/reset and safe re-entry authorization shall
 not be its recovery actions. Any emergency actuator allocation shall be
 separately justified for the hazard and installation. Shared notification
@@ -39,7 +39,7 @@ outputs shall be constrained by section 7, not treated as an exemption.
 ```mermaid
 flowchart TD
     HA[HA detector and indoor PM entities] --> AD[Typed provider and device adapters]
-    AD --> AL[Immediate smoke / gas / CO latches]
+    AD --> AL[Immediate smoke / gas / CO / water-leak latches]
     AD --> PM[Bounded PM sample windows]
     EH[Entity Monitor input quality] --> Q[Detector health and coverage]
     AD --> Q
@@ -91,6 +91,7 @@ co-located sensors shall not be averaged into one binary vote.
 | `smoke` | Explicit alarm/clear states and source confirmation contract | Trouble, battery, end-of-life and test/hush flags |
 | `flammable_gas` | Explicit alarm/clear states and declared gas identity, such as methane or LPG, according to equipment profile | Concentration with gas-specific unit and interpretation |
 | `carbon_monoxide` | Explicit alarm/clear states and source confirmation contract | CO concentration in ppm and detector status |
+| `water_leak` | Explicit wet/dry alarm and authoritative clear states from a water-leak sensor | Device trouble, battery and test status |
 | `pm25` | Indoor PM2.5 concentration in µg/m³, valid range, source observation time and quality | Humidity/calibration, saturation indication and device status |
 | Health | Available trouble/availability and trustworthy heartbeat/link supervision contracts | Battery, self-test capability, maintenance/end-of-life indication |
 
@@ -170,6 +171,13 @@ Each fault shall aggregate every active detector symptom from its mechanism.
 | R04 | `sm_iehm_pm25_high` | `InternalParticulateMatterHigh` | L2 | Qualified short-window PM2.5 concentration threshold/persistence |
 | R05 | `sm_iehm_pm25_exposure` | `InternalParticulateMatterExposure` | L3 | Qualified optional long-term exposure threshold |
 | R06 | `sm_iehm_detector_health` | `InternalEnvironmentalDetectorUnavailable` | L3 | Required channel/coverage loss or configured device-health fault after its allocated debounce |
+| R07 | `sm_iehm_water_leak` | `WaterLeakDetected` | L2 | Valid water-leak alarm assertion from a configured detector |
+
+The R07 mechanism is a technical runtime name; its water-leak decision belongs
+to C-LEAK, independently of C-ALARM. A configured water-leak sensor shall use
+the same positive-clear and coverage rules as the other binary channels.
+No water-valve service call shall be inferred from the presence of a sensor;
+valve control requires a separately validated installation-specific allocation.
 
 No multi-detector consensus shall be required. A healthy peer shall not negate
 an asserted detector. Smoke, gas and CO faults shall not shadow each other;

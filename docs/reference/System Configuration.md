@@ -123,6 +123,9 @@ per-opening `confirmation_timeout_seconds` contract.
 clear state semantics, health debounce, persistent-state policy, and the
 maximum detector count. The private configuration selects a profile and binds
 it to a detector; it cannot redefine the profile semantics.
+The same system-owned binary profile can describe a water-leak sensor when its
+Home Assistant wet/dry states match the profile. `WaterLeakDetected` is an L2
+C-LEAK fault; merely binding the sensor never enables valve actuation.
 
 ### 4.6 Functional safety
 

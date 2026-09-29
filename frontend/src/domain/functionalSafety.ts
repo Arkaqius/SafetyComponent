@@ -233,7 +233,7 @@ export interface ComponentProgressView {
 export interface DetectorTestView {
   detectorKey: string;
   friendlyName: string;
-  hazard: 'smoke' | 'flammable_gas' | 'carbon_monoxide';
+  hazard: 'smoke' | 'flammable_gas' | 'carbon_monoxide' | 'water_leak';
   status: 'current' | 'due' | 'overdue' | 'failed' | 'unknown';
   lastTestAt: string | null;
   dueAt: string | null;
@@ -248,7 +248,7 @@ export function getDetectorTests(entities: EntityMap): DetectorTestView[] {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
     const item = value as Record<string, unknown>;
     if (typeof item.detector_key !== 'string' || typeof item.friendly_name !== 'string') return [];
-    if (item.hazard !== 'smoke' && item.hazard !== 'flammable_gas' && item.hazard !== 'carbon_monoxide') return [];
+    if (item.hazard !== 'smoke' && item.hazard !== 'flammable_gas' && item.hazard !== 'carbon_monoxide' && item.hazard !== 'water_leak') return [];
     if (
       item.status !== 'current' &&
       item.status !== 'due' &&

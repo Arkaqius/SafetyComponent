@@ -152,6 +152,15 @@ test('requires an explicit detector test record', () => {
     }),
     [{ detectorKey: 'KitchenSmoke', friendlyName: 'Smoke', hazard: 'smoke', status: 'due', lastTestAt: null, dueAt: null }]
   );
+  assert.deepEqual(
+    getDetectorTests({
+      'sensor.safety_detector_tests': {
+        state: 'attention',
+        attributes: { tests: [{ detector_key: 'UtilityLeak', friendly_name: 'Leak', hazard: 'water_leak', status: 'due' }] },
+      },
+    })[0]?.hazard,
+    'water_leak'
+  );
 });
 
 test('keeps unknown platform sources visible without inventing health', () => {

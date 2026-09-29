@@ -90,6 +90,16 @@ def test_test_status_is_reported_to_maintenance_fault_owner() -> None:
     observer.assert_called_with("KitchenSmoke", "current")
 
 
+def test_water_leak_detector_is_included_in_periodic_test_inventory() -> None:
+    monitor = DetectorTestMonitor(
+        Mock(), Mock(),
+        {"UtilityLeak": {"hazard": "water_leak", "friendly_name": "Utility leak"}},
+        interval_days=180,
+        state_store=InMemoryNotificationStateStore(),
+    )
+    assert "UtilityLeak" in monitor.detectors
+
+
 def test_persisted_outcomes_restore_and_overdue_tests_remain_visible() -> None:
     old = (datetime.now(timezone.utc) - timedelta(days=181)).isoformat()
     store = InMemoryNotificationStateStore()

@@ -10,7 +10,7 @@ from components.notification_manager.state_store import NotificationStateStore
 TEST_RESULT_EVENT = "safety_detector_test_result"
 TEST_SUMMARY_ENTITY_ID = "sensor.safety_detector_tests"
 _STATE_VERSION = 1
-_ALLOWED_HAZARDS = {"smoke", "flammable_gas", "carbon_monoxide"}
+_ALLOWED_HAZARDS = {"smoke", "flammable_gas", "carbon_monoxide", "water_leak"}
 
 
 class DetectorTestMonitor:

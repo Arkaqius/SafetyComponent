@@ -57,8 +57,8 @@ export default function InternalHazards() {
           <span className='section-kicker'>Bezpieczeństwo wewnątrz domu</span>
           <h2>Zagrożenia wewnętrzne</h2>
           <p>
-            Widok prezentuje niezależne alarmy czujników dymu, gazu palnego i tlenku węgla. SafetyComponent przekazuje alarmy i zalecenia,
-            ale nie steruje wentylacją, zaworami gazu, przekaźnikami ani zwykłym oświetleniem.
+            Widok prezentuje niezależne alarmy czujników dymu, gazu palnego, tlenku węgla i zalania. SafetyComponent przekazuje alarmy i zalecenia,
+            ale nie steruje wentylacją, zaworami wody i gazu, przekaźnikami ani zwykłym oświetleniem.
           </p>
         </div>
         <div className='internal-current-state'>
@@ -212,6 +212,7 @@ function hazardName(hazard: string): string {
       smoke: 'Dym',
       flammable_gas: 'Gaz palny',
       carbon_monoxide: 'Tlenek węgla',
+      water_leak: 'Zalanie / wyciek wody',
     }[hazard] ?? 'Nieznane zagrożenie'
   );
 }

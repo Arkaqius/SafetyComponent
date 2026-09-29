@@ -1,4 +1,4 @@
-"""Monitor internal binary smoke, flammable-gas, and CO detector alarms."""
+"""Monitor independent indoor smoke, gas, CO, and water-leak alarms."""
 
 from __future__ import annotations
 
@@ -31,17 +31,20 @@ _HAZARD_MECHANISMS = {
     "smoke": "sm_iehm_smoke",
     "flammable_gas": "sm_iehm_flammable_gas",
     "carbon_monoxide": "sm_iehm_carbon_monoxide",
+    "water_leak": "sm_iehm_water_leak",
 }
 _HEALTH_MECHANISM = "sm_iehm_detector_health"
 _HAZARD_LABELS = {
     "smoke": "smoke",
     "flammable_gas": "flammable gas",
     "carbon_monoxide": "carbon monoxide",
+    "water_leak": "water leak",
 }
 _HAZARD_FAULTS = {
     "smoke": "InternalSmokeDetected",
     "flammable_gas": "InternalFlammableGasDetected",
     "carbon_monoxide": "InternalCarbonMonoxideDetected",
+    "water_leak": "WaterLeakDetected",
 }
 
 
@@ -297,6 +300,15 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
         entities_changes: dict[str, str] | None = None,
     ) -> bool:
         """Evaluate one carbon-monoxide detector alarm channel."""
+
+        return self._evaluate_mechanism(mechanism, entities_changes)
+
+    def sm_iehm_water_leak(
+        self,
+        mechanism: SafetyMechanism,
+        entities_changes: dict[str, str] | None = None,
+    ) -> bool:
+        """Evaluate one water-leak detector alarm channel without actuation."""
 
         return self._evaluate_mechanism(mechanism, entities_changes)
 
@@ -756,6 +768,10 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
             "carbon_monoxide": (
                 "Leave the affected area immediately and call emergency services."
             ),
+            "water_leak": (
+                "Check the leak from a safe place and shut off water manually "
+                "if it is safe to do so. Avoid wet electrical equipment."
+            ),
         }[hazard]
 
     def _hazard_label(self, hazard: str) -> str:
@@ -781,6 +797,7 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
             "smoke": "mdi:smoke-detector-alert",
             "flammable_gas": "mdi:gas-cylinder",
             "carbon_monoxide": "mdi:molecule-co",
+            "water_leak": "mdi:water-alert",
         }[hazard]
 
     @staticmethod

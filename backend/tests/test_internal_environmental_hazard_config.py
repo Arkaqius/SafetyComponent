@@ -70,6 +70,21 @@ def test_schema_requires_gas_identity_only_for_flammable_gas() -> None:
         validate_internal_environmental_hazard_config(wrong_channel)
 
 
+def test_schema_accepts_independent_water_leak_channel() -> None:
+    config = _config()
+    config["detectors"]["UtilityLeak"] = {
+        "area_id": "utility",
+        "entity_id": "binary_sensor.utility_water_leak",
+        "friendly_name": "Utility room leak",
+        "hazard": "water_leak",
+        "profile": "binary",
+    }
+
+    runtime = validate_internal_environmental_hazard_config(config)
+
+    assert runtime["detectors"]["UtilityLeak"]["hazard"] == "water_leak"
+
+
 @pytest.mark.parametrize("detector_key", ["Bathroom_Gas", "bathroom-gas", "żółty"])
 def test_schema_rejects_non_alphanumeric_detector_keys(detector_key: str) -> None:
     config = _config()

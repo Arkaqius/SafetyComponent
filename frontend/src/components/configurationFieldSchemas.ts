@@ -139,6 +139,7 @@ export const registrySchemas: Record<string, Record<string, FieldSpec>> = {
         ['smoke', 'Dym'],
         ['flammable_gas', 'Gaz palny'],
         ['carbon_monoxide', 'Tlenek węgla'],
+        ['water_leak', 'Zalanie / wyciek wody'],
       ],
       true
     ),
