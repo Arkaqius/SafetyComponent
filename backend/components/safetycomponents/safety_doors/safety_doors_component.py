@@ -86,6 +86,7 @@ class SafetyDoorsComponent(SafetyComponent):
         super().__init__(hass_app, common_entities, event_bus, mqtt_entities)
         self._door_runtime: dict[str, DoorRuntime] = {}
         self._mqtt_entity_ids: dict[str, str] = {}
+        self._fault_definitions: dict[str, dict[str, Any]] = {}
 
     def get_symptoms_data(
         self,
@@ -94,6 +95,7 @@ class SafetyDoorsComponent(SafetyComponent):
     ) -> tuple[dict[str, Symptom], dict[str, RecoveryAction]]:
         """Create one timeout symptom for every configured safety door."""
         symptoms: dict[str, Symptom] = {}
+        self._fault_definitions = {}
 
         for entry in component_cfg:
             for door_name, parameters in entry.items():
@@ -106,8 +108,26 @@ class SafetyDoorsComponent(SafetyComponent):
                     parameters=runtime_parameters,
                     sm_name=SAFETY_MECHANISM_NAME,
                 )
+                localizer = getattr(self.hass_app, "localizer", None)
+                self._fault_definitions[symptom_name] = {
+                    "name": (
+                        localizer.text("fault.safety_door_timeout", door=door_name)
+                        if localizer is not None
+                        else f"Zbyt długo otwarte drzwi lub brama: {door_name}"
+                    ),
+                    "level": 2,
+                    "category": "H",
+                    "related_sms": [SAFETY_MECHANISM_NAME],
+                    "related_symptom_ids": [symptom_name],
+                    "shadows": [],
+                }
 
         return symptoms, {}
+
+    def get_fault_definitions(self) -> dict[str, dict[str, Any]]:
+        """Return one fault definition for each configured door."""
+
+        return dict(self._fault_definitions)
 
     def init_safety_mechanism(
         self, sm_name: str, name: str, parameters: dict[str, Any]

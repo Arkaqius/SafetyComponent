@@ -78,6 +78,31 @@ def test_fault_manager_initialization(fault_manager, fault, symptom):
     assert fault_manager.symptoms["RiskyTemperatureOffice"] == symptom
 
 
+def test_subject_bound_faults_clear_independently(fault_manager):
+    """A second subject cannot hold or clear the first subject's fault."""
+
+    mechanism = "sm_safety_door_open_timeout"
+    first = "SafetyDoorOpenTimeoutGarageGate"
+    second = "SafetyDoorOpenTimeoutFrontDoor"
+    fault_manager.symptoms = {
+        name: Symptom(name=name, sm_name=mechanism, module=Mock(), parameters={})
+        for name in (first, second)
+    }
+    fault_manager.faults = {
+        name: Fault(name, [mechanism], 2, related_symptom_ids=[name])
+        for name in (first, second)
+    }
+
+    fault_manager.set_symptom(first, {})
+    fault_manager.set_symptom(second, {})
+    fault_manager.clear_symptom(first, {})
+
+    assert fault_manager.faults[first].state == FaultState.CLEARED
+    assert fault_manager.faults[second].state == FaultState.SET
+    assert fault_manager.found_mapped_fault(first, mechanism) is fault_manager.faults[first]
+    assert fault_manager.found_mapped_fault(second, mechanism) is fault_manager.faults[second]
+
+
 def test_system_state_uses_readable_code_for_most_severe_fault(fault_manager):
     emergency = Fault("Emergency", ["sm_tc_1"], level=1)
     warning = Fault("Warning", ["sm_tc_1"], level=3)

@@ -137,11 +137,6 @@ runtime_cfg:
       related_sms:
         - sm_tc_2
         - sm_tc_4
-    SafetyDoorOpenTimeout:
-      name: Zbyt długo otwarte drzwi lub brama
-      level: 2
-      related_sms:
-        - sm_safety_door_open_timeout
     ExternalWeatherExposure:
       name: Narażenie domu na zagrożenie pogodowe
       level: 2

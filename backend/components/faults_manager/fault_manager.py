@@ -332,9 +332,10 @@ class FaultManager:
         """Rebuild external-fault context from current active symptoms only."""
 
         values_by_key: dict[str, list[str]] = {}
-        related_sms = set(fault.related_symptoms)
         for symptom_id, symptom in self.symptoms.items():
-            if symptom.state != FaultState.SET or symptom.sm_name not in related_sms:
+            if symptom.state != FaultState.SET or not self._belongs_to_fault(
+                fault, symptom_id, symptom.sm_name
+            ):
                 continue
             for key, value in self._symptom_contexts.get(symptom_id, {}).items():
                 values = values_by_key.setdefault(key, [])
@@ -555,8 +556,8 @@ class FaultManager:
         fault_tag: str = self._generate_fault_tag(fault.name, additional_info)
         has_active_related_symptoms = any(
             symptom.state == FaultState.SET
-            for symptom in self.symptoms.values()
-            if symptom.sm_name in set(fault.related_symptoms)
+            for related_id, symptom in self.symptoms.items()
+            if self._belongs_to_fault(fault, related_id, symptom.sm_name)
         )
 
         if has_active_related_symptoms:
@@ -693,7 +694,9 @@ class FaultManager:
 
         # Collect all faults mapped from that symptom
         matching_objects: list[Fault] = [
-            fault for fault in self.faults.values() if sm_id in fault.related_symptoms
+            fault
+            for fault in self.faults.values()
+            if self._belongs_to_fault(fault, symptom_id, sm_id)
         ]
 
         # Validate there's exactly one occurrence
@@ -712,6 +715,17 @@ class FaultManager:
             )
 
         return None
+
+    @staticmethod
+    def _belongs_to_fault(fault: Fault, symptom_id: str, sm_id: str) -> bool:
+        """Match a contributor by explicit identity or its unspecialized SM."""
+
+        if fault.related_symptom_ids:
+            return (
+                symptom_id in fault.related_symptom_ids
+                and sm_id in fault.related_symptoms
+            )
+        return sm_id in fault.related_symptoms
 
     def enable_sm(self, sm_name: str, sm_state: SMState) -> None:
         """

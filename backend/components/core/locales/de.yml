@@ -58,6 +58,7 @@ state.detector_tests.attention: Tests erfordern Prüfung
 state.detector_tests.unknown: Testverlauf nicht verfügbar
 state.detector_tests.not_configured: Keine Melder konfiguriert
 fault.entity_health: 'Entitätsproblem: {entity}'
+fault.safety_door_timeout: 'Tür oder Tor zu lange geöffnet: {door}'
 fault.host_memory_pressure: Speicherdruck des Hosts
 fault.host_cpu_pressure: Anhaltend hohe CPU-Auslastung des Hosts
 fault.wan_unavailable: WAN nicht verfügbar

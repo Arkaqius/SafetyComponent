@@ -58,6 +58,7 @@ state.detector_tests.attention: Tests need attention
 state.detector_tests.unknown: Test history unavailable
 state.detector_tests.not_configured: No detectors configured
 fault.entity_health: 'Entity problem: {entity}'
+fault.safety_door_timeout: 'Door or gate open too long: {door}'
 fault.host_memory_pressure: Host memory pressure
 fault.host_cpu_pressure: Sustained high host CPU load
 fault.wan_unavailable: WAN unavailable

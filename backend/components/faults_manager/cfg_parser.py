@@ -34,5 +34,6 @@ def get_faults(faults_dict: dict) -> dict[str, Fault]:
             fault_data.get("shadows", []),
             friendly_name=fault_data.get("name", fault_name),
             category=FaultCategory(fault_data.get("category", "H")),
+            related_symptom_ids=fault_data.get("related_symptom_ids", []),
         )
     return ret_val

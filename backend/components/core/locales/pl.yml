@@ -58,6 +58,7 @@ state.detector_tests.attention: Testy wymagają uwagi
 state.detector_tests.unknown: Historia testów niedostępna
 state.detector_tests.not_configured: Brak skonfigurowanych czujników
 fault.entity_health: 'Problem z encją: {entity}'
+fault.safety_door_timeout: 'Zbyt długo otwarte drzwi lub brama: {door}'
 fault.host_memory_pressure: Niedobór pamięci hosta
 fault.host_cpu_pressure: Długotrwałe wysokie obciążenie CPU hosta
 fault.wan_unavailable: Brak łączności WAN

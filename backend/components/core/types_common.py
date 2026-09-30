@@ -177,6 +177,7 @@ class Fault:
         shadows: list[str] | None = None,
         friendly_name: str | None = None,
         category: FaultCategory = FaultCategory.H,
+        related_symptom_ids: list[str] | None = None,
     ):
         if level not in PRIORITY_PROFILES:
             raise ValueError("Fault priority must be one of levels 1..4")
@@ -185,6 +186,7 @@ class Fault:
         self.state: FaultState = FaultState.NOT_TESTED
         self.previous_val = FaultState.NOT_TESTED
         self.related_symptoms: list = related_symptoms
+        self.related_symptom_ids: tuple[str, ...] = tuple(related_symptom_ids or ())
         self.level: int = level
         self.shadows: list[str] = list(shadows or [])
         self.category: FaultCategory = FaultCategory(category)
