@@ -21,6 +21,13 @@ facilitating easier maintenance and updates.
 from enum import Enum
 from typing import TYPE_CHECKING, Any, NamedTuple, Dict, List
 
+from components.core.fault_state_policy import (
+    FaultCategory,
+    FaultEvaluation,
+    PRIORITY_PROFILES,
+    PriorityProfile,
+)
+
 if TYPE_CHECKING:
     from components.safetycomponents.core.safety_component import SafetyComponent
 
@@ -169,7 +176,10 @@ class Fault:
         level: int,
         shadows: list[str] | None = None,
         friendly_name: str | None = None,
+        category: FaultCategory = FaultCategory.H,
     ):
+        if level not in PRIORITY_PROFILES:
+            raise ValueError("Fault priority must be one of levels 1..4")
         self.name: str = name
         self.friendly_name: str = friendly_name or name
         self.state: FaultState = FaultState.NOT_TESTED
@@ -177,6 +187,9 @@ class Fault:
         self.related_symptoms: list = related_symptoms
         self.level: int = level
         self.shadows: list[str] = list(shadows or [])
+        self.category: FaultCategory = FaultCategory(category)
+        self.priority_profile: PriorityProfile = PRIORITY_PROFILES[level]
+        self.evaluation: FaultEvaluation = FaultEvaluation()
 
 
 class RecoveryResult(NamedTuple):

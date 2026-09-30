@@ -183,7 +183,11 @@ Operational-test records never trigger a notification or backup operation.
 ### 5.1 Faults
 
 `runtime_cfg.faults` is the stable fault catalog. Each entry owns its operator
-name, level, related Safety Mechanism IDs, and optional shadowing. Changing a
+name, level, H/D category, related Safety Mechanism IDs, and optional shadowing.
+The `category` key defaults to `H` for compatibility; diagnostic faults use
+`D`. Level is validated in `1..4` and selects the notification level of the
+same number. Category does not imply urgency, recovery actuation, or a
+degradation target. Changing a
 fault key, severity, or mechanism mapping requires coordinated requirements,
 tests, UI, MQTT, and deployment changes.
 

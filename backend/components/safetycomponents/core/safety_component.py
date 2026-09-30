@@ -542,6 +542,18 @@ def safety_mechanism_decorator(func: Callable) -> Callable:
         """
         self.hass_app.log(f"{func.__name__} was started!", level="DEBUG")
 
+        def evaluate_predicate() -> SafetyMechanismResult:
+            try:
+                result = func(self, sm, entities_changes)
+                if not isinstance(result.result, bool):
+                    raise TypeError("Safety mechanism result must be bool")
+                return result
+            except Exception:
+                self.event_bus.publish(
+                    "evaluation_unavailable", symptom_id=sm.name
+                )
+                raise
+
         if not sm.isEnabled:
             self.hass_app.log(
                 f"{func.__name__} is disabled, skipping execution.", level="DEBUG"
@@ -553,7 +565,7 @@ def safety_mechanism_decorator(func: Callable) -> Callable:
             current_state: DebounceState = self.debounce_states[sm.name]
 
             # Get sm result!
-            sm_return = func(self, sm, entities_changes)
+            sm_return = evaluate_predicate()
 
             # Perform SM logic
             debounce_limit = sm.sm_args.get("debounce_limit", 2)
@@ -588,7 +600,7 @@ def safety_mechanism_decorator(func: Callable) -> Callable:
                 f"{func.__name__} running in dry mode with changes: {entities_changes}",
                 level="DEBUG",
             )
-            sm_return = func(self, sm, entities_changes)
+            sm_return = evaluate_predicate()
 
         self.hass_app.log(f"{func.__name__} was ended!", level="DEBUG")
         if entities_changes is None:

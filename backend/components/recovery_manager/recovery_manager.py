@@ -534,11 +534,22 @@ class RecoveryManager:
         symptom: Symptom,
         fault_tag: str,
         fault_state: FaultState,
+        fault_name: str | None = None,
         **_: object,
     ) -> None:
         """EventBus handler for fault events."""
         if fault_state == FaultState.SHADOWED:
-            self._recovery_clear(symptom)
+            fault = self.fm.faults.get(fault_name) if fault_name else None
+            if fault is None:
+                self._recovery_clear(symptom)
+            else:
+                related_sms = set(fault.related_symptoms)
+                for contributor in self.fm.symptoms.values():
+                    if (
+                        contributor.sm_name in related_sms
+                        and contributor.state == FaultState.SET
+                    ):
+                        self._recovery_clear(contributor)
             return
         self.recovery(symptom, fault_tag)
 

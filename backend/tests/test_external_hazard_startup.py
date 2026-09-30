@@ -7,6 +7,7 @@ from typing import Any
 
 from build_app_config import compile_config
 from SafetyFunctions import SafetyFunctions
+from components.core.functional_safety_diagnostics import JsonFunctionalSafetyDiagnosticsStore
 
 
 class StubExternalRuntime:
@@ -27,7 +28,11 @@ class StubExternalRuntime:
         self.started = False
 
 
-def test_example_external_hazard_startup_is_wired_before_polling(tmp_path) -> None:
+def test_example_external_hazard_startup_is_wired_before_polling(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "SafetyFunctions.JsonFunctionalSafetyDiagnosticsStore",
+        lambda: JsonFunctionalSafetyDiagnosticsStore(tmp_path / "functional_safety.json"),
+    )
     backend_dir = Path(__file__).parents[1]
     raw = compile_config(
         user_path=backend_dir / "config" / "user_config.example.yml",

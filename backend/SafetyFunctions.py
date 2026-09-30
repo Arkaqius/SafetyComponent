@@ -328,6 +328,9 @@ class SafetyFunctions(hass.Hass):
         # Wire symptom and fault events in deterministic priority order.
         self.event_bus.subscribe("symptom", self.fm.handle_symptom_event, priority=0)
         self.event_bus.subscribe(
+            "evaluation_unavailable", self.fm.mark_evaluation_unavailable, priority=0
+        )
+        self.event_bus.subscribe(
             "fault", self.notify_man.handle_fault_event, priority=0
         )
         self.event_bus.subscribe("fault", self.reco_man.handle_fault_event, priority=1)

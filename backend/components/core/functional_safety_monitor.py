@@ -146,6 +146,7 @@ class FunctionalSafetyMonitor:
             self._fault_definitions[fault] = {
                 "name": name,
                 "level": level,
+                "category": "D",
                 "related_sms": [mechanism],
                 "shadows": [],
             }

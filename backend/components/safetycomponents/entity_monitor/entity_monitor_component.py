@@ -165,6 +165,7 @@ class EntityMonitorComponent(SafetyComponent):
                         else f"Entity problem: {entity_name}"
                     ),
                     "level": 3,
+                    "category": "D",
                     "related_sms": [mechanism_name],
                     "shadows": [],
                 }

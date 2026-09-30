@@ -138,6 +138,11 @@ The existing `ForeCast` capitalization is part of the runtime contract.
 | SWR-FLT-005 | With active faults, system state shall be `emergency`, `hazard`, `warning`, or `information` for levels 1 through 4 respectively. | `SYSTEM_STATE_BY_FAULT_LEVEL` |
 | SWR-FLT-006 | Application health shall be represented independently by `sensor.safety_app_health`. | `SafetyFunctions` |
 | SWR-FLT-007 | Fault entities shall publish stable raw lifecycle states `Set`, `Shadowed`, `Cleared`, and `Not_tested`. | `FaultManager` |
+| SWR-FLT-008 | A Safety Mechanism predicate shall yield only a Boolean violation result for eligible evidence. Missing, invalid, or failed evaluation shall be reported separately and shall not be interpreted as `false` recovery evidence. | `SafetyComponent`, `FaultManager` |
+| SWR-FLT-009 | A fault shall own its evaluation status and activation independently. Its statuses shall be `NOT_EVALUATED`, `PASS`, `PENDING_FAILURE`, `FAIL`, `PENDING_RECOVERY`, `UNEVALUABLE`, `INHIBITED`, or `DISABLED`; an unevaluable or excluded contribution shall not clear prior active evidence. | fault evaluation policy |
+| SWR-FLT-010 | OR-aggregated valid positive evidence shall assert a fault even with another contribution unavailable; clearing shall require valid negative evidence from every bound contribution after the fault's recovery qualification. Shadowing shall remain an independent set of explicit owner identities and shall withdraw only redundant responses. | `FaultManager` |
+| SWR-FLT-011 | Fault priority shall be the existing numeric level 1..4 and shall select the same notification level. H/D category shall not change urgency. The level shall select notification defaults, while recovery action, degradation target and shadowing shall require explicit bindings. | fault catalog, notification policy |
+| SWR-FLT-012 | During additive migration, MQTT fault states, stable fault names, entity IDs and notification-history `SET`/`CLEARED`/`SHADOWED` codes shall remain unchanged. A shadowed active condition shall remain counted in system severity and shall be re-presented when its final shadow owner clears. | `FaultManager`, consumer contracts |
 
 ### 4.5 Notifications and recovery
 

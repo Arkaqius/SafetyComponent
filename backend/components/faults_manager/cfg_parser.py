@@ -5,6 +5,7 @@ These utilities facilitate the dynamic setup of safety mechanisms based on exter
 """
 
 from components.core.types_common import Fault
+from components.core.fault_state_policy import FaultCategory
 
 
 def get_faults(faults_dict: dict) -> dict[str, Fault]:
@@ -32,5 +33,6 @@ def get_faults(faults_dict: dict) -> dict[str, Fault]:
             fault_data["level"],
             fault_data.get("shadows", []),
             friendly_name=fault_data.get("name", fault_name),
+            category=FaultCategory(fault_data.get("category", "H")),
         )
     return ret_val

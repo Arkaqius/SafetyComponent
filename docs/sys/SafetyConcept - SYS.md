@@ -613,6 +613,22 @@ _We model the system as **decoupled Safety Components**, each implementing one o
   - Fault catalog keys, Safety Mechanism IDs, symptom ID patterns, raw states,
     and entity IDs are stable machine contracts.
 
+- **Fault-owned evaluation policy:** An SM shall answer a Boolean violation
+  predicate for valid inputs. Invalid or missing evidence and invocation failure
+  shall be reported as ineligibility, never converted into a negative predicate
+  result. The fault shall own aggregation, failure/recovery qualification,
+  priority, category and response policy. A known violation shall remain
+  actionable when another contribution is unevaluable; clearing an active fault
+  requires valid recovery evidence from every required contribution.
+- **Independent diagnostic axes:** The fault shall retain evaluation status,
+  active condition and shadow owners separately. Shadowing shall withdraw
+  redundant responses without clearing evidence. The existing external raw
+  states and notification-history codes shall remain stable during migration.
+- **Priority:** Existing fault level L1..L4 shall select the notification level
+  of the same number. H/D category describes a hazard/equipment condition or a
+  diagnostic capability failure, not urgency. A level alone shall not authorize
+  recovery actuation or define a degradation target.
+
 ---
 
 ### 8.2 Temperature Safety Component (C‑TEMP)
