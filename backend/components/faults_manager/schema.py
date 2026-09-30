@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Any, Callable, Literal
 
 from pydantic import ConfigDict, Field, ValidationError
 
@@ -15,7 +15,8 @@ class FaultEntry(StrictBaseModel):
     model_config = ConfigDict(extra="allow")
 
     name: str
-    level: int = Field(..., ge=1)
+    level: int = Field(..., ge=1, le=4)
+    category: Literal["H", "D"] = "H"
     related_sms: list[str]
     shadows: list[str] = Field(default_factory=list)
 

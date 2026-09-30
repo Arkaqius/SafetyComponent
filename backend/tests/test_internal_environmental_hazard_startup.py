@@ -8,7 +8,13 @@ from SafetyFunctions import SafetyFunctions
 from components.core.types_common import FaultState
 
 
-def test_gas_alarm_reaches_l1_fault_without_co_consensus(tmp_path) -> None:
+def test_gas_alarm_reaches_l1_fault_without_co_consensus(tmp_path, monkeypatch) -> None:
+    from components.core.functional_safety_diagnostics import JsonFunctionalSafetyDiagnosticsStore
+
+    monkeypatch.setattr(
+        "SafetyFunctions.JsonFunctionalSafetyDiagnosticsStore",
+        lambda: JsonFunctionalSafetyDiagnosticsStore(tmp_path / "functional_safety.json"),
+    )
     backend_dir = Path(__file__).parents[1]
     raw = compile_config(
         user_path=backend_dir / "config" / "user_config.example.yml",

@@ -155,6 +155,7 @@ runtime_cfg:
     ExternalHazardDataUnavailable:
       name: Brak danych o zagrożeniach zewnętrznych
       level: 3
+      category: D
       related_sms:
         - sm_ext_provider_unavailable
     InternalSmokeDetected:
@@ -180,6 +181,7 @@ runtime_cfg:
     InternalEnvironmentalDetectorUnavailable:
       name: Czujnik zagrożenia środowiskowego jest niedostępny
       level: 3
+      category: D
       related_sms:
         - sm_iehm_detector_health
 

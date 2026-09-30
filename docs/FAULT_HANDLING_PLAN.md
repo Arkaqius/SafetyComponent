@@ -605,6 +605,16 @@ preparing/publishing these branches.
 
 ### FH-01: Fault state and priority policy
 
+The implementation contract for this branch is
+[Fault State Policy](<features/Fault State Policy - Architecture.md>). This
+branch introduces the additive fault-owned evaluation object, priority/category
+metadata and shadow-owner tracking while retaining the legacy external state
+projection. Full migration of every existing SM's debounce and eligibility,
+including explicit negative observations for every required binding,
+durable L1 latching, operator controls, degradation and rich UI publication
+remain separately scoped work; the presence of a status enum is not evidence
+that those behaviors are deployed.
+
 Define the Boolean-only SM interface and fault-owned configuration/policy boundary.
 Migrate stateful symptom behavior into fault handling without adding a parallel
 symptom lifecycle. Define fault evaluation/status, active contributions,

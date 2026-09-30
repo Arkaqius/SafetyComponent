@@ -130,13 +130,14 @@ def test_clear_symptom(fault_manager, mocked_hass_app):
 
 def test_disable_symptom(fault_manager, mocked_hass_app):
     """
-    Test if disable_symptom correctly marks a symptom as NOT_TESTED and clears the fault.
+    Disabling an input must not count as positive evidence of recovery.
     """
     fault_manager._clear_fault = Mock()
 
     fault_manager.disable_symptom("RiskyTemperatureOffice", {})
     assert fault_manager.symptoms["RiskyTemperatureOffice"].state == FaultState.NOT_TESTED
-    fault_manager._clear_fault.assert_called_once_with("RiskyTemperatureOffice", {})
+    fault_manager._clear_fault.assert_not_called()
+    assert fault_manager.get_fault_evaluation("RiskyTemperature").status.value == "UNEVALUABLE"
 
 def test_set_fault(fault_manager, mocked_hass_app, fault):
     """
