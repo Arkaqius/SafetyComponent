@@ -79,6 +79,27 @@ POLICY = {
 }
 
 
+def test_confirmed_opening_declares_separate_recovery_health() -> None:
+    """Contact and actuator failures have distinct component fault owners."""
+
+    dependencies = ExternalHazardComponent.get_entity_dependencies(
+        {
+            "openings": {
+                "GarageGate": {
+                    "entity_id": "binary_sensor.garage_gate",
+                    "execution_policy": "user_confirmed",
+                    "actuator_entity_id": "cover.garage_gate",
+                }
+            }
+        }
+    )
+
+    assert [item["fault_name"] for item in dependencies] == [
+        "ExternalOpeningMonitoringUnavailable",
+        "ExternalRecoveryUnavailable",
+    ]
+
+
 def _health(provider: str, state: ProviderHealthState = ProviderHealthState.OK) -> ProviderHealth:
     now = datetime.now(timezone.utc)
     return ProviderHealth(

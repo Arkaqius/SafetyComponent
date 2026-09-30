@@ -59,6 +59,13 @@ state.detector_tests.unknown: Test history unavailable
 state.detector_tests.not_configured: No detectors configured
 fault.entity_health: 'Entity problem: {entity}'
 fault.safety_door_timeout: 'Door or gate open too long: {door}'
+fault.safety_door_timeout_legacy: Door or gate open too long (aggregate)
+fault.temperature_monitoring_unavailable: Temperature monitoring unavailable
+fault.temperature_recovery_unavailable: Temperature recovery unavailable
+fault.safety_door_monitoring_unavailable: Safety door monitoring unavailable
+fault.external_opening_monitoring_unavailable: External opening monitoring unavailable
+fault.external_recovery_unavailable: External recovery unavailable
+fault.common_input_unavailable: Shared safety input unavailable
 fault.host_memory_pressure: Host memory pressure
 fault.host_cpu_pressure: Sustained high host CPU load
 fault.wan_unavailable: WAN unavailable

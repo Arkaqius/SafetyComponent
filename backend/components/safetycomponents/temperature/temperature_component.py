@@ -70,6 +70,8 @@ class TemperatureComponent(SafetyComponent):
                         "key": f"Temperature{location}",
                         "entity_id": data["temperature_sensor"],
                         "owner": cls.component_name,
+                        "fault_owner": "component",
+                        "fault_name": "TemperatureMonitoringUnavailable",
                         "purpose": f"Temperature input for {location}",
                         "checks": {
                             "freshness": {
@@ -88,12 +90,28 @@ class TemperatureComponent(SafetyComponent):
                         "area_name": data.get("area_name"),
                     }
                 )
+                dependencies.append(
+                    {
+                        "key": f"TemperatureForecast{location}",
+                        "entity_id": f"{data['temperature_sensor']}_rate",
+                        "owner": cls.component_name,
+                        "fault_owner": "component",
+                        "fault_name": "TemperatureMonitoringUnavailable",
+                        "purpose": f"Forecast rate input for {location}",
+                        "checks": {"finite_number": {"target": "state"}},
+                        "detection_budget_seconds": 30,
+                        "area_id": data.get("area_id"),
+                        "area_name": data.get("area_name"),
+                    }
+                )
                 if data.get("window_sensor"):
                     dependencies.append(
                         {
                             "key": f"TemperatureWindow{location}",
                             "entity_id": data["window_sensor"],
                             "owner": cls.component_name,
+                            "fault_owner": "component",
+                            "fault_name": "TemperatureRecoveryUnavailable",
                             "purpose": f"Window input for {location} temperature policy",
                             "checks": {},
                             "detection_budget_seconds": 30,
@@ -107,6 +125,8 @@ class TemperatureComponent(SafetyComponent):
                             "key": f"TemperatureActuator{location}",
                             "entity_id": data["actuator"],
                             "owner": cls.component_name,
+                            "fault_owner": "component",
+                            "fault_name": "TemperatureRecoveryUnavailable",
                             "purpose": f"Configured recovery actuator for {location}",
                             "checks": {},
                             "detection_budget_seconds": 30,
@@ -322,9 +342,9 @@ class TemperatureComponent(SafetyComponent):
             temperature_sensor, entities_changes
         )
         if temperature is None:
-            return SafetyMechanismResult(False, None)
+            return SafetyMechanismResult(False, None, is_evaluable=False)
         if not self._is_valid_temperature(temperature, sm):
-            return SafetyMechanismResult(False, None)
+            return SafetyMechanismResult(False, None, is_evaluable=False)
 
         sm_result: bool = temperature < cold_threshold
         additional_info: dict[str, str] = {"location": location}
@@ -369,9 +389,9 @@ class TemperatureComponent(SafetyComponent):
         )
 
         if temperature is None or temperature_rate is None:
-            return SafetyMechanismResult(False, None)
+            return SafetyMechanismResult(False, None, is_evaluable=False)
         if not self._is_valid_temperature(temperature, sm):
-            return SafetyMechanismResult(False, None)
+            return SafetyMechanismResult(False, None, is_evaluable=False)
 
         forecasted_temperature = self.forecast_temperature(
             temperature,
@@ -384,7 +404,7 @@ class TemperatureComponent(SafetyComponent):
             maximum_temperature_c=sm.sm_args["maximum_temperature_c"],
         )
         if forecasted_temperature is None:
-            return SafetyMechanismResult(False, None)
+            return SafetyMechanismResult(False, None, is_evaluable=False)
 
         sm_result: bool = forecasted_temperature < cold_threshold
         additional_info: dict[str, str] = {"location": location}
@@ -408,9 +428,9 @@ class TemperatureComponent(SafetyComponent):
             temperature_sensor, entities_changes
         )
         if temperature is None:
-            return SafetyMechanismResult(False, None)
+            return SafetyMechanismResult(False, None, is_evaluable=False)
         if not self._is_valid_temperature(temperature, sm):
-            return SafetyMechanismResult(False, None)
+            return SafetyMechanismResult(False, None, is_evaluable=False)
 
         sm_result: bool = temperature > hot_threshold
         additional_info: dict[str, str] = {"location": location}
@@ -440,9 +460,9 @@ class TemperatureComponent(SafetyComponent):
         )
 
         if temperature is None or temperature_rate is None:
-            return SafetyMechanismResult(False, None)
+            return SafetyMechanismResult(False, None, is_evaluable=False)
         if not self._is_valid_temperature(temperature, sm):
-            return SafetyMechanismResult(False, None)
+            return SafetyMechanismResult(False, None, is_evaluable=False)
 
         forecasted_temperature = self.forecast_temperature(
             temperature,
@@ -455,7 +475,7 @@ class TemperatureComponent(SafetyComponent):
             maximum_temperature_c=sm.sm_args["maximum_temperature_c"],
         )
         if forecasted_temperature is None:
-            return SafetyMechanismResult(False, None)
+            return SafetyMechanismResult(False, None, is_evaluable=False)
 
         sm_result: bool = forecasted_temperature > hot_threshold
         additional_info: dict[str, str] = {"location": location}

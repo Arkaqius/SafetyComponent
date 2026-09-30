@@ -547,6 +547,10 @@ def safety_mechanism_decorator(func: Callable) -> Callable:
                 result = func(self, sm, entities_changes)
                 if not isinstance(result.result, bool):
                     raise TypeError("Safety mechanism result must be bool")
+                if not result.is_evaluable:
+                    self.event_bus.publish(
+                        "evaluation_unavailable", symptom_id=sm.name
+                    )
                 return result
             except Exception:
                 self.event_bus.publish(
@@ -566,6 +570,11 @@ def safety_mechanism_decorator(func: Callable) -> Callable:
 
             # Get sm result!
             sm_return = evaluate_predicate()
+
+            if not sm_return.is_evaluable:
+                if entities_changes is None:
+                    self.record_evaluation()
+                return False
 
             # Perform SM logic
             debounce_limit = sm.sm_args.get("debounce_limit", 2)
@@ -613,3 +622,4 @@ def safety_mechanism_decorator(func: Callable) -> Callable:
 class SafetyMechanismResult(NamedTuple):
     result: bool
     additional_info: Optional[dict[str, Any]] = None
+    is_evaluable: bool = True

@@ -3,6 +3,8 @@
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
+import pytest
+
 from components.core.common_entities import CommonEntities
 from components.core.event_bus import EventBus
 from components.core.mqtt_entity_manager import MqttEntityManager
@@ -27,7 +29,8 @@ def _config(entity_id: str = "sensor.office_temperature") -> dict:
                 "owner": "TemperatureComponent",
                 "purpose": "Temperature input for Office",
                 "source": "component",
-                "fault_owner": "entity_monitor",
+                "fault_owner": "component",
+                "fault_name": "TemperatureMonitoringUnavailable",
                 "failure_debounce_seconds": 10,
                 "recovery_debounce_seconds": 10,
                 "area_id": "office",
@@ -75,7 +78,7 @@ def _mqtt_topic_calls(app, topic: str) -> list:
     ]
 
 
-def test_entity_monitor_creates_per_check_symptoms_and_per_entity_fault(
+def test_entity_monitor_routes_checks_to_component_fault(
     mocked_hass_app_basic,
 ):
     app, _, component = _component(mocked_hass_app_basic)
@@ -92,7 +95,7 @@ def test_entity_monitor_creates_per_check_symptoms_and_per_entity_fault(
         "EntityHealthFailureTemperatureOfficeFreshness",
         "EntityHealthFailureTemperatureOfficeFiniteNumber",
     }
-    fault = component.get_fault_definitions()["EntityHealthTemperatureOffice"]
+    fault = component.get_fault_definitions()["TemperatureMonitoringUnavailable"]
     assert fault["level"] == 3
     assert fault["related_sms"] == ["sm_entity_health_temperature_office"]
     runtime = component._entities["TemperatureOffice"]
@@ -255,7 +258,8 @@ def test_entity_monitor_merges_memberships_for_same_entity(mocked_hass_app_basic
             "owner": "ExternalHazardComponent",
             "purpose": "Opening input",
             "source": "component",
-            "fault_owner": "entity_monitor",
+            "fault_owner": "component",
+            "fault_name": "ExternalOpeningMonitoringUnavailable",
             "failure_debounce_seconds": 10,
             "recovery_debounce_seconds": 10,
             "checks": config["component_entities"][0]["checks"],
@@ -270,6 +274,60 @@ def test_entity_monitor_merges_memberships_for_same_entity(mocked_hass_app_basic
         "TemperatureComponent",
         "ExternalHazardComponent",
     )
+    assert dependency.consumer_keys == (
+        "TemperatureOffice",
+        "ExternalOpeningOffice",
+    )
+    assert dependency.fault_name == "CommonInputUnavailable"
+    assert set(component.get_fault_definitions()) == {"CommonInputUnavailable"}
+
+
+def test_multiple_component_inputs_aggregate_into_one_diagnostic_fault(
+    mocked_hass_app_basic,
+):
+    """Inputs in different rooms share one fault but retain distinct contributors."""
+
+    app, _, component = _component(mocked_hass_app_basic)
+    now = datetime(2026, 8, 13, 10, 0, tzinfo=timezone.utc)
+    app.get_state = MagicMock(return_value=_snapshot("21.5", now))
+    config = _config()
+    second = dict(config["component_entities"][0])
+    second.update(
+        key="TemperatureKitchen",
+        entity_id="sensor.kitchen_temperature",
+        purpose="Temperature input for Kitchen",
+    )
+    config["component_entities"].append(second)
+
+    symptoms, _ = component.get_symptoms_data(
+        {"EntityMonitorComponent": component}, config
+    )
+
+    assert len(component._entities) == 2
+    assert set(component.get_fault_definitions()) == {
+        "TemperatureMonitoringUnavailable"
+    }
+    assert set(
+        component.get_fault_definitions()["TemperatureMonitoringUnavailable"][
+            "related_sms"
+        ]
+    ) == {
+        "sm_entity_health_temperature_office",
+        "sm_entity_health_temperature_kitchen",
+    }
+    assert len(symptoms) == 6
+
+
+def test_missing_declared_component_fault_binding_is_rejected(
+    mocked_hass_app_basic,
+):
+    app, _, component = _component(mocked_hass_app_basic)
+    app.get_state = MagicMock(return_value=None)
+    config = _config()
+    config["component_entities"][0].pop("fault_name")
+
+    with pytest.raises(ValueError, match="Missing component fault binding"):
+        component.get_symptoms_data({"EntityMonitorComponent": component}, config)
 
 
 def test_explicit_dependency_controls_stable_key_for_merged_entity(
@@ -297,7 +355,7 @@ def test_explicit_dependency_controls_stable_key_for_merged_entity(
 
     assert set(component._entities) == {"ExternalOpeningUpperBathroomWindow"}
     assert set(component.get_fault_definitions()) == {
-        "EntityHealthExternalOpeningUpperBathroomWindow"
+        "TemperatureMonitoringUnavailable"
     }
 
 

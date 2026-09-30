@@ -1,7 +1,8 @@
 from copy import deepcopy
 from unittest.mock import Mock
 
-from components.core.types_common import FaultState
+from components.core.types_common import Fault, FaultState
+from components.faults_manager.cfg_parser import validate_fault_routes
 
 from .fixtures.hass_fixture import (
     mqtt_json_payloads,
@@ -15,6 +16,7 @@ def test_safety_functions_initialization(mocked_hass_app_with_temp_component) ->
         mocked_hass_app_with_temp_component
     )
     app_instance.initialize()
+    validate_fault_routes(app_instance.symptoms, app_instance.faults)
 
     # Assert the 'symptoms' dictionary content
     symptom = app_instance.symptoms["RiskyTemperatureOffice"]
@@ -77,6 +79,52 @@ def test_safety_functions_initialization(mocked_hass_app_with_temp_component) ->
     }
 
 
+def test_invalid_fault_route_keeps_application_out_of_running_state(
+    mocked_hass_app_with_temp_component,
+) -> None:
+    """A missing live route fails configuration without starting monitors."""
+
+    app_instance, mocked_hass, __, ___, _ = mocked_hass_app_with_temp_component
+    app_instance.args = deepcopy(app_instance.args)
+    app_instance.args["app_config"]["faults"]["RiskyTemperature"][
+        "related_sms"
+    ] = ["sm_typo"]
+
+    app_instance.initialize()
+
+    assert mqtt_payloads(
+        mocked_hass, mqtt_topic_for("sensor.safety_app_health")
+    )[-1] == "invalid_cfg"
+    assert not hasattr(app_instance, "notify_man")
+
+
+def test_legacy_door_entity_is_read_only_aggregate(
+    mocked_hass_app_with_temp_component,
+) -> None:
+    """Unknown contributors cannot make the old dashboard tile falsely clear."""
+
+    app_instance, *_ = mocked_hass_app_with_temp_component
+    first = Fault("SafetyDoorOpenTimeoutFront", [], 2)
+    second = Fault("SafetyDoorOpenTimeoutGarage", [], 2)
+    app_instance.faults = {first.name: first, second.name: second}
+    app_instance._set_internal_entity = Mock()
+
+    app_instance._refresh_legacy_door_fault_alias()
+    assert app_instance._set_internal_entity.call_args.args[1] == "Not_tested"
+
+    first.state = FaultState.SET
+    app_instance._refresh_legacy_door_fault_alias()
+    assert app_instance._set_internal_entity.call_args.args[1] == "Set"
+
+    first.state = FaultState.CLEARED
+    app_instance._refresh_legacy_door_fault_alias()
+    assert app_instance._set_internal_entity.call_args.args[1] == "Not_tested"
+
+    second.state = FaultState.CLEARED
+    app_instance._refresh_legacy_door_fault_alias()
+    assert app_instance._set_internal_entity.call_args.args[1] == "Cleared"
+
+
 def test_reinitialize_keeps_raw_appdaemon_configuration(
     mocked_hass_app_with_temp_component,
 ) -> None:
@@ -121,7 +169,8 @@ def test_entity_monitor_is_wired_into_application_startup(
 
     assert "EntityMonitorComponent" in app_instance.sm_modules
     assert "sensor.entity_monitor_summary" in app_instance.mqtt_entities.discovered_entities
-    assert "EntityHealthTemperatureOffice" in app_instance.faults
+    assert "TemperatureMonitoringUnavailable" in app_instance.faults
+    assert "EntityHealthTemperatureOffice" not in app_instance.faults
     assert (
         "EntityHealthFailureTemperatureOfficeAvailability" in app_instance.symptoms
     )

@@ -89,7 +89,11 @@ of the old Home Assistant entity ID, MQTT discovery and retained state,
 notification tags, stored fault state, dashboards, and automations. Publish
 the new identities and retire obsolete discovery/state deliberately; retirement
 does not emit a false `CLEARED` transition or imply that an active door became
-safe. Preserve the raw fault-state codes and all unrelated stable identifiers.
+safe. Until consumers are migrated, the old entity is a read-only aggregate of
+the per-door faults: it is `Set` if any door fault is set, `Cleared` only after
+all door faults are cleared, and otherwise `Not_tested`. It does not trigger
+notification or recovery independently. Preserve the raw fault-state codes and
+all unrelated stable identifiers.
 
 ## Verification
 

@@ -85,7 +85,7 @@ import components.safetycomponents.safety_doors.safety_doors_component  # noqa: 
 import components.safetycomponents.external_hazard.external_hazard_component  # noqa: F401 - component registration
 import components.safetycomponents.entity_monitor.entity_monitor_component  # noqa: F401 - component registration
 import components.safetycomponents.internal_environmental_hazard.internal_environmental_hazard_monitor_component  # noqa: F401 - component registration
-from components.core.types_common import Symptom, RecoveryAction
+from components.core.types_common import FaultState, Symptom, RecoveryAction
 
 
 class SafetyFunctions(hass.Hass):
@@ -265,6 +265,17 @@ class SafetyFunctions(hass.Hass):
 
         # Build fault models from the validated fault configuration.
         self.faults = cfg_pr.get_faults(self.fault_dict)
+        try:
+            cfg_pr.validate_fault_routes(self.symptoms, self.faults)
+        except ValueError as exc:
+            self.log(f"Invalid fault routing: {exc}", level="ERROR")
+            self._set_internal_entity(
+                "sensor.safety_app_health",
+                "invalid_cfg",
+                attributes={"configuration_error": str(exc)},
+            )
+            self._start_mqtt_reporting()
+            return
 
         # Create the fault aggregation and lifecycle manager.
         self.fm: FaultManager = FaultManager(
@@ -334,9 +345,13 @@ class SafetyFunctions(hass.Hass):
             "fault", self.notify_man.handle_fault_event, priority=0
         )
         self.event_bus.subscribe("fault", self.reco_man.handle_fault_event, priority=1)
+        self.event_bus.subscribe(
+            "fault", self._refresh_legacy_door_fault_alias, priority=2
+        )
 
         # Publish system and fault entities before mechanisms begin evaluation.
         self.register_entities()
+        self._refresh_legacy_door_fault_alias()
         self.notify_man.start()
         self.safetyhome_api.start()
         self.reco_man.start()
@@ -438,6 +453,8 @@ class SafetyFunctions(hass.Hass):
                         + "".join(part.capitalize() for part in str(key).split("_")),
                         "entity_id": entity_id,
                         "owner": "SafetyFunctions",
+                        "fault_owner": "component",
+                        "fault_name": "CommonInputUnavailable",
                         "purpose": f"Shared application entity: {key}",
                         "checks": checks,
                         "detection_budget_seconds": (
@@ -488,7 +505,7 @@ class SafetyFunctions(hass.Hass):
         calibrated = {
             **dependency,
             "source": "component",
-            "fault_owner": dependency.get("fault_owner", "entity_monitor"),
+            "fault_owner": dependency.get("fault_owner", "component"),
             "failure_debounce_seconds": default_failure_debounce,
             "recovery_debounce_seconds": default_recovery_debounce,
         }
@@ -684,6 +701,32 @@ class SafetyFunctions(hass.Hass):
             attributes=attributes,
         )
 
+    def _refresh_legacy_door_fault_alias(self, **_: Any) -> None:
+        """Keep the old dashboard identity as a read-only aggregate during migration."""
+
+        door_faults = {
+            name: fault
+            for name, fault in self.faults.items()
+            if name.startswith("SafetyDoorOpenTimeout")
+        }
+        if not door_faults:
+            return
+        states = {fault.state for fault in door_faults.values()}
+        if FaultState.SET in states:
+            state = "Set"
+        elif states == {FaultState.CLEARED}:
+            state = "Cleared"
+        else:
+            state = "Not_tested"
+        self._set_internal_entity(
+            "sensor.fault_SafetyDoorOpenTimeout",
+            state,
+            attributes={
+                "compatibility_alias": True,
+                "source_faults": sorted(door_faults),
+            },
+        )
+
     def register_entities(self) -> None:
         """
         Registers all entities required by the Safety Functions app in Home Assistant.
@@ -726,6 +769,14 @@ class SafetyFunctions(hass.Hass):
                     "description": f"Status of the {name} fault.",
                     "level": f"level_{fault.level}",
                 },
+                icon="mdi:alert-outline",
+                entity_category="diagnostic",
+            )
+        if any(name.startswith("SafetyDoorOpenTimeout") for name in self.faults):
+            self.mqtt_entities.register_sensor(
+                "sensor.fault_SafetyDoorOpenTimeout",
+                self.localizer.text("fault.safety_door_timeout_legacy"),
+                state="Not_tested",
                 icon="mdi:alert-outline",
                 entity_category="diagnostic",
             )

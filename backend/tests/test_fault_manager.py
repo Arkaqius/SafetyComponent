@@ -4,6 +4,7 @@ from components.core.event_bus import EventBus
 from components.core.mqtt_entity_manager import MqttEntityManager
 from components.core.types_common import FaultState, SMState, Symptom, Fault
 from components.faults_manager.fault_manager import FaultManager
+from components.faults_manager.cfg_parser import validate_fault_routes
 
 @pytest.fixture
 def mocked_hass_app():
@@ -101,6 +102,39 @@ def test_subject_bound_faults_clear_independently(fault_manager):
     assert fault_manager.faults[second].state == FaultState.SET
     assert fault_manager.found_mapped_fault(first, mechanism) is fault_manager.faults[first]
     assert fault_manager.found_mapped_fault(second, mechanism) is fault_manager.faults[second]
+
+
+def test_fault_route_validation_rejects_missing_ambiguous_and_shadow_cycles(
+    fault_manager,
+):
+    symptom = fault_manager.symptoms
+    first = Fault("First", ["sm_tc_1"], 2)
+    second = Fault("Second", ["sm_tc_1"], 3)
+
+    with pytest.raises(ValueError, match="Expected one fault owner"):
+        validate_fault_routes(symptom, {})
+    with pytest.raises(ValueError, match="Expected one fault owner"):
+        validate_fault_routes(symptom, {"First": first, "Second": second})
+
+    second.related_symptom_ids = ("unknown",)
+    with pytest.raises(ValueError, match="Invalid contributor binding"):
+        validate_fault_routes(symptom, {"First": first, "Second": second})
+
+    first.shadows = ["Second"]
+    second.related_symptom_ids = ()
+    second.related_symptoms = ["sm_tc_2"]
+    second.shadows = ["First"]
+    with pytest.raises(ValueError, match="Shadow cycle"):
+        validate_fault_routes(symptom, {"First": first, "Second": second})
+
+
+def test_fault_route_validation_distinguishes_uninstalled_from_unknown_sm():
+    known_optional = Fault("External", ["sm_ext_weather_exposure"], 2)
+    validate_fault_routes({}, {"External": known_optional})
+
+    typo = Fault("Typo", ["sm_ext_weathr_exposure"], 2)
+    with pytest.raises(ValueError, match="Unknown SM IDs"):
+        validate_fault_routes({}, {"Typo": typo})
 
 
 def test_system_state_uses_readable_code_for_most_severe_fault(fault_manager):

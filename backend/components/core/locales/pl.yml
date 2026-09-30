@@ -59,6 +59,13 @@ state.detector_tests.unknown: Historia testów niedostępna
 state.detector_tests.not_configured: Brak skonfigurowanych czujników
 fault.entity_health: 'Problem z encją: {entity}'
 fault.safety_door_timeout: 'Zbyt długo otwarte drzwi lub brama: {door}'
+fault.safety_door_timeout_legacy: Zbyt długo otwarte drzwi lub brama (zbiorczo)
+fault.temperature_monitoring_unavailable: Monitorowanie temperatury niedostępne
+fault.temperature_recovery_unavailable: Przywrócenie temperatury niedostępne
+fault.safety_door_monitoring_unavailable: Monitorowanie drzwi niedostępne
+fault.external_opening_monitoring_unavailable: Monitorowanie otwarcia niedostępne
+fault.external_recovery_unavailable: Zamknięcie otwarcia niedostępne
+fault.common_input_unavailable: Wspólne wejście bezpieczeństwa niedostępne
 fault.host_memory_pressure: Niedobór pamięci hosta
 fault.host_cpu_pressure: Długotrwałe wysokie obciążenie CPU hosta
 fault.wan_unavailable: Brak łączności WAN
