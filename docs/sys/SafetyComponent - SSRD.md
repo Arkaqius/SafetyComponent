@@ -124,7 +124,7 @@ The existing `ForeCast` capitalization is part of the runtime contract.
 | SWR-DOOR-007 | Each Safety Door MQTT entity shall publish door state, elapsed and remaining time, source entity, timeout, condition diagnostics, `area_id`, and resolved area name. | `_publish_door_state` |
 | SWR-DOOR-008 | Every installation shall keep its door keys, areas, entity bindings, and per-door timeout overrides in the private installation configuration; a missing override shall inherit the validated public default. | Safety Doors schema and configuration compiler |
 | SWR-DOOR-009 | A condition-gated door shall enable monitoring only for its configured pass states and shall block monitoring for its configured blocked states; both sets shall be explicit, normalized, and disjoint. | `SafetyDoorCondition` and Safety Doors runtime |
-| SWR-DOOR-010 | `SafetyDoorsComponent` shall use mechanism ID `sm_safety_door_open_timeout`, per-door symptom IDs `SafetyDoorOpenTimeout<DoorName>`, the single level-2 fault `SafetyDoorOpenTimeout`, and diagnostic entities `sensor.safety_door_<door_name>`. It shall register no recovery action. | Safety Doors runtime and fault catalog |
+| SWR-DOOR-010 | `SafetyDoorsComponent` shall use mechanism ID `sm_safety_door_open_timeout`, per-door symptom IDs `SafetyDoorOpenTimeout<DoorName>`, independent level-2 faults `SafetyDoorOpenTimeout{DoorKey}`, and diagnostic entities `sensor.safety_door_<door_name>`. It shall register no recovery action. | Safety Doors runtime and fault catalog |
 | SWR-DOOR-011 | Safety Doors shall not infer unauthorized entry, lock integrity, or intrusion state and shall not close, lock, unlock, or otherwise actuate a door or gate; those security responsibilities are outside C-DOOR. | Safety Doors component boundary |
 
 ### 4.4 Fault aggregation and system state
@@ -142,7 +142,8 @@ The existing `ForeCast` capitalization is part of the runtime contract.
 | SWR-FLT-009 | A fault shall own its evaluation status and activation independently. Its statuses shall be `NOT_EVALUATED`, `PASS`, `PENDING_FAILURE`, `FAIL`, `PENDING_RECOVERY`, `UNEVALUABLE`, `INHIBITED`, or `DISABLED`; an unevaluable or excluded contribution shall not clear prior active evidence. | fault evaluation policy |
 | SWR-FLT-010 | OR-aggregated valid positive evidence shall assert a fault even with another contribution unavailable; clearing shall require valid negative evidence from every bound contribution after the fault's recovery qualification. Shadowing shall remain an independent set of explicit owner identities and shall withdraw only redundant responses. | `FaultManager` |
 | SWR-FLT-011 | Fault priority shall be the existing numeric level 1..4 and shall select the same notification level. H/D category shall not change urgency. The level shall select notification defaults, while recovery action, degradation target and shadowing shall require explicit bindings. | fault catalog, notification policy |
-| SWR-FLT-012 | During additive migration, MQTT fault states, stable fault names, entity IDs and notification-history `SET`/`CLEARED`/`SHADOWED` codes shall remain unchanged. A shadowed active condition shall remain counted in system severity and shall be re-presented when its final shadow owner clears. | `FaultManager`, consumer contracts |
+| SWR-FLT-012 | During additive migration, MQTT fault states, stable fault names, entity IDs and notification-history `SET`/`CLEARED`/`SHADOWED` codes shall remain unchanged, except for the explicitly versioned migration from shared `SafetyDoorOpenTimeout` to per-door `SafetyDoorOpenTimeout{DoorKey}` identities. Retiring the shared identity shall not publish a false clear. A shadowed active condition shall remain counted in system severity and shall be re-presented when its final shadow owner clears. | `FaultManager`, consumer contracts |
+| SWR-FLT-013 | Startup shall validate one owner and one fault binding for each installed mechanism/subject/contributor or an explicit diagnostic-only exemption. It shall reject missing or ambiguous routes, unknown mechanism IDs, duplicate instance identities and invalid shadow targets or cycles. Known mechanisms of uninstalled optional components shall not be treated as live contributors. | fault catalogue and configuration compiler |
 
 ### 4.5 Notifications and recovery
 
@@ -241,7 +242,9 @@ feature architecture §12.
 ### 4.9 Entity Health Monitoring
 
 The detailed design is in
-[`Entity Health Monitoring - Architecture.md`](../features/Entity%20Health%20Monitoring%20-%20Architecture.md).
+[`Entity Health Monitoring - Architecture.md`](../features/Entity%20Health%20Monitoring%20-%20Architecture.md),
+with fault ownership and subject routing in
+[`Fault Routing and Aggregation - Architecture.md`](../features/Fault%20Routing%20and%20Aggregation%20-%20Architecture.md).
 
 The stable runtime contract is:
 
@@ -250,7 +253,7 @@ The stable runtime contract is:
 | Component | `EntityMonitorComponent` |
 | Safety Mechanism pattern | `sm_entity_health_<entity_key>` |
 | Symptom pattern | `EntityHealthFailure{EntityKey}{CheckKey}` |
-| Fault pattern | `EntityHealth{EntityKey}`, level 3 |
+| Group A-owned fault pattern | `EntityHealth{EntityKey}`, level 3 |
 | Per-entity diagnostic | `sensor.entity_health_<entity_key>` |
 | Aggregate diagnostic | `sensor.entity_monitor_summary` |
 
@@ -263,14 +266,15 @@ The stable runtime contract is:
 | SWR-ENT-005 | Freshness shall be enabled only when the entity contract identifies a trustworthy heartbeat or timestamp source and `max_silence_seconds`. It shall become `stale` when that confirmation expires; startup grace shall prevent a false stale result before the initial snapshot is evaluated. For a safety-relevant dependency, freshness timeout plus failure debounce shall fit its allocated FTTI detection budget. | freshness check and scheduler |
 | SWR-ENT-006 | Required-value, allowed-values, finite-number, numeric-range, and rate-of-change checks shall be opt-in and shall reject incomplete or type-incompatible calibration. Numeric-range checks shall define at least one inclusive bound. Rate-of-change checks shall define a sample window, minimum sample count, and at least one permitted rise or fall bound. | check registry and schemas |
 | SWR-ENT-007 | A failing C-ENT-owned check shall set its stable symptom only after failure debounce and shall clear only after fresh valid observations pass recovery debounce. Invalid or missing observations shall not clear an active symptom. | evaluation state machine |
-| SWR-ENT-008 | Component-owned fault handling shall take precedence for a component dependency. Entity Monitor shall expose the dependency health but shall not emit a duplicate C-ENT symptom for the same failure. | fault-ownership resolver |
-| SWR-ENT-009 | C-ENT-owned check symptoms shall aggregate per entity into one level-3 `EntityHealth{EntityKey}` fault. Different unhealthy entities shall have different faults. Each fault shall retain the friendly name, entity ID, source groups, failed checks, last valid value, and relevant timestamps. | dynamic fault registration and FaultManager integration |
+| SWR-ENT-008 | The requesting component shall own the diagnostic fault for each Group B dependency used by its evaluation or recovery. Entity Monitor shall expose dependency health but shall not emit a duplicate C-ENT fault for the same failure. A shared input shall have one declared fault owner and explicit consumer bindings. | fault-ownership resolver |
+| SWR-ENT-009 | C-ENT-owned Group A check symptoms shall aggregate per entity into one level-3 `EntityHealth{EntityKey}` fault. Different unhealthy Group A entities shall have different faults. Each fault shall retain the friendly name, entity ID, source groups, failed checks, last valid value, and relevant timestamps. | dynamic fault registration and FaultManager integration |
 | SWR-ENT-010 | Each Group A/B diagnostic shall publish `healthy`, `degraded`, `stale`, or `unavailable`, plus source membership, owner, friendly name, area, device, current state, last change, last update, last valid observation, checks, and fault ownership. | MQTT diagnostics |
 | SWR-ENT-011 | The aggregate diagnostic shall publish bounded counts by health and source group plus bounded summaries of unhealthy Group A/B entities; it shall not contain the complete Home Assistant inventory. | `sensor.entity_monitor_summary` publisher |
 | SWR-ENT-012 | The frontend shall read Group C entity/device state and registry metadata through its authenticated Home Assistant connection and support filtering by domain, device, area, availability, source group, and last-change or last-update time. | SafetyHome entity audit view |
 | SWR-ENT-013 | Group C shall not create symptoms, faults, notifications, recovery actions, MQTT inventory payloads, or application-health degradation. | frontend inventory boundary and backend negative contract |
 | SWR-ENT-014 | Entity Monitor shall register no recovery action and shall make no Home Assistant actuator service call. | negative actuation boundary |
 | SWR-ENT-015 | User-facing Entity Monitor names and states shall support English, Polish, and German; entity IDs, source codes, check codes, and raw health states shall remain language-independent. | localization and frontend presentation |
+| SWR-ENT-016 | Group B checks shall route to component-owned diagnostic faults by declared capability and subject. An entity in both Groups A and B shall retain both memberships and the stricter applicable check policy while one failure has one diagnostic owner. A Group B failure shall affect only explicitly bound hazard evaluation or recovery capabilities. | Entity Monitor registry and component fault bindings |
 
 ### 4.10 Heating System Monitoring
 

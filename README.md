@@ -179,6 +179,7 @@ the [frontend README](frontend/README.md).
 - [Internal Environmental Hazard Monitoring architecture](<docs/features/Internal Environmental Hazard Monitoring - Architecture.md>)
 - [Safety monitoring responsibility boundaries](<docs/features/Safety Monitoring Responsibility Boundaries.md>)
 - [Fault state and priority policy](<docs/features/Fault State Policy - Architecture.md>)
+- [Fault routing and aggregation](<docs/features/Fault Routing and Aggregation - Architecture.md>)
 - [Backend coding standards](backend/README.md)
 - [Contribution workflow](CONTRIBUTING.md)
 - [Agent instructions](AGENTS.md)

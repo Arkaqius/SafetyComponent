@@ -20,7 +20,9 @@ target lifecycle or priority.
 Each fault has category `H` (hazard/equipment condition) or `D` (diagnostic
 capability failure), and exactly one priority `level` from 1 through 4. Category
 does not imply urgency. Fault IDs, `related_sms`, MQTT entity IDs and raw state
-codes are stable contracts.
+codes are stable contracts, except for the explicit per-door fault
+identity migration in
+[Fault Routing and Aggregation](Fault%20Routing%20and%20Aggregation%20-%20Architecture.md).
 
 ## Evaluation and activation
 

@@ -995,7 +995,7 @@ C-SEC. Diagnostic handling of unavailable inputs supports SG-003.
 | Component | `SafetyDoorsComponent` |
 | Safety Mechanism | `sm_safety_door_open_timeout` |
 | Per-door symptom | `SafetyDoorOpenTimeout{DoorName}` |
-| Aggregated fault | `SafetyDoorOpenTimeout` |
+| Per-door fault | `SafetyDoorOpenTimeout{DoorKey}` |
 | Fault level | 2 |
 | Diagnostic entity | `sensor.safety_door_<door_name>` |
 | Recovery actions | None |
@@ -1027,9 +1027,9 @@ C-SEC. Diagnostic handling of unavailable inputs supports SG-003.
   `inactive`, `blocked`, or `unavailable` plus door state, source entity,
   timeout, elapsed/remaining time, opening timestamp, condition details,
   `area_id`, and resolved area name.
-- **SYS-SR-DOOR-009:** All active per-door symptoms shall aggregate into the
-  single level-2 fault `SafetyDoorOpenTimeout`, which shall remain active until
-  every related door symptom clears.
+- **SYS-SR-DOOR-009:** Each configured door or gate shall have an independent
+  level-2 `SafetyDoorOpenTimeout{DoorKey}` fault. Its active contributors shall
+  aggregate only for that door, and another door's recovery shall not clear it.
 - **SYS-SR-DOOR-010:** C-DOOR shall register no recovery action and shall not
   close, lock, unlock, or otherwise actuate a door or gate.
 - **SYS-SR-DOOR-011:** C-DOOR shall not infer unauthorized entry, lock
@@ -1064,6 +1064,8 @@ installation.
 entities whose loss could mask or prevent a safety function. It also exposes a
 separate information-only inventory of other Home Assistant entities and
 devices. C-ENT observes health and shall not command an entity or actuator.
+Fault ownership and subject routing follow
+[Fault Routing and Aggregation](<../features/Fault Routing and Aggregation - Architecture.md>).
 
 #### 8.5.1 Monitoring groups
 
@@ -1120,7 +1122,7 @@ entity is safety-relevant through Group A or B.
 | Component | `EntityMonitorComponent` |
 | Per-entity Safety Mechanism | `sm_entity_health_<entity_key>` |
 | Per-check symptom | `EntityHealthFailure{EntityKey}{CheckKey}` |
-| Per-entity fault | `EntityHealth{EntityKey}` |
+| Group A-owned fault | `EntityHealth{EntityKey}` |
 | Fault level | 3 |
 | Per-entity diagnostic | `sensor.entity_health_<entity_key>` |
 | Aggregate diagnostic | `sensor.entity_monitor_summary` |
@@ -1153,13 +1155,15 @@ entity is safety-relevant through Group A or B.
   calibration is present and the current input is valid for that check.
 - **SYS-SR-ENT-006:** A failed, stale, unavailable, malformed, or unevaluable
   observation shall not provide positive evidence to clear a C-ENT symptom.
-- **SYS-SR-ENT-007:** When C-ENT owns a Group A or Group B failure, it shall set
+- **SYS-SR-ENT-007:** When C-ENT owns a Group A failure, it shall set
   `EntityHealthFailure{EntityKey}{CheckKey}` after failure debounce and clear it
   only after fresh valid observations pass recovery debounce.
-- **SYS-SR-ENT-008:** When an owning component already defines fault semantics
-  for a Group B dependency, C-ENT shall expose and aggregate its health without
-  creating a duplicate `EntityHealthFailure` symptom.
-- **SYS-SR-ENT-009:** All C-ENT-owned check symptoms for one entity shall
+- **SYS-SR-ENT-008:** The requesting component shall own the diagnostic fault
+  for a Group B dependency used by its evaluation or recovery. C-ENT shall
+  expose the dependency's health without creating a duplicate Group A fault for
+  the same failure. Shared inputs shall have one declared owner and explicit
+  consumer bindings.
+- **SYS-SR-ENT-009:** All C-ENT-owned Group A check symptoms for one entity shall
   aggregate into that entity's level-3 `EntityHealth{EntityKey}` fault. A
   different unhealthy entity shall have a different fault. The fault shall
   retain every failed check in diagnostic context.
@@ -1176,10 +1180,18 @@ entity is safety-relevant through Group A or B.
   raw state codes as diagnostic data.
 - **SYS-SR-ENT-014:** C-ENT shall register no recovery action and shall not call
   a Home Assistant actuator service.
+- **SYS-SR-ENT-015:** Each installed Boolean mechanism result shall have one
+  validated fault binding by mechanism, subject, and contributor, or an
+  explicit diagnostic-only exemption. Missing or ambiguous ownership, unknown
+  mechanism IDs, and invalid shadow references shall prevent monitoring startup.
+- **SYS-SR-ENT-016:** A Group A/B entity shall retain both memberships and the
+  stricter applicable check policy, but one failure shall have one diagnostic
+  fault owner. A Group B failure shall restrict only explicitly dependent
+  evaluation or recovery capabilities and subjects.
 
 #### 8.5.6 Mapping and verification
 
-- **SG-003:** SYS-SR-ENT-001..009/012/014.
+- **SG-003:** SYS-SR-ENT-001..009/012/014..016.
 - **Unit tests:** group membership and deduplication, configuration validation,
   startup grace, availability, freshness, optional check validation, failure
   and recovery debounce, fault ownership, stable IDs, and no false clear.
