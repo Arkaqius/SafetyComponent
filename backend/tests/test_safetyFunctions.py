@@ -1,7 +1,8 @@
 from copy import deepcopy
 from unittest.mock import Mock
 
-from components.core.types_common import Fault, FaultState
+from components.core.types_common import FaultState
+from components.core.fault_state_policy import FaultEvaluationStatus
 from components.faults_manager.cfg_parser import validate_fault_routes
 
 from .fixtures.hass_fixture import (
@@ -98,31 +99,24 @@ def test_invalid_fault_route_keeps_application_out_of_running_state(
     assert not hasattr(app_instance, "notify_man")
 
 
-def test_legacy_door_entity_is_read_only_aggregate(
+def test_old_shared_door_fault_discovery_is_removed(
     mocked_hass_app_with_temp_component,
 ) -> None:
-    """Unknown contributors cannot make the old dashboard tile falsely clear."""
+    """The obsolete shared identity is retired without a clear transition."""
 
-    app_instance, *_ = mocked_hass_app_with_temp_component
-    first = Fault("SafetyDoorOpenTimeoutFront", [], 2)
-    second = Fault("SafetyDoorOpenTimeoutGarage", [], 2)
-    app_instance.faults = {first.name: first, second.name: second}
-    app_instance._set_internal_entity = Mock()
+    app_instance, mocked_hass, *_ = mocked_hass_app_with_temp_component
+    app_instance.initialize()
 
-    app_instance._refresh_legacy_door_fault_alias()
-    assert app_instance._set_internal_entity.call_args.args[1] == "Not_tested"
-
-    first.state = FaultState.SET
-    app_instance._refresh_legacy_door_fault_alias()
-    assert app_instance._set_internal_entity.call_args.args[1] == "Set"
-
-    first.state = FaultState.CLEARED
-    app_instance._refresh_legacy_door_fault_alias()
-    assert app_instance._set_internal_entity.call_args.args[1] == "Not_tested"
-
-    second.state = FaultState.CLEARED
-    app_instance._refresh_legacy_door_fault_alias()
-    assert app_instance._set_internal_entity.call_args.args[1] == "Cleared"
+    for topic in (
+        "homeassistant/sensor/safety_component_fault_safetydooropentimeout/config",
+        "homeassistant/sensor/fault_safetydooropentimeout/config",
+        "safety_component/state/fault_safetydooropentimeout",
+        "safety_component/attributes/fault_safetydooropentimeout",
+    ):
+        assert mqtt_payloads(mocked_hass, topic)[-1] == ""
+    assert "sensor.fault_safetydooropentimeout" not in (
+        app_instance.mqtt_entities.discovered_entities
+    )
 
 
 def test_reinitialize_keeps_raw_appdaemon_configuration(
@@ -263,7 +257,7 @@ def test_trigger_symptom_sets_fault(mocked_hass_app_with_temp_component):
     app_instance.fm.set_symptom("RiskyTemperatureOffice", None)
 
     # Check if the corresponding fault is set to 'SET'
-    assert app_instance.fm.check_fault("RiskyTemperature") == FaultState.SET
+    assert app_instance.fm.check_fault("RiskyTemperature") is FaultEvaluationStatus.FAIL
 
 
 def test_recovery_process_execution(mocked_hass_app_with_temp_component):

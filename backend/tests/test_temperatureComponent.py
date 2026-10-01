@@ -21,12 +21,12 @@ DEBOUNCE_LIMIT = 1
         (
             ["35", "36", "37", "8", "9"],
             FaultState.CLEARED,
-            FaultState.CLEARED,
+            FaultEvaluationStatus.PASS,
         ),
         (
             ["5", "6", "7", "8", "9"],
             FaultState.SET,
-            FaultState.SET,
+            FaultEvaluationStatus.FAIL,
         ),
     ],
 )
@@ -79,12 +79,12 @@ def test_temp_comp_smtc1(
         (
             ["20", "21", "22", "23", "24"],
             FaultState.CLEARED,
-            FaultState.CLEARED,
+            FaultEvaluationStatus.PASS,
         ),
         (
             ["30", "31", "32", "33", "34"],
             FaultState.SET,
-            FaultState.SET,
+            FaultEvaluationStatus.FAIL,
         ),
     ],
 )
@@ -166,7 +166,7 @@ def test_temp_comp_overtemp_and_undertemp_multi_room_fault_clear(
             ]
         )
 
-    assert app_instance.fm.check_fault("RiskyTemperature") == FaultState.SET
+    assert app_instance.fm.check_fault("RiskyTemperature") is FaultEvaluationStatus.FAIL
 
     # Clear Office overtemperature, Kitchen still low
     test_mock_behaviours = [
@@ -187,7 +187,7 @@ def test_temp_comp_overtemp_and_undertemp_multi_room_fault_clear(
         app_instance.fm.check_symptom("RiskyTemperatureHighOffice")
         == FaultState.CLEARED
     )
-    assert app_instance.fm.check_fault("RiskyTemperature") == FaultState.SET
+    assert app_instance.fm.check_fault("RiskyTemperature") is FaultEvaluationStatus.FAIL
 
     # Clear Kitchen undertemperature
     test_mock_behaviours = [
@@ -204,7 +204,7 @@ def test_temp_comp_overtemp_and_undertemp_multi_room_fault_clear(
             ]
         )
 
-    assert app_instance.fm.check_fault("RiskyTemperature") == FaultState.CLEARED
+    assert app_instance.fm.check_fault("RiskyTemperature") is FaultEvaluationStatus.PASS
 
 
 def test_symptom_set_when_temp_NOT_below_threshold(mocked_hass_app_with_temp_component):
@@ -547,7 +547,7 @@ def test_forecasted_overtemp_multi_room_fault_clear(
             ]
         )
 
-    assert app_instance.fm.check_fault("RiskyTemperatureForecast") == FaultState.SET
+    assert app_instance.fm.check_fault("RiskyTemperatureForecast") is FaultEvaluationStatus.FAIL
 
     test_mock_behaviours = [
         MockBehavior("sensor.office_temperature", iter(["25"])),
@@ -569,7 +569,7 @@ def test_forecasted_overtemp_multi_room_fault_clear(
         == FaultState.CLEARED
     )
     assert (
-        app_instance.fm.check_fault("RiskyTemperatureForecast") == FaultState.SET
+        app_instance.fm.check_fault("RiskyTemperatureForecast") is FaultEvaluationStatus.FAIL
     )
 
     test_mock_behaviours = [
@@ -589,7 +589,7 @@ def test_forecasted_overtemp_multi_room_fault_clear(
 
     assert (
         app_instance.fm.check_fault("RiskyTemperatureForecast")
-        == FaultState.CLEARED
+        is FaultEvaluationStatus.PASS
     )
 
 

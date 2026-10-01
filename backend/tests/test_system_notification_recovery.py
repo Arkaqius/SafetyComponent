@@ -4,7 +4,8 @@ import copy
 from typing import Any
 from unittest.mock import MagicMock
 
-from components.core.types_common import FaultState, RecoveryActionState
+from components.core.types_common import RecoveryActionState
+from components.core.fault_state_policy import FaultEvaluationStatus
 
 from .fixtures.hass_fixture import (
     MockBehavior,
@@ -126,7 +127,7 @@ def test_notification_updates_single_fault_notification_for_prefault_lifecycle(
     app_instance.fm.clear_symptom("RiskyTemperatureOffice", {"location": "Office"})
 
     notify_calls = _notify_calls(app_instance)
-    assert app_instance.fm.check_fault("RiskyTemperature") == FaultState.SET
+    assert app_instance.fm.check_fault("RiskyTemperature") is FaultEvaluationStatus.FAIL
     assert list(app_instance.notify_man.active_notification) == [fault_tag]
     assert (
         notify_calls[-1].kwargs["message"]
@@ -142,7 +143,7 @@ def test_notification_updates_single_fault_notification_for_prefault_lifecycle(
     app_instance.fm.clear_symptom("RiskyTemperatureKitchen", {"location": "Kitchen"})
 
     notify_calls = _notify_calls(app_instance)
-    assert app_instance.fm.check_fault("RiskyTemperature") == FaultState.CLEARED
+    assert app_instance.fm.check_fault("RiskyTemperature") is FaultEvaluationStatus.PASS
     assert app_instance.notify_man.active_notification == {}
     assert notify_calls[-1].kwargs["message"].startswith(
         "Good news - Unsafe temperature is no longer active."
@@ -153,7 +154,7 @@ def test_notification_updates_single_fault_notification_for_prefault_lifecycle(
             app_instance,
             mqtt_topic_for("sensor.fault_RiskyTemperature"),
         )[-1]
-        == "Cleared"
+        == "PASS"
     )
     assert (
         app_instance.mqtt_entities.get_attributes("sensor.fault_RiskyTemperature")[

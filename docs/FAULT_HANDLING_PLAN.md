@@ -80,7 +80,7 @@ runtime contracts or resolve the open policy choices listed at the glossary's en
 | Clear / deactivation / heal | Release of an active fault under its recovery and, where applicable, reset policy. Notification removal, loss of input and disappearance from the UI are not clear evidence. Prefer “condition recovered” when only the physical condition has recovered but a latch remains. |
 | Shadowing / shadowed | Suppression of a redundant fault response because another fault explicitly covers it. Evaluation, evidence, activation, latches and restrictions are retained. It is not user inhibition or condition recovery. |
 | `shadowed_by` | The proposed set of identities explaining which faults suppress a fault's response. Scope and activation rules must be explicit; priority alone does not establish this relation. |
-| Legacy state / projection | Existing `NOT_TESTED`, `SET`, `CLEARED`, `SHADOWED` codes and their published forms. A projection maps target semantics into a compatible external representation; these codes are not a replacement for the proposed eight statuses. |
+| Fault response event | A transition consumed by notification/recovery services or their journal, such as `SET`, `CLEARED` or `SHADOWED`. It is distinct from the fault's eight-value MQTT evaluation status and does not replace its `active` or `shadowed_by` axes. |
 | Fault lifecycle event | A reported transition or response change consumed by services/UI/history. An event is not a second fault object or a new activation merely because it was republished. |
 
 ### Classification, dependencies and coverage
@@ -221,7 +221,7 @@ highest-priority policy. Shadowing remains response/presentation metadata.
 ### Shadowing: preserved behavior and target representation
 
 Shadowing is already implemented, not a new exclusion or a synonym for recovery.
-Today `FaultState.SHADOWED` replaces the published state with `Shadowed`;
+The internal `FaultState.SHADOWED` response event withdraws redundant handling;
 `RiskyTemperature.shadows` names `RiskyTemperatureForecast`. NotificationManager
 removes the same-tag notification with `clear_notification`, drops pending delivery
 and repeats, and distinguishes this from a resolved message. RecoveryManager's
@@ -230,11 +230,11 @@ not a room-specific rule. See the [fault implementation](../backend/components/f
 [notification lifecycle](<features/Mobile Notification Delivery - Architecture.md#44-fault-clear-and-shadow>),
 and [recovery contract](<features/Recommended Actions and Recovery - Architecture.md>).
 
-Target: retain shadowing as `shadowed_by` (a set of fault identities), orthogonal
+Publish shadowing as `shadowed_by` (a set of fault identities), orthogonal
 to the eight evaluation statuses and `active`/`latched`. A forecast may therefore
 remain `FAIL`, active, and shadowed by a direct hazard. It is not PASS, INHIBITED,
-or DISABLED. Keep the existing `SHADOWED` event/history and `Shadowed` legacy
-projection until consumers migrate; do not silently remove those raw contracts.
+or DISABLED. The `SHADOWED` event/history code describes response withdrawal;
+the MQTT fault state remains the evaluation status.
 
 - Shadowing removes redundant notification and withdraws the shadowed fault's
   recovery proposals; it does not erase evidence, release a latch, or remove
@@ -478,8 +478,9 @@ existing fault-wide shadow contract and needs dedicated migration/tests.
 App Health is one logical D fault, not seven unrelated top-level faults.
 M17a..g are its Boolean contributors with one level and independent restriction
 targets. Recovering MQTT cannot clear an active persistence/delivery cause.
-Preserve `sensor.safety_app_health` and existing detailed health sensors as
-compatible projections; exact new fault identity requires coordinated migration.
+Retain `sensor.safety_app_health` as application-health telemetry, not a
+projection of a D fault. Exact new App Health fault identity requires a
+coordinated consumer change.
 
 Passive Group C inventory and valid measurement values have no fault lifecycle.
 A failed required derivative belongs to its requesting component's D fault (M12
@@ -565,7 +566,7 @@ First reconcile the matrix baseline and settle section 2's open semantic choices
 
 | Task | Branch | Depends on | Deliverable |
 | --- | --- | --- | --- |
-| FH-01 | `feature/fault-state-policy` | Matrix decisions | Boolean SM boundary, fault categories/status/active/shadowing, shared priority-notification profiles, migration contract. |
+| FH-01 | `feature/fault-state-policy` | Matrix decisions | Boolean SM boundary, fault categories/status/active/shadowing, shared priority-notification profiles, published contract. |
 | FH-02 | `feature/fault-routing-aggregation` | FH-01 | Per-door fault instances, Group B ownership/aggregation, startup binding validation. |
 | FH-03 | `feature/fault-degradation` | FH-01, FH-02 | Scoped restriction handling and FULL/PARTIAL/DEGRADED/UNKNOWN coverage. |
 | FH-04 | `feature/fault-user-control` | FH-03 | Temporary/permanent controls, persistence, expiry, and immediate operator UI. |
@@ -607,9 +608,9 @@ preparing/publishing these branches.
 
 The implementation contract for this branch is
 [Fault State Policy](<features/Fault State Policy - Architecture.md>). This
-branch introduces the additive fault-owned evaluation object, priority/category
-metadata and shadow-owner tracking while retaining the legacy external state
-projection. Full migration of every existing SM's debounce and eligibility,
+branch introduces the fault-owned evaluation object, priority/category metadata,
+shadow-owner tracking and the eight-status MQTT contract. Full migration of
+every existing SM's debounce and eligibility,
 including explicit negative observations for every required binding,
 durable L1 latching, operator controls, degradation and rich UI publication
 remain separately scoped work; the presence of a status enum is not evidence
@@ -621,26 +622,28 @@ symptom lifecycle. Define fault evaluation/status, active contributions,
 priority/category, latch metadata, and handling profiles. Decide the fault's
 mixed-evidence transition table and make priority
 the source of handling defaults using the same L1..L4 notification level. Keep
-shadowing orthogonal to evidence, preserve legacy SHADOWED projections/history,
-and test response withdrawal and unshadowing. Preserve stable raw contracts through an
-explicit versioned/additive migration plan; inventory MQTT, frontend, notification
-history, persistence, and HA automation consumers before changing legacy states.
+shadowing orthogonal to evidence, preserve SHADOWED response history, and test
+response withdrawal and unshadowing. Publish `active`, `latched` and
+`shadowed_by` separately from evaluation status; update MQTT and frontend
+consumers together. Inventory HA dashboard and automation consumers of removed
+raw states and fault identities.
 Update SYS/SSRD and affected feature contracts together. No extra pending/confirmed,
 FDC, episode, or aging subsystem. Acceptance: state transition and mixed-evidence
 tests, Boolean-only predicate contract tests, invalid-input/invocation-failure
 tests, exact notification-level/profile tests, shadow/unshadow tests, priority
-policy tests, and legacy payload/reader compatibility.
+policy tests, and exact eight-status MQTT/frontend contract tests.
 
 ### FH-02: Routing and aggregation
 
 Implement M03 and M11..M16 with a validated owner/subject mapping. Fail startup
 on missing/ambiguous contributor ownership or invalid shadow references/cycles,
 while distinguishing a known but uninstalled mechanism from a typo. Preserve
-per-subject evidence and apply the shared-input ownership rule. Migrate the old
-door fault, tags, MQTT discovery, saved state, and consumer bindings deliberately;
-do not report retirement as HEAL. Acceptance: two independent doors, one door
+per-subject evidence and apply the shared-input ownership rule. Remove the old
+shared door fault and its retained MQTT discovery/state without an alias, tag
+mapping, saved-state import or false HEAL. Migrate dashboard and automation
+consumers to per-door IDs explicitly. Acceptance: two independent doors, one door
 recovering while another fails, several Group B checks/rooms, merged A/B inputs,
-uninstalled mechanisms, and old/new identity migration tests.
+uninstalled mechanisms, and old-identity retirement tests.
 
 ### FH-03: Degradation and coverage
 

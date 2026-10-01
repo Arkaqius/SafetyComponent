@@ -259,8 +259,10 @@ eligible notification repeats without changing symptoms or operating detectors.
 Each inactive-to-active fault episode shall receive an incident UUID retained
 across all contributors, retries, updates and HEAL. Recurrence after full clear
 shall use a new UUID while the notification tag remains stable per fault.
-Raw fault states shall remain `Set`, `Shadowed`, `Cleared`, `Not_tested` and
-journal states `SET`, `SHADOWED`, `CLEARED`; no new raw `HEAL` state shall be added.
+Fault MQTT states shall follow the eight evaluation codes in
+[Fault State Policy](Fault%20State%20Policy%20-%20Architecture.md), with activation
+and shadowing carried separately. Journal transition codes shall remain `SET`,
+`SHADOWED`, `CLEARED`; `HEAL` is not an evaluation status.
 
 `InternalEnvironmentStateStore` shall atomically persist bounded versioned
 incident/symptom state outside the deployment tree: active latches, cause

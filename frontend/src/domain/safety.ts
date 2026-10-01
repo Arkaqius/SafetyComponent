@@ -15,7 +15,17 @@ export interface EntitySnapshot {
 
 export type EntityMap = Record<string, EntitySnapshot>;
 
-export type FaultStatus = 'set' | 'shadowed' | 'cleared' | 'not_tested' | 'unavailable' | 'unknown';
+export type FaultStatus =
+  | 'not_evaluated'
+  | 'pass'
+  | 'pending_failure'
+  | 'fail'
+  | 'pending_recovery'
+  | 'unevaluable'
+  | 'inhibited'
+  | 'disabled'
+  | 'unavailable'
+  | 'unknown';
 export type RecoveryStatus =
   | 'to_perform'
   | 'awaiting_confirmation'
@@ -36,6 +46,8 @@ export interface FaultView {
   level: number | null;
   state: string;
   status: FaultStatus;
+  active: boolean | null;
+  shadowedBy: string[];
   notificationTag: string;
   lastChanged?: string;
 }
@@ -228,10 +240,8 @@ export function isUnavailable(entity: EntitySnapshot | undefined): boolean {
 
 export function getFaultStatus(state: unknown): FaultStatus {
   const normalized = normalizeState(state);
-  if (normalized === 'set') return 'set';
-  if (normalized === 'shadowed') return 'shadowed';
-  if (normalized === 'cleared') return 'cleared';
-  if (normalized === 'not_tested' || normalized === 'nottested') return 'not_tested';
+  if (['not_evaluated', 'pass', 'pending_failure', 'fail', 'pending_recovery', 'unevaluable', 'inhibited', 'disabled'].includes(normalized))
+    return normalized as FaultStatus;
   if (UNAVAILABLE_STATES.has(normalized)) return 'unavailable';
   return 'unknown';
 }
@@ -268,12 +278,16 @@ export function friendlyEntityName(entityId: string, entity?: EntitySnapshot): s
 
 export function getFaults(entities: EntityMap): FaultView[] {
   const statusPriority: Record<FaultStatus, number> = {
-    set: 0,
-    shadowed: 1,
-    unavailable: 2,
-    unknown: 3,
-    not_tested: 4,
-    cleared: 5,
+    fail: 0,
+    pending_recovery: 1,
+    unevaluable: 2,
+    pending_failure: 3,
+    inhibited: 4,
+    disabled: 5,
+    unavailable: 6,
+    unknown: 7,
+    not_evaluated: 8,
+    pass: 9,
   };
 
   return Object.entries(entities)
@@ -286,11 +300,14 @@ export function getFaults(entities: EntityMap): FaultView[] {
       level: getFaultLevel(entity),
       state: entity.state,
       status: getFaultStatus(entity.state),
+      active: typeof entity.attributes.active === 'boolean' ? entity.attributes.active : null,
+      shadowedBy: stringArrayAttribute(entity, 'shadowed_by'),
       notificationTag: stringAttribute(entity, 'notification_tag'),
       lastChanged: entity.last_changed,
     }))
     .sort(
       (left, right) =>
+        Number(right.active === true) - Number(left.active === true) ||
         statusPriority[left.status] - statusPriority[right.status] ||
         (left.level ?? 99) - (right.level ?? 99) ||
         left.name.localeCompare(right.name, 'pl')
@@ -584,10 +601,14 @@ export function localizedEntityState(entityId: string, state: unknown): string {
   const normalized = normalizeState(state);
   if (entityId.startsWith(FAULT_PREFIX)) {
     const labels: Record<FaultStatus, string> = {
-      set: 'Aktywna',
-      shadowed: 'Przesłonięta',
-      cleared: 'Usunięta',
-      not_tested: 'Niesprawdzona',
+      not_evaluated: 'Nieoceniona',
+      pass: 'Warunek ustąpił',
+      pending_failure: 'Potwierdzanie zagrożenia',
+      fail: 'Zagrożenie potwierdzone',
+      pending_recovery: 'Potwierdzanie ustąpienia',
+      unevaluable: 'Brak wiarygodnej oceny',
+      inhibited: 'Czasowo wyłączona',
+      disabled: 'Wyłączona',
       unavailable: 'Niedostępna',
       unknown: 'Stan nieznany',
     };
@@ -661,9 +682,11 @@ export function getSafetySummary(
   faults: FaultView[],
   recoveries: RecoveryView[]
 ): SafetySummary {
-  const activeFaults = faults.filter(fault => fault.status === 'set');
-  const shadowedFaults = faults.filter(fault => fault.status === 'shadowed');
-  const uncertainFaults = faults.filter(fault => ['unavailable', 'unknown', 'not_tested'].includes(fault.status));
+  const activeFaults = faults.filter(fault => fault.active === true);
+  const shadowedFaults = faults.filter(fault => fault.active === true && fault.shadowedBy.length > 0);
+  const uncertainFaults = faults.filter(
+    fault => fault.active === null || ['unavailable', 'unknown', 'not_evaluated', 'unevaluable'].includes(fault.status)
+  );
   const actionableRecoveries = recoveries.filter(recovery => recovery.status === 'to_perform');
   const uncertainRecoveries = recoveries.filter(recovery => ['unavailable', 'unknown'].includes(recovery.status));
   const base = {

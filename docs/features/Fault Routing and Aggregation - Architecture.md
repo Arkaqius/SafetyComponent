@@ -81,19 +81,15 @@ or an explicit diagnostic-only exemption. Routing may not infer an owner from
 entity domain, display name, or iteration order. Invalid configuration is
 reported before monitoring and responses start.
 
-## Identifier migration and compatibility
+## Breaking identifier change
 
 Replacing the shared `SafetyDoorOpenTimeout` identity with per-door identities
-is an intentional contract migration. Before activation, inventory consumers
-of the old Home Assistant entity ID, MQTT discovery and retained state,
-notification tags, stored fault state, dashboards, and automations. Publish
-the new identities and retire obsolete discovery/state deliberately; retirement
-does not emit a false `CLEARED` transition or imply that an active door became
-safe. Until consumers are migrated, the old entity is a read-only aggregate of
-the per-door faults: it is `Set` if any door fault is set, `Cleared` only after
-all door faults are cleared, and otherwise `Not_tested`. It does not trigger
-notification or recovery independently. Preserve the raw fault-state codes and
-all unrelated stable identifiers.
+is an intentional breaking change. The shared fault and its Home Assistant
+entity are removed; no aggregate alias is published. Retire obsolete MQTT
+discovery and retained state without emitting a false recovery transition.
+Dashboards, automations and other consumers must use the per-door identities.
+Old notification tags and stored fault state are not mapped to a new door
+because their subject cannot be established reliably.
 
 ## Verification
 
@@ -101,4 +97,4 @@ Acceptance tests cover two doors failing independently, one door recovering
 while the other remains failed, multiple Group B checks per room, mixed Group
 A/B membership with one owner, one shared input affecting only declared
 consumers, known but uninstalled SMs versus unknown IDs, ambiguous/missing
-bindings and shadow cycles, and migration of old discovery, tags, and state.
+bindings and shadow cycles, and removal of obsolete discovery and state.

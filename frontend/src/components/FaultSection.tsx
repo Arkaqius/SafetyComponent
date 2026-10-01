@@ -12,7 +12,7 @@ import Icon from './Icon';
 import StatusBadge from './StatusBadge';
 import { notificationAcknowledgementEvent } from '../domain/notificationHistory';
 
-type FaultFilter = 'attention' | 'set' | 'shadowed' | 'all';
+type FaultFilter = 'attention' | 'active' | 'shadowed' | 'all';
 
 interface FaultSectionProps {
   faults: FaultView[];
@@ -22,17 +22,21 @@ interface FaultSectionProps {
 }
 
 const statusPresentation: Record<FaultStatus, { label: string; tone: StatusTone }> = {
-  set: { label: 'Aktywna', tone: 'danger' },
-  shadowed: { label: 'Przesłonięta', tone: 'warning' },
-  cleared: { label: 'Usunięta', tone: 'safe' },
-  not_tested: { label: 'Nieprzetestowana', tone: 'muted' },
+  not_evaluated: { label: 'Nieoceniona', tone: 'muted' },
+  pass: { label: 'Warunek ustąpił', tone: 'safe' },
+  pending_failure: { label: 'Potwierdzanie zagrożenia', tone: 'warning' },
+  fail: { label: 'Zagrożenie potwierdzone', tone: 'danger' },
+  pending_recovery: { label: 'Potwierdzanie ustąpienia', tone: 'warning' },
+  unevaluable: { label: 'Brak wiarygodnej oceny', tone: 'warning' },
+  inhibited: { label: 'Czasowo wyłączona', tone: 'warning' },
+  disabled: { label: 'Wyłączona', tone: 'muted' },
   unavailable: { label: 'Niedostępna', tone: 'muted' },
   unknown: { label: 'Nieznana', tone: 'muted' },
 };
 
 const filters: Array<{ value: FaultFilter; label: string }> = [
   { value: 'attention', label: 'Wymagające uwagi' },
-  { value: 'set', label: 'Aktywne' },
+  { value: 'active', label: 'Aktywne' },
   { value: 'shadowed', label: 'Przesłonięte' },
   { value: 'all', label: 'Wszystkie' },
 ];
@@ -46,8 +50,10 @@ export default function FaultSection({ acknowledgedTags = new Set(), faults, com
     return faults.filter(fault => {
       const matchesFilter =
         filter === 'all' ||
-        fault.status === filter ||
-        (filter === 'attention' && ['set', 'shadowed', 'unavailable', 'unknown'].includes(fault.status));
+        (filter === 'active' && fault.active) ||
+        (filter === 'shadowed' && fault.shadowedBy.length > 0) ||
+        (filter === 'attention' &&
+          (fault.active !== false || ['unevaluable', 'pending_failure', 'unavailable', 'unknown'].includes(fault.status)));
       const matchesQuery =
         normalizedQuery.length === 0 ||
         [fault.name, fault.description, fault.entityId, ...fault.locations].join(' ').toLocaleLowerCase('pl').includes(normalizedQuery);
@@ -55,7 +61,7 @@ export default function FaultSection({ acknowledgedTags = new Set(), faults, com
     });
   }, [faults, filter, query]);
 
-  const activeCount = faults.filter(fault => fault.status === 'set').length;
+  const activeCount = faults.filter(fault => fault.active).length;
 
   return (
     <section className='panel fault-panel'>
@@ -137,7 +143,8 @@ function FaultCard({
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
-  const canAcknowledge = fault.status === 'set' && Boolean(fault.notificationTag) && Boolean(fault.level && fault.level <= 3);
+  const canAcknowledge =
+    fault.active && fault.shadowedBy.length === 0 && Boolean(fault.notificationTag) && Boolean(fault.level && fault.level <= 3);
 
   useEffect(() => {
     if (!acknowledged) setSubmitted(false);
@@ -161,7 +168,7 @@ function FaultCard({
   };
 
   return (
-    <details className={`fault-card fault-${status.tone}`} open={fault.status === 'set'}>
+    <details className={`fault-card fault-${status.tone}`} open={fault.active === true}>
       <summary>
         <span className='fault-card-icon'>
           <Icon name='alert' size={20} />
@@ -173,6 +180,8 @@ function FaultCard({
         </span>
         {level && <span className={`level-chip status-${level.tone}`}>{level.shortLabel}</span>}
         <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
+        {fault.active && <StatusBadge tone='danger'>Aktywna</StatusBadge>}
+        {fault.shadowedBy.length > 0 && <StatusBadge tone='warning'>Przesłonięta</StatusBadge>}
         <Icon className='details-chevron' name='chevron' size={17} />
       </summary>
       <div className='fault-card-details'>
@@ -186,6 +195,16 @@ function FaultCard({
             <dt>Stan</dt>
             <dd>{localizedEntityState(fault.entityId, fault.state)}</dd>
           </div>
+          <div>
+            <dt>Aktywacja</dt>
+            <dd>{fault.active === null ? 'Nieznana' : fault.active ? 'Aktywna' : 'Nieaktywna'}</dd>
+          </div>
+          {fault.shadowedBy.length > 0 && (
+            <div>
+              <dt>Przesłonięta przez</dt>
+              <dd>{fault.shadowedBy.join(', ')}</dd>
+            </div>
+          )}
           <div>
             <dt>Ostatnia zmiana</dt>
             <dd>{formatRelativeTime(fault.lastChanged)}</dd>

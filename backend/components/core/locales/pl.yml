@@ -31,10 +31,14 @@ state.system.hazard: Zagrożenie
 state.system.warning: Ostrzeżenie
 state.system.information: Informacja
 state.system.stopped: Zatrzymany
-state.fault.set: Aktywna
-state.fault.shadowed: Przesłonięta
-state.fault.cleared: Usunięta
-state.fault.not_tested: Nieprzetestowana
+state.fault.not_evaluated: Nieoceniona
+state.fault.pass: Warunek ustąpił
+state.fault.pending_failure: Potwierdzanie zagrożenia
+state.fault.fail: Zagrożenie potwierdzone
+state.fault.pending_recovery: Potwierdzanie ustąpienia
+state.fault.unevaluable: Brak wiarygodnej oceny
+state.fault.inhibited: Czasowo wyłączona
+state.fault.disabled: Wyłączona
 state.recovery.to_perform: Wymaga działania
 state.recovery.awaiting_confirmation: Wymaga potwierdzenia
 state.recovery.executing: W trakcie
@@ -59,7 +63,6 @@ state.detector_tests.unknown: Historia testów niedostępna
 state.detector_tests.not_configured: Brak skonfigurowanych czujników
 fault.entity_health: 'Problem z encją: {entity}'
 fault.safety_door_timeout: 'Zbyt długo otwarte drzwi lub brama: {door}'
-fault.safety_door_timeout_legacy: Zbyt długo otwarte drzwi lub brama (zbiorczo)
 fault.temperature_monitoring_unavailable: Monitorowanie temperatury niedostępne
 fault.temperature_recovery_unavailable: Przywrócenie temperatury niedostępne
 fault.safety_door_monitoring_unavailable: Monitorowanie drzwi niedostępne

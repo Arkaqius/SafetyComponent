@@ -5,7 +5,7 @@ from typing import Any
 
 from build_app_config import compile_config
 from SafetyFunctions import SafetyFunctions
-from components.core.types_common import FaultState
+from components.core.fault_state_policy import FaultEvaluationStatus
 
 
 def test_gas_alarm_reaches_l1_fault_without_co_consensus(tmp_path, monkeypatch) -> None:
@@ -70,8 +70,8 @@ def test_gas_alarm_reaches_l1_fault_without_co_consensus(tmp_path, monkeypatch) 
 
     app.initialize()
 
-    assert app.fm.check_fault("InternalFlammableGasDetected") == FaultState.SET
-    assert app.fm.check_fault("InternalCarbonMonoxideDetected") != FaultState.SET
+    assert app.fm.check_fault("InternalFlammableGasDetected") is FaultEvaluationStatus.FAIL
+    assert app.fm.check_fault("InternalCarbonMonoxideDetected") is not FaultEvaluationStatus.FAIL
     assert "InternalSmokeDetected" not in app.faults
     assert "sensor.fault_internalsmokedetected" not in (
         app.mqtt_entities.discovered_entities
