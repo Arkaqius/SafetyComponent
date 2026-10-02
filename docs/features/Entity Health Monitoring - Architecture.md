@@ -424,6 +424,15 @@ by its evaluation or recovery. C-ENT provides Boolean health checks and
 diagnostics, but does not emit a duplicate `EntityHealth` fault. A shared input
 has one declared owner and explicit consumer bindings. `none` is allowed only
 for an informational diagnostic and never weakens an existing safety contract.
+For configured temperature and external-hazard recovery actuators, C-ENT also
+hosts an event-driven `RecoveryCommand` contributor under the same Group B fault.
+RecoveryManager reports rejected commands and missed postconditions with the
+exact H symptom and actuator identity. Entity availability cannot clear this
+contributor; only an observed recovery postcondition can. Outstanding failures
+are restored from recovery state before fault evaluation after restart.
+An interrupted executing proposal is marked failed rather than made executable
+again; its persisted expected state is observed passively so a later manual
+repair can release only that command contributor.
 The binding and per-component fault identities are defined in
 [Fault Routing and Aggregation](Fault%20Routing%20and%20Aggregation%20-%20Architecture.md).
 

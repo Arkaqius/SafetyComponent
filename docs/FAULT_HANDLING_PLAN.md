@@ -459,7 +459,12 @@ provides reusable Boolean checks; it does not choose a generic fault solely from
 the physical sensor type. Thus temperature *evaluation* and temperature *recovery*
 have different D allocations even if a shared contact/sensor participates in both.
 M13/M15b aggregate dependency and execution evidence when they describe the same
-lost recovery capability. New components must declare the equivalent allocation.
+lost recovery capability. A rejected actuator command or postcondition timeout
+is retained as its own contributor under the existing D fault and exact H
+binding. Service acceptance does not clear it; observed postcondition evidence
+does, including after manual repair. Outstanding failures are stored across
+restart without replaying the command. New components must declare the
+equivalent allocation.
 
 A shared input has one diagnostic owner and explicit fan-out to all consumers.
 Do not create both Group A and component faults for the same failure. Resolve

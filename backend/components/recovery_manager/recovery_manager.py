@@ -87,6 +87,7 @@ class RecoveryManager:
         degradation: DegradationRegistry | None = None,
         diagnostics_observer: Callable[..., None] | None = None,
         recovery_observer: Callable[[str, bool], None] | None = None,
+        command_observer: Callable[[str, str, bool, str], None] | None = None,
     ) -> None:
         """
         Initializes the RecoveryManager with the necessary application context and recovery configuration.
@@ -119,6 +120,11 @@ class RecoveryManager:
         self.degradation = degradation
         self.diagnostics_observer = diagnostics_observer
         self.recovery_observer = recovery_observer
+        self.command_observer = command_observer
+        self._command_failures: dict[tuple[str, str], str] = {}
+        self._command_postconditions: dict[tuple[str, str], dict[str, str]] = {}
+        self._command_failure_handles: dict[tuple[str, str], list[Any]] = {}
+        self._state_restored = False
         self._pending_recovery_confirmations: dict[str, dict[str, str]] = {}
         self._recovery_confirmation_handles: dict[str, list[Any]] = {}
         self._recovery_deadline_handles: dict[str, Any] = {}
@@ -164,6 +170,8 @@ class RecoveryManager:
     def stop(self) -> None:
         """Persist active proposals during controlled shutdown."""
 
+        for key in tuple(self._command_failure_handles):
+            self._cancel_command_failure_watch(key)
         self._persist_state()
 
     def _persist_state(self) -> None:
@@ -178,8 +186,22 @@ class RecoveryManager:
                             **self._public_proposal(record),
                             "action_name": record.get("action_name"),
                             "fault_tag": record.get("fault_tag"),
+                            "expected_postconditions": record.get(
+                                "expected_postconditions", {}
+                            ),
                         }
                         for record in self._proposals.values()
+                    ],
+                    "command_failures": [
+                        {
+                            "symptom_id": symptom_id,
+                            "entity_id": entity_id,
+                            "detail": detail,
+                            "postconditions": self._command_postconditions.get(
+                                (symptom_id, entity_id), {}
+                            ),
+                        }
+                        for (symptom_id, entity_id), detail in sorted(self._command_failures.items())
                     ],
                 }
             )
@@ -194,6 +216,7 @@ class RecoveryManager:
     def _restore_state(self) -> None:
         """Restore visible active state without replaying actuator commands."""
 
+        self._state_restored = False
         try:
             snapshot = self.state_store.load()
         except Exception as exc:
@@ -203,6 +226,33 @@ class RecoveryManager:
                 f"Unable to restore recovery state: {exc}", level="ERROR"
             )
             return
+        raw_failures = snapshot.get("command_failures", [])
+        if not isinstance(raw_failures, list) or any(
+            not isinstance(item, dict)
+            or not all(item.get(key) for key in ("symptom_id", "entity_id", "detail"))
+            or not isinstance(item.get("postconditions", {}), dict)
+            or any(
+                not isinstance(entity, str) or not isinstance(value, str)
+                for entity, value in item.get("postconditions", {}).items()
+            )
+            for item in raw_failures
+        ):
+            if self.diagnostics_observer is not None:
+                self.diagnostics_observer(
+                    "persistence", True, detail="recovery_state", operation="load"
+                )
+            self.hass_app.log("Invalid recovery command failure state", level="ERROR")
+            return
+        self._command_failures = {
+            (str(item["symptom_id"]), str(item["entity_id"])): str(item["detail"])
+            for item in raw_failures
+        }
+        self._command_postconditions = {
+            (str(item["symptom_id"]), str(item["entity_id"])): dict(
+                item.get("postconditions", {})
+            )
+            for item in raw_failures
+        }
         for raw in snapshot.get("proposals", []):
             if not isinstance(raw, dict):
                 continue
@@ -211,16 +261,127 @@ class RecoveryManager:
             if recovery is None:
                 continue
             record = dict(raw)
-            if record.get("execution_policy") == "user_confirmed":
-                record["status"] = RecoveryActionState.AWAITING_CONFIRMATION.name
+            if record.get("status") == RecoveryActionState.EXECUTING.name:
+                record["status"] = RecoveryActionState.FAILED.name
+                record["confirmation_token"] = ""
+                actuator = str(record.get("actuator_entity_id", ""))
+                if actuator:
+                    key = (proposal_id, actuator)
+                    self._command_failures.setdefault(
+                        key, "postcondition_unverified_after_restart"
+                    )
+                    expected = record.get("expected_postconditions", {})
+                    if isinstance(expected, dict) and expected:
+                        self._command_postconditions.setdefault(
+                            key, {
+                                str(source): str(state)
+                                for source, state in expected.items()
+                            },
+                        )
+            elif (
+                record.get("execution_policy") == "user_confirmed"
+                and record.get("status") == RecoveryActionState.AWAITING_CONFIRMATION.name
+            ):
                 record["confirmation_token"] = secrets.token_urlsafe(24)
                 record["expires_at"] = time.time() + 120
-            elif record.get("status") == RecoveryActionState.EXECUTING.name:
-                record["status"] = RecoveryActionState.TO_PERFORM.name
             self._proposals[proposal_id] = record
             self._set_rec_entity(recovery)
+        self._state_restored = True
         if self.diagnostics_observer is not None:
             self.diagnostics_observer("persistence", False, detail="recovery_state", operation="load")
+
+    def failed_recovery_commands(self) -> dict[tuple[str, str], str] | None:
+        """Return outstanding command/postcondition failures for D-fault restore."""
+
+        return dict(self._command_failures) if self._state_restored else None
+
+    def _record_command_outcome(
+        self, symptom_id: str, entity_id: str, failed: bool, detail: str
+    ) -> None:
+        """Persist a scoped failure before publishing its diagnostic outcome."""
+
+        key = (symptom_id, entity_id)
+        if failed:
+            self._command_failures[key] = detail
+            proposal = self._proposals.get(symptom_id, {})
+            expected = proposal.get("expected_postconditions", {})
+            if isinstance(expected, dict) and expected:
+                self._command_postconditions[key] = {
+                    str(source): str(state) for source, state in expected.items()
+                }
+        elif key in self._command_failures:
+            del self._command_failures[key]
+            self._command_postconditions.pop(key, None)
+            self._cancel_command_failure_watch(key)
+        else:
+            return
+        try:
+            self._persist_state()
+        finally:
+            if self.command_observer is not None:
+                self.command_observer(symptom_id, entity_id, failed, detail)
+            if failed:
+                self._watch_command_failure(key)
+
+    def resume_command_postconditions(self) -> None:
+        """Resume passive repair observation after restart without replaying actions."""
+
+        for key in tuple(self._command_failures):
+            self._watch_command_failure(key)
+
+    def _watch_command_failure(self, key: tuple[str, str]) -> None:
+        expected = self._command_postconditions.get(key, {})
+        if not expected or key in self._command_failure_handles:
+            return
+        handles: list[Any] = []
+        self._command_failure_handles[key] = handles
+        for source, value in expected.items():
+            handles.append(self.hass_app.listen_state(
+                self._command_failure_postcondition_changed,
+                source,
+                new=value,
+                failure_symptom_id=key[0],
+                failure_actuator=key[1],
+            ))
+        if self._failure_postconditions_met(key):
+            self._record_command_outcome(
+                key[0], key[1], False, "postcondition_confirmed"
+            )
+
+    def _command_failure_postcondition_changed(
+        self, _: Any, __: Any, ___: Any, ____: Any, **kwargs: Any
+    ) -> None:
+        key = (str(kwargs["failure_symptom_id"]), str(kwargs["failure_actuator"]))
+        if key in self._command_failures and self._failure_postconditions_met(key):
+            self._record_command_outcome(
+                key[0], key[1], False, "postcondition_confirmed"
+            )
+
+    def _failure_postconditions_met(self, key: tuple[str, str]) -> bool:
+        expected = self._command_postconditions.get(key, {})
+        if not expected:
+            return False
+        try:
+            return all(
+                str(self.hass_app.get_state(source)) == value
+                for source, value in expected.items()
+            )
+        except Exception as exc:
+            self.hass_app.log(
+                f"Unable to verify recovery postcondition: {exc}",
+                level="WARNING",
+            )
+            return False
+
+    def _cancel_command_failure_watch(self, key: tuple[str, str]) -> None:
+        for handle in self._command_failure_handles.pop(key, []):
+            try:
+                self.hass_app.cancel_listen_state(handle)
+            except Exception as exc:
+                self.hass_app.log(
+                    f"Unable to cancel recovery command listener: {exc}",
+                    level="WARNING",
+                )
 
     def register_policy_evaluator(
         self, evaluator: RecoveryPolicyEvaluator
@@ -353,6 +514,9 @@ class RecoveryManager:
                     self.hass_app.log(
                         f"Exception during setting {entity} to {value} value. {err}",
                         level="ERROR",
+                    )
+                    self._record_command_outcome(
+                        symptom.name, entity, True, f"command_failed: {type(err).__name__}"
                     )
             for notification in notifications:
                 fault: Fault | None = self.fm.found_mapped_fault(
@@ -747,10 +911,14 @@ class RecoveryManager:
             recovery_result.changed_actuators,
             fault_tag,
         )
+        command_failed = any(
+            (symptom.name, entity) in self._command_failures
+            for entity in recovery_result.changed_actuators
+        )
         proposal["status"] = (
-            RecoveryActionState.EXECUTING.name
-            if executed_actuator_changes
-            else RecoveryActionState.TO_PERFORM.name
+            RecoveryActionState.FAILED.name if command_failed else
+            RecoveryActionState.EXECUTING.name if executed_actuator_changes else
+            RecoveryActionState.TO_PERFORM.name
         )
         self._set_rec_entity(recovery)
         self._persist_state()
@@ -761,8 +929,15 @@ class RecoveryManager:
         self._listen_to_changes(
             symptom,
             recovery_result.changed_sensors,
-            executed_actuator_changes,
+            recovery_result.changed_actuators,
         )
+        if (
+            symptom.name in self._proposals
+            and proposal["status"] == RecoveryActionState.EXECUTING.name
+        ):
+            self._schedule_recovery_deadline(
+                symptom.name, int(recovery_result.confirmation_timeout_seconds)
+            )
         self.hass_app.log(f"Listeners set for symptom: {symptom.name}", level="DEBUG")
 
     def _create_proposal(
@@ -798,6 +973,10 @@ class RecoveryManager:
             "area_name": recovery.params.get("location"),
             "postcondition_entity_id": sensor_entity,
             "actuator_entity_id": actuator_entity,
+            "expected_postconditions": (
+                dict(recovery_result.changed_sensors)
+                or self._actuator_postconditions(recovery_result.changed_actuators)
+            ),
             "fault_tag": fault_tag,
         }
 
@@ -861,6 +1040,7 @@ class RecoveryManager:
             )
             return
 
+        proposal["status"] = RecoveryActionState.EXECUTING.name
         executed = self._perform_recovery(
             symptom,
             [],
@@ -872,6 +1052,10 @@ class RecoveryManager:
             proposal["confirmation_token"] = ""
             self._set_rec_entity(self.recovery_actions[proposal_id])
             self._persist_state()
+            self._listen_to_changes(
+                symptom, recovery_result.changed_sensors,
+                recovery_result.changed_actuators,
+            )
             return
         proposal["status"] = RecoveryActionState.EXECUTING.name
         proposal["confirmation_token"] = ""
@@ -926,12 +1110,18 @@ class RecoveryManager:
             RecoveryActionState.EXECUTING.name,
         }:
             return
+        was_executing = proposal.get("status") == RecoveryActionState.EXECUTING.name
         proposal["status"] = RecoveryActionState.TIMED_OUT.name
         proposal["confirmation_token"] = ""
         recovery = self.recovery_actions.get(symptom_name)
         if recovery is not None:
             self._set_rec_entity(recovery)
         self._persist_state()
+        actuator = str(proposal.get("actuator_entity_id", ""))
+        if was_executing and actuator:
+            self._record_command_outcome(
+                symptom_name, actuator, True, "postcondition_timeout"
+            )
         self.hass_app.log(
             f"Recovery deadline missed for {symptom_name}", level="ERROR"
         )
@@ -1035,6 +1225,7 @@ class RecoveryManager:
             handles.append(handle)
 
         if self._all_recovery_postconditions_met(symptom.name):
+            self._confirm_command_postcondition(symptom.name)
             proposal = self._proposals.get(symptom.name)
             if proposal is not None:
                 proposal["status"] = RecoveryActionState.CONFIRMED.name
@@ -1115,6 +1306,7 @@ class RecoveryManager:
             return
 
         if self._all_recovery_postconditions_met(symptom.name):
+            self._confirm_command_postcondition(symptom.name)
             proposal = self._proposals.get(symptom.name)
             if proposal is not None:
                 proposal["status"] = RecoveryActionState.CONFIRMED.name
@@ -1132,3 +1324,15 @@ class RecoveryManager:
             if str(current_state) != current_expected_state:
                 return False
         return True
+
+    def _confirm_command_postcondition(self, symptom_name: str) -> None:
+        """Clear a command-path failure only after observed physical evidence."""
+
+        proposal = self._proposals.get(symptom_name)
+        if proposal is None:
+            return
+        actuator = str(proposal.get("actuator_entity_id", ""))
+        if actuator:
+            self._record_command_outcome(
+                symptom_name, actuator, False, "postcondition_confirmed"
+            )

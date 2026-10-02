@@ -133,6 +133,7 @@ class ExternalHazardComponent(SafetyComponent):
                     "fault_owner": "component",
                     "fault_name": "ExternalRecoveryUnavailable",
                     "purpose": f"Confirmed recovery actuator for {opening_name}",
+                    "recovery_command": True,
                     "degradation_targets": tuple(
                         (symptom_id, "external_recovery", opening_name, "recovery")
                         for symptom_id in hazard_symptoms

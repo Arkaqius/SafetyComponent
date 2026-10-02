@@ -449,6 +449,10 @@ class SafetyFunctions(hass.Hass):
             degradation=self.degradation,
             diagnostics_observer=self.self_diagnostics.record_app_cause,
             recovery_observer=self.self_diagnostics.record_recovery,
+            command_observer=(
+                entity_monitor.record_recovery_command
+                if entity_monitor is not None else None
+            ),
         )
         for component in self.sm_modules.values():
             if callable(getattr(component, "evaluate_recovery_policy", None)):
@@ -473,6 +477,10 @@ class SafetyFunctions(hass.Hass):
         self.notify_man.start()
         self.safetyhome_api.start()
         self.reco_man.start()
+        if entity_monitor is not None:
+            entity_monitor.initialize_recovery_commands(
+                self.reco_man.failed_recovery_commands()
+            )
 
         # Initialize state listeners and timers for every safety mechanism.
         self.fm.init_safety_mechanisms()
@@ -487,6 +495,7 @@ class SafetyFunctions(hass.Hass):
 
         # Enable configured symptoms after all managers and listeners exist.
         self.fm.enable_all_symptoms()
+        self.reco_man.resume_command_postconditions()
 
         if self.functional_safety_monitor is not None:
             self.functional_safety_monitor.start()

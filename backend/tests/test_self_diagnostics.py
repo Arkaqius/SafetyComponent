@@ -240,5 +240,5 @@ def test_external_supervisor_example_uses_independent_non_actuating_alert() -> N
         actions["choose"][0]["conditions"][0]["value_template"]
     )
     for state in ("unknown", "unavailable", "stopped", "invalid_cfg"):
-        assert template.render(states=lambda _: state).strip() == "True"
+        assert template.render(states=lambda _, state=state: state).strip() == "True"
     assert template.render(states=lambda _: "running").strip() == "False"
