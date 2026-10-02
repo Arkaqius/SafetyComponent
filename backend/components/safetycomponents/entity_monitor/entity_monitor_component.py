@@ -10,6 +10,7 @@ from typing import Any, Callable
 import appdaemon.plugins.hass.hassapi as hass  # type: ignore
 
 from components.core.common_entities import CommonEntities
+from components.core.degradation import DiagnosticBinding, DegradationTarget, RestrictionEffect
 from components.core.event_bus import EventBus
 from components.core.mqtt_entity_manager import MqttEntityManager
 from components.core.types_common import FaultState, RecoveryAction, SMState, Symptom
@@ -189,6 +190,33 @@ class EntityMonitorComponent(SafetyComponent):
         """Return deterministic dynamic fault definitions for FaultManager."""
 
         return dict(self._fault_definitions)
+
+    def get_degradation_bindings(self) -> tuple[DiagnosticBinding, ...]:
+        """Expose every installed Group A/B check with its declared H scope."""
+
+        bindings: list[DiagnosticBinding] = []
+        for runtime in self._entities.values():
+            dependency = runtime.dependency
+            if dependency.fault_owner == FaultOwner.NONE:
+                continue
+            targets: list[DegradationTarget] = []
+            errors: list[str] = []
+            for raw_target in dependency.degradation_targets:
+                try:
+                    symptom_id, capability, subject, effect = raw_target
+                    targets.append(DegradationTarget(
+                        symptom_id, capability, subject, RestrictionEffect(effect)
+                    ))
+                except (TypeError, ValueError) as exc:
+                    errors.append(f"{raw_target!r}: {exc}")
+            for check_name in ("availability", *dependency.checks):
+                bindings.append(DiagnosticBinding(
+                    self._symptom_name(dependency.key, check_name),
+                    tuple(targets),
+                    external_only=dependency.external_only,
+                    error="; ".join(errors) if errors else None,
+                ))
+        return tuple(bindings)
 
     def init_safety_mechanism(
         self, sm_name: str, name: str, parameters: dict[str, Any]
@@ -770,6 +798,17 @@ class EntityMonitorComponent(SafetyComponent):
                 )
             )
             purposes = tuple(dict.fromkeys(str(item["purpose"]) for item in items))
+            degradation_targets = tuple(dict.fromkeys(
+                tuple(str(part) for part in target)
+                for item in items
+                for target in item.get("degradation_targets", ())
+            ))
+            external_only = all(
+                item.get("source") == "explicit" or bool(item.get("external_only", False))
+                for item in items
+            )
+            if external_only and degradation_targets:
+                raise ValueError(f"External-only entity has H targets: {entity_id}")
             component_faults = {
                 str(item["fault_name"])
                 for item in items
@@ -803,6 +842,8 @@ class EntityMonitorComponent(SafetyComponent):
                     owners=owners,
                     consumer_keys=consumer_keys,
                     purposes=purposes,
+                    degradation_targets=degradation_targets,
+                    external_only=external_only,
                     fault_owner=fault_owner,
                     fault_name=fault_name,
                     checks=checks,

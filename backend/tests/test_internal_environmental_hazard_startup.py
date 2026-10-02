@@ -73,6 +73,8 @@ def test_gas_alarm_reaches_l1_fault_without_co_consensus(tmp_path, monkeypatch) 
 
     app.initialize()
 
+    assert app.degradation.binding_errors == {}
+
     assert app.fm.check_fault("InternalFlammableGasDetected") is FaultEvaluationStatus.FAIL
     assert app.fm.check_fault("InternalCarbonMonoxideDetected") is not FaultEvaluationStatus.FAIL
     assert "InternalSmokeDetected" not in app.faults

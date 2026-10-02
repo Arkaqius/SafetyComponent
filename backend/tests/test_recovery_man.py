@@ -9,6 +9,14 @@ from unittest.mock import Mock
 import pytest
 
 
+def _isolated_recovery_manager(app_instance):
+    """Exercise recovery mechanics with synthetic, unbound unit-test symptoms."""
+
+    manager = app_instance.reco_man
+    manager.degradation = None
+    return manager
+
+
 def test_recovery_cleared_state(mocked_hass_app_with_temp_component):
     """
     Test Case: Execute recovery process when symptom is in CLEARED state.
@@ -141,7 +149,7 @@ def test_successful_recovery_execution_basic(mocked_hass_app_with_temp_component
 
     app_instance.initialize()
 
-    recovery_manager = app_instance.reco_man
+    recovery_manager = _isolated_recovery_manager(app_instance)
     recovery_action = Mock()
     recovery_action.name = symptom.name
     recovery_result = Mock()
@@ -176,7 +184,7 @@ def test_dry_test_failure_aborts_recovery(mocked_hass_app_with_temp_component):
 
     app_instance.initialize()
 
-    recovery_manager = app_instance.reco_man
+    recovery_manager = _isolated_recovery_manager(app_instance)
     recovery_action = Mock()
     recovery_action.name = symptom.name
     recovery_result = Mock()
@@ -218,7 +226,7 @@ def test_recovery_conflict_aborts_recovery(mocked_hass_app_with_temp_component):
 
     app_instance.initialize()
 
-    recovery_manager = app_instance.reco_man
+    recovery_manager = _isolated_recovery_manager(app_instance)
     recovery_action = Mock()
     recovery_action.name = symptom.name
     recovery_result = Mock()
@@ -261,7 +269,7 @@ def test_successful_recovery_execution(mocked_hass_app_with_temp_component):
 
     app_instance.initialize()
 
-    recovery_manager = app_instance.reco_man
+    recovery_manager = _isolated_recovery_manager(app_instance)
     recovery_action = Mock()
     recovery_action.name = symptom.name
     recovery_result = Mock()
@@ -298,7 +306,7 @@ def test_recovery_execution_multiple_entities(mocked_hass_app_with_temp_componen
 
     app_instance.initialize()
 
-    recovery_manager = app_instance.reco_man
+    recovery_manager = _isolated_recovery_manager(app_instance)
     recovery_result = RecoveryResult(
         changed_sensors={"sensor.test_1": "on", "sensor.test_2": "off"},
         changed_actuators={"switch.actuator_1": "on", "light.actuator_2": "off"},
@@ -349,7 +357,7 @@ def test_integration_with_fault_and_notification_managers(
     fault_manager.symptoms = {symptom.name: symptom}
 
     # Prepare the RecoveryManager and NotificationManager
-    recovery_manager = app_instance.reco_man
+    recovery_manager = _isolated_recovery_manager(app_instance)
     recovery_result = RecoveryResult(
         changed_sensors={},  # No sensor changes
         changed_actuators={"switch.actuator_1": "on"},
@@ -403,7 +411,7 @@ def test_recovery_action_state_transition(mocked_hass_app_with_temp_component):
 
     app_instance.initialize()
 
-    recovery_manager = app_instance.reco_man
+    recovery_manager = _isolated_recovery_manager(app_instance)
     recovery_result = RecoveryResult(
         changed_sensors={"sensor.test_1": "on", "sensor.test_2": "off"},
         changed_actuators={"switch.actuator_1": "on", "light.actuator_2": "off"},
@@ -500,7 +508,7 @@ def test_recovery_conflict_with_higher_priority(mocked_hass_app_with_temp_compon
 
     app_instance.initialize()
 
-    recovery_manager = app_instance.reco_man
+    recovery_manager = _isolated_recovery_manager(app_instance)
 
     # Mock the RecoveryAction
     recovery_result = RecoveryResult(

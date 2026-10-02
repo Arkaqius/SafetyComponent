@@ -64,6 +64,8 @@ def test_example_external_hazard_startup_is_wired_before_polling(tmp_path, monke
 
     app.initialize()
 
+    assert app.degradation.binding_errors == {}
+
     assert sorted(app.api_modules) == [
         "ImgwWarningsApiComponent",
         "OpenMeteoAirQualityApiComponent",

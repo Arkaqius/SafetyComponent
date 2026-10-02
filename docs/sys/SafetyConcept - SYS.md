@@ -628,6 +628,13 @@ _We model the system as **decoupled Safety Components**, each implementing one o
   of the same number. H/D category describes a hazard/equipment condition or a
   diagnostic capability failure, not urgency. A level alone shall not authorize
   recovery actuation or define a degradation target.
+- **Scoped degradation and coverage:** Each diagnostic dependency shall name
+  its affected H capability and subject. Technical loss shall restrict only
+  dependent evaluation or recovery, retain independent valid channels and
+  prior active hazard evidence, and expose causes and affected scope. Coverage
+  of the installed baseline shall be reported separately as `FULL`, `PARTIAL`,
+  `DEGRADED`, or `UNKNOWN`. Loss of the process itself requires observation
+  independent of that process.
 
 ---
 

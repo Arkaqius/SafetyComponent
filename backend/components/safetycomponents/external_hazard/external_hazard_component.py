@@ -101,6 +101,13 @@ class ExternalHazardComponent(SafetyComponent):
 
         dependencies: list[dict[str, Any]] = []
         for opening_name, opening in component_cfg.get("openings", {}).items():
+            hazard_symptoms = [
+                f"ExternalWeatherExposure{cls._pascal(hazard)}{opening_name}"
+                for hazard in ("frost", "wind", "rain", "storm")
+                if hazard in opening.get("hazards", ())
+            ]
+            if "outdoor_air_pollution" in opening.get("hazards", ()):
+                hazard_symptoms.append(f"OutdoorAirQualityExposure{opening_name}")
             dependencies.append({
                 "key": f"ExternalOpening{opening_name}",
                 "entity_id": opening["entity_id"],
@@ -108,6 +115,10 @@ class ExternalHazardComponent(SafetyComponent):
                 "fault_owner": "component",
                 "fault_name": "ExternalOpeningMonitoringUnavailable",
                 "purpose": f"External-hazard opening input for {opening_name}",
+                "degradation_targets": tuple(
+                    (symptom_id, "external_exposure", opening_name, "evaluation")
+                    for symptom_id in hazard_symptoms
+                ),
                 "checks": {},
                 "detection_budget_seconds": 30,
                 "area_id": opening.get("area_id"),
@@ -122,6 +133,10 @@ class ExternalHazardComponent(SafetyComponent):
                     "fault_owner": "component",
                     "fault_name": "ExternalRecoveryUnavailable",
                     "purpose": f"Confirmed recovery actuator for {opening_name}",
+                    "degradation_targets": tuple(
+                        (symptom_id, "external_recovery", opening_name, "recovery")
+                        for symptom_id in hazard_symptoms
+                    ),
                     "checks": {},
                     "detection_budget_seconds": 30,
                     "area_id": opening.get("area_id"),
