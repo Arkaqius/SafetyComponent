@@ -225,9 +225,9 @@ function entityPresentation(entityId: string, entity?: EntitySnapshot): { label:
   if (!entity) return { label: 'Niedostępna', tone: 'muted' };
   if (entityId.startsWith(FAULT_PREFIX)) {
     const status = getFaultStatus(entity.state);
-    if (status === 'set') return { label: 'Aktywna', tone: 'danger' };
-    if (status === 'shadowed') return { label: 'Przesłonięta', tone: 'warning' };
-    if (status === 'cleared') return { label: 'Usunięta', tone: 'safe' };
+    if (entity.attributes.active === true) return { label: 'Aktywna', tone: 'danger' };
+    if (status === 'fail' || status === 'unevaluable') return { label: localizedEntityState(entityId, entity.state), tone: 'warning' };
+    if (status === 'pass') return { label: 'Warunek ustąpił', tone: 'safe' };
   }
   if (entityId.startsWith(RECOVERY_PREFIX)) {
     const status = getRecoveryStatus(entity.state);

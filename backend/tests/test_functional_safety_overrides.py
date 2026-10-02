@@ -44,7 +44,7 @@ def test_partial_overrides_checked_against_inherited_recovery(tmp_path: Path, ov
         compile_policy(candidate(tmp_path, overrides))
 
 
-@pytest.mark.parametrize("key", ["memory_fault_level", "evaluation_interval_seconds", "resource_stale_after_seconds", "periodic_test_state_file", "battery_stale_after_seconds"])
+@pytest.mark.parametrize("key", ["memory_fault_level", "evaluation_interval_seconds", "resource_stale_after_seconds", "periodic_test_state_file", "battery_stale_after_seconds", "battery_fault_catalog_file"])
 def test_technical_fields_cannot_be_overridden(key: str) -> None:
     with pytest.raises(ValueError):
         FunctionalSafetyOverrides.model_validate({key: 99})

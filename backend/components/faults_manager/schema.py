@@ -18,6 +18,7 @@ class FaultEntry(StrictBaseModel):
     level: int = Field(..., ge=1, le=4)
     category: Literal["H", "D"] = "H"
     related_sms: list[str]
+    related_symptom_ids: list[str] = Field(default_factory=list)
     shadows: list[str] = Field(default_factory=list)
 
 

@@ -27,8 +27,9 @@ The following decisions define the feature boundary:
    duplicate fault when the owning component already defines failure semantics.
 8. The complete Group C inventory is read through the authenticated Home
    Assistant frontend connection. It is not copied into MQTT attributes.
-9. C-ENT creates at most one fault per unhealthy Group A/B entity that it owns.
-   Individual failed checks are symptoms of that per-entity fault.
+9. C-ENT creates at most one `EntityHealth{EntityKey}` fault per unhealthy Group
+   A entity that it owns. Group B checks contribute to their requesting
+   component's scoped diagnostic fault, without a duplicate C-ENT fault.
 10. Failure and recovery debounce govern the transition of each check result
     between passing and failed states.
 
@@ -121,7 +122,8 @@ contains:
 All entries in `user_config.common_entities` are registered as Group B records.
 Component schemas or core policy own defaults. System calibration may override
 failure/recovery debounce, detection budget, and check thresholds by stable
-dependency key; an installation shall not repeat the same entity in Group A.
+dependency key. An entity may also be selected in Group A; the registry retains
+both memberships and resolves one owner for each underlying failure.
 
 Examples of Group B dependencies include temperature inputs registered by
 `TemperatureComponent`, door contacts registered by `SafetyDoorsComponent`,
@@ -329,6 +331,15 @@ Rate-of-change evaluation may reuse numeric sampling utilities from
 fault semantics. The rate is `(newest_value - oldest_value) / elapsed_time`
 expressed per minute. Non-numeric, non-finite, stale, or unavailable input is
 unevaluable and cannot pass a numeric check.
+An internally generated temperature `_rate` has no numeric value until its
+second sample. The derivative monitor shall seed the first source sample at
+registration so the next scheduled sample can produce a valid rate. Its
+dependency detection budget shall exceed the configured
+derivative sampling interval and include scheduler margin; the initial unknown
+value is not evidence of a safe forecast. Its availability failure debounce
+shall use that same interval-derived threshold, rather than the generic
+dependency default, so the first missing rate does not set a fault before the
+second sample is due. A configured component override may replace the debounce.
 
 ### 8.3 Debounce policy
 
@@ -391,7 +402,7 @@ C-ENT uses the following stable contract when it owns a failure:
 | Level | 3 |
 | Recovery action | None |
 
-Each C-ENT-owned Group A/B entity has its own fault. All active check symptoms
+Each C-ENT-owned Group A entity has its own fault. All active check symptoms
 for that entity aggregate into the same fault; symptoms belonging to another
 entity aggregate into that other entity's fault. Each fault retains:
 
@@ -408,11 +419,13 @@ before state listeners and check evaluation start. Registration is deterministic
 from the stable entity key. The operator-facing fault name uses the current
 friendly entity name while the runtime IDs remain unchanged.
 
-For Group B, the dependency declaration selects `entity_monitor`, `component`,
-or `none` as fault owner. When `component` is selected, C-ENT provides health
-diagnostics but does not emit a duplicate symptom. `none` is allowed only for an
-informational component diagnostic and never weakens an existing component
-safety contract.
+For Group B, the requesting component owns the fault for a dependency required
+by its evaluation or recovery. C-ENT provides Boolean health checks and
+diagnostics, but does not emit a duplicate `EntityHealth` fault. A shared input
+has one declared owner and explicit consumer bindings. `none` is allowed only
+for an informational diagnostic and never weakens an existing safety contract.
+The binding and per-component fault identities are defined in
+[Fault Routing and Aggregation](Fault%20Routing%20and%20Aggregation%20-%20Architecture.md).
 
 ## 12. MQTT diagnostics
 

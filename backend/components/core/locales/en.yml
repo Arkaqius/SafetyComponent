@@ -31,10 +31,14 @@ state.system.hazard: Hazard
 state.system.warning: Warning
 state.system.information: Information
 state.system.stopped: Stopped
-state.fault.set: Active
-state.fault.shadowed: Shadowed
-state.fault.cleared: Cleared
-state.fault.not_tested: Not tested
+state.fault.not_evaluated: Not evaluated
+state.fault.pass: Condition recovered
+state.fault.pending_failure: Checking failure
+state.fault.fail: Failure confirmed
+state.fault.pending_recovery: Checking recovery
+state.fault.unevaluable: Cannot evaluate
+state.fault.inhibited: Temporarily inhibited
+state.fault.disabled: Disabled
 state.recovery.to_perform: Action needed
 state.recovery.awaiting_confirmation: Confirmation required
 state.recovery.executing: In progress
@@ -58,6 +62,13 @@ state.detector_tests.attention: Tests need attention
 state.detector_tests.unknown: Test history unavailable
 state.detector_tests.not_configured: No detectors configured
 fault.entity_health: 'Entity problem: {entity}'
+fault.safety_door_timeout: 'Door or gate open too long: {door}'
+fault.temperature_monitoring_unavailable: Temperature monitoring unavailable
+fault.temperature_recovery_unavailable: Temperature recovery unavailable
+fault.safety_door_monitoring_unavailable: Safety door monitoring unavailable
+fault.external_opening_monitoring_unavailable: External opening monitoring unavailable
+fault.external_recovery_unavailable: External recovery unavailable
+fault.common_input_unavailable: Shared safety input unavailable
 fault.host_memory_pressure: Host memory pressure
 fault.host_cpu_pressure: Sustained high host CPU load
 fault.wan_unavailable: WAN unavailable

@@ -108,10 +108,11 @@ test('falls back to browser authentication without a Companion bridge', async ()
 
 test('discovers faults from MQTT entity IDs and orders active faults first', () => {
   const entities: EntityMap = {
-    'sensor.fault_notice': entity('Cleared', { level: 'level_4' }),
-    'sensor.fault_hazard': entity('Set', {
+    'sensor.fault_notice': entity('PASS', { level: 'level_4', active: false }),
+    'sensor.fault_hazard': entity('FAIL', {
       friendly_name: 'Safety Component Fault: RiskyTemperature',
       level: 'level_2',
+      active: true,
       location: 'Office, Bedroom',
       notification_tag: 'fault-tag',
     }),
@@ -123,6 +124,35 @@ test('discovers faults from MQTT entity IDs and orders active faults first', () 
   assert.equal(faults[0].level, 2);
   assert.deepEqual(faults[0].locations, ['Biuro', 'Sypialnia']);
   assert.equal(faults[0].notificationTag, 'fault-tag');
+  assert.equal(faults[0].active, true);
+});
+
+test('keeps evaluation, activation and shadowing independent', () => {
+  const faults = getFaults({
+    'sensor.fault_forecast': entity('UNEVALUABLE', {
+      level: 'level_3',
+      active: true,
+      shadowed_by: ['RiskyTemperature'],
+    }),
+    'sensor.fault_healthy': entity('PASS', { level: 'level_4', active: false }),
+  });
+  assert.equal(faults[0].status, 'unevaluable');
+  assert.equal(faults[0].active, true);
+  assert.deepEqual(faults[0].shadowedBy, ['RiskyTemperature']);
+  const summary = getSafetySummary(entity('running'), entity('warning'), faults, []);
+  assert.equal(summary.activeFaultCount, 1);
+  assert.equal(summary.shadowedFaultCount, 1);
+  assert.equal(summary.tone, 'critical');
+});
+
+test('does not accept old fault states or a missing activation field as safe', () => {
+  const faults = getFaults({
+    'sensor.fault_obsolete': entity('Set', { level: 'level_2' }),
+  });
+  assert.equal(faults[0].status, 'unknown');
+  assert.equal(faults[0].active, null);
+  const summary = getSafetySummary(entity('running'), entity('no_faults'), faults, []);
+  assert.equal(summary.label, 'Dane niepełne');
 });
 
 test('only TO_PERFORM recovery states are actionable', () => {
@@ -267,8 +297,8 @@ test('discovers only configured Safety Doors MQTT entities', () => {
 
 test('maps level 1 as the most severe active fault', () => {
   const faults = getFaults({
-    'sensor.fault_warning': entity('Set', { level: 'level_3' }),
-    'sensor.fault_emergency': entity('Set', { level: 'level_1' }),
+    'sensor.fault_warning': entity('FAIL', { level: 'level_3', active: true }),
+    'sensor.fault_emergency': entity('FAIL', { level: 'level_1', active: true }),
   });
   const summary = getSafetySummary(entity('running'), entity('warning'), faults, []);
 
@@ -382,7 +412,7 @@ test('presents current Open-Meteo air quality for the home coordinates', () => {
 });
 
 test('localizes raw history states for operators', () => {
-  assert.equal(localizedEntityState('sensor.fault_riskytemperature', 'Set'), 'Aktywna');
+  assert.equal(localizedEntityState('sensor.fault_riskytemperature', 'FAIL'), 'Zagrożenie potwierdzone');
   assert.equal(localizedEntityState('sensor.recovery_manipulatewindowoffice', 'DO_NOT_PERFORM'), 'Brak potrzeby działania');
   assert.equal(localizedEntityState('sensor.safetysystem_state', 'no_faults'), 'Brak aktywnych usterek');
   assert.equal(localizedEntityState('sensor.safety_app_health', 'running'), 'Działa');
@@ -426,7 +456,7 @@ test('never maps a malformed system level to a safe state', () => {
 
 test('escalates an active fault when another fault state is uncertain', () => {
   const faults = getFaults({
-    'sensor.fault_notice': entity('Set', { level: 'level_4' }),
+    'sensor.fault_notice': entity('FAIL', { level: 'level_4', active: true }),
     'sensor.fault_emergency': entity('unavailable', { level: 'level_1' }),
   });
   const summary = getSafetySummary(entity('running'), entity('4'), faults, []);
@@ -438,7 +468,7 @@ test('escalates an active fault when another fault state is uncertain', () => {
 
 test('does not trust an aggregate severity when an active fault has no level attribute', () => {
   const faults = getFaults({
-    'sensor.fault_riskytemperature': entity('Set'),
+    'sensor.fault_riskytemperature': entity('FAIL', { active: true }),
   });
   const summary = getSafetySummary(entity('running'), entity('3'), faults, []);
 

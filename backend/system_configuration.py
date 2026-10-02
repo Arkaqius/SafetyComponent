@@ -144,6 +144,7 @@ class FunctionalSafetyCalibrationSource(SystemSourceModel):
     wan_qualification_seconds: int = Field(ge=1)
     wan_recovery_seconds: int = Field(ge=1)
     battery_low_percent: float = Field(gt=0, lt=100)
+    battery_fault_catalog_file: str = Field(min_length=1)
     detector_test_interval_days: int = Field(ge=1)
     detector_test_state_file: str
     resource_stale_after_seconds: int = Field(ge=1)

@@ -45,6 +45,10 @@ from components.app_config_validator.app_cfg_validator import (
     AppCfgValidationError,
     AppCfgValidator,
 )
+from components.core.battery_fault_catalog import (
+    BatteryFaultCatalog,
+    reconcile_battery_faults,
+)
 from components.core.common_entities import CommonEntities
 from components.core.event_bus import EventBus
 from components.core.detector_test_monitor import DetectorTestMonitor
@@ -265,6 +269,51 @@ class SafetyFunctions(hass.Hass):
 
         # Build fault models from the validated fault configuration.
         self.faults = cfg_pr.get_faults(self.fault_dict)
+        try:
+            cfg_pr.validate_fault_routes(self.symptoms, self.faults)
+        except ValueError as exc:
+            self.log(f"Invalid fault routing: {exc}", level="ERROR")
+            self._set_internal_entity(
+                "sensor.safety_app_health",
+                "invalid_cfg",
+                attributes={"configuration_error": str(exc)},
+            )
+            self._start_mqtt_reporting()
+            return
+
+        if self.functional_safety_monitor is not None:
+            try:
+                reconcile_battery_faults(
+                    BatteryFaultCatalog(
+                        functional_policy["battery_fault_catalog_file"]
+                    ),
+                    self.mqtt_entities,
+                    current=self.functional_safety_monitor.get_battery_fault_names(),
+                    explicitly_inactive=(
+                        self.functional_safety_monitor.get_inactive_fault_names()
+                    ),
+                    inventory_complete=(
+                        self.functional_safety_monitor.battery_inventory_complete()
+                    ),
+                )
+            except (OSError, ValueError, RuntimeError) as exc:
+                self.log(
+                    f"Unable to reconcile battery fault catalog: {exc}",
+                    level="ERROR",
+                )
+                self._set_internal_entity(
+                    "sensor.safety_app_health",
+                    "invalid_cfg",
+                    attributes={"configuration_error": f"Battery fault catalog: {exc}"},
+                )
+                self._start_mqtt_reporting()
+                return
+
+        # The former shared door fault has no owner in the per-door contract.
+        # Retire retained MQTT discovery/state without publishing a false clear.
+        self.mqtt_entities.remove_sensor(
+            "sensor.fault_SafetyDoorOpenTimeout", remove_legacy_topic=True
+        )
 
         # Create the fault aggregation and lifecycle manager.
         self.fm: FaultManager = FaultManager(
@@ -438,6 +487,8 @@ class SafetyFunctions(hass.Hass):
                         + "".join(part.capitalize() for part in str(key).split("_")),
                         "entity_id": entity_id,
                         "owner": "SafetyFunctions",
+                        "fault_owner": "component",
+                        "fault_name": "CommonInputUnavailable",
                         "purpose": f"Shared application entity: {key}",
                         "checks": checks,
                         "detection_budget_seconds": (
@@ -488,9 +539,13 @@ class SafetyFunctions(hass.Hass):
         calibrated = {
             **dependency,
             "source": "component",
-            "fault_owner": dependency.get("fault_owner", "entity_monitor"),
-            "failure_debounce_seconds": default_failure_debounce,
-            "recovery_debounce_seconds": default_recovery_debounce,
+            "fault_owner": dependency.get("fault_owner", "component"),
+            "failure_debounce_seconds": dependency.get(
+                "failure_debounce_seconds", default_failure_debounce
+            ),
+            "recovery_debounce_seconds": dependency.get(
+                "recovery_debounce_seconds", default_recovery_debounce
+            ),
         }
         override = overrides.get(str(dependency["key"]), {})
         if not isinstance(override, Mapping):
@@ -684,6 +739,7 @@ class SafetyFunctions(hass.Hass):
             attributes=attributes,
         )
 
+
     def register_entities(self) -> None:
         """
         Registers all entities required by the Safety Functions app in Home Assistant.
@@ -720,11 +776,14 @@ class SafetyFunctions(hass.Hass):
             self.mqtt_entities.register_sensor(
                 "sensor.fault_" + name,
                 fault.friendly_name,
-                state="Not_tested",
+                state=fault.evaluation.status.value,
                 attributes={
                     "attribution": "Managed by SafetyFunction",
                     "description": f"Status of the {name} fault.",
                     "level": f"level_{fault.level}",
+                    "active": fault.evaluation.active,
+                    "shadowed_by": [],
+                    "latched": fault.evaluation.latched,
                 },
                 icon="mdi:alert-outline",
                 entity_category="diagnostic",

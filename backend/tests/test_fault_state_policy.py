@@ -144,17 +144,20 @@ def test_invocation_failure_is_reported_separately_from_false(failure: str) -> N
     assert events == ["room"]
 
 
-def test_disabling_active_contributor_does_not_clear_legacy_fault() -> None:
+def test_disabling_active_contributor_publishes_unevaluable_without_clearing() -> None:
     symptom = Symptom("room", "sm", Mock(), {})
     fault = Fault("Hazard", ["sm"], 2)
     manager = FaultManager(Mock(), {}, {"room": symptom}, {"Hazard": fault}, EventBus(), Mock())
     manager.set_symptom("room")
     manager.mqtt_entities.publish_sensor_state.reset_mock()
     manager.disable_symptom("room", {})
-    assert fault.state is FaultState.SET
     assert fault.evaluation.status is Status.UNEVALUABLE
     assert fault.evaluation.active
-    assert not manager.mqtt_entities.publish_sensor_state.called
+    manager.mqtt_entities.publish_sensor_state.assert_called_with(
+        "sensor.fault_Hazard",
+        "UNEVALUABLE",
+        attributes={"active": True, "shadowed_by": [], "latched": False},
+    )
 
 
 def test_shadowing_with_two_owners_withdraws_and_restores_correct_fault() -> None:
@@ -173,18 +176,28 @@ def test_shadowing_with_two_owners_withdraws_and_restores_correct_fault() -> Non
     manager = FaultManager(Mock(), {}, symptoms, faults, bus, Mock())
     manager.set_symptom("forecast")
     manager.set_symptom("direct")
-    assert faults["Forecast"].state is FaultState.SHADOWED
+    assert faults["Forecast"].evaluation.status is Status.FAIL
     assert faults["Forecast"].evaluation.active
     assert faults["Forecast"].evaluation.shadowed_by == {"Direct"}
+    manager.mqtt_entities.publish_sensor_state.assert_any_call(
+        "sensor.fault_Forecast",
+        "FAIL",
+        attributes={"active": True, "shadowed_by": ["Direct"], "latched": False},
+    )
     shadow_event = events[-1]
     assert shadow_event["fault_name"] == "Forecast"
     assert shadow_event["symptom"] is symptoms["forecast"]
     manager.set_symptom("another")
     assert faults["Forecast"].evaluation.shadowed_by == {"Direct", "Another"}
+    manager.mqtt_entities.publish_sensor_state.assert_any_call(
+        "sensor.fault_Forecast",
+        "FAIL",
+        attributes={"active": True, "shadowed_by": ["Another", "Direct"], "latched": False},
+    )
     manager.clear_symptom("direct", {})
-    assert faults["Forecast"].state is FaultState.SHADOWED
+    assert faults["Forecast"].evaluation.shadowed_by == {"Another"}
     manager.clear_symptom("another", {})
-    assert faults["Forecast"].state is FaultState.SET
+    assert faults["Forecast"].evaluation.status is Status.FAIL
     assert faults["Forecast"].evaluation.shadowed_by == set()
     assert faults["Forecast"].evaluation.active
 

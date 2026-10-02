@@ -1,9 +1,11 @@
 from unittest.mock import ANY, Mock
 import pytest
 from components.core.event_bus import EventBus
+from components.core.fault_state_policy import FaultEvaluationStatus as Status
 from components.core.mqtt_entity_manager import MqttEntityManager
 from components.core.types_common import FaultState, SMState, Symptom, Fault
 from components.faults_manager.fault_manager import FaultManager
+from components.faults_manager.cfg_parser import validate_fault_routes
 
 @pytest.fixture
 def mocked_hass_app():
@@ -78,11 +80,69 @@ def test_fault_manager_initialization(fault_manager, fault, symptom):
     assert fault_manager.symptoms["RiskyTemperatureOffice"] == symptom
 
 
+def test_subject_bound_faults_clear_independently(fault_manager):
+    """A second subject cannot hold or clear the first subject's fault."""
+
+    mechanism = "sm_safety_door_open_timeout"
+    first = "SafetyDoorOpenTimeoutGarageGate"
+    second = "SafetyDoorOpenTimeoutFrontDoor"
+    fault_manager.symptoms = {
+        name: Symptom(name=name, sm_name=mechanism, module=Mock(), parameters={})
+        for name in (first, second)
+    }
+    fault_manager.faults = {
+        name: Fault(name, [mechanism], 2, related_symptom_ids=[name])
+        for name in (first, second)
+    }
+
+    fault_manager.set_symptom(first, {})
+    fault_manager.set_symptom(second, {})
+    fault_manager.clear_symptom(first, {})
+
+    assert fault_manager.faults[first].evaluation.status is Status.PASS
+    assert fault_manager.faults[second].evaluation.status is Status.FAIL
+    assert fault_manager.found_mapped_fault(first, mechanism) is fault_manager.faults[first]
+    assert fault_manager.found_mapped_fault(second, mechanism) is fault_manager.faults[second]
+
+
+def test_fault_route_validation_rejects_missing_ambiguous_and_shadow_cycles(
+    fault_manager,
+):
+    symptom = fault_manager.symptoms
+    first = Fault("First", ["sm_tc_1"], 2)
+    second = Fault("Second", ["sm_tc_1"], 3)
+
+    with pytest.raises(ValueError, match="Expected one fault owner"):
+        validate_fault_routes(symptom, {})
+    with pytest.raises(ValueError, match="Expected one fault owner"):
+        validate_fault_routes(symptom, {"First": first, "Second": second})
+
+    second.related_symptom_ids = ("unknown",)
+    with pytest.raises(ValueError, match="Invalid contributor binding"):
+        validate_fault_routes(symptom, {"First": first, "Second": second})
+
+    first.shadows = ["Second"]
+    second.related_symptom_ids = ()
+    second.related_symptoms = ["sm_tc_2"]
+    second.shadows = ["First"]
+    with pytest.raises(ValueError, match="Shadow cycle"):
+        validate_fault_routes(symptom, {"First": first, "Second": second})
+
+
+def test_fault_route_validation_distinguishes_uninstalled_from_unknown_sm():
+    known_optional = Fault("External", ["sm_ext_weather_exposure"], 2)
+    validate_fault_routes({}, {"External": known_optional})
+
+    typo = Fault("Typo", ["sm_ext_weathr_exposure"], 2)
+    with pytest.raises(ValueError, match="Unknown SM IDs"):
+        validate_fault_routes({}, {"Typo": typo})
+
+
 def test_system_state_uses_readable_code_for_most_severe_fault(fault_manager):
     emergency = Fault("Emergency", ["sm_tc_1"], level=1)
     warning = Fault("Warning", ["sm_tc_1"], level=3)
-    emergency.state = FaultState.SET
-    warning.state = FaultState.SET
+    emergency.evaluation.observe("emergency", True)
+    warning.evaluation.observe("warning", True)
     fault_manager.faults = {"Emergency": emergency, "Warning": warning}
 
     fault_manager.update_system_state_entity()
@@ -153,13 +213,16 @@ def test_set_fault(fault_manager, mocked_hass_app, fault):
     
     fault_manager._set_fault("RiskyTemperatureOffice", additional_info)
 
-    assert fault.state == FaultState.SET
+    assert fault.evaluation.status is Status.FAIL
     fault_manager.mqtt_entities.publish_sensor_state.assert_any_call(
         "sensor.fault_RiskyTemperature",
-        "Set",
+        "FAIL",
         attributes={
             "Location": "Kitchen, Office",
             "notification_tag": "mocked_fault_tag",
+            "active": True,
+            "shadowed_by": [],
+            "latched": False,
         },
     )
     fault_manager.notify_spy.assert_any_call(
@@ -189,11 +252,11 @@ def test_clear_fault(fault_manager, mocked_hass_app, fault):
     # Now clear the fault
     fault_manager._clear_fault("RiskyTemperatureOffice", additional_info)
 
-    assert fault.state == FaultState.CLEARED
+    assert fault.evaluation.status is Status.PASS
     fault_manager.mqtt_entities.publish_sensor_state.assert_any_call(
         "sensor.fault_RiskyTemperature",
-        "Cleared",
-        attributes={"Location": ""}
+        "PASS",
+        attributes={"Location": "", "active": False, "shadowed_by": [], "latched": False}
     )
     fault_manager.notify_spy.assert_any_call(
         "RiskyTemperature",
@@ -215,7 +278,7 @@ def test_check_fault(fault_manager):
     """
     Test if check_fault returns the correct fault state.
     """
-    assert fault_manager.check_fault("RiskyTemperature") == FaultState.NOT_TESTED
+    assert fault_manager.check_fault("RiskyTemperature") is Status.NOT_EVALUATED
 
 def test_check_symptom(fault_manager):
     """
@@ -265,13 +328,16 @@ def test_fault_manager_multiple_symptoms(fault_manager, mocked_hass_app, fault):
     fault_manager.set_symptom("RiskyTemperatureOffice", additional_info_office)
 
     # Verify the fault state is set and includes both locations (Living Room, Office)
-    assert fault.state == FaultState.SET
+    assert fault.evaluation.status is Status.FAIL
     fault_manager.mqtt_entities.publish_sensor_state.assert_any_call(
         "sensor.fault_RiskyTemperature",
-        "Set",
+        "FAIL",
         attributes={
             "Location": "Living Room, Office",
             "notification_tag": "mocked_fault_tag",
+            "active": True,
+            "shadowed_by": [],
+            "latched": False,
         },
     )
     fault_manager.notify_spy.assert_any_call(
@@ -290,13 +356,16 @@ def test_fault_manager_multiple_symptoms(fault_manager, mocked_hass_app, fault):
     fault_manager.set_symptom("RiskyTemperatureKitchen", additional_info_kitchen)
     
     # Verify the fault state is set and includes both locations (Living Room, Office)
-    assert fault.state == FaultState.SET
+    assert fault.evaluation.status is Status.FAIL
     fault_manager.mqtt_entities.publish_sensor_state.assert_any_call(
         "sensor.fault_RiskyTemperature",
-        "Set",
+        "FAIL",
         attributes={
             "Location": "Living Room, Kitchen",
             "notification_tag": "mocked_fault_tag",
+            "active": True,
+            "shadowed_by": [],
+            "latched": False,
         },  # In normal system shall be also included Office but we dont have HA during tests
     )
     fault_manager.notify_spy.assert_any_call(
@@ -314,17 +383,17 @@ def test_fault_manager_multiple_symptoms(fault_manager, mocked_hass_app, fault):
     fault_manager.clear_symptom("RiskyTemperatureOffice", additional_info_office)
 
     # Verify that fault remains set because the kitchen symptom is not cleared
-    assert fault.state == FaultState.SET
+    assert fault.evaluation.status is Status.FAIL
 
     # Clear the second symptom (Kitchen)
     fault_manager.clear_symptom("RiskyTemperatureKitchen", additional_info_kitchen)
 
     # Verify the fault is now cleared as all related symptoms are cleared
-    assert fault.state == FaultState.CLEARED
+    assert fault.evaluation.status is Status.PASS
     fault_manager.mqtt_entities.publish_sensor_state.assert_any_call(
         "sensor.fault_RiskyTemperature",
-        "Cleared",
-        attributes={"Location": ""},
+        "PASS",
+        attributes={"Location": "", "active": False, "shadowed_by": [], "latched": False},
     )
     fault_manager.notify_spy.assert_any_call(
         "RiskyTemperature",
@@ -375,11 +444,11 @@ def test_fault_manager_multiple_sm_names_single_fault(
     fault_manager.set_symptom(symptom_high.name, {"Location": "Office"})
     fault_manager.clear_symptom(symptom_low.name, {"Location": "Office"})
 
-    assert fault_manager.faults["RiskyTemperature"].state == FaultState.SET
+    assert fault_manager.faults["RiskyTemperature"].evaluation.status is Status.FAIL
 
     fault_manager.clear_symptom(symptom_high.name, {"Location": "Office"})
 
-    assert fault_manager.faults["RiskyTemperature"].state == FaultState.CLEARED
+    assert fault_manager.faults["RiskyTemperature"].evaluation.status is Status.PASS
 
 
 def test_fault_manager_state_transitions(fault_manager, mocked_hass_app, fault):
@@ -425,7 +494,7 @@ def test_fault_manager_state_transitions(fault_manager, mocked_hass_app, fault):
     fault_manager.set_symptom("RiskyTemperatureOffice", additional_info1)
 
     # Verify fault1 is set
-    assert fault1.state == FaultState.SET
+    assert fault1.evaluation.status is Status.FAIL
     fault_manager.notify_spy.assert_any_call(
         "RiskyTemperature",
         fault1.level,
@@ -439,7 +508,7 @@ def test_fault_manager_state_transitions(fault_manager, mocked_hass_app, fault):
     fault_manager.set_symptom("OverheatingKitchen", additional_info2)
 
     # Verify fault2 is set
-    assert fault2.state == FaultState.SET
+    assert fault2.evaluation.status is Status.FAIL
     fault_manager.notify_spy.assert_any_call(
         "OverheatingFault",
         fault2.level,
@@ -452,7 +521,7 @@ def test_fault_manager_state_transitions(fault_manager, mocked_hass_app, fault):
     fault_manager.clear_symptom("RiskyTemperatureOffice", additional_info1)
 
     # Verify fault1 is cleared
-    assert fault1.state == FaultState.CLEARED
+    assert fault1.evaluation.status is Status.PASS
     fault_manager.notify_spy.assert_any_call(
         "RiskyTemperature",
         fault1.level,
@@ -462,13 +531,13 @@ def test_fault_manager_state_transitions(fault_manager, mocked_hass_app, fault):
     )
 
     # Verify fault2 remains set
-    assert fault2.state == FaultState.SET
+    assert fault2.evaluation.status is Status.FAIL
 
     # Clear symptom2 (OverheatingKitchen)
     fault_manager.clear_symptom("OverheatingKitchen", additional_info2)
 
     # Verify fault2 is cleared
-    assert fault2.state == FaultState.CLEARED
+    assert fault2.evaluation.status is Status.PASS
     fault_manager.notify_spy.assert_any_call(
         "OverheatingFault",
         fault2.level,
@@ -518,11 +587,12 @@ def test_fault_shadowing_clears_notification(fault_manager, mocked_hass_app):
 
     additional_info = {"Location": "Office"}
     fault_manager.set_symptom(symptom_forecast.name, additional_info)
-    assert fault_forecast.state == FaultState.SET
+    assert fault_forecast.evaluation.status is Status.FAIL
 
     fault_manager.set_symptom(symptom_actual.name, additional_info)
-    assert fault_actual.state == FaultState.SET
-    assert fault_forecast.state == FaultState.SHADOWED
+    assert fault_actual.evaluation.status is Status.FAIL
+    assert fault_forecast.evaluation.status is Status.FAIL
+    assert fault_forecast.evaluation.shadowed_by == {"RiskyTemperature"}
 
     fault_manager.notify_spy.assert_any_call(
         "RiskyTemperatureForecast",

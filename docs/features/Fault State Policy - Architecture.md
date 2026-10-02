@@ -13,14 +13,14 @@ An SM answers one Boolean question: `true` means the named violation is present
 for eligible inputs; `false` means it is absent. The fault owns input bindings,
 qualification, aggregation, priority, category and response policy. A missing or
 invalid input, failed invocation or disabled check is not `false`. It is reported
-to fault handling as unavailable evidence. The existing `Symptom` IDs remain
-stable contributor identities during migration; they do not define a separate
-target lifecycle or priority.
+to fault handling as unavailable evidence. `Symptom` IDs identify contributors;
+they do not define a separate fault lifecycle or priority.
 
 Each fault has category `H` (hazard/equipment condition) or `D` (diagnostic
 capability failure), and exactly one priority `level` from 1 through 4. Category
-does not imply urgency. Fault IDs, `related_sms`, MQTT entity IDs and raw state
-codes are stable contracts.
+does not imply urgency. Fault IDs, `related_sms` and MQTT entity IDs are
+technical contracts, except for the explicit per-door fault identity change in
+[Fault Routing and Aggregation](Fault%20Routing%20and%20Aggregation%20-%20Architecture.md).
 
 ## Evaluation and activation
 
@@ -50,8 +50,9 @@ episode. Qualification configuration remains fault-specific.
 Explicit shadow relations suppress redundant notification and withdraw the
 shadowed fault's recovery proposal. They do not erase its activation, evidence,
 severity or technical restrictions. The fault may have several shadow owners;
-it is re-presented only after the final owner clears. A SHADOWED event must refer
-to the shadowed fault's contributor, not the shadowing fault's contributor.
+it is re-presented only after the final owner clears. A SHADOWED response event
+must refer to the shadowed fault's contributor, not the shadowing fault's
+contributor.
 
 ## Priority and responses
 
@@ -72,19 +73,13 @@ configuration owns recovery prerequisites, degradation targets, shadowing and
 any permitted operator controls. Failure of notification or persistence never
 blocks detection or technical restrictions.
 
-## Compatibility during migration
+## Published contract
 
-The legacy `FaultState` and MQTT values (`Set`, `Shadowed`, `Cleared`,
-`Not_tested`) remain unchanged. Notification history continues to use `SET`,
-`CLEARED`, `SHADOWED` and `TEST`. The richer evaluation model is additive; no
-existing Home Assistant automation or frontend reader must reinterpret its
-raw state. A still-active shadowed fault continues to count toward system
-severity. Changes to the raw contract require a separate versioned migration
-and consumer audit.
-
-The legacy adapter currently receives only qualified symptom transitions, not
-all negative predicate results. It binds contributors when an event or explicit
-unavailability arrives. Accordingly the fault-owned evaluation model can
-protect known unavailable inputs, but complete required-binding recovery
-evidence is a migration gate before retiring legacy qualification. This gap is
-tracked in the fault-handling plan, not encoded as a weaker safety requirement.
+Each fault MQTT state is exactly one of the eight evaluation status codes above.
+The attributes `active` (Boolean), `shadowed_by` (list of fault IDs), and
+`latched` (Boolean) expose independent axes. `FAIL` and `active` can coexist
+with nonempty `shadowed_by`; `UNEVALUABLE` can coexist with `active: true`.
+System severity counts active faults even when shadowed. Notification history
+uses transition/response event codes `SET`, `CLEARED`, `SHADOWED` and `TEST`;
+these are not fault MQTT states. Consumers must not infer activation or
+shadowing from the evaluation status alone.

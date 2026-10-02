@@ -40,8 +40,10 @@ class EntityDependency:
     entity_id: str
     sources: frozenset[EntitySource]
     owners: tuple[str, ...]
+    consumer_keys: tuple[str, ...]
     purposes: tuple[str, ...]
     fault_owner: FaultOwner
+    fault_name: str | None
     checks: dict[str, dict[str, Any]]
     failure_debounce_seconds: int
     recovery_debounce_seconds: int

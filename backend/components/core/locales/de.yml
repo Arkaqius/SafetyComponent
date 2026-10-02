@@ -31,10 +31,14 @@ state.system.hazard: Gefahr
 state.system.warning: Warnung
 state.system.information: Information
 state.system.stopped: Angehalten
-state.fault.set: Aktiv
-state.fault.shadowed: Überlagert
-state.fault.cleared: Behoben
-state.fault.not_tested: Nicht getestet
+state.fault.not_evaluated: Nicht bewertet
+state.fault.pass: Bedingung behoben
+state.fault.pending_failure: Fehler wird geprüft
+state.fault.fail: Fehler bestätigt
+state.fault.pending_recovery: Erholung wird geprüft
+state.fault.unevaluable: Nicht bewertbar
+state.fault.inhibited: Vorübergehend unterdrückt
+state.fault.disabled: Deaktiviert
 state.recovery.to_perform: Maßnahme erforderlich
 state.recovery.awaiting_confirmation: Bestätigung erforderlich
 state.recovery.executing: In Ausführung
@@ -58,6 +62,13 @@ state.detector_tests.attention: Tests erfordern Prüfung
 state.detector_tests.unknown: Testverlauf nicht verfügbar
 state.detector_tests.not_configured: Keine Melder konfiguriert
 fault.entity_health: 'Entitätsproblem: {entity}'
+fault.safety_door_timeout: 'Tür oder Tor zu lange geöffnet: {door}'
+fault.temperature_monitoring_unavailable: Temperaturüberwachung nicht verfügbar
+fault.temperature_recovery_unavailable: Temperatur-Wiederherstellung nicht verfügbar
+fault.safety_door_monitoring_unavailable: Türüberwachung nicht verfügbar
+fault.external_opening_monitoring_unavailable: Überwachung der Öffnung nicht verfügbar
+fault.external_recovery_unavailable: Schließen der Öffnung nicht verfügbar
+fault.common_input_unavailable: Gemeinsamer Sicherheitseingang nicht verfügbar
 fault.host_memory_pressure: Speicherdruck des Hosts
 fault.host_cpu_pressure: Anhaltend hohe CPU-Auslastung des Hosts
 fault.wan_unavailable: WAN nicht verfügbar

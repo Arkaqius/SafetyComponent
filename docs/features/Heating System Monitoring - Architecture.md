@@ -393,10 +393,12 @@ enter notification payloads or durable notification state.
 
 SET shall explain what was observed and its consequence. HEAL shall include the
 original incident identity, duration and the measured reason it is now clear.
-The existing raw fault lifecycle shall remain `Set`, `Shadowed`, `Cleared`,
-`Not_tested`; notification journal states shall remain `SET`, `SHADOWED`,
-`CLEARED`. HEAL is presentation/domain terminology for a positively cleared
-incident, not a new raw state. Shadowing and acknowledgement shall not heal.
+Fault MQTT state shall use the eight evaluation codes in
+[Fault State Policy](Fault%20State%20Policy%20-%20Architecture.md), with activation
+and shadowing carried separately. Notification journal transition codes remain
+`SET`, `SHADOWED`, `CLEARED`. HEAL is presentation/domain terminology for a
+positively cleared incident, not a new evaluation status. Shadowing and
+acknowledgement shall not heal.
 
 NotificationManager shall retain explicit configured targets, per-target
 attempt/result, bounded retries and quiet same-fault updates. Its latest-100

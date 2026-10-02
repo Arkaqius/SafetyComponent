@@ -201,9 +201,10 @@ function historyCategoryLabel(category: HistoryEntity['category']): string {
 function statePresentation(item: HistoryEntity): { label: string; tone: StatusTone } {
   if (item.category === 'fault') {
     const state = getFaultStatus(item.entity.state);
-    if (state === 'set') return { label: 'Aktywna', tone: 'danger' };
-    if (state === 'shadowed') return { label: 'Przesłonięta', tone: 'warning' };
-    if (state === 'cleared') return { label: 'Usunięta', tone: 'safe' };
+    if (item.entity.attributes.active === true) return { label: 'Aktywna', tone: 'danger' };
+    if (state === 'fail' || state === 'unevaluable')
+      return { label: localizedEntityState(item.entityId, item.entity.state), tone: 'warning' };
+    if (state === 'pass') return { label: 'Warunek ustąpił', tone: 'safe' };
     return { label: localizedEntityState(item.entityId, item.entity.state), tone: 'muted' };
   }
 

@@ -77,6 +77,18 @@ class FunctionalSafetyMonitor:
                 self.bindings.get("remote_batteries", {}), self._battery_discovery,
                 battery_config.get("excluded_devices", []),
             )
+        self._explicitly_inactive_battery_faults = {
+            f"RemoteBatteryLowBattery{device_id}"
+            for device_id in battery_config.get("excluded_devices", [])
+        }
+        self._explicitly_inactive_battery_faults.update(
+            f"RemoteBatteryLow{key}"
+            for key, binding in self.bindings.get("remote_batteries", {}).items()
+            if not binding.get("enabled", True)
+        )
+        self._explicitly_inactive_battery_faults.difference_update(
+            self.get_battery_fault_names()
+        )
         self.safety_mechanisms: dict[str, None] = {}
         self.symptom_states: dict[str, FaultState] = {}
         self._enabled: set[str] = set()
@@ -165,9 +177,23 @@ class FunctionalSafetyMonitor:
         return dict(self._fault_definitions)
 
     def get_inactive_fault_names(self) -> set[str]:
-        """Keep every configured policy fault active in the catalog."""
+        """Return explicitly retired battery fault identities."""
 
-        return set()
+        return set(self._explicitly_inactive_battery_faults)
+
+    def get_battery_fault_names(self) -> set[str]:
+        """Return battery fault identities owned by this evaluation."""
+
+        return {
+            f"RemoteBatteryLow{key}"
+            for key, binding in self.bindings.get("remote_batteries", {}).items()
+            if binding.get("enabled", True)
+        }
+
+    def battery_inventory_complete(self) -> bool:
+        """Distinguish a true removal from a transient discovery failure."""
+
+        return self._battery_discovery["status"] in {"ready", "disabled"}
 
     def init_safety_mechanism(self, sm_name: str, name: str, parameters: dict[str, Any]) -> bool:
         """Register a policy symptom and start one sampling timer."""
