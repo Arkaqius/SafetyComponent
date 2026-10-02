@@ -331,6 +331,10 @@ Rate-of-change evaluation may reuse numeric sampling utilities from
 fault semantics. The rate is `(newest_value - oldest_value) / elapsed_time`
 expressed per minute. Non-numeric, non-finite, stale, or unavailable input is
 unevaluable and cannot pass a numeric check.
+An internally generated temperature `_rate` has no numeric value until its
+second sample. Its dependency detection budget shall exceed the configured
+derivative sampling interval and include scheduler margin; the initial unknown
+value is not evidence of a safe forecast.
 
 ### 8.3 Debounce policy
 

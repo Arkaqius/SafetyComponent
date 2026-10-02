@@ -45,6 +45,10 @@ from components.app_config_validator.app_cfg_validator import (
     AppCfgValidationError,
     AppCfgValidator,
 )
+from components.core.battery_fault_catalog import (
+    BatteryFaultCatalog,
+    reconcile_battery_faults,
+)
 from components.core.common_entities import CommonEntities
 from components.core.event_bus import EventBus
 from components.core.detector_test_monitor import DetectorTestMonitor
@@ -276,6 +280,34 @@ class SafetyFunctions(hass.Hass):
             )
             self._start_mqtt_reporting()
             return
+
+        if self.functional_safety_monitor is not None:
+            try:
+                reconcile_battery_faults(
+                    BatteryFaultCatalog(
+                        functional_policy["battery_fault_catalog_file"]
+                    ),
+                    self.mqtt_entities,
+                    current=self.functional_safety_monitor.get_battery_fault_names(),
+                    explicitly_inactive=(
+                        self.functional_safety_monitor.get_inactive_fault_names()
+                    ),
+                    inventory_complete=(
+                        self.functional_safety_monitor.battery_inventory_complete()
+                    ),
+                )
+            except (OSError, ValueError, RuntimeError) as exc:
+                self.log(
+                    f"Unable to reconcile battery fault catalog: {exc}",
+                    level="ERROR",
+                )
+                self._set_internal_entity(
+                    "sensor.safety_app_health",
+                    "invalid_cfg",
+                    attributes={"configuration_error": f"Battery fault catalog: {exc}"},
+                )
+                self._start_mqtt_reporting()
+                return
 
         # The former shared door fault has no owner in the per-door contract.
         # Retire retained MQTT discovery/state without publishing a false clear.

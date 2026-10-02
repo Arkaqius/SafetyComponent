@@ -164,6 +164,7 @@ capacity and workload before an installation relies on L2 memory detection.
 | `backup_stale_after_seconds` | 86400 s | Maximum observation age for an optional backup-failure source; not a substitute for backup-success age. |
 | `wan_qualification_seconds` / `wan_recovery_seconds` | 60 / 60 s | Sustained L3 WAN fault and recovery. |
 | `battery_low_percent` | 15% | L4 maintenance threshold per configured remote device. |
+| `battery_fault_catalog_file` | `/config/appdaemon/battery_fault_catalog.json` | Durable active/retired battery-fault identities for MQTT discovery cleanup after exclusions or removal; system-owned. |
 | `detector_test_interval_days` | 180 days | L4 due/failed maintenance condition per configured detector. |
 | `notification_test_interval_days` | 30 days | Due date after an operator-attested notification-receipt pass. |
 | `backup_restore_test_interval_days` | 180 days | Due date after an operator-attested restore pass on a separate installation, when enabled. |

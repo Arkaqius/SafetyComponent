@@ -99,7 +99,9 @@ class TemperatureComponent(SafetyComponent):
                         "fault_name": "TemperatureMonitoringUnavailable",
                         "purpose": f"Forecast rate input for {location}",
                         "checks": {"finite_number": {"target": "state"}},
-                        "detection_budget_seconds": 30,
+                        "detection_budget_seconds": (
+                            int(data["SM_TC_2_DERIVATIVE_SAMPLE_MINUTES"]) * 60 + 60
+                        ),
                         "area_id": data.get("area_id"),
                         "area_name": data.get("area_name"),
                     }

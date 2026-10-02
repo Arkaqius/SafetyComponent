@@ -106,3 +106,41 @@ def test_exclusion_disabled_and_failed_discovery_do_not_create_faults(options, s
     assert not bus.events
     assert not any(fault.startswith("RemoteBatteryLow") for fault in monitor.get_fault_definitions())
     assert mqtt.states[-1][2]["battery_discovery"]["status"] == status
+
+
+def test_excluded_device_is_marked_for_retirement() -> None:
+    monitor, _, _, _ = make_discovered_monitor(excluded=True)
+    assert monitor.get_inactive_fault_names() == {
+        f"RemoteBatteryLowBattery{DEVICE}"
+    }
+    assert monitor.get_battery_fault_names() == set()
+    assert monitor.battery_inventory_complete()
+
+
+def test_failed_discovery_cannot_prove_device_was_removed() -> None:
+    monitor, _, _, _ = make_discovered_monitor(failed=True)
+    assert not monitor.battery_inventory_complete()
+
+
+def test_discovery_disable_keeps_manual_binding() -> None:
+    monitor = FunctionalSafetyMonitor(
+        FakeHass({}), FakeBus(), FakeEntities(),
+        {"battery_monitoring": {"enabled": False},
+         "remote_batteries": {"Phone": {"friendly_name": "Phone"}}},
+        POLICY, wan_entity=None,
+    )
+    monitor.get_symptoms_data({monitor.component_name: monitor}, {})
+    assert monitor.get_battery_fault_names() == {"RemoteBatteryLowPhone"}
+    assert monitor.battery_inventory_complete()
+
+
+def test_discovery_disable_does_not_retire_active_manual_identity() -> None:
+    key = f"Battery{DEVICE}"
+    monitor = FunctionalSafetyMonitor(
+        FakeHass({}), FakeBus(), FakeEntities(),
+        {"battery_monitoring": {"enabled": False, "excluded_devices": [DEVICE]},
+         "remote_batteries": {key: {"friendly_name": "Manual device"}}},
+        POLICY, wan_entity=None,
+    )
+    assert monitor.get_battery_fault_names() == {f"RemoteBatteryLow{key}"}
+    assert monitor.get_inactive_fault_names() == set()

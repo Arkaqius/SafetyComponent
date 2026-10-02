@@ -247,6 +247,10 @@ manual `remote_batteries` registry. `battery_monitoring.enabled` defaults to
 registry IDs and defaults to an empty list. Discovered runtime keys use
 `Battery<hex>` derived from device identity; renaming a device or entity does not
 change its exclusion or create a new maintenance identity.
+Battery-fault MQTT identities are tracked in system-owned persistent storage.
+Excluding or removing a device retires its retained fault discovery/state on
+restart without manufacturing a HEAL transition; a failed inventory read
+preserves prior identities until discovery can establish actual removal.
 The existing `notification.wan_entity` is shared with the notification route.
 The packaged `calibration.functional_safety` supplies numeric defaults and owns
 technical scheduling, persistence and severity. Overrides live under
