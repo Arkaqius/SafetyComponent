@@ -57,10 +57,10 @@ function createMockTimeline(entityId: string, currentState: string, hoursToShow:
   }
 
   if (entityId === 'sensor.fault_riskytemperature') {
-    return [point('Cleared', 0.9), point('Set', 0.16)];
+    return [point('PASS', 0.9), point('FAIL', 0.16)];
   }
   if (entityId === 'sensor.fault_riskytemperatureforecast') {
-    return [point('Cleared', 0.8), point('Set', 0.3), point('Shadowed', 0.22)];
+    return [point('PASS', 0.8), point('FAIL', 0.3)];
   }
   if (entityId === 'sensor.recovery_manipulatewindowoffice') {
     return [point('DO_NOT_PERFORM', 0.8), point('TO_PERFORM', 0.18)];

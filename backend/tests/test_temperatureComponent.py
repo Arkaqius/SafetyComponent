@@ -3,6 +3,7 @@
 
 from typing import Iterator, List
 import pytest
+from components.core.fault_state_policy import FaultEvaluationStatus
 from components.core.types_common import FaultState, SMState
 from .fixtures.hass_fixture import (
     mock_get_state,
@@ -20,12 +21,12 @@ DEBOUNCE_LIMIT = 1
         (
             ["35", "36", "37", "8", "9"],
             FaultState.CLEARED,
-            FaultState.CLEARED,
+            FaultEvaluationStatus.PASS,
         ),
         (
             ["5", "6", "7", "8", "9"],
             FaultState.SET,
-            FaultState.SET,
+            FaultEvaluationStatus.FAIL,
         ),
     ],
 )
@@ -78,12 +79,12 @@ def test_temp_comp_smtc1(
         (
             ["20", "21", "22", "23", "24"],
             FaultState.CLEARED,
-            FaultState.CLEARED,
+            FaultEvaluationStatus.PASS,
         ),
         (
             ["30", "31", "32", "33", "34"],
             FaultState.SET,
-            FaultState.SET,
+            FaultEvaluationStatus.FAIL,
         ),
     ],
 )
@@ -165,7 +166,7 @@ def test_temp_comp_overtemp_and_undertemp_multi_room_fault_clear(
             ]
         )
 
-    assert app_instance.fm.check_fault("RiskyTemperature") == FaultState.SET
+    assert app_instance.fm.check_fault("RiskyTemperature") is FaultEvaluationStatus.FAIL
 
     # Clear Office overtemperature, Kitchen still low
     test_mock_behaviours = [
@@ -186,7 +187,7 @@ def test_temp_comp_overtemp_and_undertemp_multi_room_fault_clear(
         app_instance.fm.check_symptom("RiskyTemperatureHighOffice")
         == FaultState.CLEARED
     )
-    assert app_instance.fm.check_fault("RiskyTemperature") == FaultState.SET
+    assert app_instance.fm.check_fault("RiskyTemperature") is FaultEvaluationStatus.FAIL
 
     # Clear Kitchen undertemperature
     test_mock_behaviours = [
@@ -203,7 +204,7 @@ def test_temp_comp_overtemp_and_undertemp_multi_room_fault_clear(
             ]
         )
 
-    assert app_instance.fm.check_fault("RiskyTemperature") == FaultState.CLEARED
+    assert app_instance.fm.check_fault("RiskyTemperature") is FaultEvaluationStatus.PASS
 
 
 def test_symptom_set_when_temp_NOT_below_threshold(mocked_hass_app_with_temp_component):
@@ -414,6 +415,51 @@ def test_implausible_measurement_cannot_set_or_clear_temperature_fault(
     for _ in range(DEBOUNCE_LIMIT + 2):
         component.sm_tc_3(mechanism)
     assert app_instance.fm.check_symptom("RiskyTemperatureHighOffice") is FaultState.SET
+    assert (
+        app_instance.fm.get_fault_evaluation("RiskyTemperature").status
+        is FaultEvaluationStatus.UNEVALUABLE
+    )
+
+
+def test_invalid_forecast_cannot_clear_active_temperature_fault(
+    mocked_hass_app_with_temp_component,
+):
+    app_instance, *_ = mocked_hass_app_with_temp_component
+    app_instance.initialize()
+    component = app_instance.sm_modules["TemperatureComponent"]
+    mechanism = component.safety_mechanisms["RiskyTemperatureHighOfficeForeCast"]
+    app_instance.get_state.side_effect = lambda entity_id, **kwargs: mock_get_state(
+        entity_id,
+        [
+            MockBehavior("sensor.office_temperature", iter(["27"] * 10)),
+            MockBehavior("sensor.office_temperature_rate", iter(["0.02"] * 10)),
+        ],
+    )
+    for _ in range(DEBOUNCE_LIMIT + 2):
+        component.sm_tc_4(mechanism)
+    assert (
+        app_instance.fm.check_symptom("RiskyTemperatureHighOfficeForeCast")
+        is FaultState.SET
+    )
+
+    app_instance.get_state.side_effect = lambda entity_id, **kwargs: mock_get_state(
+        entity_id,
+        [
+            MockBehavior("sensor.office_temperature", iter(["27"] * 10)),
+            MockBehavior("sensor.office_temperature_rate", iter(["unavailable"] * 10)),
+        ],
+    )
+    for _ in range(DEBOUNCE_LIMIT + 2):
+        component.sm_tc_4(mechanism)
+    assert (
+        app_instance.fm.check_symptom("RiskyTemperatureHighOfficeForeCast")
+        is FaultState.SET
+    )
+
+    assert (
+        app_instance.fm.get_fault_evaluation("RiskyTemperatureForecast").status
+        is FaultEvaluationStatus.UNEVALUABLE
+    )
 
 
 def test_forecasted_overtemp_symptom_set_when_temp_rate_indicates_rise(
@@ -501,7 +547,7 @@ def test_forecasted_overtemp_multi_room_fault_clear(
             ]
         )
 
-    assert app_instance.fm.check_fault("RiskyTemperatureForecast") == FaultState.SET
+    assert app_instance.fm.check_fault("RiskyTemperatureForecast") is FaultEvaluationStatus.FAIL
 
     test_mock_behaviours = [
         MockBehavior("sensor.office_temperature", iter(["25"])),
@@ -523,7 +569,7 @@ def test_forecasted_overtemp_multi_room_fault_clear(
         == FaultState.CLEARED
     )
     assert (
-        app_instance.fm.check_fault("RiskyTemperatureForecast") == FaultState.SET
+        app_instance.fm.check_fault("RiskyTemperatureForecast") is FaultEvaluationStatus.FAIL
     )
 
     test_mock_behaviours = [
@@ -543,7 +589,7 @@ def test_forecasted_overtemp_multi_room_fault_clear(
 
     assert (
         app_instance.fm.check_fault("RiskyTemperatureForecast")
-        == FaultState.CLEARED
+        is FaultEvaluationStatus.PASS
     )
 
 
@@ -573,7 +619,7 @@ def test_forecasted_symptom_cleared_when_temp_rate_indicates_stability(
         mocked_hass_app_with_temp_component
     )
     temperature_sequence = ["20.0"]
-    rate_of_change = "0.5"  # degrees per minute
+    rate_of_change = "0.0"  # stable and within forecast plausibility limits
 
     app_instance.get_state.side_effect = lambda entity_id, **kwargs: mock_get_state(
         entity_id,

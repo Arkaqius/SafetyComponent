@@ -83,6 +83,7 @@ class EntityMonitorComponent(SafetyComponent):
         """Build one symptom per enabled check and one fault per owned entity."""
 
         self._policy = dict(component_cfg)
+        self._fault_definitions = {}
         self._startup_at = self._now()
         dependencies = self._merge_dependencies(
             [
@@ -154,20 +155,32 @@ class EntityMonitorComponent(SafetyComponent):
                     sm_name=mechanism_name,
                 )
 
-            if dependency.fault_owner == FaultOwner.ENTITY_MONITOR:
-                fault_name = self._fault_name(dependency.key)
+            if dependency.fault_owner != FaultOwner.NONE:
+                fault_name = dependency.fault_name
+                if fault_name is None:
+                    raise ValueError(f"Missing fault binding for {dependency.key}")
                 entity_name = self._friendly_name(runtime.snapshot, dependency)
                 localizer = getattr(self.hass_app, "localizer", None)
-                self._fault_definitions[fault_name] = {
-                    "name": (
-                        localizer.text("fault.entity_health", entity=entity_name)
-                        if localizer is not None
-                        else f"Entity problem: {entity_name}"
-                    ),
-                    "level": 3,
-                    "related_sms": [mechanism_name],
-                    "shadows": [],
-                }
+                if fault_name not in self._fault_definitions:
+                    label_key = (
+                        "fault.entity_health"
+                        if dependency.fault_owner == FaultOwner.ENTITY_MONITOR
+                        else f"fault.{self._slug(fault_name)}"
+                    )
+                    self._fault_definitions[fault_name] = {
+                        "name": (
+                            localizer.text(label_key, entity=entity_name)
+                            if localizer is not None
+                            else fault_name
+                        ),
+                        "level": 3,
+                        "category": "D",
+                        "related_sms": [],
+                        "shadows": [],
+                    }
+                self._fault_definitions[fault_name]["related_sms"].append(
+                    mechanism_name
+                )
 
         self._publish_summary()
         return symptoms, {}
@@ -586,9 +599,10 @@ class EntityMonitorComponent(SafetyComponent):
             "friendly_name": self._friendly_name(snapshot, dependency),
             "source_groups": [source.value for source in sorted(dependency.sources, key=lambda item: item.value)],
             "owners": list(dependency.owners),
+            "consumer_keys": list(dependency.consumer_keys),
             "purposes": list(dependency.purposes),
             "fault_owner": dependency.fault_owner.value,
-            "fault_name": self._fault_name(dependency.key) if dependency.fault_owner == FaultOwner.ENTITY_MONITOR else None,
+            "fault_name": dependency.fault_name,
             "area_id": dependency.area_id,
             "area_name": dependency.area_name,
             "device_id": (snapshot.get("attributes") or {}).get("device_id"),
@@ -685,6 +699,7 @@ class EntityMonitorComponent(SafetyComponent):
         context = {
             "entity_id": runtime.dependency.entity_id,
             "entity_key": runtime.dependency.key,
+            "consumer_keys": ", ".join(runtime.dependency.consumer_keys),
             "friendly_name": self._friendly_name(runtime.snapshot, runtime.dependency),
             "area_name": runtime.dependency.area_name or "",
             "failed_check": check_name,
@@ -731,6 +746,13 @@ class EntityMonitorComponent(SafetyComponent):
             grouped.setdefault(entity_id, []).append(item)
         merged: list[EntityDependency] = []
         for entity_id, items in grouped.items():
+            if any(
+                item.get("source") == "component"
+                and item.get("fault_owner", "component") == "component"
+                and not item.get("fault_name")
+                for item in items
+            ):
+                raise ValueError(f"Missing component fault binding for {entity_id}")
             explicit = [item for item in items if item.get("source") == "explicit"]
             primary = explicit[0] if explicit else items[0]
             checks: dict[str, dict[str, Any]] = {}
@@ -740,18 +762,49 @@ class EntityMonitorComponent(SafetyComponent):
                         raise ValueError(f"Conflicting {name} checks for {entity_id}")
                     checks[name] = dict(config)
             owners = tuple(dict.fromkeys(str(item["owner"]) for item in items))
+            consumer_keys = tuple(
+                dict.fromkeys(
+                    str(item["key"])
+                    for item in items
+                    if item.get("source") == "component"
+                )
+            )
             purposes = tuple(dict.fromkeys(str(item["purpose"]) for item in items))
-            fault_owners = {FaultOwner(str(item.get("fault_owner", "entity_monitor"))) for item in items}
-            if len(fault_owners) != 1:
+            component_faults = {
+                str(item["fault_name"])
+                for item in items
+                if item.get("fault_owner") == "component" and item.get("fault_name")
+            }
+            component_none = any(
+                item.get("source") == "component"
+                and item.get("fault_owner") == "none"
+                for item in items
+            )
+            if component_none and component_faults:
                 raise ValueError(f"Conflicting fault owners for {entity_id}")
+            if component_faults:
+                fault_owner = FaultOwner.COMPONENT
+                fault_name = (
+                    next(iter(component_faults))
+                    if len(component_faults) == 1
+                    else "CommonInputUnavailable"
+                )
+            elif component_none:
+                fault_owner = FaultOwner.NONE
+                fault_name = None
+            else:
+                fault_owner = FaultOwner.ENTITY_MONITOR
+                fault_name = self._fault_name(str(primary["key"]))
             merged.append(
                 EntityDependency(
                     key=str(primary["key"]),
                     entity_id=entity_id,
                     sources=frozenset(EntitySource(str(item["source"])) for item in items),
                     owners=owners,
+                    consumer_keys=consumer_keys,
                     purposes=purposes,
-                    fault_owner=next(iter(fault_owners)),
+                    fault_owner=fault_owner,
+                    fault_name=fault_name,
                     checks=checks,
                     failure_debounce_seconds=min(int(item["failure_debounce_seconds"]) for item in items),
                     recovery_debounce_seconds=max(int(item["recovery_debounce_seconds"]) for item in items),

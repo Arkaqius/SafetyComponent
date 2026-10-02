@@ -245,23 +245,29 @@ export const MOCK_ENTITIES: EntityMap = {
     ],
   }),
   'sensor.fault_riskytemperature': entity(
-    'Set',
+    'FAIL',
     'Fault: Risky temperature',
     {
       description: 'Temperatura przekroczyła bezpieczny zakres.',
       level: 'level_2',
       location: 'Office',
       notification_tag: 'demo-active-temperature',
+      active: true,
+      shadowed_by: [],
+      latched: false,
     },
     4
   ),
   'sensor.fault_riskytemperatureforecast': entity(
-    'Shadowed',
+    'FAIL',
     'Fault: Risky temperature forecast',
     {
       description: 'Trend temperatury wskazuje na możliwe przekroczenie zakresu.',
       level: 'level_3',
       location: 'Office, Livingroom',
+      active: true,
+      shadowed_by: ['RiskyTemperature'],
+      latched: false,
     },
     7
   ),

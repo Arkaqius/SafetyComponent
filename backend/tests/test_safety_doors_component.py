@@ -87,6 +87,29 @@ def _published_states(hass_app: MagicMock) -> list[str]:
     ]
 
 
+def test_each_door_defines_an_independent_fault() -> None:
+    """Door subjects retain one SM family but never share a fault identity."""
+
+    component = SafetyDoorsComponent(
+        MagicMock(), MagicMock(), EventBus(), MagicMock(spec=MqttEntityManager)
+    )
+    symptoms, _ = component.get_symptoms_data(
+        {component.component_name: component},
+        [
+            {"GarageGate": {"entity_id": "binary_sensor.garage_gate"}},
+            {"FrontDoor": {"entity_id": "binary_sensor.front_door"}},
+        ],
+    )
+    faults = component.get_fault_definitions()
+
+    assert set(symptoms) == set(faults)
+    assert all(definition["level"] == 2 for definition in faults.values())
+    assert all(definition["category"] == "H" for definition in faults.values())
+    for name, definition in faults.items():
+        assert definition["related_sms"] == ["sm_safety_door_open_timeout"]
+        assert definition["related_symptom_ids"] == [name]
+
+
 def _published_attributes(hass_app: MagicMock) -> list[dict]:
     return [
         json.loads(call.kwargs["payload"])

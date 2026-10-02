@@ -31,6 +31,7 @@ import appdaemon.plugins.hass.hassapi as hass
 from components.core.types_common import FaultState, SMState, Symptom, Fault
 from components.core.event_bus import EventBus
 from components.core.mqtt_entity_manager import MqttEntityManager
+from components.core.fault_state_policy import FaultEvaluation, FaultEvaluationStatus
 
 
 SYSTEM_STATE_BY_FAULT_LEVEL = {
@@ -85,6 +86,35 @@ class FaultManager:
         self.event_bus = event_bus
         self.mqtt_entities = mqtt_entities
         self._symptom_contexts: dict[str, dict[str, str]] = {}
+
+    def get_fault_evaluation(self, fault_id: str) -> FaultEvaluation:
+        """Return the authoritative fault-owned evaluation."""
+
+        return self.faults[fault_id].evaluation
+
+    def _publish_fault(self, fault: Fault, attributes: dict | None = None) -> None:
+        """Publish evaluation status and independent activation/shadow axes."""
+
+        entity_id = "sensor.fault_" + fault.name
+        current_attributes = (
+            attributes if attributes is not None else self._get_entity_attributes(entity_id)
+        )
+        payload = dict(current_attributes) if isinstance(current_attributes, dict) else {}
+        payload.update(
+            active=fault.evaluation.active,
+            shadowed_by=sorted(fault.evaluation.shadowed_by),
+            latched=fault.evaluation.latched,
+        )
+        self._set_internal_entity(entity_id, fault.evaluation.status.value, payload)
+
+    def mark_evaluation_unavailable(self, symptom_id: str) -> None:
+        """Record a failed or invalid evaluation without treating it as clear."""
+
+        symptom = self.symptoms[symptom_id]
+        fault = self.found_mapped_fault(symptom_id, symptom.sm_name)
+        if fault is not None:
+            fault.evaluation.mark_unavailable(symptom_id)
+            self._publish_fault(fault)
 
     def handle_symptom_event(
         self,
@@ -193,14 +223,13 @@ class FaultManager:
 
     def disable_symptom(self, symptom_id: str, additional_info: dict) -> None:
         """
-        TODO
+        Retire evaluation evidence without asserting recovery of an active fault.
         """
         # Update symptom registry
         self.symptoms[symptom_id].state = FaultState.NOT_TESTED
         self._symptom_contexts.pop(symptom_id, None)
 
-        # Call Related Fault
-        self._clear_fault(symptom_id, additional_info)
+        self.mark_evaluation_unavailable(symptom_id)
 
     def check_symptom(self, symptom_id: str) -> FaultState:
         """
@@ -226,11 +255,11 @@ class FaultManager:
 
     def _set_fault(self, symptom_id: str, additional_info: Optional[dict]) -> None:
         """
-        Sets the state of a fault based on a triggered symptom condition.
+        Applies a qualified positive contribution to its owning fault.
 
         This private method is called when a symptom condition is detected (set) and aims to aggregate
-        such symptom conditions to determine if a corresponding fault state should also be set. It involves
-        updating the fault's state to SET, triggering notifications, and executing any defined recovery actions
+        such symptom conditions to determine if a corresponding fault is active. It involves
+        updating the fault's evaluation, triggering notifications, and executing any defined recovery actions
         specific to the symptom. The method aggregates several symptoms to evaluate the overall state of
         a related fault, ensuring comprehensive fault management.
 
@@ -252,7 +281,16 @@ class FaultManager:
         # Collect all faults mapped from that symptom
         fault: Fault | None = self.found_mapped_fault(symptom_id, sm_name)
         if fault:
+            fault.evaluation.observe(symptom_id, True)
+            if not fault.evaluation.active:
+                self._publish_fault(fault)
+                return
             if self._is_fault_shadowed(fault.name):
+                fault.evaluation.shadowed_by.update(
+                    owner.name
+                    for owner in self.faults.values()
+                    if owner.evaluation.active and fault.name in owner.shadows
+                )
                 self._set_fault_shadowed(
                     fault, self.symptoms[symptom_id], additional_info
                 )
@@ -260,10 +298,6 @@ class FaultManager:
 
             # Generate a stable fault tag using the hash method
             fault_tag: str = self._generate_fault_tag(fault.name, additional_info)
-            # Save previous value
-            fault.previous_val = fault.state
-            # Set Fault
-            fault.state = FaultState.SET
             self.update_system_state_entity()  # Update the system state entity
             self.hass.log(f"Fault {fault.name} was set", level="DEBUG")
 
@@ -283,9 +317,7 @@ class FaultManager:
             attributes["notification_tag"] = fault_tag
 
             # Set HA entity
-            self._set_internal_entity(
-                "sensor.fault_" + fault.name, "Set", attributes
-            )
+            self._publish_fault(fault, attributes)
 
             self.event_bus.publish(
                 "fault",
@@ -307,9 +339,10 @@ class FaultManager:
         """Rebuild external-fault context from current active symptoms only."""
 
         values_by_key: dict[str, list[str]] = {}
-        related_sms = set(fault.related_symptoms)
         for symptom_id, symptom in self.symptoms.items():
-            if symptom.state != FaultState.SET or symptom.sm_name not in related_sms:
+            if symptom.state != FaultState.SET or not self._belongs_to_fault(
+                fault, symptom_id, symptom.sm_name
+            ):
                 continue
             for key, value in self._symptom_contexts.get(symptom_id, {}).items():
                 values = values_by_key.setdefault(key, [])
@@ -397,10 +430,7 @@ class FaultManager:
             bool: True if any active fault shadows the provided fault name.
         """
         for active_fault in self.faults.values():
-            if (
-                active_fault.state == FaultState.SET
-                and fault_name in active_fault.shadows
-            ):
+            if active_fault.evaluation.active and fault_name in active_fault.shadows:
                 return True
         return False
 
@@ -426,10 +456,27 @@ class FaultManager:
                     level="WARNING",
                 )
                 continue
-            if shadowed_fault.state == FaultState.SET:
-                self._set_fault_shadowed(
-                    shadowed_fault, symptom, additional_info
+            was_shadowed = bool(shadowed_fault.evaluation.shadowed_by)
+            shadowed_fault.evaluation.shadowed_by.add(fault.name)
+            if shadowed_fault.evaluation.active and not was_shadowed:
+                target_symptom = next(
+                    (
+                        candidate
+                        for candidate in self.symptoms.values()
+                        if candidate.name
+                        in shadowed_fault.evaluation.active_contributors
+                    ),
+                    None,
                 )
+                if target_symptom is None:
+                    continue
+                self._set_fault_shadowed(
+                    shadowed_fault,
+                    target_symptom,
+                    self._symptom_contexts.get(target_symptom.name),
+                )
+            elif shadowed_fault.evaluation.active:
+                self._publish_fault(shadowed_fault)
 
     def _set_fault_shadowed(
         self,
@@ -438,7 +485,7 @@ class FaultManager:
         additional_info: Optional[dict],
     ) -> None:
         """
-        Sets a fault to a shadowed state and clears its notification.
+        Withdraws a shadowed fault's response without changing its evaluation.
 
         Args:
             fault (Fault): The fault to shadow.
@@ -446,8 +493,6 @@ class FaultManager:
             additional_info (dict | None): Additional info to use for clearing notifications.
         """
         fault_tag: str = self._generate_fault_tag(fault.name, additional_info)
-        fault.previous_val = fault.state
-        fault.state = FaultState.SHADOWED
         self.update_system_state_entity()
         self.hass.log(f"Fault {fault.name} was shadowed", level="DEBUG")
 
@@ -462,7 +507,7 @@ class FaultManager:
         else:
             attributes = info_to_send
 
-        self._set_internal_entity(entity_id, "Shadowed", attributes)
+        self._publish_fault(fault, attributes)
 
         self.event_bus.publish(
             "fault",
@@ -478,11 +523,11 @@ class FaultManager:
 
     def _clear_fault(self, symptom_id: str, additional_info: dict) -> None:
         """
-        Clears the state of a fault based on the resolution of a triggering symptom condition.
+        Releases a fault after a triggering symptom has recovered.
 
         This private method is invoked when a symptom condition that previously contributed to setting a fault
         is resolved (cleared). It assesses the current state of related symptoms to determine whether the associated
-        fault's state can also be cleared. This involves updating the fault's state to CLEARED and triggering appropriate
+        fault's activation can be released. This involves updating the evaluation and triggering appropriate
         notifications. The method ensures that faults are accurately reflected and managed based on the current status
         of their contributing symptom conditions.
 
@@ -509,12 +554,17 @@ class FaultManager:
         if not fault:
             return
 
+        evaluation = fault.evaluation
+        was_active = evaluation.active
+        was_shadowed = bool(evaluation.shadowed_by)
+        evaluation.observe(symptom_id, False)
+
         entity_id = "sensor.fault_" + fault.name
         fault_tag: str = self._generate_fault_tag(fault.name, additional_info)
         has_active_related_symptoms = any(
             symptom.state == FaultState.SET
-            for symptom in self.symptoms.values()
-            if symptom.sm_name in set(fault.related_symptoms)
+            for related_id, symptom in self.symptoms.items()
+            if self._belongs_to_fault(fault, related_id, symptom.sm_name)
         )
 
         if has_active_related_symptoms:
@@ -527,7 +577,7 @@ class FaultManager:
             attributes = info_to_send if info_to_send else {}
             attributes["notification_tag"] = fault_tag
 
-            self._set_internal_entity(entity_id, "Set", attributes)
+            self._publish_fault(fault, attributes)
 
             self.event_bus.publish(
                 "fault",
@@ -540,15 +590,16 @@ class FaultManager:
                 ),
                 fault_tag=fault_tag,
                 symptom=self.symptoms[symptom_id],
-                should_notify=fault.state == FaultState.SET,
+                should_notify=not evaluation.shadowed_by,
             )
             return
 
+        if not has_active_related_symptoms and evaluation.active:
+            # Another required contribution is unevaluable or recovery is pending.
+            self._publish_fault(fault)
+            return
+
         if not has_active_related_symptoms:
-            # Save previous value
-            fault.previous_val = fault.state
-            # Clear Fault
-            fault.state = FaultState.CLEARED
             self.hass.log(f"Fault {fault.name} was cleared", level="DEBUG")
 
             # Determinate additional info
@@ -560,10 +611,11 @@ class FaultManager:
             attributes = info_to_send if info_to_send else {}
 
             # Clear HA entity
-            self._set_internal_entity(entity_id, "Cleared", attributes)
+            evaluation.shadowed_by.clear()
+            self._publish_fault(fault, attributes)
             self.update_system_state_entity()  # Update the system state entity
 
-            should_notify = fault.previous_val == FaultState.SET
+            should_notify = was_active and not was_shadowed
             self.event_bus.publish(
                 "fault",
                 fault_name=fault.name,
@@ -575,28 +627,46 @@ class FaultManager:
                 symptom=self.symptoms[symptom_id],
                 should_notify=should_notify,
             )
+            self._restore_unshadowed_faults(fault.name)
 
-    def check_fault(self, fault_id: str) -> FaultState:
+    def _restore_unshadowed_faults(self, cleared_fault_name: str) -> None:
+        """Re-present active evidence after the last shadow owner clears."""
+
+        for candidate in self.faults.values():
+            if cleared_fault_name not in candidate.evaluation.shadowed_by:
+                continue
+            candidate.evaluation.shadowed_by.discard(cleared_fault_name)
+            self._publish_fault(candidate)
+            if candidate.evaluation.shadowed_by or not candidate.evaluation.active:
+                continue
+            for symptom_id in sorted(candidate.evaluation.active_contributors):
+                if (
+                    symptom_id in self.symptoms
+                    and self.symptoms[symptom_id].state == FaultState.SET
+                ):
+                    self._set_fault(
+                        symptom_id, self._symptom_contexts.get(symptom_id)
+                    )
+
+    def check_fault(self, fault_id: str) -> FaultEvaluationStatus:
         """
-        Checks the current state of a specified fault.
+        Checks the current evaluation status of a specified fault.
 
-        This method returns the current state of the fault identified by the given `fault_id`.
-        The state indicates whether the fault is active (SET), has been resolved (CLEARED),
-        or has not yet been tested (NOT_TESTED). This functionality allows other components
-        of the system to query the status of faults and adjust their behavior accordingly.
+        This method returns the current evaluation status of the named fault.
+        The status describes the most recent evaluation, while activation and
+        shadowing remain separate fields on the fault-owned evaluation.
 
         Args:
             fault_id (str): The identifier of the fault whose state is to be checked.
 
         Returns:
-            FaultState: The current state of the specified fault, indicating whether it is
-                        NOT_TESTED, SET, CLEARED, or SHADOWED.
+            FaultEvaluationStatus: The current evaluation status.
 
         Raises:
             KeyError: If the specified fault_id does not exist in the faults dictionary,
                     indicating an attempt to check an undefined fault.
         """
-        return self.faults[fault_id].state
+        return self.faults[fault_id].evaluation.status
 
     def found_mapped_fault(self, symptom_id: str, sm_id: str) -> Optional[Fault]:
         """
@@ -628,7 +698,9 @@ class FaultManager:
 
         # Collect all faults mapped from that symptom
         matching_objects: list[Fault] = [
-            fault for fault in self.faults.values() if sm_id in fault.related_symptoms
+            fault
+            for fault in self.faults.values()
+            if self._belongs_to_fault(fault, symptom_id, sm_id)
         ]
 
         # Validate there's exactly one occurrence
@@ -647,6 +719,17 @@ class FaultManager:
             )
 
         return None
+
+    @staticmethod
+    def _belongs_to_fault(fault: Fault, symptom_id: str, sm_id: str) -> bool:
+        """Match a contributor by explicit identity or its unspecialized SM."""
+
+        if fault.related_symptom_ids:
+            return (
+                symptom_id in fault.related_symptom_ids
+                and sm_id in fault.related_symptoms
+            )
+        return sm_id in fault.related_symptoms
 
     def enable_sm(self, sm_name: str, sm_state: SMState) -> None:
         """
@@ -667,8 +750,8 @@ class FaultManager:
             ValueError: If `sm_state` is not a recognized value of the `SMState` enumeration.
 
         Note:
-            This method also clears all pre-existing fault states associated with the specified safety mechanism
-            when disabling it, setting them to `NOT_TESTED`.
+            Disabling invalidates this symptom's evidence without clearing an
+            active fault.
         """
         symptom_data: Symptom = self.symptoms[sm_name]
 
@@ -686,6 +769,7 @@ class FaultManager:
                 try:
                     sm_fcn(symptom_data.module.safety_mechanisms[symptom_data.name])
                 except Exception:
+                    self.mark_evaluation_unavailable(sm_name)
                     recorder = getattr(symptom_data.module, "record_evaluation", None)
                     if callable(recorder):
                         recorder(success=False)
@@ -701,7 +785,7 @@ class FaultManager:
             # Disable the safety mechanism
             symptom_data.module.enable_safety_mechanism(sm_name, sm_state)
             symptom_data.sm_state = SMState.DISABLED
-            # Clear all related faults to NOT_TESTED state when disabling the safety mechanism
+            # Invalidate evidence; disabling is not a fault recovery.
             self.disable_symptom(symptom_id=sm_name, additional_info={})
 
         else:
@@ -761,7 +845,7 @@ class FaultManager:
         active_levels = [
             fault.level
             for fault in self.faults.values()
-            if fault.state == FaultState.SET
+            if fault.evaluation.active
         ]
         return min(active_levels, default=0)
     
@@ -777,7 +861,11 @@ class FaultManager:
         )
         attributes = {
             "fault_count": len(
-                [fault for fault in self.faults.values() if fault.state == FaultState.SET]
+                [
+                    fault
+                    for fault in self.faults.values()
+                    if fault.evaluation.active
+                ]
             ),
             "highest_fault_level": highest_fault_level,
         }

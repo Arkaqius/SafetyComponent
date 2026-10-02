@@ -149,6 +149,10 @@ class DerivativeMonitor:
         self.hass_app.log(
             f"Derivative entities created for {entity_id}.", level="DEBUG"
         )
+        # Seed the first source sample before scheduling. Some AppDaemon
+        # schedules first run after one interval, while a derivative needs two
+        # samples; without this seed the rate can stay unknown for two periods.
+        self._calculate_diff(entity_id=entity_id, sample_time=sample_time)
         handle = self.schedule_sampling(entity_id, sample_time)
         self._sampling_handles[entity_id] = handle
 

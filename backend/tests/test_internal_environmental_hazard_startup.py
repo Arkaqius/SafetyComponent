@@ -5,15 +5,24 @@ from typing import Any
 
 from build_app_config import compile_config
 from SafetyFunctions import SafetyFunctions
-from components.core.types_common import FaultState
+from components.core.fault_state_policy import FaultEvaluationStatus
 
 
-def test_gas_alarm_reaches_l1_fault_without_co_consensus(tmp_path) -> None:
+def test_gas_alarm_reaches_l1_fault_without_co_consensus(tmp_path, monkeypatch) -> None:
+    from components.core.functional_safety_diagnostics import JsonFunctionalSafetyDiagnosticsStore
+
+    monkeypatch.setattr(
+        "SafetyFunctions.JsonFunctionalSafetyDiagnosticsStore",
+        lambda: JsonFunctionalSafetyDiagnosticsStore(tmp_path / "functional_safety.json"),
+    )
     backend_dir = Path(__file__).parents[1]
     raw = compile_config(
         user_path=backend_dir / "config" / "user_config.example.yml",
         home_assistant_config={"latitude": 50.0, "longitude": 20.0},
     )["SafetyFunctions"]
+    raw["app_config"]["calibration"]["functional_safety"][
+        "battery_fault_catalog_file"
+    ] = str(tmp_path / "battery_fault_catalog.json")
     raw["app_config"]["validation"]["validate_entity_existence"] = False
     raw["user_config"]["components_enabled"] = {
         "InternalEnvironmentalHazardMonitorComponent": True,
@@ -64,8 +73,8 @@ def test_gas_alarm_reaches_l1_fault_without_co_consensus(tmp_path) -> None:
 
     app.initialize()
 
-    assert app.fm.check_fault("InternalFlammableGasDetected") == FaultState.SET
-    assert app.fm.check_fault("InternalCarbonMonoxideDetected") != FaultState.SET
+    assert app.fm.check_fault("InternalFlammableGasDetected") is FaultEvaluationStatus.FAIL
+    assert app.fm.check_fault("InternalCarbonMonoxideDetected") is not FaultEvaluationStatus.FAIL
     assert "InternalSmokeDetected" not in app.faults
     assert "sensor.fault_internalsmokedetected" not in (
         app.mqtt_entities.discovered_entities

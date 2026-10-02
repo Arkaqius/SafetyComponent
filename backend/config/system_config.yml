@@ -99,6 +99,7 @@ calibration:
     wan_qualification_seconds: 60
     wan_recovery_seconds: 60
     battery_low_percent: 15
+    battery_fault_catalog_file: /config/appdaemon/battery_fault_catalog.json
     detector_test_interval_days: 180
     detector_test_state_file: /config/appdaemon/detector_tests.json
     resource_stale_after_seconds: 180
@@ -137,11 +138,6 @@ runtime_cfg:
       related_sms:
         - sm_tc_2
         - sm_tc_4
-    SafetyDoorOpenTimeout:
-      name: Zbyt długo otwarte drzwi lub brama
-      level: 2
-      related_sms:
-        - sm_safety_door_open_timeout
     ExternalWeatherExposure:
       name: Narażenie domu na zagrożenie pogodowe
       level: 2
@@ -155,6 +151,7 @@ runtime_cfg:
     ExternalHazardDataUnavailable:
       name: Brak danych o zagrożeniach zewnętrznych
       level: 3
+      category: D
       related_sms:
         - sm_ext_provider_unavailable
     InternalSmokeDetected:
@@ -180,6 +177,7 @@ runtime_cfg:
     InternalEnvironmentalDetectorUnavailable:
       name: Czujnik zagrożenia środowiskowego jest niedostępny
       level: 3
+      category: D
       related_sms:
         - sm_iehm_detector_health
 

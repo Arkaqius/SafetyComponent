@@ -99,19 +99,35 @@ class ExternalHazardComponent(SafetyComponent):
     ) -> list[dict[str, Any]]:
         """Declare opening contacts used by external-hazard correlation."""
 
-        return [
-            {
+        dependencies: list[dict[str, Any]] = []
+        for opening_name, opening in component_cfg.get("openings", {}).items():
+            dependencies.append({
                 "key": f"ExternalOpening{opening_name}",
                 "entity_id": opening["entity_id"],
                 "owner": cls.component_name,
+                "fault_owner": "component",
+                "fault_name": "ExternalOpeningMonitoringUnavailable",
                 "purpose": f"External-hazard opening input for {opening_name}",
                 "checks": {},
                 "detection_budget_seconds": 30,
                 "area_id": opening.get("area_id"),
                 "area_name": opening.get("area_name"),
-            }
-            for opening_name, opening in component_cfg.get("openings", {}).items()
-        ]
+            })
+            actuator = opening.get("actuator_entity_id")
+            if opening.get("execution_policy") == "user_confirmed" and actuator:
+                dependencies.append({
+                    "key": f"ExternalRecovery{opening_name}",
+                    "entity_id": actuator,
+                    "owner": cls.component_name,
+                    "fault_owner": "component",
+                    "fault_name": "ExternalRecoveryUnavailable",
+                    "purpose": f"Confirmed recovery actuator for {opening_name}",
+                    "checks": {},
+                    "detection_budget_seconds": 30,
+                    "area_id": opening.get("area_id"),
+                    "area_name": opening.get("area_name"),
+                })
+        return dependencies
 
     def __init__(
         self,

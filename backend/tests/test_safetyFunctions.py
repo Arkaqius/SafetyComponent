@@ -2,6 +2,8 @@ from copy import deepcopy
 from unittest.mock import Mock
 
 from components.core.types_common import FaultState
+from components.core.fault_state_policy import FaultEvaluationStatus
+from components.faults_manager.cfg_parser import validate_fault_routes
 
 from .fixtures.hass_fixture import (
     mqtt_json_payloads,
@@ -15,6 +17,7 @@ def test_safety_functions_initialization(mocked_hass_app_with_temp_component) ->
         mocked_hass_app_with_temp_component
     )
     app_instance.initialize()
+    validate_fault_routes(app_instance.symptoms, app_instance.faults)
 
     # Assert the 'symptoms' dictionary content
     symptom = app_instance.symptoms["RiskyTemperatureOffice"]
@@ -77,6 +80,45 @@ def test_safety_functions_initialization(mocked_hass_app_with_temp_component) ->
     }
 
 
+def test_invalid_fault_route_keeps_application_out_of_running_state(
+    mocked_hass_app_with_temp_component,
+) -> None:
+    """A missing live route fails configuration without starting monitors."""
+
+    app_instance, mocked_hass, __, ___, _ = mocked_hass_app_with_temp_component
+    app_instance.args = deepcopy(app_instance.args)
+    app_instance.args["app_config"]["faults"]["RiskyTemperature"][
+        "related_sms"
+    ] = ["sm_typo"]
+
+    app_instance.initialize()
+
+    assert mqtt_payloads(
+        mocked_hass, mqtt_topic_for("sensor.safety_app_health")
+    )[-1] == "invalid_cfg"
+    assert not hasattr(app_instance, "notify_man")
+
+
+def test_old_shared_door_fault_discovery_is_removed(
+    mocked_hass_app_with_temp_component,
+) -> None:
+    """The obsolete shared identity is retired without a clear transition."""
+
+    app_instance, mocked_hass, *_ = mocked_hass_app_with_temp_component
+    app_instance.initialize()
+
+    for topic in (
+        "homeassistant/sensor/safety_component_fault_safetydooropentimeout/config",
+        "homeassistant/sensor/fault_safetydooropentimeout/config",
+        "safety_component/state/fault_safetydooropentimeout",
+        "safety_component/attributes/fault_safetydooropentimeout",
+    ):
+        assert mqtt_payloads(mocked_hass, topic)[-1] == ""
+    assert "sensor.fault_safetydooropentimeout" not in (
+        app_instance.mqtt_entities.discovered_entities
+    )
+
+
 def test_reinitialize_keeps_raw_appdaemon_configuration(
     mocked_hass_app_with_temp_component,
 ) -> None:
@@ -121,7 +163,8 @@ def test_entity_monitor_is_wired_into_application_startup(
 
     assert "EntityMonitorComponent" in app_instance.sm_modules
     assert "sensor.entity_monitor_summary" in app_instance.mqtt_entities.discovered_entities
-    assert "EntityHealthTemperatureOffice" in app_instance.faults
+    assert "TemperatureMonitoringUnavailable" in app_instance.faults
+    assert "EntityHealthTemperatureOffice" not in app_instance.faults
     assert (
         "EntityHealthFailureTemperatureOfficeAvailability" in app_instance.symptoms
     )
@@ -214,7 +257,7 @@ def test_trigger_symptom_sets_fault(mocked_hass_app_with_temp_component):
     app_instance.fm.set_symptom("RiskyTemperatureOffice", None)
 
     # Check if the corresponding fault is set to 'SET'
-    assert app_instance.fm.check_fault("RiskyTemperature") == FaultState.SET
+    assert app_instance.fm.check_fault("RiskyTemperature") is FaultEvaluationStatus.FAIL
 
 
 def test_recovery_process_execution(mocked_hass_app_with_temp_component):

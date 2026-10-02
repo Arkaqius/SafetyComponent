@@ -613,6 +613,22 @@ _We model the system as **decoupled Safety Components**, each implementing one o
   - Fault catalog keys, Safety Mechanism IDs, symptom ID patterns, raw states,
     and entity IDs are stable machine contracts.
 
+- **Fault-owned evaluation policy:** An SM shall answer a Boolean violation
+  predicate for valid inputs. Invalid or missing evidence and invocation failure
+  shall be reported as ineligibility, never converted into a negative predicate
+  result. The fault shall own aggregation, failure/recovery qualification,
+  priority, category and response policy. A known violation shall remain
+  actionable when another contribution is unevaluable; clearing an active fault
+  requires valid recovery evidence from every required contribution.
+- **Independent diagnostic axes:** The fault shall retain evaluation status,
+  active condition and shadow owners separately. Shadowing shall withdraw
+  redundant responses without clearing evidence. The existing external raw
+  states and notification-history codes shall remain stable during migration.
+- **Priority:** Existing fault level L1..L4 shall select the notification level
+  of the same number. H/D category describes a hazard/equipment condition or a
+  diagnostic capability failure, not urgency. A level alone shall not authorize
+  recovery actuation or define a degradation target.
+
 ---
 
 ### 8.2 Temperature Safety Component (C‑TEMP)
@@ -979,7 +995,7 @@ C-SEC. Diagnostic handling of unavailable inputs supports SG-003.
 | Component | `SafetyDoorsComponent` |
 | Safety Mechanism | `sm_safety_door_open_timeout` |
 | Per-door symptom | `SafetyDoorOpenTimeout{DoorName}` |
-| Aggregated fault | `SafetyDoorOpenTimeout` |
+| Per-door fault | `SafetyDoorOpenTimeout{DoorKey}` |
 | Fault level | 2 |
 | Diagnostic entity | `sensor.safety_door_<door_name>` |
 | Recovery actions | None |
@@ -1011,9 +1027,9 @@ C-SEC. Diagnostic handling of unavailable inputs supports SG-003.
   `inactive`, `blocked`, or `unavailable` plus door state, source entity,
   timeout, elapsed/remaining time, opening timestamp, condition details,
   `area_id`, and resolved area name.
-- **SYS-SR-DOOR-009:** All active per-door symptoms shall aggregate into the
-  single level-2 fault `SafetyDoorOpenTimeout`, which shall remain active until
-  every related door symptom clears.
+- **SYS-SR-DOOR-009:** Each configured door or gate shall have an independent
+  level-2 `SafetyDoorOpenTimeout{DoorKey}` fault. Its active contributors shall
+  aggregate only for that door, and another door's recovery shall not clear it.
 - **SYS-SR-DOOR-010:** C-DOOR shall register no recovery action and shall not
   close, lock, unlock, or otherwise actuate a door or gate.
 - **SYS-SR-DOOR-011:** C-DOOR shall not infer unauthorized entry, lock
@@ -1048,6 +1064,8 @@ installation.
 entities whose loss could mask or prevent a safety function. It also exposes a
 separate information-only inventory of other Home Assistant entities and
 devices. C-ENT observes health and shall not command an entity or actuator.
+Fault ownership and subject routing follow
+[Fault Routing and Aggregation](<../features/Fault Routing and Aggregation - Architecture.md>).
 
 #### 8.5.1 Monitoring groups
 
@@ -1104,7 +1122,7 @@ entity is safety-relevant through Group A or B.
 | Component | `EntityMonitorComponent` |
 | Per-entity Safety Mechanism | `sm_entity_health_<entity_key>` |
 | Per-check symptom | `EntityHealthFailure{EntityKey}{CheckKey}` |
-| Per-entity fault | `EntityHealth{EntityKey}` |
+| Group A-owned fault | `EntityHealth{EntityKey}` |
 | Fault level | 3 |
 | Per-entity diagnostic | `sensor.entity_health_<entity_key>` |
 | Aggregate diagnostic | `sensor.entity_monitor_summary` |
@@ -1137,13 +1155,15 @@ entity is safety-relevant through Group A or B.
   calibration is present and the current input is valid for that check.
 - **SYS-SR-ENT-006:** A failed, stale, unavailable, malformed, or unevaluable
   observation shall not provide positive evidence to clear a C-ENT symptom.
-- **SYS-SR-ENT-007:** When C-ENT owns a Group A or Group B failure, it shall set
+- **SYS-SR-ENT-007:** When C-ENT owns a Group A failure, it shall set
   `EntityHealthFailure{EntityKey}{CheckKey}` after failure debounce and clear it
   only after fresh valid observations pass recovery debounce.
-- **SYS-SR-ENT-008:** When an owning component already defines fault semantics
-  for a Group B dependency, C-ENT shall expose and aggregate its health without
-  creating a duplicate `EntityHealthFailure` symptom.
-- **SYS-SR-ENT-009:** All C-ENT-owned check symptoms for one entity shall
+- **SYS-SR-ENT-008:** The requesting component shall own the diagnostic fault
+  for a Group B dependency used by its evaluation or recovery. C-ENT shall
+  expose the dependency's health without creating a duplicate Group A fault for
+  the same failure. Shared inputs shall have one declared owner and explicit
+  consumer bindings.
+- **SYS-SR-ENT-009:** All C-ENT-owned Group A check symptoms for one entity shall
   aggregate into that entity's level-3 `EntityHealth{EntityKey}` fault. A
   different unhealthy entity shall have a different fault. The fault shall
   retain every failed check in diagnostic context.
@@ -1160,10 +1180,18 @@ entity is safety-relevant through Group A or B.
   raw state codes as diagnostic data.
 - **SYS-SR-ENT-014:** C-ENT shall register no recovery action and shall not call
   a Home Assistant actuator service.
+- **SYS-SR-ENT-015:** Each installed Boolean mechanism result shall have one
+  validated fault binding by mechanism, subject, and contributor, or an
+  explicit diagnostic-only exemption. Missing or ambiguous ownership, unknown
+  mechanism IDs, and invalid shadow references shall prevent monitoring startup.
+- **SYS-SR-ENT-016:** A Group A/B entity shall retain both memberships and the
+  stricter applicable check policy, but one failure shall have one diagnostic
+  fault owner. A Group B failure shall restrict only explicitly dependent
+  evaluation or recovery capabilities and subjects.
 
 #### 8.5.6 Mapping and verification
 
-- **SG-003:** SYS-SR-ENT-001..009/012/014.
+- **SG-003:** SYS-SR-ENT-001..009/012/014..016.
 - **Unit tests:** group membership and deduplication, configuration validation,
   startup grace, availability, freshness, optional check validation, failure
   and recovery debounce, fault ownership, stable IDs, and no false clear.
@@ -1283,7 +1311,7 @@ See the [Internal Environmental Hazard Monitoring architecture](<../features/Int
 | SYS-SR-IEHM-012 | Required supervision paths shall fit SG-003's 60 s budget and short-window PM response shall fit SG-005's 10 min budget. Sampling, averaging, qualification, scheduler latency, decision and notification shall be included; long-term exposure diagnostics shall not substitute for the short-window path. |
 | SYS-SR-IEHM-013 | Active incident identity, contributing symptoms, qualifying evidence, authoritative clear ordering and consumed deadlines shall survive reload/restart in bounded atomic storage. Retained assertions shall be reconciled on startup, reconnect and coverage recovery. Corruption, clock uncertainty or missing state shall produce explicit unknown/degraded supervision rather than an authoritative clear. |
 | SYS-SR-IEHM-014 | Alarm, PM exposure, detector health and per-rule evaluability shall be separately visible in SafetyHome. Missing coverage shall not be labeled safe air or no hazard; cleared alarm presentation shall not imply permission to re-enter. |
-| SYS-SR-IEHM-015 | SET/HEAL notifications shall carry localizable hazard/detector/area names, timestamps, evidence, thresholds where applicable and incident correlation. Existing raw fault and journal states, bounded per-target attempts and HA-acceptance semantics shall remain unchanged. |
+| SYS-SR-IEHM-015 | SET/HEAL notifications shall carry localizable hazard/detector/area names, timestamps, evidence, thresholds where applicable and incident correlation. Fault evaluation, activation and shadowing shall remain distinct from notification-journal transition codes; bounded per-target attempts and HA-acceptance semantics shall apply. |
 | SYS-SR-IEHM-016 | Hazard-specific advice shall prioritize life safety and avoid generic ventilation/purifier/open-window instructions during smoke/gas/CO incidents or unresolved life-safety evidence. Optional PM ventilation advice shall require compatible current outdoor-hazard policy. |
 | SYS-SR-IEHM-017 | Neither the component nor shared notification adapters shall switch unapproved electrical outputs during a flammable-gas incident, including light restoration after another fault clears. A separately persisted switching-inhibition latch shall survive detector HEAL and require explicit authorized clearance under a reviewed installation policy. Native alarms shall remain independent; approved local annunciation shall remain independent of mobile delivery. |
 | SYS-SR-IEHM-018 | System policy shall own alarm profiles, calibration, severity, timers, evidence limits and output eligibility; installation configuration shall own detector/entity/area bindings and equipment profile selection. Incomplete or timing-incompatible enabled contracts shall be rejected. |
@@ -1325,7 +1353,7 @@ defines monitor ownership and observer placement.
 | SYS-SR-FSM-006 | Sustained CPU, storage, swap, and thermal pressure shall be diagnosed separately and correlated with missed safety-evaluation deadlines. Resource pressure alone shall not be presented as proof that a safety decision was missed. |
 | SYS-SR-FSM-007 | Confirmed Internet/WAN loss shall create a level-3 network fault, separately from local Home Assistant or MQTT loss and from failure of one cloud provider. Local safety evaluation shall remain available when only the WAN is lost, and outbound delivery shall follow the Local-Only policy in §3 and §4.6. WAN monitoring shall establish reachability, not infer latency or packet-loss quality. |
 | SYS-SR-FSM-008 | The system shall monitor update information separately for Home Assistant Core, Operating System, Supervisor, and the SafetyComponent App when their update sources are available, retaining installed/offered versions, observation time, and source freshness. A confirmed available update shall be level-4 informational and shall not by itself mean that the running safety function has failed; monitoring shall not install an update or restart a service. |
-| SYS-SR-FSM-009 | A low battery in a still-functioning remote device shall be a level-4 informational maintenance condition, associated with one device identity even when several battery entities represent it. The system shall discover eligible device-associated battery entities from Home Assistant and allow the operator to exclude devices by stable device identity without manually enumerating all battery entities. Failed discovery shall remain unknown coverage, not positive battery-health evidence. An unavailable safety input shall retain the severity and owner of its separate coverage fault; battery status shall neither suppress nor clear that fault. |
+| SYS-SR-FSM-009 | A low battery in a still-functioning remote device shall be a level-4 informational maintenance condition, associated with one device identity even when several battery entities represent it. The system shall discover eligible device-associated battery entities from Home Assistant and allow the operator to exclude devices by stable device identity without manually enumerating all battery entities. When a device is excluded or removed, its obsolete maintenance-fault entity shall be retired without emitting a false clear; retirement shall persist across restarts. Failed discovery shall remain unknown coverage, not positive battery-health evidence or proof that devices were removed. An unavailable safety input shall retain the severity and owner of its separate coverage fault; battery status shall neither suppress nor clear that fault. |
 | SYS-SR-FSM-010 | Each underlying failure shall have one fault owner. C-ENT shall retain entity-quality diagnostics and its existing per-entity faults; C-FSM shall own qualified platform and maintenance policy without duplicating a component-owned symptom. |
 | SYS-SR-FSM-011 | System configuration shall provide threshold and qualification/recovery defaults; installation configuration may refine an explicit validated whitelist through component settings. The complete effective policy shall preserve recovery margins. Severity, freshness, technical scheduling and persistence shall remain system-owned. Installation configuration shall own source bindings and exclusions. Invalid configuration shall be rejected before enabling the affected contract. Missing or incompatible runtime sources shall be marked as uncovered, never silently reported healthy or used to disable unrelated safety mechanisms. |
 | SYS-SR-FSM-012 | Platform and maintenance monitors shall be observation-only: no restart, update installation, device control, or other recovery action shall be registered without a separately assessed policy. Diagnostics and user-facing text shall preserve stable machine codes and equivalent EN/PL/DE meaning. |

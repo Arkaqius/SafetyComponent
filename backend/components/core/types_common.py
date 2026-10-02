@@ -3,12 +3,13 @@ Module: types_enums.py
 
 This module defines enumeration types used throughout the Safety Functions application,
 particularly within the Home Assistant-based safety management system. These enums
-provide a standardized set of possible states for faults (FaultState) and safety mechanisms (SMState),
-ensuring consistency and clarity in state management and logic flow across the application.
+provide internal symptom/response events (FaultState) and safety mechanism
+enablement states (SMState). Fault evaluation status and activation live in
+``FaultEvaluation``.
 
 Enums:
-- FaultState: Enumerates the possible states of faults and symptoms, aiding in the
-  identification and management of safety system conditions.
+- FaultState: Enumerates qualified symptom and fault-response events; it is not
+  the published fault evaluation status.
 - SMState: Defines the operational states of Safety Mechanisms (SMs), offering insight
   into the activity and readiness of these mechanisms.
 
@@ -21,19 +22,26 @@ facilitating easier maintenance and updates.
 from enum import Enum
 from typing import TYPE_CHECKING, Any, NamedTuple, Dict, List
 
+from components.core.fault_state_policy import (
+    FaultCategory,
+    FaultEvaluation,
+    PRIORITY_PROFILES,
+    PriorityProfile,
+)
+
 if TYPE_CHECKING:
     from components.safetycomponents.core.safety_component import SafetyComponent
 
 
 class FaultState(Enum):
     """
-    Represents the possible states of a fault and symptoms within the safety management system.
+    Represents qualified symptom and fault-response events.
 
     Attributes:
-        NOT_TESTED: Initial state, indicating the fault has not yet been tested.
-        SET: Indicates that the fault condition has been detected.
-        CLEARED: Indicates that the fault condition has been resolved.
-        SHADOWED: Indicates that the fault is suppressed by another active fault.
+        NOT_TESTED: Symptom has not yet produced a qualified result.
+        SET: Qualified positive symptom or activation response event.
+        CLEARED: Qualified negative symptom or recovery response event.
+        SHADOWED: Response-withdrawal event for an active fault.
     """
 
     NOT_TESTED = 0
@@ -149,7 +157,7 @@ class Fault:
     Attributes:
         name (str): The name of the fault.
         friendly_name (str): Human-readable fault name used in user interfaces.
-        state (FaultState): The current state of the fault.
+        evaluation (FaultEvaluation): The current evaluation and active condition.
         related_symptoms (list): A list of symptoms related to this fault.
         level (int): The severity level of the fault for notification purposes.
         shadows (list[str]): A list of fault names that should be shadowed when this fault is set.
@@ -169,14 +177,20 @@ class Fault:
         level: int,
         shadows: list[str] | None = None,
         friendly_name: str | None = None,
+        category: FaultCategory = FaultCategory.H,
+        related_symptom_ids: list[str] | None = None,
     ):
+        if level not in PRIORITY_PROFILES:
+            raise ValueError("Fault priority must be one of levels 1..4")
         self.name: str = name
         self.friendly_name: str = friendly_name or name
-        self.state: FaultState = FaultState.NOT_TESTED
-        self.previous_val = FaultState.NOT_TESTED
         self.related_symptoms: list = related_symptoms
+        self.related_symptom_ids: tuple[str, ...] = tuple(related_symptom_ids or ())
         self.level: int = level
         self.shadows: list[str] = list(shadows or [])
+        self.category: FaultCategory = FaultCategory(category)
+        self.priority_profile: PriorityProfile = PRIORITY_PROFILES[level]
+        self.evaluation: FaultEvaluation = FaultEvaluation()
 
 
 class RecoveryResult(NamedTuple):

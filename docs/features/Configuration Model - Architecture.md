@@ -186,6 +186,12 @@ is grouped by device identity and merged with optional manual
 entities. A percentage sensor and binary low-battery sensor belonging to one
 device supply one maintenance condition. Discovery failure is diagnostic
 unknown coverage; it does not create a passing empty inventory.
+The system-owned `calibration.functional_safety.battery_fault_catalog_file`
+stores active and retired battery-fault identities outside the deployed App.
+Startup removes retained MQTT discovery, state and attributes for excluded or
+removed devices, including exclusions that predate the catalog, and retries
+retirement after restart. A failed inventory read does not prove removal and
+does not retire otherwise configured device faults.
 
 The authenticated editor obtains candidate devices and readings from
 `GET /api/batteries`. Monitoring switches update `excluded_devices` in the
