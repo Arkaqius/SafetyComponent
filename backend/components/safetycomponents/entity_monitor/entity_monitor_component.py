@@ -39,6 +39,7 @@ CHECK_SUFFIXES = {
     "finite_number": "FiniteNumber",
     "numeric_range": "NumericRange",
     "rate_of_change": "RateOfChange",
+    "recovery_command": "RecoveryCommand",
 }
 HEALTH_SEVERITY = {
     EntityHealthState.HEALTHY: 0,
@@ -137,6 +138,8 @@ class EntityMonitorComponent(SafetyComponent):
             self._entities[dependency.key] = runtime
 
             check_names = ["availability", *dependency.checks]
+            if dependency.recovery_command:
+                check_names.append("recovery_command")
             mechanism_name = self._mechanism_name(dependency.key)
             related_symptoms: list[str] = []
             for check_name in check_names:
@@ -209,7 +212,10 @@ class EntityMonitorComponent(SafetyComponent):
                     ))
                 except (TypeError, ValueError) as exc:
                     errors.append(f"{raw_target!r}: {exc}")
-            for check_name in ("availability", *dependency.checks):
+            check_names = ["availability", *dependency.checks]
+            if dependency.recovery_command:
+                check_names.append("recovery_command")
+            for check_name in check_names:
                 bindings.append(DiagnosticBinding(
                     self._symptom_name(dependency.key, check_name),
                     tuple(targets),
@@ -262,11 +268,88 @@ class EntityMonitorComponent(SafetyComponent):
             return False
         if state == SMState.ENABLED:
             mechanism.isEnabled = True
+            mapping = self._symptom_to_check.get(name)
+            if mapping is not None and mapping[1] == "recovery_command":
+                runtime = self._entities[mapping[0]]
+                check = runtime.checks["recovery_command"]
+                if check.result != "not_tested":
+                    self._publish_recovery_command(runtime, check)
             return True
         if state == SMState.DISABLED:
             mechanism.isEnabled = False
             return True
         return False
+
+    def initialize_recovery_commands(
+        self, failures: dict[tuple[str, str], str] | None
+    ) -> None:
+        """Restore outstanding command failures before fault evaluation starts."""
+
+        for runtime in self._entities.values():
+            if not runtime.dependency.recovery_command:
+                continue
+            if failures is None:
+                continue
+            targets = {
+                target[0] for target in runtime.dependency.degradation_targets
+                if target[3] == "recovery"
+            }
+            details = [
+                detail for (target, entity), detail in failures.items()
+                if target in targets and entity == runtime.dependency.entity_id
+            ]
+            check = runtime.checks["recovery_command"]
+            check.active = bool(details)
+            check.result = "failed" if details else "passed"
+            check.reason = "restored_command_failure" if details else "no_outstanding_command_failure"
+            check.observed_value = details[0] if details else None
+            check.evaluated_at = self._now()
+
+    def record_recovery_command(
+        self, target_symptom_id: str, actuator_entity_id: str,
+        failed: bool, detail: str,
+    ) -> None:
+        """Route a command or postcondition result to its exact Group B D fault."""
+
+        matching = [
+            runtime for runtime in self._entities.values()
+            if runtime.dependency.recovery_command
+            and runtime.dependency.entity_id == actuator_entity_id
+            and any(
+                target[0] == target_symptom_id and target[3] == "recovery"
+                for target in runtime.dependency.degradation_targets
+            )
+        ]
+        if len(matching) != 1:
+            if matching:
+                raise ValueError(f"Ambiguous recovery command binding: {target_symptom_id}")
+            return
+        runtime = matching[0]
+        check = runtime.checks["recovery_command"]
+        if check.active == failed and check.result != "not_tested":
+            return
+        check.active = failed
+        check.result = "failed" if failed else "passed"
+        check.reason = detail.split(":", 1)[0] if failed else "postcondition_confirmed"
+        check.observed_value = detail if failed else None
+        check.evaluated_at = self._now()
+        self._publish_recovery_command(runtime, check)
+        self._publish_entity(runtime)
+        self._publish_summary()
+
+    def _publish_recovery_command(
+        self, runtime: EntityRuntime, check: CheckRuntime
+    ) -> None:
+        symptom_id = self._symptom_name(runtime.dependency.key, "recovery_command")
+        mechanism = self.safety_mechanisms.get(symptom_id)
+        if mechanism is None or not mechanism.isEnabled:
+            return
+        state = FaultState.SET if check.active else FaultState.CLEARED
+        self.symptom_states[symptom_id] = state
+        self.event_bus.publish(
+            "symptom", symptom_id=symptom_id, state=state,
+            additional_info=self._symptom_context(runtime, "recovery_command", check),
+        )
 
     def stop(self) -> None:
         """Cancel listeners and the periodic evaluation timer."""
@@ -309,6 +392,9 @@ class EntityMonitorComponent(SafetyComponent):
         entity_key = str(mechanism.sm_args["entity_key"])
         check_key = str(mechanism.sm_args["check_key"])
         runtime = self._entities[entity_key]
+
+        if check_key == "recovery_command":
+            return runtime.checks[check_key].active
 
         if entities_changes is None:
             self._evaluate_entity(entity_key)
@@ -847,6 +933,9 @@ class EntityMonitorComponent(SafetyComponent):
                     fault_owner=fault_owner,
                     fault_name=fault_name,
                     checks=checks,
+                    recovery_command=any(
+                        item.get("recovery_command", False) for item in items
+                    ),
                     failure_debounce_seconds=min(int(item["failure_debounce_seconds"]) for item in items),
                     recovery_debounce_seconds=max(int(item["recovery_debounce_seconds"]) for item in items),
                     detection_budget_seconds=min(

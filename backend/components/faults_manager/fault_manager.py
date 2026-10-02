@@ -769,12 +769,14 @@ class FaultManager:
                 try:
                     sm_fcn(symptom_data.module.safety_mechanisms[symptom_data.name])
                 except Exception:
+                    self.event_bus.publish("evaluation_exception", symptom_id=sm_name)
                     self.mark_evaluation_unavailable(sm_name)
                     recorder = getattr(symptom_data.module, "record_evaluation", None)
                     if callable(recorder):
                         recorder(success=False)
                     raise
                 else:
+                    self.event_bus.publish("evaluation_succeeded", symptom_id=sm_name)
                     recorder = getattr(symptom_data.module, "record_evaluation", None)
                     if callable(recorder):
                         recorder()

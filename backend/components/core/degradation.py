@@ -19,6 +19,9 @@ _PROVIDER_FOR_CAPABILITY = {
     "OfficialWeatherWarnings": "ImgwWarningsApiComponent",
     "OutdoorAirQuality": "OpenMeteoAirQualityApiComponent",
 }
+_CAPABILITY_FOR_PROVIDER = {
+    provider: capability for capability, provider in _PROVIDER_FOR_CAPABILITY.items()
+}
 
 
 class CoverageState(str, Enum):
@@ -35,6 +38,9 @@ class RestrictionEffect(str, Enum):
 
     EVALUATION = "evaluation"
     RECOVERY = "recovery"
+    NOTIFICATION = "notification"
+    PUBLICATION = "publication"
+    DURABILITY = "durability"
 
 
 @dataclass(frozen=True)
@@ -355,6 +361,9 @@ class DegradationRegistry:
 def compile_runtime_bindings(
     symptoms: Mapping[str, Symptom],
     monitor_bindings: Iterable[DiagnosticBinding],
+    *,
+    faults: Mapping[str, Fault] | None = None,
+    recovery_symptoms: frozenset[str] = frozenset(),
 ) -> tuple[DiagnosticBinding, ...]:
     """Expand direct D rows against exact installed H symptom identities.
 
@@ -365,10 +374,105 @@ def compile_runtime_bindings(
 
     bindings = list(monitor_bindings)
     bound = {binding.symptom_id for binding in bindings}
+    hazard_owners: dict[str, Fault] = {}
+    if faults is not None:
+        for target_id, target in symptoms.items():
+            for fault in faults.values():
+                if fault.category != FaultCategory.H:
+                    continue
+                if (
+                    target_id in fault.related_symptom_ids
+                    if fault.related_symptom_ids
+                    else target.sm_name in fault.related_symptoms
+                ):
+                    hazard_owners[target_id] = fault
     for symptom_id, symptom in symptoms.items():
         if symptom_id in bound:
             continue
-        if symptom.sm_name == "sm_ext_provider_unavailable":
+        if symptom.sm_name == "sm_app_health":
+            cause = str(symptom.parameters.get("cause", ""))
+            effect_for_cause = {
+                "startup": RestrictionEffect.EVALUATION,
+                "publication": RestrictionEffect.PUBLICATION,
+                "delivery": RestrictionEffect.NOTIFICATION,
+                "local_output": RestrictionEffect.NOTIFICATION,
+                "persistence": RestrictionEffect.DURABILITY,
+                "evaluation": RestrictionEffect.EVALUATION,
+                "recovery": RestrictionEffect.RECOVERY,
+            }
+            effect = effect_for_cause.get(cause)
+            if faults is None or effect is None:
+                bindings.append(DiagnosticBinding(
+                    symptom_id, (), error=f"App Health cause lacks fault allocation: {cause}"
+                ))
+                continue
+            targets = tuple(
+                DegradationTarget(
+                    target_id,
+                    f"app_{cause}",
+                    str(target.parameters.get("opening_name", target_id)),
+                    effect,
+                )
+                for target_id, target in symptoms.items()
+                if target_id in hazard_owners
+                and (
+                    cause not in {"evaluation", "recovery"}
+                    or target_id == symptom.parameters.get("target_symptom_id")
+                )
+                and (cause != "delivery" or hazard_owners[target_id].level <= 3)
+                and (cause != "local_output" or hazard_owners[target_id].level <= 2)
+                and (
+                    cause != "persistence"
+                    or symptom.parameters.get("store") != "notification_state"
+                    or hazard_owners[target_id].level <= 3
+                )
+                and (
+                    cause != "persistence"
+                    or symptom.parameters.get("store") != "recovery_state"
+                    or target_id in recovery_symptoms
+                )
+                and (
+                    cause != "persistence"
+                    or symptom.parameters.get("store") != "internal_environment_state"
+                    or target.sm_name.startswith("sm_iehm_")
+                )
+                and (
+                    cause != "persistence"
+                    or symptom.parameters.get("store") not in {
+                        "periodic_test_state", "detector_test_state"
+                    }
+                )
+                and (cause != "recovery" or target_id in recovery_symptoms)
+            )
+            bindings.append(DiagnosticBinding(
+                symptom_id, targets, external_only=not targets
+            ))
+        elif symptom.sm_name == "sm_provider_adapter_health":
+            provider = str(symptom.parameters.get("provider", ""))
+            capability = _CAPABILITY_FOR_PROVIDER.get(provider)
+            if capability is None:
+                bindings.append(DiagnosticBinding(
+                    symptom_id, (), error=f"Unknown provider adapter {provider!r}"
+                ))
+                continue
+            mechanism = (
+                "sm_ext_outdoor_air_quality_exposure"
+                if capability == "OutdoorAirQuality"
+                else "sm_ext_weather_exposure"
+            )
+            targets = tuple(
+                DegradationTarget(
+                    target_id, capability,
+                    str(target.parameters["opening_name"]),
+                    RestrictionEffect.EVALUATION,
+                )
+                for target_id, target in symptoms.items()
+                if target.sm_name == mechanism
+            )
+            bindings.append(DiagnosticBinding(
+                symptom_id, targets, external_only=not targets
+            ))
+        elif symptom.sm_name == "sm_ext_provider_unavailable":
             capability = str(symptom.parameters.get("capability", ""))
             if capability not in {
                 "WeatherPointModel", "OfficialWeatherWarnings", "OutdoorAirQuality"
