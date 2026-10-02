@@ -540,8 +540,12 @@ class SafetyFunctions(hass.Hass):
             **dependency,
             "source": "component",
             "fault_owner": dependency.get("fault_owner", "component"),
-            "failure_debounce_seconds": default_failure_debounce,
-            "recovery_debounce_seconds": default_recovery_debounce,
+            "failure_debounce_seconds": dependency.get(
+                "failure_debounce_seconds", default_failure_debounce
+            ),
+            "recovery_debounce_seconds": dependency.get(
+                "recovery_debounce_seconds", default_recovery_debounce
+            ),
         }
         override = overrides.get(str(dependency["key"]), {})
         if not isinstance(override, Mapping):

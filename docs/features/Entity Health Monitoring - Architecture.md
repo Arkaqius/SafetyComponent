@@ -334,7 +334,10 @@ unevaluable and cannot pass a numeric check.
 An internally generated temperature `_rate` has no numeric value until its
 second sample. Its dependency detection budget shall exceed the configured
 derivative sampling interval and include scheduler margin; the initial unknown
-value is not evidence of a safe forecast.
+value is not evidence of a safe forecast. Its availability failure debounce
+shall use that same interval-derived threshold, rather than the generic
+dependency default, so the first missing rate does not set a fault before the
+second sample is due. A configured component override may replace the debounce.
 
 ### 8.3 Debounce policy
 

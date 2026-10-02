@@ -145,6 +145,51 @@ def test_entity_monitor_debounces_failure_and_recovery(mocked_hass_app_basic):
     assert runtime.last_valid_at == clock["now"]
 
 
+def test_generated_rate_waits_for_second_sample_before_failure(
+    mocked_hass_app_basic,
+):
+    app, event_bus, component = _component(mocked_hass_app_basic)
+    now = datetime(2026, 8, 13, 10, 0, tzinfo=timezone.utc)
+    clock = {"now": now}
+    component._now = lambda: clock["now"]  # type: ignore[method-assign]
+    app.get_state = MagicMock(return_value=_snapshot("unknown", now))
+    events: list[dict] = []
+    event_bus.subscribe("symptom", lambda **event: events.append(event))
+
+    config = _config("sensor.office_temperature_rate")
+    config["component_entities"][0].update(
+        key="TemperatureForecastOffice",
+        failure_debounce_seconds=960,
+        detection_budget_seconds=960,
+        checks={"finite_number": {"target": "state"}},
+    )
+    symptoms, _ = component.get_symptoms_data(
+        {"EntityMonitorComponent": component}, config
+    )
+    for symptom in symptoms.values():
+        assert component.init_safety_mechanism(
+            symptom.sm_name, symptom.name, symptom.parameters
+        )
+        assert component.enable_safety_mechanism(symptom.name, SMState.ENABLED)
+
+    component._evaluate_entity("TemperatureForecastOffice")
+    clock["now"] += timedelta(seconds=959)
+    component._evaluate_entity("TemperatureForecastOffice")
+    assert events == []
+    assert (
+        component._entities["TemperatureForecastOffice"]
+        .checks["availability"]
+        .result
+        == "pending_failure"
+    )
+
+    clock["now"] += timedelta(seconds=1)
+    component._evaluate_entity("TemperatureForecastOffice")
+    assert len(events) == 1
+    assert events[0]["state"] == FaultState.SET
+    assert events[0]["symptom_id"].endswith("Availability")
+
+
 def test_entity_monitor_recovery_dry_run_has_no_runtime_side_effects(
     mocked_hass_app_basic,
 ):

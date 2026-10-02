@@ -5,6 +5,7 @@ import pytest
 from components.safetycomponents.temperature.temperature_component import (
     TemperatureComponent,
 )
+from SafetyFunctions import SafetyFunctions
 
 
 @pytest.mark.parametrize("sample_minutes", [15, 30])
@@ -18,4 +19,26 @@ def test_rate_failure_budget_exceeds_first_sample_interval(sample_minutes: int) 
         }}
     ])
     rate = next(item for item in dependencies if item["key"] == "TemperatureForecastOffice")
+    assert rate["failure_debounce_seconds"] == sample_minutes * 60 + 60
     assert rate["detection_budget_seconds"] == sample_minutes * 60 + 60
+
+    calibrated = SafetyFunctions._calibrate_component_dependency(
+        rate, {}, default_failure_debounce=15, default_recovery_debounce=15
+    )
+    assert calibrated["failure_debounce_seconds"] == sample_minutes * 60 + 60
+    assert calibrated["detection_budget_seconds"] == sample_minutes * 60 + 60
+
+
+def test_rate_failure_debounce_can_be_explicitly_overridden() -> None:
+    dependency = {
+        "key": "TemperatureForecastOffice",
+        "failure_debounce_seconds": 960,
+        "detection_budget_seconds": 960,
+    }
+    calibrated = SafetyFunctions._calibrate_component_dependency(
+        dependency,
+        {"TemperatureForecastOffice": {"failure_debounce_seconds": 30}},
+        default_failure_debounce=15,
+        default_recovery_debounce=15,
+    )
+    assert calibrated["failure_debounce_seconds"] == 30
