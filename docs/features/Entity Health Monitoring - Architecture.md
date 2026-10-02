@@ -332,7 +332,9 @@ fault semantics. The rate is `(newest_value - oldest_value) / elapsed_time`
 expressed per minute. Non-numeric, non-finite, stale, or unavailable input is
 unevaluable and cannot pass a numeric check.
 An internally generated temperature `_rate` has no numeric value until its
-second sample. Its dependency detection budget shall exceed the configured
+second sample. The derivative monitor shall seed the first source sample at
+registration so the next scheduled sample can produce a valid rate. Its
+dependency detection budget shall exceed the configured
 derivative sampling interval and include scheduler margin; the initial unknown
 value is not evidence of a safe forecast. Its availability failure debounce
 shall use that same interval-derived threshold, rather than the generic

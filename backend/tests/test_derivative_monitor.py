@@ -85,6 +85,32 @@ def test_register_entity(setup_derivative_monitor):
     )
 
 
+def test_registration_seeds_first_sample_before_scheduled_second_sample(
+    setup_derivative_monitor,
+):
+    """One scheduled interval must be sufficient to publish a valid rate."""
+    mock_hass, mqtt_entities, derivative_monitor, set_mock_state = (
+        setup_derivative_monitor
+    )
+    entity_id = "sensor.temperature"
+    set_mock_state(entity_id, 20.0)
+
+    derivative_monitor.register_entity(entity_id, 900, -5.0, 5.0)
+
+    assert derivative_monitor.entities[entity_id]["prev_value"] == 20.0
+    assert derivative_monitor.get_first_derivative(entity_id) is None
+    mock_hass.run_every.assert_called_once()
+
+    set_mock_state(entity_id, 21.0)
+    scheduled_callback = mock_hass.run_every.call_args.args[0]
+    scheduled_callback(entity_id=entity_id, sample_time=900)
+
+    assert derivative_monitor.get_first_derivative(entity_id) is not None
+    mqtt_entities.publish_sensor_state.assert_any_call(
+        f"{entity_id}_rate", derivative_monitor.get_first_derivative(entity_id)
+    )
+
+
 def test_calculate_diff_updates_derivatives(setup_derivative_monitor):
     """Test derivative calculation and MQTT state publication."""
     _, mqtt_entities, derivative_monitor, set_mock_state = setup_derivative_monitor
