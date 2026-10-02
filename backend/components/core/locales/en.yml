@@ -3,6 +3,7 @@ entity.safety_system_state: Safety system state
 entity.entity_monitor_summary: Monitored entities
 entity.notification_delivery_health: Notification delivery health
 entity.safety_evaluation_progress: Safety evaluation progress
+entity.safety_coverage_state: Safety coverage
 entity.safety_detector_tests: Safety detector tests
 entity.safety_periodic_tests: Safety periodic checks
 test.notification_delivery: Verified warning delivery

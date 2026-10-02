@@ -28,6 +28,7 @@ from typing import Any, Mapping, Optional
 import appdaemon.plugins.hass.hassapi as hass  # type: ignore
 
 from components.core.common_entities import CommonEntities
+from components.core.degradation import DegradationRegistry
 from components.core.mqtt_entity_manager import MqttEntityManager
 from components.core.types_common import (
     Fault,
@@ -78,6 +79,7 @@ class RecoveryManager:
         nm: NotificationManager,
         mqtt_entities: MqttEntityManager,
         state_store: RecoveryStateStore | None = None,
+        degradation: DegradationRegistry | None = None,
     ) -> None:
         """
         Initializes the RecoveryManager with the necessary application context and recovery configuration.
@@ -107,6 +109,7 @@ class RecoveryManager:
         self.nm: NotificationManager = nm
         self.mqtt_entities = mqtt_entities
         self.state_store = state_store or InMemoryRecoveryStateStore()
+        self.degradation = degradation
         self._pending_recovery_confirmations: dict[str, dict[str, str]] = {}
         self._recovery_confirmation_handles: dict[str, list[Any]] = {}
         self._recovery_deadline_handles: dict[str, Any] = {}
@@ -129,6 +132,25 @@ class RecoveryManager:
                 "safety_recovery_confirm",
             )
         self._restore_state()
+        self.invalidate_restricted_proposals()
+
+    def invalidate_restricted_proposals(self) -> None:
+        """Withdraw pending actuator confirmations whose dependencies are unsafe."""
+
+        if self.degradation is None:
+            return
+        for symptom_id, proposal in tuple(self._proposals.items()):
+            if proposal.get("status") != RecoveryActionState.AWAITING_CONFIRMATION.name:
+                continue
+            if self.degradation.recovery_allowed(
+                symptom_id, evidence_source=str(proposal.get("source", ""))
+            ):
+                continue
+            self.hass_app.log(
+                f"Withdrawing restricted recovery proposal for {symptom_id}",
+                level="WARNING",
+            )
+            self._recovery_clear_by_name(symptom_id)
 
     def stop(self) -> None:
         """Persist active proposals during controlled shutdown."""
@@ -606,6 +628,19 @@ class RecoveryManager:
             f"Validating potential recovery action for symptom: {symptom.name}",
             level="DEBUG",
         )
+
+        if (
+            self.degradation is not None
+            and recovery_result.changed_actuators
+            and not self.degradation.recovery_allowed(
+                symptom.name, evidence_source=recovery_result.source
+            )
+        ):
+            self.hass_app.log(
+                f"Recovery action for {symptom.name} is restricted by diagnostic coverage",
+                level="WARNING",
+            )
+            return False
 
         for evaluator in self._policy_evaluators:
             decision = evaluator.evaluate_recovery_policy(recovery_result)

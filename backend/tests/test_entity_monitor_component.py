@@ -103,6 +103,38 @@ def test_entity_monitor_routes_checks_to_component_fault(
     assert attributes["source_entity_id"] == "sensor.office_temperature"
 
 
+def test_entity_monitor_compiles_declared_group_b_and_external_only_group_a(
+    mocked_hass_app_basic,
+):
+    app, _, component = _component(mocked_hass_app_basic)
+    app.get_state = MagicMock(return_value=None)
+    config = _config()
+    config["component_entities"][0]["degradation_targets"] = (
+        ("RiskyTemperatureOffice", "temperature_evaluation", "Office", "evaluation"),
+    )
+    config["explicit_entities"] = [{
+        "key": "ExternalFan",
+        "entity_id": "binary_sensor.external_fan",
+        "owner": "EntityMonitorComponent",
+        "purpose": "External automation",
+        "source": "explicit",
+        "failure_debounce_seconds": 10,
+        "recovery_debounce_seconds": 10,
+        "checks": {},
+    }]
+    component.get_symptoms_data({"EntityMonitorComponent": component}, config)
+
+    bindings = component.get_degradation_bindings()
+    room = [item for item in bindings if "TemperatureOffice" in item.symptom_id]
+    external = [item for item in bindings if "ExternalFan" in item.symptom_id]
+    assert len(room) == 3
+    assert all(item.targets[0].symptom_id == "RiskyTemperatureOffice" for item in room)
+    assert all(not item.external_only for item in room)
+    assert len(external) == 1
+    assert external[0].targets == ()
+    assert external[0].external_only
+
+
 def test_entity_monitor_debounces_failure_and_recovery(mocked_hass_app_basic):
     app, event_bus, component = _component(mocked_hass_app_basic)
     now = datetime(2026, 8, 13, 10, 0, tzinfo=timezone.utc)

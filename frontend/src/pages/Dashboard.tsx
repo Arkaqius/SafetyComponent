@@ -19,12 +19,14 @@ import { useSafetyEntities } from '../hooks/useSafetyEntities';
 import { ENTITY_MONITOR_SUMMARY_ID } from '../domain/entityHealth';
 import { NOTIFICATION_DELIVERY_HEALTH_ID, readAcknowledgedNotificationTags } from '../domain/notificationHistory';
 import { EVALUATION_PROGRESS_ENTITY_ID } from '../domain/functionalSafety';
+import { COVERAGE_ENTITY_ID, getCoverageView } from '../domain/coverage';
 
 export default function Dashboard() {
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const [averageDialogOpen, setAverageDialogOpen] = useState(false);
   const closeEntityDetails = useCallback(() => setSelectedEntityId(null), []);
   const {
+    connection,
     entities,
     entityMonitorSummary,
     externalHazards,
@@ -63,6 +65,7 @@ export default function Dashboard() {
             : 'muted';
   const acknowledgedNotificationTags = new Set(readAcknowledgedNotificationTags(entities[NOTIFICATION_DELIVERY_HEALTH_ID]));
   const progressState = entities[EVALUATION_PROGRESS_ENTITY_ID]?.state;
+  const coverage = getCoverageView(connection.cannotConnect ? {} : entities);
 
   return (
     <div className='page-stack'>
@@ -141,6 +144,18 @@ export default function Dashboard() {
         <Link className='text-link' to='/functional-safety'>
           Szczegóły <Icon name='chevron' size={15} />
         </Link>
+      </section>
+
+      <section className='entity-monitor-overview'>
+        <div>
+          <span className='section-kicker'>Pokrycie bezpieczeństwa</span>
+          <strong>{coverage.label}</strong>
+          <small>{coverage.detail}</small>
+        </div>
+        <StatusBadge tone={coverage.tone}>{coverage.state}</StatusBadge>
+        <button className='text-button' onClick={() => setSelectedEntityId(COVERAGE_ENTITY_ID)} type='button'>
+          Przyczyny i zakres <Icon name='history' size={15} />
+        </button>
       </section>
 
       <section aria-label='Podsumowanie temperatur' className='summary-grid'>

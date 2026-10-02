@@ -65,6 +65,16 @@ class TemperatureComponent(SafetyComponent):
         dependencies: list[dict[str, Any]] = []
         for entry in component_cfg:
             for location, data in entry.items():
+                direct = (f"RiskyTemperature{location}", f"RiskyTemperatureHigh{location}")
+                forecast = (f"RiskyTemperature{location}ForeCast", f"RiskyTemperatureHigh{location}ForeCast")
+                evaluation_targets = tuple(
+                    (symptom_id, "temperature_evaluation", location, "evaluation")
+                    for symptom_id in (*direct, *forecast)
+                )
+                recovery_targets = tuple(
+                    (symptom_id, "temperature_recovery", location, "recovery")
+                    for symptom_id in (direct[0], forecast[0])
+                )
                 dependencies.append(
                     {
                         "key": f"Temperature{location}",
@@ -73,6 +83,7 @@ class TemperatureComponent(SafetyComponent):
                         "fault_owner": "component",
                         "fault_name": "TemperatureMonitoringUnavailable",
                         "purpose": f"Temperature input for {location}",
+                        "degradation_targets": evaluation_targets,
                         "checks": {
                             "freshness": {
                                 "timestamp_source": "last_updated",
@@ -98,6 +109,10 @@ class TemperatureComponent(SafetyComponent):
                         "fault_owner": "component",
                         "fault_name": "TemperatureMonitoringUnavailable",
                         "purpose": f"Forecast rate input for {location}",
+                        "degradation_targets": tuple(
+                            (symptom_id, "temperature_forecast", location, "evaluation")
+                            for symptom_id in forecast
+                        ),
                         "checks": {"finite_number": {"target": "state"}},
                         "failure_debounce_seconds": (
                             int(data["SM_TC_2_DERIVATIVE_SAMPLE_MINUTES"]) * 60 + 60
@@ -118,6 +133,7 @@ class TemperatureComponent(SafetyComponent):
                             "fault_owner": "component",
                             "fault_name": "TemperatureRecoveryUnavailable",
                             "purpose": f"Window input for {location} temperature policy",
+                            "degradation_targets": recovery_targets,
                             "checks": {},
                             "detection_budget_seconds": 30,
                             "area_id": data.get("area_id"),
@@ -133,6 +149,7 @@ class TemperatureComponent(SafetyComponent):
                             "fault_owner": "component",
                             "fault_name": "TemperatureRecoveryUnavailable",
                             "purpose": f"Configured recovery actuator for {location}",
+                            "degradation_targets": recovery_targets,
                             "checks": {},
                             "detection_budget_seconds": 30,
                             "area_id": data.get("area_id"),

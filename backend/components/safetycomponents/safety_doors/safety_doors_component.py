@@ -56,6 +56,10 @@ class SafetyDoorsComponent(SafetyComponent):
                         "fault_owner": "component",
                         "fault_name": "SafetyDoorMonitoringUnavailable",
                         "purpose": f"Open-duration input for {door_name}",
+                        "degradation_targets": ((
+                            f"SafetyDoorOpenTimeout{door_name}",
+                            "door_timeout", door_name, "evaluation",
+                        ),),
                         "checks": {},
                         "detection_budget_seconds": 30,
                         "area_id": data.get("area_id"),
@@ -72,6 +76,10 @@ class SafetyDoorsComponent(SafetyComponent):
                             "fault_owner": "component",
                             "fault_name": "SafetyDoorMonitoringUnavailable",
                             "purpose": f"Monitoring condition for {door_name}",
+                            "degradation_targets": ((
+                                f"SafetyDoorOpenTimeout{door_name}",
+                                "door_timeout", door_name, "evaluation",
+                            ),),
                             "checks": {},
                             "detection_budget_seconds": 30,
                             "area_id": data.get("area_id"),

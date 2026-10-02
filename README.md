@@ -180,6 +180,7 @@ the [frontend README](frontend/README.md).
 - [Safety monitoring responsibility boundaries](<docs/features/Safety Monitoring Responsibility Boundaries.md>)
 - [Fault state and priority policy](<docs/features/Fault State Policy - Architecture.md>)
 - [Fault routing and aggregation](<docs/features/Fault Routing and Aggregation - Architecture.md>)
+- [Fault degradation and coverage](<docs/features/Fault Degradation and Coverage - Architecture.md>)
 - [Backend coding standards](backend/README.md)
 - [Contribution workflow](CONTRIBUTING.md)
 - [Agent instructions](AGENTS.md)

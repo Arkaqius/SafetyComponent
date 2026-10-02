@@ -4,7 +4,7 @@ import copy
 from typing import Any
 from unittest.mock import MagicMock
 
-from components.core.types_common import RecoveryActionState
+from components.core.types_common import FaultState, RecoveryActionState
 from components.core.fault_state_policy import FaultEvaluationStatus
 
 from .fixtures.hass_fixture import (
@@ -196,6 +196,17 @@ def test_recovery_manager_sets_recovery_state_and_actuator_entities(
     _install_stateful_hass(app_instance, mock_behaviors)
 
     app_instance.initialize()
+    for diagnostic_id, binding in app_instance.degradation._bindings.items():
+        if any(
+            target.symptom_id == "RiskyTemperatureOffice"
+            for target in binding.targets
+        ):
+            app_instance.degradation.observe(
+                symptom_id=diagnostic_id, state=FaultState.CLEARED
+            )
+    app_instance.degradation.observe(
+        symptom_id="RiskyTemperatureOffice", state=FaultState.SET
+    )
     app_instance.reco_man._is_dry_test_failed = MagicMock(return_value=False)
     app_instance.reco_man._isRecoveryConflict = MagicMock(return_value=False)
     app_instance.call_service.reset_mock()

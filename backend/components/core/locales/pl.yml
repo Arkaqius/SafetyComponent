@@ -3,6 +3,7 @@ entity.safety_system_state: Stan systemu bezpieczeństwa
 entity.entity_monitor_summary: Monitorowane encje
 entity.notification_delivery_health: Stan dostarczania powiadomień
 entity.safety_evaluation_progress: Postęp oceny bezpieczeństwa
+entity.safety_coverage_state: Pokrycie monitoringu bezpieczeństwa
 entity.safety_detector_tests: Testy czujników bezpieczeństwa
 entity.safety_periodic_tests: Okresowe przeglądy bezpieczeństwa
 test.notification_delivery: Potwierdzone dostarczenie ostrzeżenia

@@ -50,6 +50,7 @@ from components.core.battery_fault_catalog import (
     reconcile_battery_faults,
 )
 from components.core.common_entities import CommonEntities
+from components.core.degradation import DegradationRegistry, compile_runtime_bindings
 from components.core.event_bus import EventBus
 from components.core.detector_test_monitor import DetectorTestMonitor
 from components.core.periodic_test_monitor import PeriodicTestMonitor
@@ -324,6 +325,20 @@ class SafetyFunctions(hass.Hass):
             self.event_bus,
             self.mqtt_entities,
         )
+        entity_monitor = self.sm_modules.get("EntityMonitorComponent")
+        monitor_bindings = (
+            entity_monitor.get_degradation_bindings()
+            if entity_monitor is not None else ()
+        )
+        self.degradation = DegradationRegistry(
+            self.symptoms,
+            self.faults,
+            compile_runtime_bindings(self.symptoms, monitor_bindings),
+            on_change=self._on_coverage_changed,
+            isolate_invalid=True,
+        )
+        for source, error in self.degradation.binding_errors.items():
+            self.log(f"Rejected degradation binding {source}: {error}", level="ERROR")
 
         persistence_cfg = self.notification_cfg["persistence"]
         notification_state_store = (
@@ -369,12 +384,17 @@ class SafetyFunctions(hass.Hass):
             self.notify_man,
             self.mqtt_entities,
             recovery_state_store,
+            degradation=self.degradation,
         )
         for component in self.sm_modules.values():
             if callable(getattr(component, "evaluate_recovery_policy", None)):
                 self.reco_man.register_policy_evaluator(component)
 
         # Wire symptom and fault events in deterministic priority order.
+        self.event_bus.subscribe("symptom", self.degradation.observe, priority=-1)
+        self.event_bus.subscribe(
+            "evaluation_unavailable", self.degradation.mark_unavailable, priority=-1
+        )
         self.event_bus.subscribe("symptom", self.fm.handle_symptom_event, priority=0)
         self.event_bus.subscribe(
             "evaluation_unavailable", self.fm.mark_evaluation_unavailable, priority=0
@@ -469,6 +489,18 @@ class SafetyFunctions(hass.Hass):
                     )
                 )
         for key, entity_id in self.common_entities_cfg.items():
+            temperature_entries = self.safety_components_cfg.get(
+                "TemperatureComponent", []
+            )
+            recovery_targets = tuple(
+                (symptom_id, "temperature_recovery", str(room), "recovery")
+                for entry in temperature_entries
+                for room in entry
+                for symptom_id in (
+                    f"RiskyTemperature{room}",
+                    f"RiskyTemperature{room}ForeCast",
+                )
+            ) if key == "outside_temp" else ()
             checks = (
                 {
                     "freshness": {
@@ -490,6 +522,8 @@ class SafetyFunctions(hass.Hass):
                         "fault_owner": "component",
                         "fault_name": "CommonInputUnavailable",
                         "purpose": f"Shared application entity: {key}",
+                        "degradation_targets": recovery_targets,
+                        "external_only": not recovery_targets,
                         "checks": checks,
                         "detection_budget_seconds": (
                             3615 if key == "outside_temp" else 30
@@ -739,6 +773,25 @@ class SafetyFunctions(hass.Hass):
             attributes=attributes,
         )
 
+    def _on_coverage_changed(self) -> None:
+        """Apply scoped restrictions before downstream fault recovery handlers."""
+
+        recovery_manager = getattr(self, "reco_man", None)
+        if recovery_manager is not None:
+            try:
+                recovery_manager.invalidate_restricted_proposals()
+            except Exception as exc:
+                self.log(f"Unable to withdraw restricted recovery: {exc}", level="ERROR")
+        coverage = self.degradation.snapshot(limit=32)
+        try:
+            self._set_internal_entity(
+                "sensor.safety_coverage_state",
+                coverage["state"],
+                attributes={key: value for key, value in coverage.items() if key != "state"},
+            )
+        except Exception as exc:
+            self.log(f"Unable to publish safety coverage: {exc}", level="ERROR")
+
 
     def register_entities(self) -> None:
         """
@@ -768,6 +821,16 @@ class SafetyFunctions(hass.Hass):
             "Safety Evaluation Progress",
             state="unknown",
             icon="mdi:progress-check",
+            entity_category="diagnostic",
+        )
+
+        coverage = self.degradation.snapshot(limit=32)
+        self.mqtt_entities.register_sensor(
+            "sensor.safety_coverage_state",
+            "Safety Coverage",
+            state=coverage["state"],
+            attributes={key: value for key, value in coverage.items() if key != "state"},
+            icon="mdi:shield-search",
             entity_category="diagnostic",
         )
 

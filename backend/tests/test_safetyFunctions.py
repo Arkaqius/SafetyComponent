@@ -18,6 +18,8 @@ def test_safety_functions_initialization(mocked_hass_app_with_temp_component) ->
     )
     app_instance.initialize()
     validate_fault_routes(app_instance.symptoms, app_instance.faults)
+    assert app_instance.degradation.binding_errors == {}
+    assert "sensor.safety_coverage_state" in app_instance.mqtt_entities.discovered_entities
 
     # Assert the 'symptoms' dictionary content
     symptom = app_instance.symptoms["RiskyTemperatureOffice"]
