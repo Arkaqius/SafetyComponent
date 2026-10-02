@@ -551,8 +551,10 @@ def safety_mechanism_decorator(func: Callable) -> Callable:
                     self.event_bus.publish(
                         "evaluation_unavailable", symptom_id=sm.name
                     )
+                self.event_bus.publish("evaluation_succeeded", symptom_id=sm.name)
                 return result
             except Exception:
+                self.event_bus.publish("evaluation_exception", symptom_id=sm.name)
                 self.event_bus.publish(
                     "evaluation_unavailable", symptom_id=sm.name
                 )

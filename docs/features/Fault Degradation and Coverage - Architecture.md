@@ -13,8 +13,9 @@ and [SWR-FLT-014..019](<../sys/SafetyComponent - SSRD.md#44-fault-aggregation-an
 ## Installed binding contract
 
 Each diagnostic contributor declares an owner, the capability and subject it
-can impair, its H symptom targets, whether the effect limits evaluation or
-recovery, and the positive evidence required to remove that restriction. A
+can impair, its H symptom targets, its effect (`evaluation`, `recovery`,
+`notification`, `publication`, or `durability`), and the positive evidence
+required to remove that restriction. A
 Group A check with no internal consumer declares an intentional external-only
 empty target list. An empty list is never inferred from a missing declaration.
 
@@ -36,6 +37,9 @@ not blocked by a guessed scope. Independent monitors continue running.
 | External opening contact | Installed weather/AQ exposure symptoms for that opening | Evaluation |
 | External recovery actuator | Recovery actions for that opening | Recovery only |
 | Provider capability | Installed weather or AQ exposure symptoms using that capability | Evaluation/advice/recovery requiring that capability |
+| One provider adapter | Installed weather or AQ exposure symptoms using that adapter's evidence; consumer capability loss remains a separate cause | Evaluation for the provider-specific path only |
+| App Health predicate/recovery contributor | Exact failed installed H symptom or recovery binding | Evaluation or recovery for that subject only |
+| App Health delivery, local output, publication, or store | Installed H users of the failed response or durability path | Notification, publication, or durability; valid H detection continues |
 | Indoor detector health | The detector's own smoke/gas/CO/water alarm symptom | Evaluation; healthy detector channels continue |
 | Group A-only external entity | Intentional empty internal H target list | External automation coverage, not internal H coverage |
 

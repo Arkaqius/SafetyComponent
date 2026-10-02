@@ -2,10 +2,13 @@
 
 from pathlib import Path
 from typing import Any
+from unittest.mock import Mock
 
 from build_app_config import compile_config
 from SafetyFunctions import SafetyFunctions
 from components.core.fault_state_policy import FaultEvaluationStatus
+from components.core.degradation import RestrictionEffect
+from components.core.types_common import FaultState
 
 
 def test_gas_alarm_reaches_l1_fault_without_co_consensus(tmp_path, monkeypatch) -> None:
@@ -74,6 +77,26 @@ def test_gas_alarm_reaches_l1_fault_without_co_consensus(tmp_path, monkeypatch) 
     app.initialize()
 
     assert app.degradation.binding_errors == {}
+
+    monitor = app.sm_modules["InternalEnvironmentalHazardMonitorComponent"]
+    failed_store = Mock()
+    failed_store.save.side_effect = OSError("detector state unavailable")
+    monitor._state_store = failed_store
+    monitor._persist_state()
+    cause = "AppHealthPersistenceInternalEnvironmentState"
+    assert app.fm.check_symptom(cause) == FaultState.SET
+    assert cause in app.degradation.causes_for(
+        "InternalEnv_flammable_gas_ExampleUtilityFlammableGas",
+        RestrictionEffect.DURABILITY,
+    )
+    assert all(
+        item["symptom"].startswith("Internal")
+        for item in app.degradation.snapshot()["affected"]
+        if item["cause"] == cause
+    )
+    failed_store.save.side_effect = None
+    monitor._persist_state()
+    assert app.fm.check_symptom(cause) == FaultState.CLEARED
 
     assert app.fm.check_fault("InternalFlammableGasDetected") is FaultEvaluationStatus.FAIL
     assert app.fm.check_fault("InternalCarbonMonoxideDetected") is not FaultEvaluationStatus.FAIL

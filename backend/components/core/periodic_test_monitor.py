@@ -15,7 +15,7 @@ TEST_SUMMARY_ENTITY_ID = "sensor.safety_periodic_tests"
 class PeriodicTestMonitor:
     """Track completed human checks without sending messages or running restores."""
 
-    def __init__(self, hass_app: Any, mqtt_entities: Any, tests: Mapping[str, bool], *, intervals: Mapping[str, int], state_store: NotificationStateStore, status_observer: Callable[[str, str], None] | None = None) -> None:
+    def __init__(self, hass_app: Any, mqtt_entities: Any, tests: Mapping[str, bool], *, intervals: Mapping[str, int], state_store: NotificationStateStore, status_observer: Callable[[str, str], None] | None = None, diagnostics_observer: Callable[..., None] | None = None) -> None:
         self.hass_app = hass_app
         self.mqtt_entities = mqtt_entities
         self.intervals = {key: intervals[key] for key in ("notification_delivery", "backup_restore") if tests.get(key, False)}
@@ -23,6 +23,7 @@ class PeriodicTestMonitor:
             raise ValueError("Periodic test intervals must be positive")
         self.state_store = state_store
         self.status_observer = status_observer
+        self.diagnostics_observer = diagnostics_observer
         self.records: dict[str, dict[str, str]] = {}
         self._storage_error = False
         self._listener_handle: Any = None
@@ -46,6 +47,9 @@ class PeriodicTestMonitor:
             self.hass_app.log(f"Unable to restore periodic tests: {exc}", level="ERROR")
             self.records = {}
             self._storage_error = True
+            self._report_storage(True, "load")
+        else:
+            self._report_storage(False, "load")
         self.mqtt_entities.register_sensor(TEST_SUMMARY_ENTITY_ID, "Safety Periodic Tests", state="unknown", icon="mdi:clipboard-check-outline", entity_category="diagnostic")
         self._listener_handle = self.hass_app.listen_event(self.handle_test_result, TEST_RESULT_EVENT)
         self._timer_handle = self.hass_app.run_every(self.publish, "now", 3600)
@@ -74,9 +78,20 @@ class PeriodicTestMonitor:
             self.state_store.save({"version": 1, "records": updated})
         except Exception as exc:
             self.hass_app.log(f"Unable to save periodic test: {exc}", level="ERROR")
+            self._report_storage(True, "save")
             return
+        self._report_storage(False, "save")
         self.records = updated
         self.publish()
+
+    def _report_storage(self, failed: bool, operation: str) -> None:
+        """Route current persistence failure without treating unknown tests as passed."""
+
+        if self.diagnostics_observer is not None:
+            self.diagnostics_observer(
+                "persistence", failed, detail="periodic_test_state",
+                operation=operation,
+            )
 
     def publish(self, **_: Any) -> None:
         """Publish deadlines, retaining unknown evidence instead of clearing faults."""

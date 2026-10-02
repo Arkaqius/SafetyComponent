@@ -23,12 +23,13 @@ This module's approach to fault recovery empowers developers to construct robust
 import secrets
 import time
 from datetime import datetime, timezone
-from typing import Any, Mapping, Optional
+from typing import Any, Callable, Mapping, Optional
 
 import appdaemon.plugins.hass.hassapi as hass  # type: ignore
 
 from components.core.common_entities import CommonEntities
 from components.core.degradation import DegradationRegistry
+from components.core.fault_state_policy import FaultCategory
 from components.core.mqtt_entity_manager import MqttEntityManager
 from components.core.types_common import (
     Fault,
@@ -53,6 +54,10 @@ _TOGGLE_SERVICE_DOMAINS = frozenset(
 )
 _COVER_OPEN_VALUES = frozenset({"on", "open", "opened"})
 _COVER_CLOSE_VALUES = frozenset({"off", "close", "closed"})
+
+
+class ComponentRecoveryError(RuntimeError):
+    """A component-owned recovery policy failed, not the shared dispatcher."""
 
 
 class RecoveryManager:
@@ -80,6 +85,8 @@ class RecoveryManager:
         mqtt_entities: MqttEntityManager,
         state_store: RecoveryStateStore | None = None,
         degradation: DegradationRegistry | None = None,
+        diagnostics_observer: Callable[..., None] | None = None,
+        recovery_observer: Callable[[str, bool], None] | None = None,
     ) -> None:
         """
         Initializes the RecoveryManager with the necessary application context and recovery configuration.
@@ -110,6 +117,8 @@ class RecoveryManager:
         self.mqtt_entities = mqtt_entities
         self.state_store = state_store or InMemoryRecoveryStateStore()
         self.degradation = degradation
+        self.diagnostics_observer = diagnostics_observer
+        self.recovery_observer = recovery_observer
         self._pending_recovery_confirmations: dict[str, dict[str, str]] = {}
         self._recovery_confirmation_handles: dict[str, list[Any]] = {}
         self._recovery_deadline_handles: dict[str, Any] = {}
@@ -160,19 +169,27 @@ class RecoveryManager:
     def _persist_state(self) -> None:
         """Persist only the allowlisted proposal lifecycle state."""
 
-        self.state_store.save(
-            {
-                "version": 1,
-                "proposals": [
-                    {
-                        **self._public_proposal(record),
-                        "action_name": record.get("action_name"),
-                        "fault_tag": record.get("fault_tag"),
-                    }
-                    for record in self._proposals.values()
-                ],
-            }
-        )
+        try:
+            self.state_store.save(
+                {
+                    "version": 1,
+                    "proposals": [
+                        {
+                            **self._public_proposal(record),
+                            "action_name": record.get("action_name"),
+                            "fault_tag": record.get("fault_tag"),
+                        }
+                        for record in self._proposals.values()
+                    ],
+                }
+            )
+        except Exception as exc:
+            if self.diagnostics_observer is not None:
+                self.diagnostics_observer("persistence", True, detail="recovery_state", operation="save")
+            self.hass_app.log(f"Unable to persist recovery state: {exc}", level="ERROR")
+            raise
+        if self.diagnostics_observer is not None:
+            self.diagnostics_observer("persistence", False, detail="recovery_state", operation="save")
 
     def _restore_state(self) -> None:
         """Restore visible active state without replaying actuator commands."""
@@ -180,6 +197,8 @@ class RecoveryManager:
         try:
             snapshot = self.state_store.load()
         except Exception as exc:
+            if self.diagnostics_observer is not None:
+                self.diagnostics_observer("persistence", True, detail="recovery_state", operation="load")
             self.hass_app.log(
                 f"Unable to restore recovery state: {exc}", level="ERROR"
             )
@@ -200,6 +219,8 @@ class RecoveryManager:
                 record["status"] = RecoveryActionState.TO_PERFORM.name
             self._proposals[proposal_id] = record
             self._set_rec_entity(recovery)
+        if self.diagnostics_observer is not None:
+            self.diagnostics_observer("persistence", False, detail="recovery_state", operation="load")
 
     def register_policy_evaluator(
         self, evaluator: RecoveryPolicyEvaluator
@@ -503,6 +524,11 @@ class RecoveryManager:
         """
         for symptom_name, symptom_data in self.fm.get_all_symptom().items():
             if symptom_data.sm_state == SMState.ENABLED:
+                owner = self.fm.found_mapped_fault(
+                    symptom_name, symptom_data.sm_name
+                )
+                if owner is None or owner.category != FaultCategory.H:
+                    continue
                 # Force each sm to get state if possible
                 sm_fcn = getattr(symptom_data.module, symptom_data.sm_name)
                 isFaultTrigged = sm_fcn(
@@ -573,7 +599,16 @@ class RecoveryManager:
                     ):
                         self._recovery_clear(contributor)
             return
-        self.recovery(symptom, fault_tag)
+        try:
+            self.recovery(symptom, fault_tag)
+        except ComponentRecoveryError:
+            raise
+        except Exception:
+            if self.recovery_observer is not None:
+                self.recovery_observer(symptom.name, True)
+            raise
+        if self.recovery_observer is not None:
+            self.recovery_observer(symptom.name, False)
 
     def _handle_cleared_state(self, symptom: Symptom) -> None:
         """Handles the cleared state of a symptom by clearing recovery actions."""
@@ -598,14 +633,19 @@ class RecoveryManager:
             level="DEBUG",
         )
         potential_recovery_action: RecoveryAction = self.recovery_actions[symptom.name]
-        potential_recovery_result: Optional[RecoveryResult] = (
-            potential_recovery_action.rec_fun(
-                self.hass_app,
-                symptom,
-                self.common_entities,
-                **potential_recovery_action.params,
+        try:
+            potential_recovery_result: Optional[RecoveryResult] = (
+                potential_recovery_action.rec_fun(
+                    self.hass_app,
+                    symptom,
+                    self.common_entities,
+                    **potential_recovery_action.params,
+                )
             )
-        )
+        except Exception as exc:
+            raise ComponentRecoveryError(
+                f"Component recovery policy failed for {symptom.name}"
+            ) from exc
 
         if not potential_recovery_result:
             self.hass_app.log(
