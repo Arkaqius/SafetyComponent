@@ -3,7 +3,7 @@
 This contract separates a Boolean Safety Mechanism (SM) predicate from the
 fault that interprets its evidence and owns handling policy. It is derived from
 [SYS section 8.1](<../sys/SafetyConcept - SYS.md#81-component-model--aggregation-rules>)
-and [SWR-FLT-008..012](<../sys/SafetyComponent - SSRD.md#44-fault-aggregation-and-system-state>).
+and [SWR-FLT-008..012 and 024..025](<../sys/SafetyComponent - SSRD.md#44-fault-aggregation-and-system-state>).
 The [fault-handling plan](../FAULT_HANDLING_PLAN.md) records allocations and
 separate delivery tasks.
 
@@ -83,3 +83,44 @@ System severity counts active faults even when shadowed. Notification history
 uses transition/response event codes `SET`, `CLEARED`, `SHADOWED` and `TEST`;
 these are not fault MQTT states. Consumers must not infer activation or
 shadowing from the evaluation status alone.
+
+## Diagnostic evidence
+
+Each fault retains one versioned freeze frame from its first active transition.
+The frame contains only selected contributor context, subject, fault priority
+and category, safety-relevant configuration fields and their SHA-256
+fingerprint, selected source value/timestamp/age/quality, and active restriction causes.
+Temperature predicates supply their sampled value, modeled forecast where
+applicable, threshold and unit directly; a separately read Home Assistant
+timestamp is marked as readback rather than claimed to be the predicate's
+timestamp. Arbitrary entity attributes, payload objects, recommendation text,
+credentials and secret-like values are excluded. A missing or invalid source
+timestamp is explicitly uncertain; it is not treated as a fresh sample.
+
+The freeze frame is immutable while the fault remains active, including when
+another symptom joins, a shadow owner changes, or notification content is
+quietly refreshed. Valid recovery retains that frame for diagnosis. The next
+activation replaces it and increments the activation count. A restart that
+restores an active record does not increment the count on the first repeated
+SET; a valid PASS must be observed before a later activation is new.
+
+Extended data contains first and last activation UTC timestamps, last valid
+PASS time, activation count, last activation reason, and active duration. Live
+duration uses a monotonic process clock. An active record restored after a
+restart sets `clock_uncertain: true` and leaves duration unknown; elapsed time
+across downtime is never inferred from wall-clock subtraction. UTC timestamps
+are diagnostic chronology, not qualification timers.
+
+`runtime_cfg.fault_evidence` limits the independent atomic JSON store to 256
+fault records, 4096 UTF-8 bytes per frame and 1 MiB total. Capacity evicts the
+oldest inactive record by last activation time, never an active record. If all
+records are active, the new capture is dropped and App Health reports durability
+loss; an older cleared frame must not be presented as evidence for that new
+activation. Detection, notification, recovery and degradation continue. A cleared
+record may be evicted when the total bound is otherwise exceeded. The store is
+separate from notification delivery history. No periodic, recovery, or
+significant-change snapshots and no episode objects are created.
+The in-memory frame is available to fault publication immediately; atomic disk
+replacement is scheduled after the current response dispatch. Failed writes
+assert the independent App Health persistence contributor and retry no more
+often than every 60 seconds, with one final attempt on orderly shutdown.

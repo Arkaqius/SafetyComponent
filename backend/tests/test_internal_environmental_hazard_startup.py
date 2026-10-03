@@ -37,6 +37,9 @@ def test_gas_alarm_reaches_l1_fault_without_co_consensus(tmp_path, monkeypatch) 
     raw["user_config"]["recovery"]["persistence"]["state_file"] = str(
         tmp_path / "recovery.json"
     )
+    raw["app_config"]["fault_evidence"]["state_file"] = str(
+        tmp_path / "fault_evidence.json"
+    )
     internal = raw["user_config"]["safety_components"][
         "InternalEnvironmentalHazardMonitorComponent"
     ]

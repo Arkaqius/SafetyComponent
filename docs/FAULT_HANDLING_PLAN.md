@@ -693,6 +693,14 @@ payload archive. Acceptance: immutable original evidence after source changes,
 no extra activation counts on quiet refresh, secret filtering, size bounds,
 restart, and storage failure isolation. No episode objects or IDs.
 
+The system-owned baseline is one frame per fault key, at most 256 records,
+4096 UTF-8 bytes per frame and 1 MiB for the atomic JSON state. Keep cleared
+frames until replacement or oldest-inactive eviction; never evict an active
+frame to make room. Capacity or I/O loss reports App Health durability without
+blocking fault handling. UTC timestamps record chronology; only same-process
+monotonic observation permits a duration. An active record restored at restart
+has unknown duration, and a repeated SET does not become a new activation.
+
 ### FH-07: Diagnostic presentation and integration
 
 Show category/priority, requested rich status, active/latch indication, contributors,

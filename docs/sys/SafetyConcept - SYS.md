@@ -624,6 +624,14 @@ _We model the system as **decoupled Safety Components**, each implementing one o
   active condition and shadow owners separately. Shadowing shall withdraw
   redundant responses without clearing evidence. The existing external raw
   states and notification-history codes shall remain stable during migration.
+- **Fault diagnostic evidence:** On the first active transition, C-FLT shall
+  retain one bounded, allowlisted freeze frame per fault independently of
+  notification delivery. A later source update or quiet response refresh shall
+  not replace that frame or count another activation. Bounded extended data
+  shall preserve useful times and counters without creating episode identities
+  or archiving continuous Home Assistant payloads. Evidence-storage failure
+  shall be visible as an App Health durability cause without blocking the
+  safety decision or its response.
 - **Priority:** Existing fault level L1..L4 shall select the notification level
   of the same number. H/D category describes a hazard/equipment condition or a
   diagnostic capability failure, not urgency. A level alone shall not authorize

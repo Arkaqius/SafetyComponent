@@ -176,7 +176,7 @@ def test_set_symptom(fault_manager, mocked_hass_app):
 
     fault_manager.set_symptom("RiskyTemperatureOffice")
     assert fault_manager.symptoms["RiskyTemperatureOffice"].state == FaultState.SET
-    fault_manager._set_fault.assert_called_once_with("RiskyTemperatureOffice", None)
+    fault_manager._set_fault.assert_called_once_with("RiskyTemperatureOffice", None, None)
 
 def test_clear_symptom(fault_manager, mocked_hass_app):
     """

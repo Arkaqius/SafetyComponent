@@ -32,7 +32,7 @@ APP_CAUSES = (
 )
 PERSISTENCE_STORES = (
     "notification_state", "recovery_state", "internal_environment_state",
-    "periodic_test_state", "detector_test_state",
+    "periodic_test_state", "detector_test_state", "fault_evidence_state",
 )
 
 
