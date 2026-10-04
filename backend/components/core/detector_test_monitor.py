@@ -25,6 +25,7 @@ class DetectorTestMonitor:
         interval_days: int,
         state_store: NotificationStateStore,
         status_observer: Callable[[str, str], None] | None = None,
+        diagnostics_observer: Callable[..., None] | None = None,
     ) -> None:
         if interval_days < 1:
             raise ValueError("Detector test interval must be positive")
@@ -38,6 +39,7 @@ class DetectorTestMonitor:
         self.interval_days = interval_days
         self.state_store = state_store
         self.status_observer = status_observer
+        self.diagnostics_observer = diagnostics_observer
         self.records: dict[str, dict[str, str]] = {}
         self._storage_error = False
         self._listener_handle: Any = None
@@ -65,6 +67,9 @@ class DetectorTestMonitor:
             self.hass_app.log(f"Unable to restore detector tests: {exc}", level="ERROR")
             self.records = {}
             self._storage_error = True
+            self._report_storage(True, "load")
+        else:
+            self._report_storage(False, "load")
         self.mqtt_entities.register_sensor(
             TEST_SUMMARY_ENTITY_ID,
             "Safety Detector Tests",
@@ -126,9 +131,20 @@ class DetectorTestMonitor:
             self.state_store.save({"version": _STATE_VERSION, "records": updated})
         except Exception as exc:
             self.hass_app.log(f"Unable to save detector test: {exc}", level="ERROR")
+            self._report_storage(True, "save")
             return
+        self._report_storage(False, "save")
         self.records = updated
         self.publish()
+
+    def _report_storage(self, failed: bool, operation: str) -> None:
+        """Route current test-history storage failure without inferring attestation."""
+
+        if self.diagnostics_observer is not None:
+            self.diagnostics_observer(
+                "persistence", failed, detail="detector_test_state",
+                operation=operation,
+            )
 
     def publish(self, **_: Any) -> None:
         """Publish due, overdue, and failed tests without implying alarm clear."""

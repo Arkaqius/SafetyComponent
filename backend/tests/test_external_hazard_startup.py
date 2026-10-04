@@ -72,6 +72,12 @@ def test_example_external_hazard_startup_is_wired_before_polling(tmp_path, monke
         "OpenMeteoWeatherApiComponent",
     ]
     assert "ExternalHazardComponent" in app.sm_modules
+    assert "SelfDiagnosticsComponent" in app.sm_modules
+    assert {
+        "ExternalProviderUnavailableOpenMeteoWeather",
+        "ExternalProviderUnavailableImgwWarnings",
+        "ExternalProviderUnavailableOpenMeteoAirQuality",
+    }.issubset(app.faults)
     assert app.external_api_runtime.started is True
     assert not any(service != "mqtt/publish" for service in service_calls)
 

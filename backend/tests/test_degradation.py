@@ -42,6 +42,50 @@ def _registry(*, recovery_only: bool = False) -> DegradationRegistry:
     ))
 
 
+def test_provider_adapter_bindings_preserve_weather_aq_isolation() -> None:
+    symptoms = {
+        "weather_gate": SimpleNamespace(
+            sm_name="sm_ext_weather_exposure",
+            parameters={"opening_name": "gate"},
+        ),
+        "aq_window": SimpleNamespace(
+            sm_name="sm_ext_outdoor_air_quality_exposure",
+            parameters={"opening_name": "window"},
+        ),
+        "provider_weather": SimpleNamespace(
+            sm_name="sm_provider_adapter_health",
+            parameters={"provider": "OpenMeteoWeatherApiComponent"},
+        ),
+        "provider_aq": SimpleNamespace(
+            sm_name="sm_provider_adapter_health",
+            parameters={"provider": "OpenMeteoAirQualityApiComponent"},
+        ),
+    }
+    faults = {
+        name: Fault(
+            name, [symptoms[symptom_id].sm_name], 3,
+            category=category, related_symptom_ids=[symptom_id],
+        )
+        for name, symptom_id, category in (
+            ("WeatherHazard", "weather_gate", FaultCategory.H),
+            ("AirHazard", "aq_window", FaultCategory.H),
+            ("WeatherProvider", "provider_weather", FaultCategory.D),
+            ("AirProvider", "provider_aq", FaultCategory.D),
+        )
+    }
+    registry = DegradationRegistry(
+        symptoms, faults,
+        compile_runtime_bindings(symptoms, (), faults=faults),
+    )
+    for symptom_id in symptoms:
+        registry.observe(symptom_id=symptom_id, state=FaultState.CLEARED)
+    registry.observe(symptom_id="provider_weather", state=FaultState.SET)
+    assert registry.causes_for("weather_gate", RestrictionEffect.EVALUATION) == (
+        "provider_weather",
+    )
+    assert registry.causes_for("aq_window", RestrictionEffect.EVALUATION) == ()
+
+
 def test_room_loss_is_local_and_overlapping_causes_clear_independently() -> None:
     registry = _registry()
     for name in ("input_a", "provider_a", "external_only", "room_a", "room_b"):

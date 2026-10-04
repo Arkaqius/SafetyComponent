@@ -149,6 +149,7 @@ class TemperatureComponent(SafetyComponent):
                             "fault_owner": "component",
                             "fault_name": "TemperatureRecoveryUnavailable",
                             "purpose": f"Configured recovery actuator for {location}",
+                            "recovery_command": True,
                             "degradation_targets": recovery_targets,
                             "checks": {},
                             "detection_budget_seconds": 30,

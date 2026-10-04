@@ -76,6 +76,8 @@ fault.wan_unavailable: Brak łączności WAN
 fault.update_available: 'Dostępna aktualizacja: {product}'
 fault.remote_battery_low: 'Niska bateria: {device}'
 fault.detector_test_due: 'Test czujnika wymaga uwagi: {detector}'
+fault.external_provider_unavailable: 'Dostawca danych niedostępny: {provider}'
+fault.safety_app_health: Stan aplikacji bezpieczeństwa
 hazard.label.smoke: Dym
 hazard.label.flammable_gas: Gaz palny
 hazard.label.carbon_monoxide: Tlenek węgla

@@ -635,6 +635,16 @@ _We model the system as **decoupled Safety Components**, each implementing one o
   of the installed baseline shall be reported separately as `FULL`, `PARTIAL`,
   `DEGRADED`, or `UNKNOWN`. Loss of the process itself requires observation
   independent of that process.
+- **Fault-owned self-diagnostics:** Each installed remote adapter shall have
+  one independent D fault for its current technical health; consumer capability
+  loss shall remain distinct after provider redundancy is evaluated. One App
+  Health D fault shall aggregate independently clearing execution, delivery,
+  local-output, persistence, publication, and startup causes. A local failure
+  shall restrict only its declared H capability or response vector. Historical
+  counters and deliberate operator inhibitions shall not assert technical loss.
+  An observer outside AppDaemon shall report missing/unhealthy process or
+  publication heartbeat through an independent response path, with its HA/host
+  blind spots explicitly stated.
 
 ---
 

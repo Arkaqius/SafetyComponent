@@ -641,6 +641,10 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
         try:
             snapshot = self._state_store.load()
             if not snapshot:
+                self.event_bus.publish(
+                    "app_health_persistence", store="internal_environment_state",
+                    failed=False, operation="load",
+                )
                 return
             if int(snapshot.get("version", -1)) != _STATE_VERSION:
                 raise ValueError("unsupported internal environment state version")
@@ -665,6 +669,15 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
                 f"Unable to restore internal environment state: {exc}",
                 level="ERROR",
             )
+            self.event_bus.publish(
+                "app_health_persistence", store="internal_environment_state",
+                failed=True, operation="load",
+            )
+            return
+        self.event_bus.publish(
+            "app_health_persistence", store="internal_environment_state",
+            failed=False, operation="load",
+        )
 
     def _persist_state(self) -> None:
         snapshot = {
@@ -693,6 +706,15 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
                 f"Unable to persist internal environment state: {exc}",
                 level="ERROR",
             )
+            self.event_bus.publish(
+                "app_health_persistence", store="internal_environment_state",
+                failed=True, operation="save",
+            )
+            return
+        self.event_bus.publish(
+            "app_health_persistence", store="internal_environment_state",
+            failed=False, operation="save",
+        )
 
     def _kind_enabled(self, detector_key: str, kind: str) -> bool:
         symptom_name = self._symptom_name(
