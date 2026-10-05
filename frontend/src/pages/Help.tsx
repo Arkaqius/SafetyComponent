@@ -18,7 +18,10 @@ export default function Help() {
           <li>
             Na <Link to='/'>pulpicie</Link> sprawdź bieżącą ocenę oraz informację o połączeniu i dostępności źródeł.
           </li>
-          <li>Rozwiń aktywne zdarzenie, aby przeczytać jego opis, lokalizację i poziom pilności.</li>
+          <li>
+            Widok podstawowy pokazuje najpilniejsze zdarzenie. Użyj „Szczegóły i monitoring” lub „Wszystkie zdarzenia”, aby zobaczyć
+            pozostałe informacje.
+          </li>
           <li>Przeczytaj zalecenie i jego bieżący status. Potwierdź działanie dopiero po sprawdzeniu, czego dotyczy.</li>
         </ol>
       </section>
@@ -139,14 +142,26 @@ export default function Help() {
           <section aria-labelledby='help-interaction'>
             <h3 id='help-interaction'>Obsługa aplikacji</h3>
             <details className='help-question'>
+              <summary>Czym różnią się widoki podstawowy i rozszerzony?</summary>
+              <p>
+                Podstawowy pokazuje ocenę domu, najpilniejsze aktywne zdarzenie, zalecenie i ograniczenia monitoringu. Rozszerzony
+                udostępnia wszystkie zdarzenia, pomiary, historię, diagnostykę i konfigurację. Dłuższe instrukcje pozostają widoczne w
+                całości i mogą wymagać przewinięcia.
+              </p>
+              <p>
+                Zmień widok przełącznikiem w nagłówku. Wybór jest zapamiętany tylko w tej przeglądarce. Odnośnik do szczegółowej podstrony
+                otwiera widok rozszerzony; „Podstawowy” prowadzi z powrotem na pulpit.
+              </p>
+            </details>
+            <details className='help-question'>
               <summary>Jak otworzyć podpowiedzi i szczegóły?</summary>
               <p>
                 Najedź myszą na „i”, dotknij tej ikony lub przejdź do niej klawiszem Tab. Kliknięcie przypina podpowiedź. Ponowne
                 kliknięcie, dotknięcie poza nią lub Escape ją zamyka.
               </p>
               <p>
-                Kliknij kartę z odczytem, aby otworzyć dostępne szczegóły. Okno zamkniesz przyciskiem zamknięcia lub Escape. Na telefonie
-                nawigacja jest pod ikoną menu.
+                Kliknij kartę z odczytem, aby otworzyć dostępne szczegóły. Okno zamkniesz przyciskiem zamknięcia lub Escape. Na telefonie w
+                widoku rozszerzonym nawigacja jest pod ikoną menu.
               </p>
             </details>
           </section>

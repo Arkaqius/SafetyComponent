@@ -21,7 +21,10 @@ declare global {
   }
 }
 
-async function openMock(page: Page, route = '/') {
+async function openMock(page: Page, route = '/', viewMode: 'basic' | 'advanced' | null = 'advanced') {
+  await page.addInitScript(mode => {
+    if (mode && !window.localStorage.getItem('safetyhome.view-mode')) window.localStorage.setItem('safetyhome.view-mode', mode);
+  }, viewMode);
   // Keep every browser request on the local demo server, including failed runs.
   await page.route('**/*', routeHandler => {
     const url = new URL(routeHandler.request().url());
@@ -31,6 +34,107 @@ async function openMock(page: Page, route = '/') {
   await expect(page.locator('.topbar')).toBeVisible();
   await page.waitForFunction(() => Boolean(window.__safetyHomeMock));
 }
+
+test('basic is the default, fits a phone screen and exposes only the essential brief', async ({ page }, testInfo) => {
+  await openMock(page, '/', null);
+  await expect(page.getByRole('button', { name: 'Podstawowy', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.basic-dashboard')).toBeVisible();
+  await expect(page.locator('.sidebar')).toBeHidden();
+  await expect(page.locator('.summary-grid')).toHaveCount(0);
+  await expect(page.locator('.fault-card')).toHaveCount(0);
+  await expect(page.locator('.basic-incident')).toBeVisible();
+  await expect(page.locator('.basic-monitoring')).toBeVisible();
+  expect(
+    await page
+      .locator('.basic-action p')
+      .first()
+      .evaluate(element => parseFloat(getComputedStyle(element).fontSize))
+  ).toBeGreaterThanOrEqual(16);
+  expect(await page.evaluate(() => document.documentElement.scrollHeight)).toBeLessThanOrEqual(page.viewportSize()!.height + 1);
+  await page.screenshot({ path: testInfo.outputPath('basic-dashboard.png'), scale: 'css' });
+});
+
+test('view preference survives reload and diagnostic links open the expanded view', async ({ page }) => {
+  await openMock(page, '/', null);
+  await page.getByRole('button', { name: 'Rozszerzony', exact: true }).click();
+  await expect(page.locator('.summary-grid')).toBeVisible();
+  await page.reload();
+  await expect(page.locator('.summary-grid')).toBeVisible();
+  await page.getByRole('button', { name: 'Podstawowy', exact: true }).click();
+  await page.reload();
+  await expect(page.locator('.basic-dashboard')).toBeVisible();
+  await page.getByRole('link', { name: 'Pomoc', exact: true }).click();
+  await expect(page.locator('.help-page')).toBeVisible();
+  await page.getByRole('link', { name: /Sprawdź źródła danych/ }).click();
+  await expect(page.getByRole('button', { name: 'Rozszerzony', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Podstawowy', exact: true }).click();
+  await expect(page.locator('.basic-dashboard')).toBeVisible();
+  expect(await page.evaluate(() => window.__safetyHomeMock.messages.filter(message => message.type === 'fire_event'))).toEqual([]);
+});
+
+test('basic retains critical incidents and clearly invalidates cached assessment on suspension', async ({ page }) => {
+  await openMock(page, '/', 'basic');
+  await page.evaluate(() => {
+    const entities = window.__safetyHomeMock.snapshot();
+    entities['sensor.fault_critical'] = {
+      state: 'FAIL',
+      attributes: { friendly_name: 'Alarm krytyczny testowy', active: true, level: 1, area_name: 'Garaż' },
+    };
+    window.__safetyHomeMock.update({ entities });
+  });
+  await expect(page.locator('.basic-incident')).toContainText('Alarm krytyczny testowy');
+  await expect(page.locator('.basic-incident')).toContainText('Garaż');
+  await expect(page.locator('.basic-assessment')).toHaveClass(/basic-assessment-critical/);
+  await page.evaluate(() => window.__safetyHomeMock.update({ connectionStatus: 'suspended', ready: true }));
+  await expect(page.locator('.connection-banner')).toBeVisible();
+  await expect(page.locator('.basic-assessment')).not.toHaveClass(/basic-assessment-safe/);
+  await expect(page.locator('.basic-incident')).toContainText('Ostatnie znane zdarzenie');
+  await expect(page.locator('.basic-monitoring')).toContainText('Odczyty z pamięci');
+});
+
+test('basic recommendations use the same expiry guard and modal keyboard boundary', async ({ page }) => {
+  await openMock(page, '/', 'basic');
+  await page.evaluate(() => {
+    const entities = window.__safetyHomeMock.snapshot();
+    for (const [id, entity] of Object.entries(entities))
+      if (id.startsWith('sensor.recovery_')) {
+        entity.state = 'DO_NOT_PERFORM';
+        entity.attributes.proposals = [];
+      }
+    entities['sensor.recovery_testgate'] = {
+      state: 'AWAITING_CONFIRMATION',
+      attributes: {
+        friendly_name: 'Zamknięcie bramy testowej',
+        proposals: [
+          {
+            proposal_id: 'basic-proposal',
+            status: 'AWAITING_CONFIRMATION',
+            instruction: 'Zamknij bramę testową',
+            execution_policy: 'user_confirmed',
+            confirmation_token: 'basic-token',
+            expires_at: Date.now() / 1000 - 1,
+          },
+        ],
+      },
+    };
+    window.__safetyHomeMock.update({ entities });
+  });
+  await expect(page.locator('.basic-action')).toContainText('Zalecenie wygasło');
+  const opener = page.getByRole('button', { name: 'Sprawdź i potwierdź działanie', exact: true });
+  await opener.click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Potwierdź zamknięcie', exact: true })).toBeDisabled();
+  for (let index = 0; index < 8; index++) {
+    await page.keyboard.press('Tab');
+    expect(await page.evaluate(() => !!document.activeElement?.closest('dialog'))).toBe(true);
+  }
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(opener).toBeFocused();
+  expect(
+    await page.evaluate(() => window.__safetyHomeMock.messages.some(message => message.event_type === 'safety_recovery_confirm'))
+  ).toBe(false);
+});
 
 test('help follows hover and keyboard focus without activating adjacent controls', async ({ page, isMobile }) => {
   await openMock(page);

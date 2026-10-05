@@ -33,12 +33,27 @@ o lokalnych danych testowych znajdziesz w **Pomocy** i nagłówkach podstron;
 pulpit pomija to oznaczenie. Produkcyjny build zawsze korzysta z rzeczywistych
 encji Home Assistanta.
 
+## Widok podstawowy i rozszerzony
+
+Nowa przeglądarka otwiera **Podstawowy**: bieżącą ocenę domu, najpilniejsze
+aktywne zdarzenie z lokalizacją, zalecenie oraz ograniczenia monitoringu.
+Typowa treść mieści się na jednym ekranie telefonu. Długie instrukcje pozostają
+widoczne w całości i mogą wymagać przewinięcia. Przycisk zalecenia otwiera jego
+szczegóły i dostępne potwierdzenia; sam nie wykonuje działania.
+
+**Rozszerzony** udostępnia wszystkie zdarzenia, pomiary, wykresy, historię,
+diagnostykę i konfigurację. Przełącznik w nagłówku zapamiętuje wybór lokalnie
+w przeglądarce. Bezpośredni odnośnik do diagnostyki otwiera widok rozszerzony;
+powrót do podstawowego prowadzi na pulpit. Brak połączenia i ograniczenia danych
+są widoczne w obu widokach. Zmiana widoku nie wysyła poleceń do Home Assistanta.
+
 ## Pomoc w aplikacji
 
 Pozycja **Pomoc** w nawigacji otwiera stronę `#/help`. Zawiera krótką instrukcję
 korzystania z pulpitu, poziomy L1–L4 oraz rozwijane objaśnienia aktualności danych,
 potwierdzeń powiadomień i działań, pomiarów oraz historii. Odnośniki prowadzą
-do odpowiednich ekranów aplikacji. Na telefonie pomoc jest dostępna w menu.
+do odpowiednich ekranów aplikacji. W widoku podstawowym pomoc jest w nagłówku;
+w rozszerzonym także w menu telefonu.
 
 Podpowiedzi przy ikonach **i** otwierają się po najechaniu myszą, dotknięciu
 lub ustawieniu fokusu klawiaturą. Kliknięcie przypina podpowiedź; ponowne
@@ -85,7 +100,7 @@ Potwierdzenie powiadomienia lub działania wymaga aktualnego połączenia.
 
 ### Potwierdzanie powiadomień
 
-Rozwinięta karta aktywnej usterki poziomu L1–L3 na pulpicie zawiera przycisk
+Rozwinięta karta aktywnej usterki poziomu L1–L3 na rozszerzonym pulpicie zawiera przycisk
 **Potwierdź powiadomienie**. SafetyHome przesyła stabilny tag przez
 uwierzytelnione zdarzenie Home Assistanta. Potwierdzenie zatrzymuje kolejne
 powtórzenia alarmu, ale nie usuwa usterki. Stan **Potwierdzono** pochodzi z

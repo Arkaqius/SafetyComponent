@@ -6,6 +6,7 @@ export default function HelpTooltip({ label, text }: { label: string; text: stri
   const trigger = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLSpanElement>(null);
   const pinned = useRef(false);
+  const pinnedAtPointerDown = useRef(false);
   const closeTimer = useRef<number | undefined>(undefined);
   const [open, setOpen] = useState(false);
 
@@ -81,9 +82,15 @@ export default function HelpTooltip({ label, text }: { label: string; text: stri
           if (event.pointerType === 'mouse') show();
         }}
         onPointerLeave={scheduleClose}
+        onPointerDown={() => {
+          // An auto popover can dismiss before click; preserve the intent to toggle it closed.
+          pinnedAtPointerDown.current = pinned.current && Boolean(panel.current?.matches(':popover-open'));
+        }}
         onClick={event => {
           event.stopPropagation();
-          if (pinned.current) hide();
+          const closePinned = pinnedAtPointerDown.current || pinned.current;
+          pinnedAtPointerDown.current = false;
+          if (closePinned) hide();
           else {
             pinned.current = true;
             show();

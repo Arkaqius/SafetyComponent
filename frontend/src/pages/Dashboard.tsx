@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useOutletContext } from 'react-router-dom';
 import ActionsList from '../components/ActionsList';
 import AverageTemperatureDialog from '../components/AverageTemperatureDialog';
 import DoorLastActivity from '../components/DoorLastActivity';
@@ -14,8 +14,15 @@ import { useSafetyEntities } from '../hooks/useSafetyEntities';
 import { NOTIFICATION_DELIVERY_HEALTH_ID, readAcknowledgedNotificationTags } from '../domain/notificationHistory';
 import { EVALUATION_PROGRESS_ENTITY_ID } from '../domain/functionalSafety';
 import { COVERAGE_ENTITY_ID, getCoverageView } from '../domain/coverage';
+import type { ViewModeContext } from '../components/ViewModeSwitch';
+import BasicDashboard from './BasicDashboard';
 
 export default function Dashboard() {
+  const view = useOutletContext<ViewModeContext>();
+  return view.viewMode === 'basic' ? <BasicDashboard onExpand={() => view.onViewModeChange('advanced')} /> : <AdvancedDashboard />;
+}
+
+function AdvancedDashboard() {
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const [averageDialogOpen, setAverageDialogOpen] = useState(false);
   const closeEntityDetails = useCallback(() => setSelectedEntityId(null), []);
