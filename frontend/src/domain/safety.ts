@@ -308,7 +308,7 @@ export function getFaults(entities: EntityMap): FaultView[] {
       entityId,
       name: friendlyEntityName(entityId, entity),
       description: stringAttribute(entity, 'description'),
-      locations: stringAttribute(entity, 'area_name') ? [stringAttribute(entity, 'area_name')] : splitLocations(entity.attributes.location),
+      locations: entityLocations(entity),
       level: getFaultLevel(entity),
       state: entity.state,
       status: getFaultStatus(entity.state),
@@ -332,6 +332,10 @@ export function getFaults(entities: EntityMap): FaultView[] {
         (left.level ?? 99) - (right.level ?? 99) ||
         left.name.localeCompare(right.name, 'pl')
     );
+}
+
+export function entityLocations(entity: EntitySnapshot): string[] {
+  return stringAttribute(entity, 'area_name') ? [stringAttribute(entity, 'area_name')] : splitLocations(entity.attributes.location);
 }
 
 export function getRecoveries(entities: EntityMap): RecoveryView[] {

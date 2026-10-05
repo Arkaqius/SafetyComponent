@@ -10,6 +10,8 @@ export interface HistoryPoint {
   state: string;
   state_localize: string;
   last_changed: number;
+  last_updated?: number;
+  attributes?: Record<string, unknown>;
 }
 
 /** Validate the requested stream only; empty Recorder results are valid. */
@@ -54,7 +56,22 @@ export function mergeHistoryStates(previous: HistoryState[], incoming: HistorySt
 }
 
 export function historyTimeline(states: HistoryState[]): HistoryPoint[] {
-  return states.map(item => ({ state: item.s, state_localize: item.s, last_changed: (item.lc ?? item.lu) * 1000 }));
+  return states.map(item => ({
+    state: item.s,
+    state_localize: item.s,
+    last_changed: (item.lc ?? item.lu) * 1000,
+    last_updated: item.lu * 1000,
+    attributes: item.a,
+  }));
+}
+
+/** Keep recorded identity and activation changes even when the raw state is unchanged. */
+export function historyTransitions(timeline: HistoryPoint[]): HistoryPoint[] {
+  const identity = (point: HistoryPoint) =>
+    JSON.stringify(['friendly_name', 'area_name', 'location', 'active', 'latched'].map(key => point.attributes?.[key]));
+  return timeline
+    .filter((point, index) => index === 0 || point.state !== timeline[index - 1].state || identity(point) !== identity(timeline[index - 1]))
+    .map(point => ({ ...point, last_changed: point.last_updated ?? point.last_changed }));
 }
 
 /** Unknown prefixes stay unknown until the first recorded state. */

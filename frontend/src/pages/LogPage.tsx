@@ -9,6 +9,7 @@ import {
   RECOVERY_PREFIX,
   SYSTEM_STATE_ENTITY_ID,
   friendlyEntityName,
+  entityLocations,
   getFaultStatus,
   getRecoveryStatus,
   localizedEntityState,
@@ -20,6 +21,7 @@ import {
 import { useEntityHistory } from '../hooks/useEntityHistory';
 import { useNotificationHistory } from '../hooks/useNotificationHistory';
 import { useSafetyEntities } from '../hooks/useSafetyEntities';
+import { historyTransitions } from '../domain/history';
 
 type HistoryCategory = 'all' | 'system' | 'fault' | 'recovery';
 type HistoryHours = 6 | 24 | 72;
@@ -123,18 +125,15 @@ export default function LogPage() {
 function HistoryCard({ item, hours }: { item: HistoryEntity; hours: HistoryHours }) {
   const history = useEntityHistory(item.entityId, {
     hoursToShow: hours,
-    minimalResponse: true,
-    significantChangesOnly: true,
+    minimalResponse: false,
+    significantChangesOnly: item.category !== 'fault',
   });
-  const transitions = history.timeline
-    .filter((entry, index, timeline) => index === 0 || entry.state !== timeline[index - 1]?.state)
-    .slice(-7)
-    .reverse();
+  const transitions = historyTransitions(history.timeline).slice(-7).reverse();
   const presentation = statePresentation(item);
   const icon: IconName = item.category === 'fault' ? 'alert' : item.category === 'recovery' ? 'recovery' : 'activity';
 
   return (
-    <article className='history-card'>
+    <article className='history-card' data-entity-id={item.entityId}>
       <div className='history-card-header'>
         <span className={`history-card-icon history-${item.category}`}>
           <Icon name={icon} size={20} />
@@ -142,8 +141,11 @@ function HistoryCard({ item, hours }: { item: HistoryEntity; hours: HistoryHours
         <div>
           <h3 title={item.entityId}>{friendlyEntityName(item.entityId, item.entity)}</h3>
           <small className='entity-friendly-name'>{historyCategoryLabel(item.category)}</small>
+          {item.category === 'fault' && (
+            <p className='history-location'>Lokalizacja teraz: {entityLocations(item.entity).join(' · ') || 'Nie podano'}</p>
+          )}
         </div>
-        <StatusBadge tone={presentation.tone}>{presentation.label}</StatusBadge>
+        <StatusBadge tone={presentation.tone}>Teraz: {presentation.label}</StatusBadge>
       </div>
 
       {history.status === 'error' || history.status === 'disconnected' ? (
@@ -158,8 +160,27 @@ function HistoryCard({ item, hours }: { item: HistoryEntity; hours: HistoryHours
           {transitions.map(transition => (
             <li key={`${transition.last_changed}-${transition.state}`}>
               <span className='timeline-dot' />
-              <div>
-                <strong>{localizedEntityState(item.entityId, transition.state)}</strong>
+              <div className={item.category === 'fault' ? 'history-fault-transition' : undefined}>
+                {item.category === 'fault' && (
+                  <>
+                    <strong className='history-transition-name'>
+                      {friendlyEntityName(item.entityId, { state: transition.state, attributes: transition.attributes ?? {} })}
+                    </strong>
+                    <span className='history-location'>
+                      Lokalizacja przy wpisie:{' '}
+                      {entityLocations({ state: transition.state, attributes: transition.attributes ?? {} }).join(' · ') || 'Nie zapisano'}
+                    </span>
+                    <span className='history-activation'>
+                      Aktywacja przy wpisie:{' '}
+                      {transition.attributes?.active === true
+                        ? 'Aktywna'
+                        : transition.attributes?.active === false
+                          ? 'Nieaktywna'
+                          : 'Nie zapisano'}
+                    </span>
+                  </>
+                )}
+                <strong>Wtedy: {localizedEntityState(item.entityId, transition.state)}</strong>
                 <time dateTime={new Date(transition.last_changed).toISOString()}>
                   {new Date(transition.last_changed).toLocaleString('pl-PL', {
                     day: '2-digit',

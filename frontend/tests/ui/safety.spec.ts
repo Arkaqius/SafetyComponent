@@ -414,6 +414,87 @@ test('gate confirmation sends only current proposal ID and token after explicit 
   expect(await page.evaluate(() => window.__safetyHomeMock.messages.some(item => item.type === 'call_service'))).toBe(false);
 });
 
+test('collapsed notification history exposes the complete fault name and location on a phone', async ({ page }, testInfo) => {
+  await openMock(page, '/history');
+  const item = page.locator('.notification-item').first();
+  const summary = item.locator('summary');
+  await expect(summary).toContainText('Niebezpieczna temperatura');
+  await expect(summary).toContainText('Lokalizacja: Biuro');
+  await expect(item).not.toHaveAttribute('open');
+  await page.evaluate(() => {
+    const entities = window.__safetyHomeMock.snapshot();
+    const entries = entities['sensor.notification_history'].attributes.entries as Array<Record<string, unknown>>;
+    entries[0].message =
+      'Wymaga uwagi: Prognoza niebezpiecznej temperatury w pomieszczeniach na górnym piętrze.\nLokalizacja: Garaż i łazienka na górnym piętrze';
+    window.__safetyHomeMock.update({ entities });
+  });
+  await expect(summary).toContainText('Prognoza niebezpiecznej temperatury w pomieszczeniach na górnym piętrze');
+  await expect(summary).toContainText('Lokalizacja: Garaż i łazienka na górnym piętrze');
+  const name = summary.locator('.notification-fault-name');
+  expect(await name.evaluate(element => getComputedStyle(element).whiteSpace)).toBe('normal');
+  expect(await name.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+  await summary.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath('history-identity.png'), scale: 'css' });
+});
+
+test('state history retains the recorded fault location instead of applying its current location backwards', async ({ page }, testInfo) => {
+  await openMock(page, '/history');
+  await page.evaluate(() => {
+    const now = Date.now() / 1000;
+    window.__safetyHomeMock.setHistory('sensor.fault_riskytemperatureforecast', {
+      states: {
+        'sensor.fault_riskytemperatureforecast': [
+          { s: 'FAIL', lu: now - 1800, a: { friendly_name: 'Prognoza niebezpiecznej temperatury', location: 'Garaż', active: true } },
+          {
+            s: 'FAIL',
+            lu: now - 1200,
+            lc: now - 1800,
+            a: { friendly_name: 'Prognoza niebezpiecznej temperatury', location: 'Kuchnia', active: true },
+          },
+          { s: 'PASS', lu: now - 600, a: { friendly_name: 'Prognoza niebezpiecznej temperatury', location: '', active: false } },
+        ],
+      },
+    });
+  });
+  // Changing the range subscribes to the supplied Recorder stream.
+  await page.getByRole('combobox', { name: /^Zakres/ }).selectOption('6');
+  const card = page.locator('.history-card[data-entity-id="sensor.fault_riskytemperatureforecast"]');
+  await expect(card.locator('.state-timeline')).toContainText('Lokalizacja przy wpisie: Garaż');
+  await expect(card.locator('.state-timeline')).toContainText('Lokalizacja przy wpisie: Kuchnia');
+  await expect(card.locator('.state-timeline li').first()).toContainText('Lokalizacja przy wpisie: Nie zapisano');
+  await expect(card.locator('.state-timeline')).toContainText('Prognoza niebezpiecznej temperatury');
+  await expect(card.getByText(/^Teraz:/)).toBeVisible();
+  const recordedRows = card.locator('.history-fault-transition');
+  const recordedTimes = await recordedRows
+    .locator('time')
+    .evaluateAll(elements => elements.map(element => element.getAttribute('datetime')));
+  expect(new Set(recordedTimes).size).toBe(3);
+  expect(await recordedRows.first().evaluate(element => getComputedStyle(element).flexDirection)).toBe('column');
+  expect(
+    await recordedRows
+      .locator('.history-transition-name')
+      .first()
+      .evaluate(element => Number.parseFloat(getComputedStyle(element).fontSize))
+  ).toBeGreaterThanOrEqual(16);
+  await card.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath('state-history-identity.png'), scale: 'css' });
+});
+
+test('inactive unevaluable forecast is never labelled as an active event', async ({ page }) => {
+  await openMock(page, '/fault-management');
+  await page.evaluate(() => {
+    const entities = window.__safetyHomeMock.snapshot();
+    entities['sensor.fault_riskytemperatureforecast'].state = 'UNEVALUABLE';
+    entities['sensor.fault_riskytemperatureforecast'].attributes.active = false;
+    window.__safetyHomeMock.update({ entities });
+  });
+  const card = page.locator('.fault-card[data-entity-id="sensor.fault_riskytemperatureforecast"]');
+  await expect(page.getByRole('heading', { name: /Zdarzenia i stan oceny/ })).toBeVisible();
+  await expect(card.locator(':scope > summary')).toContainText('Nieaktywna');
+  await expect(card.locator(':scope > summary')).toContainText('Brak wiarygodnej oceny');
+  await expect(card.locator(':scope > summary').getByText('Aktywna', { exact: true })).toHaveCount(0);
+});
+
 test('history changes category and range without carrying another entity state across cards', async ({ page }) => {
   await openMock(page, '/history');
   const history = page.locator('.history-grid');

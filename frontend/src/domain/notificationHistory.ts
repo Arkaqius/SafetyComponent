@@ -152,6 +152,35 @@ export function notificationRecipient(service: string): string {
     .replace(/_/g, ' ');
 }
 
+/** Read identity from the recorded message, never from today's fault/location. */
+export function notificationIdentity(entry: NotificationEntry, entries: NotificationEntry[] = []) {
+  const own = recordedIdentity(entry.message);
+  if (entry.kind !== 'clear') return { ...own, inherited: false };
+  const previous = entries
+    .filter(
+      candidate =>
+        candidate.tag === entry.tag && candidate.kind !== 'clear' && Date.parse(candidate.attempted_at) <= Date.parse(entry.attempted_at)
+    )
+    .sort((left, right) => Date.parse(right.attempted_at) - Date.parse(left.attempted_at))
+    .find(candidate => recordedIdentity(candidate.message).faultName);
+  return { ...(previous ? recordedIdentity(previous.message) : own), inherited: Boolean(previous) };
+}
+
+function recordedIdentity(message: string): { faultName: string; location: string } {
+  const firstLine = message.split(/\r?\n/)[0].trim();
+  const patterns = [
+    /^Wymaga uwagi:\s*(.+)\.$/u,
+    /^Dobra wiadomość - problem „(.+)” został rozwiązany\.$/u,
+    /^(.+) needs your attention\.$/u,
+    /^Good news - (.+) is no longer active\.$/u,
+    /^(.+) erfordert Ihre Aufmerksamkeit\.$/u,
+    /^Gute Nachricht – (.+) ist nicht mehr aktiv\.$/u,
+  ];
+  const faultName = patterns.map(pattern => firstLine.match(pattern)?.[1].trim()).find(Boolean) ?? '';
+  const location = message.match(/^(?:Lokalizacja|Location|Ort):[ \t]*([^\r\n]+)$/mu)?.[1].trim() ?? '';
+  return { faultName, location };
+}
+
 export function notificationKind(kind: NotificationEntry['kind']): string {
   return {
     new: 'Nowe zgłoszenie',

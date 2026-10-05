@@ -69,7 +69,7 @@ export default function FaultSection({ acknowledgedTags = new Set(), faults, com
       <div className='panel-header'>
         <div>
           <h2 className='label-with-help'>
-            Aktywne zdarzenia{' '}
+            Zdarzenia i stan oceny{' '}
             <HelpTooltip
               label='Poziomy i stany usterek'
               text='L1: alarm krytyczny, L2: zagrożenie, L3: ostrzeżenie, L4: informacja. Usterka przesłonięta ustępuje miejsca ważniejszemu zdarzeniu, lecz nie oznacza to jej ustąpienia. Potwierdzenie powiadomienia nie usuwa usterki.'
@@ -197,7 +197,8 @@ function FaultCard({
           {fault.category === 'H' ? 'Zagrożenie H' : fault.category === 'D' ? 'Diagnostyka D' : 'Brak kategorii'}
         </StatusBadge>
         {level && <span className={`level-chip status-${level.tone}`}>{level.shortLabel}</span>}
-        {fault.active && <StatusBadge tone='danger'>Aktywna</StatusBadge>}
+        {fault.active === true && <StatusBadge tone='danger'>Aktywna</StatusBadge>}
+        {fault.active === false && <StatusBadge tone='muted'>Nieaktywna</StatusBadge>}
         {fault.latched && <StatusBadge tone='critical'>Zatrzaśnięta</StatusBadge>}
         {fault.shadowedBy.length > 0 && <StatusBadge tone='warning'>Przesłonięta</StatusBadge>}
         <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
@@ -205,6 +206,13 @@ function FaultCard({
       </summary>
       <div className='fault-card-details'>
         <p>{fault.description || 'Brak dodatkowego opisu dla tej usterki.'}</p>
+        {fault.entityId === 'sensor.fault_riskytemperatureforecast' && (
+          <p>
+            Prognoza wykorzystuje temperaturę i tempo jej zmian. Przewidywane przekroczenie progu może wystąpić, gdy aktualna temperatura
+            jest jeszcze w normie. „Brak wiarygodnej oceny” oznacza, że system nie ma poprawnych danych do prognozy; sprawdź osobno status
+            aktywacji usterki.
+          </p>
+        )}
         <dl className='details-grid'>
           <div>
             <dt>Poziom</dt>

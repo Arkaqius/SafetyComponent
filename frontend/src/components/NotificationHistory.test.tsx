@@ -44,6 +44,9 @@ test('renders accepted notification content, recipient and diagnostic details', 
 
   assert.match(markup, /Historia powiadomień/);
   assert.match(markup, /Aktywne zagrożenie/);
+  const summary = markup.match(/<summary>[\s\S]*?<\/summary>/)?.[0] ?? '';
+  assert.match(summary, /Czujnik dymu/);
+  assert.match(summary, /Lokalizacja: Kuchnia/);
   assert.match(markup, /Wszystkie telefony \(grupa\)/);
   assert.match(markup, /Numer próby/);
   assert.match(markup, /Przyjęto przez Home Assistant/);
