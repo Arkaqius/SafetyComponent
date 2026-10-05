@@ -970,6 +970,7 @@ function checkLabel(value: string): string {
         finite_number: 'Poprawna liczba',
         numeric_range: 'Zakres wartości',
         rate_of_change: 'Tempo zmiany',
+        recovery_command: 'Wykonanie działania naprawczego',
       } as Record<string, string>
     )[value] ?? value
   );
@@ -1011,6 +1012,12 @@ function reasonLabel(check: string, reason: string, value: unknown): string {
     insufficient_elapsed_time: 'Za krótki odstęp między próbkami',
     target_unavailable: 'Brak wartości do oceny',
     unsupported_check: 'Nieobsługiwany rodzaj kontroli',
+    no_outstanding_command_failure: 'Brak zapisanej awarii polecenia',
+    restored_command_failure: 'Zapisana awaria polecenia po ponownym uruchomieniu',
+    command_failed: 'Polecenie wykonania zostało odrzucone',
+    postcondition_timeout: 'Nie potwierdzono oczekiwanego skutku w wymaganym czasie',
+    postcondition_unverified_after_restart: 'Nie potwierdzono skutku przed ponownym uruchomieniem',
+    postcondition_confirmed: 'Potwierdzono oczekiwany stan końcowy',
   };
   const observation = formatEntityCheckObservation(check, value);
   const observed = observation ? ` · ${observation}` : '';

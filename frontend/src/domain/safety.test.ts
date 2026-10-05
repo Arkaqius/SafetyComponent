@@ -113,8 +113,14 @@ test('discovers faults from MQTT entity IDs and orders active faults first', () 
       friendly_name: 'Safety Component Fault: RiskyTemperature',
       level: 'level_2',
       active: true,
+      category: 'H',
+      latched: true,
+      contributors: ['RiskyTemperatureOffice', 'RiskyTemperatureBedroom'],
+      active_contributors: ['RiskyTemperatureOffice'],
       location: 'Office, Bedroom',
       notification_tag: 'fault-tag',
+      freeze_frame: { measured_value: 31.2, threshold: 28 },
+      extended_data: { source: 'sensor.office_temperature' },
     }),
   };
 
@@ -125,6 +131,28 @@ test('discovers faults from MQTT entity IDs and orders active faults first', () 
   assert.deepEqual(faults[0].locations, ['Office', 'Bedroom']);
   assert.equal(faults[0].notificationTag, 'fault-tag');
   assert.equal(faults[0].active, true);
+  assert.equal(faults[0].category, 'H');
+  assert.equal(faults[0].latched, true);
+  assert.deepEqual(faults[0].contributors, ['RiskyTemperatureOffice', 'RiskyTemperatureBedroom']);
+  assert.deepEqual(faults[0].activeContributors, ['RiskyTemperatureOffice']);
+  assert.deepEqual(faults[0].diagnosticData.freezeFrame, { measured_value: 31.2, threshold: 28 });
+  assert.deepEqual(faults[0].diagnosticData.extendedData, { source: 'sensor.office_temperature' });
+});
+
+test('keeps missing or malformed diagnostic metadata explicit', () => {
+  const [fault] = getFaults({
+    'sensor.fault_unknown': entity('PASS', {
+      category: 'equipment',
+      latched: 'false',
+      contributors: 'not-an-array',
+      freeze_frame: ['not-an-object'],
+    }),
+  });
+
+  assert.equal(fault.category, 'unknown');
+  assert.equal(fault.latched, null);
+  assert.deepEqual(fault.contributors, []);
+  assert.equal(fault.diagnosticData.freezeFrame, null);
 });
 
 test('keeps evaluation, activation and shadowing independent', () => {

@@ -1498,6 +1498,124 @@ details summary:focus-visible {
   opacity: 0.65;
 }
 
+.fault-diagnostic-block {
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 14px;
+}
+
+.fault-contributor-list,
+.coverage-diagnostic-list ul {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.fault-contributor-list li,
+.coverage-diagnostic-list li {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  padding: 9px 10px;
+}
+
+.fault-contributor-list span,
+.coverage-diagnostic-list span {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  text-align: right;
+}
+
+.fault-contributor-list .fault-contributor-active {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+}
+
+.fault-management-intro,
+.fault-contract-note {
+  align-items: flex-start;
+  display: flex;
+  gap: 20px;
+  justify-content: space-between;
+}
+
+.fault-management-intro h2,
+.coverage-details-panel h2 {
+  margin: 4px 0 9px;
+}
+
+.fault-management-intro p,
+.coverage-explanation,
+.fault-contract-note p {
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.fault-contract-note {
+  background: var(--warning-soft);
+  border-color: var(--warning);
+  justify-content: flex-start;
+}
+
+.fault-contract-note strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.coverage-details-panel,
+.coverage-restriction-list {
+  display: grid;
+  gap: 12px;
+}
+
+.coverage-restriction-row,
+.coverage-diagnostic-list {
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+
+.coverage-restriction-heading,
+.coverage-diagnostic-heading {
+  align-items: flex-start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.coverage-restriction-heading strong,
+.coverage-restriction-heading small {
+  display: block;
+}
+
+.coverage-restriction-heading small,
+.coverage-channel-note {
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.coverage-channel-note {
+  background: var(--info-soft);
+  border-left: 3px solid var(--info);
+  padding: 9px 10px;
+}
+
+.compact-empty-state {
+  min-height: 0;
+  padding: 20px;
+}
+
 .details-grid {
   display: grid;
   gap: 12px;
@@ -4344,5 +4462,21 @@ dialog.entity-dialog-backdrop::backdrop { background: rgba(0, 0, 0, 0.65); }
   .help-layout {
     grid-template-columns: minmax(0, 1fr);
     gap: 28px;
+  }
+}
+
+@media (max-width: 700px) {
+  .fault-management-intro,
+  .coverage-restriction-heading,
+  .coverage-diagnostic-heading,
+  .fault-contributor-list li,
+  .coverage-diagnostic-list li {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .fault-contributor-list span,
+  .coverage-diagnostic-list span {
+    text-align: left;
   }
 }

@@ -152,7 +152,16 @@ test('entity modal traps keyboard focus and restores its trigger', async ({ page
 test('all monitoring pages render without an unhandled exception', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
-  for (const route of ['/temperature', '/safety-doors', '/internal-hazards', '/external-hazards', '/entities', '/history', '/help']) {
+  for (const route of [
+    '/temperature',
+    '/safety-doors',
+    '/internal-hazards',
+    '/external-hazards',
+    '/entities',
+    '/history',
+    '/help',
+    '/fault-management',
+  ]) {
     await openMock(page, route);
     await expect(page.locator('.page-stack')).toBeVisible();
   }

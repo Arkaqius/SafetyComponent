@@ -13,6 +13,7 @@ import { formatNumeric, formatRelativeTime, type TemperatureView } from '../doma
 import { useSafetyEntities } from '../hooks/useSafetyEntities';
 import { NOTIFICATION_DELIVERY_HEALTH_ID, readAcknowledgedNotificationTags } from '../domain/notificationHistory';
 import { EVALUATION_PROGRESS_ENTITY_ID } from '../domain/functionalSafety';
+import { COVERAGE_ENTITY_ID, getCoverageView } from '../domain/coverage';
 
 export default function Dashboard() {
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
@@ -20,6 +21,7 @@ export default function Dashboard() {
   const closeEntityDetails = useCallback(() => setSelectedEntityId(null), []);
   const closeAverageDetails = useCallback(() => setAverageDialogOpen(false), []);
   const {
+    connection,
     entities,
     entityMonitorSummary,
     externalHazards,
@@ -31,7 +33,6 @@ export default function Dashboard() {
     summary,
     systemEntity,
     temperatures,
-    connection,
   } = useSafetyEntities();
   const values = temperatures.filter((temperature): temperature is TemperatureView & { state: number } => temperature.state !== null);
   const average = values.length > 0 ? values.reduce((sum, temperature) => sum + temperature.state, 0) / values.length : null;
@@ -60,6 +61,7 @@ export default function Dashboard() {
   const progressState = entities[EVALUATION_PROGRESS_ENTITY_ID]?.state;
   const primaryFault =
     faults.find(fault => fault.active === true && fault.shadowedBy.length === 0) ?? faults.find(fault => fault.active === true);
+  const coverage = getCoverageView(connection.cannotConnect ? {} : entities);
 
   return (
     <div className='page-stack'>
@@ -152,6 +154,18 @@ export default function Dashboard() {
         <Link className='text-link' to='/functional-safety'>
           Szczegóły <Icon name='chevron' size={15} />
         </Link>
+      </section>
+
+      <section className='entity-monitor-overview'>
+        <div>
+          <span className='section-kicker'>Pokrycie bezpieczeństwa</span>
+          <strong>{coverage.label}</strong>
+          <small>{coverage.detail}</small>
+        </div>
+        <StatusBadge tone={coverage.tone}>{coverage.state}</StatusBadge>
+        <button className='text-button' onClick={() => setSelectedEntityId(COVERAGE_ENTITY_ID)} type='button'>
+          Przyczyny i zakres <Icon name='history' size={15} />
+        </button>
       </section>
 
       <section aria-label='Podsumowanie temperatur' className='summary-grid'>

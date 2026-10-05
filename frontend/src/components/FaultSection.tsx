@@ -149,6 +149,7 @@ function FaultCard({
 }) {
   const status = statusPresentation[fault.status];
   const level = fault.level ? LEVEL_PRESENTATION[fault.level] : undefined;
+  const cardTone = fault.active === true || fault.latched === true ? (fault.level === 1 ? 'critical' : 'danger') : status.tone;
   const connection = useHass(store => store.connection);
   const connected = useHass(store => store.connectionStatus === 'connected' && store.ready);
   const [submitting, setSubmitting] = useState(false);
@@ -179,7 +180,11 @@ function FaultCard({
   };
 
   return (
-    <details className={`fault-card fault-${status.tone}`} data-entity-id={fault.entityId} open={fault.active === true}>
+    <details
+      className={`fault-card fault-${cardTone}`}
+      data-entity-id={fault.entityId}
+      open={fault.active === true || fault.latched === true}
+    >
       <summary>
         <span className='fault-card-icon'>
           <Icon name='alert' size={20} />
@@ -188,10 +193,14 @@ function FaultCard({
           <strong>{fault.name}</strong>
           <small>{fault.locations.length > 0 ? fault.locations.join(' · ') : 'Brak przypisanej lokalizacji'}</small>
         </span>
+        <StatusBadge tone={fault.category === 'H' ? 'danger' : fault.category === 'D' ? 'info' : 'muted'}>
+          {fault.category === 'H' ? 'Zagrożenie H' : fault.category === 'D' ? 'Diagnostyka D' : 'Brak kategorii'}
+        </StatusBadge>
         {level && <span className={`level-chip status-${level.tone}`}>{level.shortLabel}</span>}
-        <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
         {fault.active && <StatusBadge tone='danger'>Aktywna</StatusBadge>}
+        {fault.latched && <StatusBadge tone='critical'>Zatrzaśnięta</StatusBadge>}
         {fault.shadowedBy.length > 0 && <StatusBadge tone='warning'>Przesłonięta</StatusBadge>}
+        <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
         <Icon className='details-chevron' name='chevron' size={17} />
       </summary>
       <div className='fault-card-details'>
@@ -206,8 +215,22 @@ function FaultCard({
             <dd>{localizedEntityState(fault.entityId, fault.state)}</dd>
           </div>
           <div>
+            <dt>Kategoria</dt>
+            <dd>
+              {fault.category === 'H'
+                ? 'H — warunek zagrożenia'
+                : fault.category === 'D'
+                  ? 'D — utrata diagnostyki lub pokrycia'
+                  : 'Nie podano'}
+            </dd>
+          </div>
+          <div>
             <dt>Aktywacja</dt>
             <dd>{fault.active === null ? 'Nieznana' : fault.active ? 'Aktywna' : 'Nieaktywna'}</dd>
+          </div>
+          <div>
+            <dt>Latch</dt>
+            <dd>{fault.latched === null ? 'Brak danych' : fault.latched ? 'Aktywny — wymaga poprawnego resetu' : 'Nieaktywny'}</dd>
           </div>
           {fault.shadowedBy.length > 0 && (
             <div>
@@ -220,6 +243,23 @@ function FaultCard({
             <dd>{formatRelativeTime(fault.lastChanged)}</dd>
           </div>
         </dl>
+        {fault.contributors.length > 0 && (
+          <div className='fault-diagnostic-block'>
+            <strong>Źródła oceny</strong>
+            <ul className='fault-contributor-list'>
+              {fault.contributors.map(contributor => (
+                <li className={fault.activeContributors.includes(contributor) ? 'fault-contributor-active' : ''} key={contributor}>
+                  <code>{contributor}</code>
+                  <span>{fault.activeContributors.includes(contributor) ? 'Aktywny contributor' : 'Powiązany contributor'}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {fault.diagnosticData.freezeFrame && (
+          <DiagnosticRecord label='Freeze frame — pierwsza aktywacja' record={fault.diagnosticData.freezeFrame} />
+        )}
+        {fault.diagnosticData.extendedData && <DiagnosticRecord label='Dane rozszerzone' record={fault.diagnosticData.extendedData} />}
         {canAcknowledge && (
           <div className='fault-acknowledgement'>
             <button
@@ -246,4 +286,34 @@ function FaultCard({
       </div>
     </details>
   );
+}
+
+function DiagnosticRecord({ label, record }: { label: string; record: Record<string, unknown> }) {
+  return (
+    <div className='fault-diagnostic-block'>
+      <strong>{label}</strong>
+      <dl className='details-grid'>
+        {Object.entries(record).map(([key, value]) => (
+          <div key={key}>
+            <dt>{humanizeDiagnosticKey(key)}</dt>
+            <dd>{formatDiagnosticValue(value)}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
+function formatDiagnosticValue(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '—';
+  if (typeof value === 'boolean') return value ? 'Tak' : 'Nie';
+  if (typeof value === 'string' || typeof value === 'number') return String(value);
+  return JSON.stringify(value);
+}
+
+function humanizeDiagnosticKey(value: string): string {
+  return value
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .replace(/^\w/, letter => letter.toUpperCase());
 }

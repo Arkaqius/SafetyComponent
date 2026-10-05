@@ -37,6 +37,12 @@ export type RecoveryStatus =
   | 'unavailable'
   | 'unknown';
 export type StatusTone = 'safe' | 'critical' | 'danger' | 'warning' | 'info' | 'muted';
+export type FaultCategory = 'H' | 'D' | 'unknown';
+
+export interface FaultDiagnosticData {
+  freezeFrame: Record<string, unknown> | null;
+  extendedData: Record<string, unknown> | null;
+}
 
 export interface FaultView {
   entityId: string;
@@ -47,8 +53,13 @@ export interface FaultView {
   state: string;
   status: FaultStatus;
   active: boolean | null;
+  category: FaultCategory;
+  latched: boolean | null;
+  contributors: string[];
+  activeContributors: string[];
   shadowedBy: string[];
   notificationTag: string;
+  diagnosticData: FaultDiagnosticData;
   lastChanged?: string;
 }
 
@@ -302,8 +313,16 @@ export function getFaults(entities: EntityMap): FaultView[] {
       state: entity.state,
       status: getFaultStatus(entity.state),
       active: typeof entity.attributes.active === 'boolean' ? entity.attributes.active : null,
+      category: faultCategoryAttribute(entity),
+      latched: typeof entity.attributes.latched === 'boolean' ? entity.attributes.latched : null,
+      contributors: stringArrayAttribute(entity, 'contributors'),
+      activeContributors: stringArrayAttribute(entity, 'active_contributors'),
       shadowedBy: stringArrayAttribute(entity, 'shadowed_by'),
       notificationTag: stringAttribute(entity, 'notification_tag'),
+      diagnosticData: {
+        freezeFrame: recordAttribute(entity, 'freeze_frame'),
+        extendedData: recordAttribute(entity, 'extended_data'),
+      },
       lastChanged: entity.last_changed,
     }))
     .sort(
@@ -878,6 +897,16 @@ function stringArrayAttribute(entity: EntitySnapshot | undefined, key: string): 
     .map(String)
     .map(item => item.trim())
     .filter(Boolean);
+}
+
+function recordAttribute(entity: EntitySnapshot | undefined, key: string): Record<string, unknown> | null {
+  const value = entity?.attributes[key];
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
+function faultCategoryAttribute(entity: EntitySnapshot): FaultCategory {
+  const category = stringAttribute(entity, 'category').toUpperCase();
+  return category === 'H' || category === 'D' ? category : 'unknown';
 }
 
 function adviceInhibitionAttribute(entity: EntitySnapshot | undefined): AdviceInhibitionView[] {

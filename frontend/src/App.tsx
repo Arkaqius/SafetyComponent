@@ -14,6 +14,7 @@ import EntityHealth from './pages/EntityHealth';
 import Configuration from './pages/Configuration';
 import FunctionalSafety from './pages/FunctionalSafety';
 import Help from './pages/Help';
+import FaultManagement from './pages/FaultManagement';
 
 const MockHassProvider = import.meta.env.DEV ? lazy(() => import('./dev/MockHassProvider')) : null;
 
@@ -37,6 +38,7 @@ export default function App() {
           <Route path='internal-hazards' element={<InternalHazards />} />
           <Route path='entities' element={<EntityHealth />} />
           <Route path='functional-safety' element={<FunctionalSafety />} />
+          <Route path='fault-management' element={<FaultManagement />} />
           <Route path='history' element={<LogPage />} />
           <Route path='configuration/*' element={<Configuration />} />
           <Route path='help' element={<Help />} />
