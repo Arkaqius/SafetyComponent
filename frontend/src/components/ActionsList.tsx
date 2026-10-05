@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { useHass } from '@hakit/core';
 import { formatRelativeTime, recoveryNeedsAttention, type RecoveryStatus, type RecoveryView, type StatusTone } from '../domain/safety';
 import Icon from './Icon';
+import HelpTooltip from './HelpTooltip';
 import StatusBadge from './StatusBadge';
+import { recoveryConfirmationBlock } from '../domain/recoveryConfirmation';
 
 interface ActionsListProps {
   recoveries: RecoveryView[];
@@ -39,14 +41,18 @@ export default function ActionsList({ recoveries, onSelectEntity }: ActionsListP
     <section className='panel recovery-panel'>
       <div className='panel-header'>
         <div>
-          <span className='section-kicker'>Działania naprawcze</span>
-          <h2>Działania naprawcze</h2>
+          <h2 className='label-with-help'>
+            Zalecenia i działania{' '}
+            <HelpTooltip
+              label='Zalecenia i potwierdzenia'
+              text='Instrukcja opisuje zalecane postępowanie. Gdy działanie wymaga potwierdzenia, przycisk wysyła zgodę do systemu; sam frontend nie wykonuje działania. Propozycja może wygasnąć lub zostać wstrzymana. Potwierdzenie powiadomienia o usterce jest osobną czynnością.'
+            />
+          </h2>
         </div>
         <span className={`count-badge${requiringAttention.length > 0 ? ' count-badge-warning' : ''}`}>{countLabel}</span>
       </div>
 
       <div className='panel-toolbar'>
-        <p>Sensory diagnostyczne — wykonanie akcji pozostaje po stronie SafetyComponent.</p>
         {recoveries.length > 0 && (
           <button className='text-button' onClick={() => setShowAll(value => !value)} type='button'>
             {showAll ? 'Pokaż wymagające uwagi' : `Pokaż wszystkie (${recoveries.length})`}
@@ -62,11 +68,11 @@ export default function ActionsList({ recoveries, onSelectEntity }: ActionsListP
             <div className='empty-state-icon'>
               <Icon name='recovery' size={28} />
             </div>
-            <strong>{recoveries.length === 0 ? 'Brak encji recovery' : 'Brak działań do wykonania'}</strong>
+            <strong>{recoveries.length === 0 ? 'Brak danych o zaleceniach' : 'Brak działań wymagających uwagi'}</strong>
             <p>
               {recoveries.length === 0
-                ? 'Home Assistant nie udostępnia obecnie żadnych encji sensor.recovery_*.'
-                : 'Wszystkie działania naprawcze mają stan DO_NOT_PERFORM.'}
+                ? 'System nie przekazał zaleceń. Sprawdź dostępność monitoringu.'
+                : 'System nie zgłasza obecnie działania wymagającego uwagi.'}
             </p>
           </div>
         )}
@@ -78,15 +84,26 @@ export default function ActionsList({ recoveries, onSelectEntity }: ActionsListP
 function RecoveryCard({ recovery, onSelectEntity }: { recovery: RecoveryView; onSelectEntity?: (entityId: string) => void }) {
   const presentation = statusPresentation[recovery.status];
   const connection = useHass(store => store.connection);
+  const connected = useHass(store => store.connectionStatus === 'connected' && store.ready);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const blockedReason = recoveryConfirmationBlock(recovery, connected);
 
   const confirmRecovery = async (): Promise<void> => {
-    if (!connection || !recovery.confirmationToken) {
-      setError('Brak połączenia lub potwierdzenie wygasło.');
+    const block = recoveryConfirmationBlock(recovery, connected);
+    if (!connection || block) {
+      setError(block ?? 'Brak połączenia z Home Assistantem.');
       return;
     }
     if (!window.confirm(`Czy na pewno chcesz wykonać tę akcję?\n${recovery.instruction}`)) return;
+    const afterConfirmation = recoveryConfirmationBlock(
+      recovery,
+      useHass.getState().connectionStatus === 'connected' && useHass.getState().ready
+    );
+    if (afterConfirmation) {
+      setError(afterConfirmation);
+      return;
+    }
     setSubmitting(true);
     setError('');
     try {
@@ -111,23 +128,17 @@ function RecoveryCard({ recovery, onSelectEntity }: { recovery: RecoveryView; on
         <Icon name='recovery' size={20} />
       </span>
       <div className='recovery-card-copy'>
-        <strong title={recovery.entityId}>{recovery.name}</strong>
-        <p>{recovery.description || 'Brak dodatkowego opisu.'}</p>
-        {(recovery.reason || recovery.source) && (
-          <small>
-            {recovery.reason ? `Powód: ${recovery.reason}` : ''}
-            {recovery.reason && recovery.source ? ' · ' : ''}
-            {recovery.source ? `Źródło: ${recovery.source}` : ''}
-          </small>
-        )}
+        <strong>{recovery.name}</strong>
+        <p>{recovery.instruction || recovery.description || 'Brak instrukcji wykonania.'}</p>
+        {(recovery.reason || recovery.source) && <small>{recovery.reason ? `Powód: ${recovery.reason}` : ''}</small>}
         {recovery.validUntil && <small>Ważne do {new Date(recovery.validUntil).toLocaleString('pl-PL')}</small>}
         {error && <small className='recovery-error'>{error}</small>}
+        {recovery.status === 'awaiting_confirmation' && blockedReason && <small className='recovery-error'>{blockedReason}</small>}
         <small>Zmiana {formatRelativeTime(recovery.lastChanged)}</small>
-        <code>{recovery.entityId}</code>
       </div>
       <StatusBadge tone={presentation.tone}>{presentation.label}</StatusBadge>
       {recovery.status === 'awaiting_confirmation' && (
-        <button className='recovery-confirm-button' disabled={submitting} onClick={confirmRecovery} type='button'>
+        <button className='recovery-confirm-button' disabled={submitting || Boolean(blockedReason)} onClick={confirmRecovery} type='button'>
           {submitting ? 'Wysyłanie…' : 'Potwierdź zamknięcie'}
         </button>
       )}

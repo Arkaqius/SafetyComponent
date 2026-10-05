@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import Icon from '../components/Icon';
+import HelpTooltip from '../components/HelpTooltip';
 import StatusBadge from '../components/StatusBadge';
 import {
   formatEntityCheckObservation,
@@ -115,10 +116,29 @@ function MonitoredView({
   return (
     <>
       <section aria-label='Podsumowanie monitorowanych encji' className='entity-health-summary'>
-        <HealthMetric label='Wszystkie' value={summary.total} />
-        <HealthMetric label='Sprawne' tone='safe' value={summary.healthy} />
-        <HealthMetric label='Wymagają uwagi' tone='warning' value={summary.degraded + summary.stale} />
-        <HealthMetric label='Niedostępne' tone='danger' value={summary.unavailable} />
+        <HealthMetric
+          label='Wszystkie'
+          value={summary.total}
+          help='Źródła objęte diagnostyką SafetyComponent. To nie jest liczba wszystkich encji Home Assistanta ani urządzeń w domu.'
+        />
+        <HealthMetric
+          label='Sprawne'
+          tone='safe'
+          value={summary.healthy}
+          help='Źródła uznane za sprawne przez diagnostykę. To ocena jakości danych, a nie potwierdzenie braku zagrożenia: sprawny czujnik może zgłaszać alarm.'
+        />
+        <HealthMetric
+          label='Wymagają uwagi'
+          tone='warning'
+          value={summary.degraded + summary.stale}
+          help='Źródła z ograniczoną jakością danych lub nieaktualnym odczytem. Rozwiń źródło, aby zobaczyć wyniki kontroli i ich przyczyny.'
+        />
+        <HealthMetric
+          label='Niedostępne'
+          tone='danger'
+          value={summary.unavailable}
+          help='Źródła, których wymaganych danych nie można obecnie wiarygodnie wykorzystać. Brak danych nie potwierdza bezpiecznego stanu; po utracie połączenia widoczne liczby są ostatnim znanym wynikiem.'
+        />
       </section>
 
       <section className='panel entity-table-panel'>
@@ -639,7 +659,12 @@ function InventoryEntityDetails({ entity }: { entity: InventoryEntityView }) {
           <dd>{formatRelativeTime(entity.lastUpdated)}</dd>
         </div>
       </dl>
-      <HistoryTimeline entityId={entity.entityId} loading={history.loading} transitions={transitions} />
+      <HistoryTimeline
+        entityId={entity.entityId}
+        loading={history.loading}
+        transitions={transitions}
+        error={history.error ?? (history.status === 'disconnected' ? 'Historia niedostępna: brak połączenia.' : null)}
+      />
     </section>
   );
 }
@@ -687,22 +712,33 @@ function DeviceEntityHistory({ entity }: { entity: InventoryEntityView }) {
     .filter((entry, index, timeline) => index === 0 || entry.state !== timeline[index - 1]?.state)
     .slice(-8)
     .reverse();
-  return <HistoryTimeline entityId={entity.entityId} loading={history.loading} transitions={transitions} />;
+  return (
+    <HistoryTimeline
+      entityId={entity.entityId}
+      loading={history.loading}
+      transitions={transitions}
+      error={history.error ?? (history.status === 'disconnected' ? 'Historia niedostępna: brak połączenia.' : null)}
+    />
+  );
 }
 
 function HistoryTimeline({
   entityId,
   loading,
   transitions,
+  error,
 }: {
   entityId: string;
   loading: boolean;
   transitions: Array<{ state: string; last_changed: number }>;
+  error: string | null;
 }) {
   return (
     <div className='entity-history-preview'>
       <h3>Zmiany z ostatnich 24 godzin</h3>
-      {loading && transitions.length === 0 ? (
+      {error ? (
+        <p role='status'>{error}</p>
+      ) : loading && transitions.length === 0 ? (
         <p>Wczytywanie historii…</p>
       ) : transitions.length ? (
         <ol className='state-timeline'>
@@ -798,7 +834,9 @@ function EntityDetails({ entity }: { entity: MonitoredEntityView }) {
       </div>
       <div className='entity-history-preview'>
         <h3>Zmiany z ostatnich 24 godzin</h3>
-        {history.loading && transitions.length === 0 ? (
+        {history.status === 'error' || history.status === 'disconnected' ? (
+          <p role='status'>{history.error ?? 'Historia niedostępna: brak połączenia.'}</p>
+        ) : history.loading && transitions.length === 0 ? (
           <p>Wczytywanie historii…</p>
         ) : transitions.length ? (
           <ol className='state-timeline'>
@@ -835,10 +873,13 @@ function CheckRow({ check }: { check: EntityCheckView }) {
   );
 }
 
-function HealthMetric({ label, value, tone = 'info' }: { label: string; value: number; tone?: StatusTone }) {
+function HealthMetric({ label, value, tone = 'info', help }: { label: string; value: number; tone?: StatusTone; help?: string }) {
   return (
     <article className={`health-metric metric-${tone}`}>
-      <span>{label}</span>
+      <span className='label-with-help'>
+        {label}
+        {help && <HelpTooltip label={label} text={help} />}
+      </span>
       <strong>{value}</strong>
     </article>
   );

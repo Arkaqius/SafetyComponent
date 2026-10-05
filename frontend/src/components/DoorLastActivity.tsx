@@ -63,6 +63,10 @@ export default function DoorLastActivity({ door, compact = false }: { door: Safe
   });
   const session = findLastDoorSession(history.timeline, door.doorState, door.openedAt, door.openDurationSeconds);
 
+  if ((history.status === 'error' || history.status === 'disconnected') && !session) {
+    return <span className='door-last-activity door-last-activity-muted'>Historia otwarć niedostępna</span>;
+  }
+
   if (history.loading && !session) {
     return <span className='door-last-activity door-last-activity-muted'>Wczytywanie ostatniego otwarcia…</span>;
   }

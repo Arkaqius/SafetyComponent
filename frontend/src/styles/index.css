@@ -155,7 +155,7 @@ p {
   margin-top: 2px;
 }
 
-.sidebar-close {
+.sidebar-close.icon-button {
   display: none;
   margin-left: auto;
 }
@@ -3387,45 +3387,6 @@ details summary:focus-visible {
   color: var(--warning);
 }
 
-.provider-observation-count {
-  border-bottom: 1px dotted var(--text-muted);
-  cursor: help;
-  display: inline-flex;
-  position: relative;
-}
-
-.provider-observation-tooltip {
-  background: var(--surface-raised, #18232d);
-  border: 1px solid var(--border-strong);
-  border-radius: 11px;
-  box-shadow: 0 12px 35px rgba(0, 0, 0, 0.32);
-  color: var(--text-soft);
-  display: none;
-  flex-direction: column;
-  gap: 7px;
-  left: -10px;
-  min-width: 250px;
-  padding: 12px 14px;
-  position: absolute;
-  top: calc(100% + 8px);
-  z-index: 20;
-}
-
-.provider-observation-tooltip strong {
-  color: var(--text);
-  font-size: 0.7rem;
-}
-
-.provider-observation-tooltip span {
-  font-size: 0.65rem;
-  line-height: 1.35;
-}
-
-.provider-observation-count:hover .provider-observation-tooltip,
-.provider-observation-count:focus .provider-observation-tooltip {
-  display: flex;
-}
-
 .page-empty-state {
   min-height: 300px;
 }
@@ -4116,4 +4077,272 @@ details summary:focus-visible {
 .notification-item time,
 .notification-item-copy > span {
   font-size: 0.85rem;
+}
+
+/* Operator priority: the incident and its instruction precede background metrics. */
+.safety-hero { min-height: 104px; padding: 20px 24px; }
+.safety-hero-copy p { font-size: 1rem; line-height: 1.5; }
+.safety-hero-meta { min-width: 0; max-width: 160px; }
+.safety-hero-meta small, .entity-monitor-overview small { font-size: 0.875rem; }
+.dashboard-events { align-items: start; }
+.dashboard-events .panel-header { padding: 0; }
+.dashboard-events .panel-header h2 { font-size: 1.25rem; }
+.dashboard-events .panel-toolbar:empty { display: none; }
+.fault-card-title strong { font-size: 1.25rem; white-space: normal; overflow: visible; line-height: 1.35; }
+.fault-card-title small, .fault-card-details dt, .fault-card-details dd,
+.fault-acknowledgement small, .recovery-card-copy small { font-size: 0.875rem; line-height: 1.5; }
+.fault-card-details p, .recovery-card-copy p { font-size: 1rem; line-height: 1.6; color: var(--text-soft); }
+.fault-card-details .details-grid { background: transparent; padding: 0; }
+.recovery-card { grid-template-columns: auto minmax(0, 1fr); border-radius: 0; border: 0; border-bottom: 1px solid var(--border); background: transparent; padding: 12px 0; }
+.recovery-card > .status-badge, .recovery-card > .recovery-confirm-button { grid-column: 2; justify-self: start; }
+.hero-incident { display: block; margin-top: 8px; font-size: 1.125rem; line-height: 1.5; }
+.entity-monitor-overview { grid-template-columns: minmax(0, 1fr) auto auto; padding: 12px 16px; border-radius: 10px; }
+.recovery-card-copy strong { font-size: 1.125rem; line-height: 1.4; }
+.fault-acknowledge-button, .recovery-confirm-button { min-height: 44px; font-size: 0.875rem; }
+.technical-details { margin-top: 12px; font-size: 0.875rem; }
+.technical-details summary { cursor: pointer; color: var(--text-muted); }
+.technical-details code { display: block; margin-top: 8px; overflow-wrap: anywhere; }
+dialog.entity-dialog-backdrop { margin: 0; border: 0; width: 100%; height: 100dvh; max-width: none; max-height: none; color: var(--text); background: transparent; }
+dialog.entity-dialog-backdrop:not([open]) { display: none; }
+dialog.entity-dialog-backdrop::backdrop { background: rgba(0, 0, 0, 0.65); }
+@media (max-width: 720px) {
+  .sidebar-close.icon-button { display: inline-flex; }
+  .topbar { flex-wrap: wrap; gap: 12px; padding-bottom: 14px; }
+  .topbar-title { width: 100%; }
+  .topbar-statuses { width: 100%; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+  .topbar .connection-copy { display: flex; text-align: left; font-size: 0.875rem; }
+  .connection-copy small { font-size: 0.875rem; }
+  .safety-hero { grid-template-columns: auto 1fr; padding: 18px; gap: 14px; }
+  .safety-hero-icon { width: 44px; height: 44px; }
+  .safety-hero-meta { grid-column: 2; max-width: none; text-align: left; border: 0; padding: 0; }
+  .dashboard-events { gap: 18px; }
+  .fault-card-details { padding: 16px; }
+  .fault-card > summary { padding: 16px; grid-template-columns: auto 1fr auto; }
+  .fault-card > summary .level-chip { grid-column: 2; justify-self: start; }
+  .fault-card > summary .status-badge { grid-column: 2; justify-self: start; }
+  .fault-card > summary .details-chevron { grid-column: 3; grid-row: 1; }
+  .entity-monitor-overview { grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+  .entity-monitor-overview .text-link { grid-column: 1 / -1; font-size: 0.875rem; }
+  .dashboard-events .recovery-panel { order: -1; }
+  .dashboard-events .recovery-confirm-button { grid-column: 2 / -1; }
+}
+
+/* Explanatory help shares one interaction model on desktop, keyboard and touch. */
+.help-tooltip {
+  display: inline-flex;
+  flex: none;
+  vertical-align: middle;
+  letter-spacing: normal;
+  text-transform: none;
+}
+.help-tooltip-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: help;
+}
+.help-tooltip-trigger:hover,
+.help-tooltip-trigger[aria-expanded="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.help-tooltip-trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.help-tooltip-panel {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  padding: 16px;
+  max-height: min(60dvh, 360px);
+  overflow: auto;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--surface-strong);
+  color: var(--text-soft);
+  box-shadow: var(--shadow);
+  font-size: 0.875rem;
+  line-height: 1.6;
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.help-tooltip-panel > strong {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--text);
+  font-size: 1rem;
+  line-height: 1.4;
+}
+.help-tooltip-panel > span {
+  display: block;
+}
+.label-with-help,
+.status-with-help {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.summary-card-with-help {
+  position: relative;
+  min-width: 0;
+  height: 100%;
+}
+.summary-card-with-help > .summary-card {
+  width: 100%;
+  height: 100%;
+  padding-right: 48px;
+}
+.summary-card-with-help > .help-tooltip {
+  position: absolute;
+  top: 10px;
+  right: 8px;
+}
+@media (pointer: coarse) {
+  .help-tooltip-trigger {
+    width: 44px;
+    height: 44px;
+  }
+  .summary-card-with-help > .summary-card {
+    padding-right: 60px;
+  }
+}
+
+.help-page {
+  max-width: 1120px;
+}
+.help-introduction h2 {
+  margin: 0 0 12px;
+  font-size: 1.75rem;
+}
+.help-page p,
+.help-quickstart li {
+  font-size: 1rem;
+  line-height: 1.7;
+  color: var(--text-soft);
+  max-width: 70ch;
+}
+.help-page h3 {
+  margin: 0 0 12px;
+  font-size: 1.25rem;
+  line-height: 1.4;
+}
+.help-page p {
+  margin: 0 0 16px;
+}
+.help-quickstart {
+  padding: 20px 24px;
+  border-left: 3px solid var(--accent);
+  background: var(--surface);
+}
+.help-quickstart ol {
+  margin: 0;
+  padding-left: 24px;
+}
+.help-quickstart li + li {
+  margin-top: 8px;
+}
+.help-page a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.help-page .text-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-size: 1rem;
+}
+.help-page a:focus-visible,
+.help-question summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+.help-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.6fr);
+  gap: 40px;
+}
+.help-reference,
+.help-topics {
+  min-width: 0;
+}
+.help-levels {
+  margin: 20px 0;
+}
+.help-levels > div {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.help-levels dt {
+  font-weight: 600;
+}
+.help-levels dd {
+  margin: 0;
+}
+.help-levels .status-badge {
+  font-size: 0.875rem;
+}
+.help-topics > section + section {
+  margin-top: 32px;
+}
+.help-question {
+  border-bottom: 1px solid var(--border);
+}
+.help-question summary {
+  padding: 16px 0;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1.5;
+  font-weight: 600;
+}
+.help-question summary::marker {
+  color: var(--accent);
+}
+.help-question[open] summary {
+  color: var(--accent);
+}
+.help-question p:last-child {
+  padding-bottom: 8px;
+}
+.help-demo-note {
+  margin-top: 32px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.help-demo-note strong {
+  display: block;
+  margin-bottom: 8px;
+}
+.help-demo-note p {
+  margin: 0;
+  font-size: 0.875rem;
+}
+@media (max-width: 720px) {
+  .help-introduction h2 {
+    font-size: 1.5rem;
+  }
+  .help-quickstart {
+    padding: 16px;
+  }
+  .help-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 28px;
+  }
 }

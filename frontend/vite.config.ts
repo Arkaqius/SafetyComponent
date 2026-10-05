@@ -13,6 +13,7 @@ export default defineConfig(({ mode }) => {
     // Relative assets work under both /local/SafetyHome and the dynamic
     // Home Assistant Ingress prefix assigned to the standalone App.
     base: './',
+    server: { watch: { ignored: ['**/.test-dist/**'] } },
     plugins: [react()],
   };
 });

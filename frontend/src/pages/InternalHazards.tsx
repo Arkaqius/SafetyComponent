@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import EntityDetailsDialog from '../components/EntityDetailsDialog';
 import Icon from '../components/Icon';
+import HelpTooltip from '../components/HelpTooltip';
 import StatusBadge from '../components/StatusBadge';
 import { type InternalDetectorStatus, type InternalDetectorView, type InternalEnvironmentStatus } from '../domain/internalHazards';
 import { formatRelativeTime, type StatusTone } from '../domain/safety';
@@ -57,8 +58,8 @@ export default function InternalHazards() {
           <span className='section-kicker'>Bezpieczeństwo wewnątrz domu</span>
           <h2>Zagrożenia wewnętrzne</h2>
           <p>
-            Widok prezentuje niezależne alarmy czujników dymu, gazu palnego, tlenku węgla i zalania. SafetyComponent przekazuje alarmy i zalecenia,
-            ale nie steruje wentylacją, zaworami wody i gazu, przekaźnikami ani zwykłym oświetleniem.
+            Widok prezentuje niezależne alarmy czujników dymu, gazu palnego, tlenku węgla i zalania. SafetyComponent przekazuje alarmy i
+            zalecenia, ale nie steruje wentylacją, zaworami wody i gazu, przekaźnikami ani zwykłym oświetleniem.
           </p>
         </div>
         <div className='internal-current-state'>
@@ -98,7 +99,13 @@ export default function InternalHazards() {
         <div className='section-heading internal-detector-heading'>
           <div>
             <span className='section-kicker'>Kanały alarmowe</span>
-            <h2>Czujniki i ich niezależne stany</h2>
+            <h2 className='label-with-help'>
+              Czujniki i ich niezależne stany{' '}
+              <HelpTooltip
+                label='Alarm i stan techniczny czujnika'
+                text='Alarm zagrożenia i usterka techniczna to niezależne informacje. Niedostępność czujnika nie jest dowodem ustąpienia wcześniej zgłoszonego alarmu. Potwierdzenie powiadomienia nie kasuje alarmu ani nie naprawia czujnika.'
+              />
+            </h2>
           </div>
         </div>
         {internalEnvironment.detectors.length > 0 ? (

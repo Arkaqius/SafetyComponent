@@ -2,6 +2,7 @@
 **/node_modules
 /dist
 /coverage
+/.test-dist
 **/*.css
 **/*.md
 **/*.mjs

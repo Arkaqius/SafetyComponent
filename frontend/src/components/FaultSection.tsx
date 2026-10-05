@@ -9,6 +9,7 @@ import {
   type StatusTone,
 } from '../domain/safety';
 import Icon from './Icon';
+import HelpTooltip from './HelpTooltip';
 import StatusBadge from './StatusBadge';
 import { notificationAcknowledgementEvent } from '../domain/notificationHistory';
 
@@ -67,25 +68,34 @@ export default function FaultSection({ acknowledgedTags = new Set(), faults, com
     <section className='panel fault-panel'>
       <div className='panel-header'>
         <div>
-          <span className='section-kicker'>Usterki</span>
-          <h2>Usterki systemu</h2>
+          <h2 className='label-with-help'>
+            Aktywne zdarzenia{' '}
+            <HelpTooltip
+              label='Poziomy i stany usterek'
+              text='L1: alarm krytyczny, L2: zagrożenie, L3: ostrzeżenie, L4: informacja. Usterka przesłonięta ustępuje miejsca ważniejszemu zdarzeniu, lecz nie oznacza to jej ustąpienia. Potwierdzenie powiadomienia nie usuwa usterki.'
+            />
+          </h2>
         </div>
-        <span className={`count-badge${activeCount > 0 ? ' count-badge-alert' : ''}`}>{activeCount} aktywnych</span>
+        <span className={`count-badge${activeCount > 0 ? ' count-badge-alert' : ''}`}>
+          {activeCount === 1 ? '1 aktywne' : `${activeCount} aktywnych`}
+        </span>
       </div>
 
-      <div className='filter-row' role='group' aria-label='Filtr usterek'>
-        {filters.map(item => (
-          <button
-            aria-pressed={filter === item.value}
-            className={`filter-button${filter === item.value ? ' filter-button-active' : ''}`}
-            key={item.value}
-            onClick={() => setFilter(item.value)}
-            type='button'
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
+      {!compact && (
+        <div className='filter-row' role='group' aria-label='Filtr usterek'>
+          {filters.map(item => (
+            <button
+              aria-pressed={filter === item.value}
+              className={`filter-button${filter === item.value ? ' filter-button-active' : ''}`}
+              key={item.value}
+              onClick={() => setFilter(item.value)}
+              type='button'
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {!compact && (
         <label className='search-field'>
@@ -118,7 +128,7 @@ export default function FaultSection({ acknowledgedTags = new Set(), faults, com
             <strong>{faults.length === 0 ? 'Brak encji usterek' : 'Brak usterek w tym widoku'}</strong>
             <p>
               {faults.length === 0
-                ? 'Home Assistant nie udostępnia obecnie żadnych encji sensor.fault_*.'
+                ? 'Brak danych o usterkach z Home Assistanta.'
                 : 'System nie raportuje zdarzeń spełniających wybrany filtr.'}
             </p>
           </div>
@@ -140,6 +150,7 @@ function FaultCard({
   const status = statusPresentation[fault.status];
   const level = fault.level ? LEVEL_PRESENTATION[fault.level] : undefined;
   const connection = useHass(store => store.connection);
+  const connected = useHass(store => store.connectionStatus === 'connected' && store.ready);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
@@ -151,7 +162,7 @@ function FaultCard({
   }, [acknowledged, fault.notificationTag]);
 
   const acknowledgeFault = async (): Promise<void> => {
-    if (!connection || !fault.notificationTag) {
+    if (!connection || !connected || !fault.notificationTag) {
       setError('Brak połączenia z Home Assistantem.');
       return;
     }
@@ -168,15 +179,14 @@ function FaultCard({
   };
 
   return (
-    <details className={`fault-card fault-${status.tone}`} open={fault.active === true}>
+    <details className={`fault-card fault-${status.tone}`} data-entity-id={fault.entityId} open={fault.active === true}>
       <summary>
         <span className='fault-card-icon'>
           <Icon name='alert' size={20} />
         </span>
         <span className='fault-card-title'>
-          <strong title={fault.entityId}>{fault.name}</strong>
+          <strong>{fault.name}</strong>
           <small>{fault.locations.length > 0 ? fault.locations.join(' · ') : 'Brak przypisanej lokalizacji'}</small>
-          <small className='technical-id'>{fault.entityId}</small>
         </span>
         {level && <span className={`level-chip status-${level.tone}`}>{level.shortLabel}</span>}
         <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
@@ -214,7 +224,7 @@ function FaultCard({
           <div className='fault-acknowledgement'>
             <button
               className='fault-acknowledge-button'
-              disabled={acknowledged || submitted || submitting}
+              disabled={!connected || acknowledged || submitted || submitting}
               onClick={acknowledgeFault}
               type='button'
             >
@@ -224,6 +234,10 @@ function FaultCard({
           </div>
         )}
         {error && <small className='recovery-error'>{error}</small>}
+        <details className='technical-details'>
+          <summary>Diagnostyka</summary>
+          <code>{fault.entityId}</code>
+        </details>
         {onSelectEntity && (
           <button className='text-button fault-details-button' onClick={() => onSelectEntity(fault.entityId)} type='button'>
             Pełne szczegóły i historia <Icon name='history' size={15} />

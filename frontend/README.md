@@ -28,8 +28,22 @@ Do przeglądu wszystkich stanów interfejsu bez logowania można użyć wyłącz
 npm run dev:mock
 ```
 
-Tryb demonstracyjny działa tylko przy deweloperskim buildzie Vite i jest jawnie oznaczony w nagłówku. Produkcyjny build
-zawsze korzysta z rzeczywistych encji Home Assistanta.
+Tryb demonstracyjny działa tylko przy deweloperskim buildzie Vite. Informację
+o lokalnych danych testowych znajdziesz w **Pomocy** i nagłówkach podstron;
+pulpit pomija to oznaczenie. Produkcyjny build zawsze korzysta z rzeczywistych
+encji Home Assistanta.
+
+## Pomoc w aplikacji
+
+Pozycja **Pomoc** w nawigacji otwiera stronę `#/help`. Zawiera krótką instrukcję
+korzystania z pulpitu, poziomy L1–L4 oraz rozwijane objaśnienia aktualności danych,
+potwierdzeń powiadomień i działań, pomiarów oraz historii. Odnośniki prowadzą
+do odpowiednich ekranów aplikacji. Na telefonie pomoc jest dostępna w menu.
+
+Podpowiedzi przy ikonach **i** otwierają się po najechaniu myszą, dotknięciu
+lub ustawieniu fokusu klawiaturą. Kliknięcie przypina podpowiedź; ponowne
+kliknięcie, kliknięcie poza nią lub Escape zamyka ją. Oznaczenia braku połączenia
+i ostatnich znanych danych pozostają widoczne przy odczytach.
 
 ## Historia powiadomień i encji
 
@@ -47,14 +61,27 @@ potwierdzeniem dostarczenia na telefon. Dla grupy, np. `notify/all_phones`,
 lista pokazuje nazwę usługi; nie ustala jej członków ani konkretnych osób,
 które otrzymały wiadomość.
 
-Dziennik pochodzi z `sensor.notification_history`, obejmuje ostatnie 100 prób
-dla poszczególnych usług i wyświetla najnowsze wpisy na początku. Nieudana
+Dziennik pochodzi z `SafetyHomeApiGateway` przez uwierzytelnione zdarzenia
+`safetyhome_notification_history_request` i
+`safetyhome_notification_history_response`. Widok pobiera stronicowany,
+spójny zestaw ostatnich 100 prób dla poszczególnych usług i wyświetla
+najnowsze wpisy na początku. `sensor.notification_history` jest obsługiwany
+wyłącznie jako zgodność ze starszą wersją backendu. Nieudana
 próba i jej ponowienie mają osobne wpisy. Samo oczekiwanie na odzyskanie
 Internetu nie jest próbą wysłania. Historia korzysta z istniejącego zapisu
 stanu powiadomień i przy włączonej persystencji przetrwa restart AppDaemona;
 wcześniejszy zapis bez dziennika rozpoczyna historię od pustej listy.
 Rejestrator Home Assistanta nie jest wymagany do odczytu tej listy.
 Historia encji pozostaje poniżej i korzysta z Rejestratora.
+Zdarzenia transportu historii należy wyłączyć z Rejestratora; przykład do
+scalenia z istniejącą konfiguracją znajduje się w
+[`docs/examples/home_assistant_recorder_safetyhome_api.yaml`](../docs/examples/home_assistant_recorder_safetyhome_api.yaml).
+
+### Utrata połączenia
+
+Po utracie połączenia widok zachowuje ostatnie odczyty i wyraźnie oznacza je
+jako dane zapamiętane. Taki odczyt nie potwierdza bieżącego bezpieczeństwa.
+Potwierdzenie powiadomienia lub działania wymaga aktualnego połączenia.
 
 ### Potwierdzanie powiadomień
 
@@ -136,6 +163,26 @@ npm run lint -- --max-warnings=0
 npm run format:check
 npm run build
 ```
+
+Testy przeglądarkowe uruchamiają wyłącznie lokalny tryb demonstracyjny. Nie
+wymagają konta ani tokenu Home Assistanta i blokują żądania do zewnętrznych
+serwerów. Obejmują klawiaturę i fokus okien, ocenę bezpieczeństwa, utratę
+połączenia, potwierdzenia powiadomień i działań oraz przełączanie historii na
+widoku desktopowym i mobilnym:
+
+```powershell
+npx playwright install chromium
+npm run test:ui
+```
+
+CI wykonuje testy, typecheck, lint bez ostrzeżeń, build i testy przeglądarkowe
+przed budowaniem obrazu App. `npm run format:check` nadal sprawdza cały
+frontend. Ponieważ istniejące pliki mają zastane różnice formatowania,
+CI sprawdza TypeScript i JSON zmienione przez daną zmianę poleceniem
+`npm run format:check:changed`. Ten zakres nie zwalnia zmienianych plików
+z formatowania i pozwala zachować niezwiązane pliki bez masowego przepisywania.
+Lokalnie porównanie domyślnie obejmuje zmiany względem `HEAD`; CI używa
+commitu bazowego pull requesta lub poprzedniego commitu publikowanej zmiany.
 
 ## Deploy do Home Assistanta
 

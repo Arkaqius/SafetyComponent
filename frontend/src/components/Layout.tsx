@@ -59,6 +59,12 @@ const menuItems: Array<{ title: string; path: string; icon: IconName; descriptio
     icon: 'settings',
     description: 'Ustawienia użytkownika i instalacji',
   },
+  {
+    title: 'Pomoc',
+    path: '/help',
+    icon: 'help',
+    description: 'Statusy, dane i obsługa aplikacji',
+  },
 ];
 
 export default function Layout() {

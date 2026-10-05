@@ -1,4 +1,5 @@
 import Icon from '../components/Icon';
+import HelpTooltip from '../components/HelpTooltip';
 import DoorLastActivity from '../components/DoorLastActivity';
 import StatusBadge from '../components/StatusBadge';
 import { formatRelativeTime, type SafetyDoorView } from '../domain/safety';
@@ -88,7 +89,13 @@ function SafetyDoorCard({ door }: { door: SafetyDoorView }) {
 
       <dl className='safety-door-details'>
         <div>
-          <dt>Limit czasu otwarcia</dt>
+          <dt className='label-with-help'>
+            Limit czasu otwarcia{' '}
+            <HelpTooltip
+              label='Limit otwarcia wejścia'
+              text='Indywidualny czas tolerancji skonfigurowany dla tego wejścia. Alarm dotyczy ciągłego otwarcia po przekroczeniu limitu, gdy monitorowanie jest aktywne. Niedostępny odczyt nie potwierdza zamknięcia.'
+            />
+          </dt>
           <dd>{formatDuration(door.timeoutSeconds)}</dd>
         </div>
         <div>
@@ -102,7 +109,13 @@ function SafetyDoorCard({ door }: { door: SafetyDoorView }) {
         {door.conditionEntityId ? (
           <>
             <div>
-              <dt>Warunek monitorowania</dt>
+              <dt className='label-with-help'>
+                Warunek monitorowania{' '}
+                <HelpTooltip
+                  label='Warunek monitorowania wejścia'
+                  text='Dodatkowy warunek z konfiguracji określa, kiedy wejście ma być monitorowane. Stan „Wstrzymane” oznacza zablokowane monitorowanie i brak odliczania limitu; nie potwierdza, że drzwi lub brama są zamknięte.'
+                />
+              </dt>
               <dd title={door.conditionEntityId}>{door.conditionEntityName}</dd>
             </div>
             <div>

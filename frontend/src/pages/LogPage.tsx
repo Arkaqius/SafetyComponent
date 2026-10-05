@@ -146,7 +146,9 @@ function HistoryCard({ item, hours }: { item: HistoryEntity; hours: HistoryHours
         <StatusBadge tone={presentation.tone}>{presentation.label}</StatusBadge>
       </div>
 
-      {history.loading && transitions.length === 0 ? (
+      {history.status === 'error' || history.status === 'disconnected' ? (
+        <p role='status'>{history.error ?? 'Historia niedostępna: brak połączenia.'}</p>
+      ) : history.loading && transitions.length === 0 ? (
         <div className='history-loading'>
           <span className='loading-line' />
           <span className='loading-line loading-line-short' />

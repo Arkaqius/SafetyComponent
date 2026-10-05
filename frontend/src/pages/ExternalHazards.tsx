@@ -1,4 +1,5 @@
 import Icon from '../components/Icon';
+import HelpTooltip from '../components/HelpTooltip';
 import StatusBadge from '../components/StatusBadge';
 import {
   formatRelativeTime,
@@ -218,27 +219,37 @@ function ProviderCard({ provider }: { provider: ExternalProviderView }) {
       </header>
       <dl>
         <div>
-          <dt>Ostatni poprawny odczyt</dt>
+          <dt className='label-with-help'>
+            Ostatni poprawny odczyt{' '}
+            <HelpTooltip
+              label='Aktualność źródła zewnętrznego'
+              text='Czas ostatniego poprawnego pobrania danych ze źródła. Może być starszy niż dopuszczalny czas aktualności. Bieżącą dostępność wskazuje status źródła; ostatni poprawny odczyt sam nie potwierdza aktualnej oceny.'
+            />
+          </dt>
           <dd>{formatRelativeTime(provider.lastSuccessAt)}</dd>
         </div>
         <div>
           <dt>Obserwacje</dt>
-          <dd>
-            <span className='provider-observation-count' tabIndex={provider.observations.length > 0 ? 0 : undefined}>
-              {provider.observationCount}
-              {provider.observations.length > 0 ? (
-                <span className='provider-observation-tooltip' role='tooltip'>
-                  <strong>Monitorowane dane</strong>
-                  {provider.observations.map(observation => (
-                    <span key={observation.id}>{observationDisplayName(observation)}</span>
-                  ))}
-                </span>
-              ) : null}
-            </span>
+          <dd className='label-with-help'>
+            {provider.observationCount}
+            <HelpTooltip
+              label={`Monitorowane dane: ${provider.name}`}
+              text={
+                provider.observations.length > 0
+                  ? provider.observations.map(observationDisplayName).join(' · ')
+                  : 'Brak udostępnionej listy obserwacji. Sam licznik nie potwierdza aktualności danych.'
+              }
+            />
           </dd>
         </div>
         <div>
-          <dt>Kolejne błędy</dt>
+          <dt className='label-with-help'>
+            Kolejne błędy{' '}
+            <HelpTooltip
+              label='Błędy pobierania danych'
+              text='Liczba nieudanych prób pobrania danych pod rząd. Szczegóły problemu opisuje diagnostyka źródła. Zerowy licznik nie zastępuje sprawdzenia statusu i aktualności odczytu.'
+            />
+          </dt>
           <dd>{provider.consecutiveFailures}</dd>
         </div>
         {provider.detailCode && (

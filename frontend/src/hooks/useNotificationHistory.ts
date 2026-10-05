@@ -18,7 +18,7 @@ export function useNotificationHistory(legacyEntity?: EntitySnapshot) {
   const connection = useHass(store => store.connection);
   const connectionStatus = useHass(store => store.connectionStatus);
   const ready = useHass(store => store.ready);
-  const cannotConnect = connectionStatus === 'disconnected';
+  const cannotConnect = connectionStatus !== 'connected';
   const legacyEntries = useMemo(() => readNotificationHistory(legacyEntity), [legacyEntity]);
   const [entries, setEntries] = useState<NotificationEntry[]>(legacyEntries);
   const [total, setTotal] = useState(legacyEntries.length);
