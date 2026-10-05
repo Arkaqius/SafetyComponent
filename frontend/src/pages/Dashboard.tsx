@@ -61,7 +61,7 @@ export default function Dashboard() {
   const progressState = entities[EVALUATION_PROGRESS_ENTITY_ID]?.state;
   const primaryFault =
     faults.find(fault => fault.active === true && fault.shadowedBy.length === 0) ?? faults.find(fault => fault.active === true);
-  const coverage = getCoverageView(connection.cannotConnect ? {} : entities);
+  const coverage = getCoverageView(connection.cannotConnect || !connection.ready ? {} : entities);
 
   return (
     <div className='page-stack'>

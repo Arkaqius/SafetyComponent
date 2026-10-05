@@ -218,6 +218,22 @@ test('disconnect and suspended connection label retained readings as cached evid
   await expect(reading).toHaveText(retained);
 });
 
+test('coverage remains unknown until retained entities are ready', async ({ page }) => {
+  await openMock(page, '/fault-management');
+  await page.evaluate(() => {
+    const entities = window.__safetyHomeMock.snapshot();
+    entities['sensor.safety_coverage_state'] = { state: 'FULL', attributes: {} };
+    window.__safetyHomeMock.update({ entities, connectionStatus: 'connected', ready: true });
+  });
+  const coverage = page.locator('.fault-management-intro .status-badge');
+  await expect(coverage).toHaveClass(/status-safe/);
+  await page.evaluate(() => window.__safetyHomeMock.update({ ready: false }));
+  await expect(coverage).not.toHaveClass(/status-safe/);
+  await expect(coverage).toHaveText('Pokrycie nieustalone');
+  await page.evaluate(() => window.__safetyHomeMock.update({ connectionStatus: 'suspended', ready: true }));
+  await expect(coverage).not.toHaveClass(/status-safe/);
+});
+
 test('dashboard puts readable incident and instructions before temperature statistics', async ({ page }, testInfo) => {
   await openMock(page);
   const instruction = page.locator('.recovery-card-copy p').first();

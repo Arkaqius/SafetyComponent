@@ -19,7 +19,7 @@ export default function FaultManagement() {
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const closeEntityDetails = useCallback(() => setSelectedEntityId(null), []);
   const { connection, entities, faults } = useSafetyEntities();
-  const coverage = getCoverageView(connection.cannotConnect ? {} : entities);
+  const coverage = getCoverageView(connection.cannotConnect || !connection.ready ? {} : entities);
   const hazardFaults = faults.filter(fault => fault.category === 'H');
   const diagnosticFaults = faults.filter(fault => fault.category === 'D');
   const activeHazards = hazardFaults.filter(fault => fault.active === true);
