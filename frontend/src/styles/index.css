@@ -1465,6 +1465,22 @@ details summary:focus-visible {
   margin-bottom: 16px;
 }
 
+.fault-diagnostic-block {
+  border-top: 1px solid var(--border);
+  margin-top: 16px;
+  padding-top: 16px;
+}
+
+.fault-diagnostic-block > p {
+  color: var(--text-soft);
+  font-size: 0.76rem;
+  margin: 8px 0 12px;
+}
+
+.fault-diagnostic-block dd {
+  overflow-wrap: anywhere;
+}
+
 .fault-details-button {
   margin-top: 14px;
 }

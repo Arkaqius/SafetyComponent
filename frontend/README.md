@@ -76,6 +76,21 @@ pozostałych reguł `include`/`exclude`. Taki zakres przywraca wykresy temperatu
 bez włączania zapisu całej domeny `sensor`. Retencja `purge_keep_days` pozostaje
 globalnym ustawieniem Rejestratora i nie jest zmieniana przez przykład.
 
+## Freeze frame
+
+Na **Pulpicie**, w sekcji **Usterki systemu**, rozwiń kartę usterki. Sekcja
+**Freeze frame** pokazuje dane z pierwszej aktywacji razem z czasami,
+licznikiem aktywacji, ostatnim powodem, czasem trwania i niepewnością zegara.
+Całość pochodzi z jednego obiektu `freeze_frame` w atrybutach encji usterki;
+ten sam obiekt jest kontraktem API/MQTT.
+
+Zmiana odczytu lub treści powiadomienia nie nadpisuje danych przechwyconych
+przy aktywacji. Poprawne ustąpienie zachowuje je i uzupełnia dane cyklu życia,
+a kolejna aktywacja zastępuje przechwycone dane i zwiększa licznik. Po
+restarcie czas trwania aktywnej usterki pozostaje nieznany. Freeze frame nie
+jest historią wszystkich odczytów ani historią powiadomień; jego brak nie
+oznacza, że usterka ustąpiła.
+
 ## Konfiguracja instalacji
 
 Szczegółowa [instrukcja konfiguracji](CONFIGURATION.md) prowadzi przez pola i

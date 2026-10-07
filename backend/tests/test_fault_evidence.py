@@ -9,7 +9,11 @@ from unittest.mock import Mock
 from components.core.event_bus import EventBus
 from components.core.mqtt_entity_manager import MqttEntityManager
 from components.core.types_common import Fault, FaultState, Symptom
-from components.faults_manager.evidence import FaultEvidenceJournal
+from components.faults_manager.evidence import (
+    FRAME_FIELDS,
+    LIFECYCLE_FIELDS,
+    FaultEvidenceJournal,
+)
 from components.faults_manager.evidence_store import (
     InMemoryFaultEvidenceStore,
     JsonFaultEvidenceStore,
@@ -59,7 +63,7 @@ def test_first_activation_is_immutable_through_refresh_and_source_change() -> No
         "attributes": {"api_token": "must-not-capture"},
     }
     mqtt = Mock(spec=MqttEntityManager)
-    mqtt.get_attributes.return_value = {}
+    mqtt.get_attributes.return_value = {"extended_data": {"activation_count": 99}}
     manager = FaultManager(
         hass,
         {},
@@ -80,7 +84,9 @@ def test_first_activation_is_immutable_through_refresh_and_source_change() -> No
         original["freeze_frame"]["source"]["entity_id"] == "sensor.office_temperature"
     )
     assert original["freeze_frame"]["configuration"]["CAL_LOW_TEMP_THRESHOLD"] == 18.0
-    assert original["extended_data"]["activation_count"] == 1
+    assert original["freeze_frame"]["activation_count"] == 1
+    assert "extended_data" not in original
+    assert "extended_data" not in first_published
     detached = journal.get(fault.name)
     detached["freeze_frame"]["context"]["location"] = "Changed by reader"
     assert journal.get(fault.name) == original
@@ -149,18 +155,18 @@ def test_clear_and_new_activation_replaces_frame_without_episode_identity() -> N
     journal.clear(fault.name)
     cleared = journal.get(fault.name)
     assert cleared is not None
-    assert cleared["extended_data"]["active_duration_seconds"] == 15.5
-    assert cleared["extended_data"]["last_valid_pass_at"] is not None
+    assert cleared["freeze_frame"]["active_duration_seconds"] == 15.5
+    assert cleared["freeze_frame"]["last_valid_pass_at"] is not None
 
     now[0] += timedelta(minutes=1)
     journal.activate(fault, symptom, {"reason": "second"})
     next_record = journal.get(fault.name)
     assert next_record is not None
-    assert next_record["extended_data"]["activation_count"] == 2
+    assert next_record["freeze_frame"]["activation_count"] == 2
     assert next_record["freeze_frame"]["context"]["reason"] == "second"
     assert (
-        next_record["extended_data"]["first_failure_at"]
-        == cleared["extended_data"]["first_failure_at"]
+        next_record["freeze_frame"]["first_failure_at"]
+        == cleared["freeze_frame"]["first_failure_at"]
     )
     assert "episode" not in str(next_record).lower()
 
@@ -195,7 +201,8 @@ def test_allowlist_rejects_secrets_nested_payloads_and_enforces_frame_bound() ->
     assert "secret-value" not in serialized
     assert "nested" not in serialized
     assert record["freeze_frame"]["context"]["location"] == "Office"
-    assert len(str(record["freeze_frame"]).encode("utf-8")) < 800
+    captured = {key: record["freeze_frame"][key] for key in FRAME_FIELDS}
+    assert len(json.dumps(captured).encode("utf-8")) <= 800
 
 
 def test_restart_preserves_active_frame_without_inventing_elapsed_time() -> None:
@@ -211,11 +218,11 @@ def test_restart_preserves_active_frame_without_inventing_elapsed_time() -> None
     restored.activate(fault, symptom, {"reason": "refresh"})
     record = restored.get(fault.name)
     assert record is not None
-    assert record["extended_data"]["activation_count"] == 1
+    assert record["freeze_frame"]["activation_count"] == 1
     assert record["freeze_frame"]["context"]["reason"] == "first"
-    assert record["extended_data"]["clock_uncertain"] is True
+    assert record["freeze_frame"]["clock_uncertain"] is True
     restored.clear(fault.name)
-    assert restored.get(fault.name)["extended_data"]["active_duration_seconds"] is None
+    assert restored.get(fault.name)["freeze_frame"]["active_duration_seconds"] is None
 
 
 def test_first_valid_pass_after_restart_closes_old_activation() -> None:
@@ -240,7 +247,7 @@ def test_first_valid_pass_after_restart_closes_old_activation() -> None:
     manager.clear_symptom(symptom.name, {})
     assert restored.get(fault.name)["active"] is False
     manager.set_symptom(symptom.name, {"reason": "second"})
-    assert restored.get(fault.name)["extended_data"]["activation_count"] == 2
+    assert restored.get(fault.name)["freeze_frame"]["activation_count"] == 2
 
 
 def test_capacity_evicts_oldest_inactive_but_never_active() -> None:
@@ -403,7 +410,7 @@ def test_atomic_json_store_restarts_and_rejects_oversized_file(tmp_path) -> None
     assert path.exists()
     assert not list(tmp_path.glob("*.tmp"))
     restored = FaultEvidenceJournal(store)
-    assert restored.get(fault.name)["extended_data"]["activation_count"] == 1
+    assert restored.get(fault.name)["freeze_frame"]["activation_count"] == 1
     observed = Mock()
     too_small = FaultEvidenceJournal(
         JsonFaultEvidenceStore(str(path), max_bytes=16),
@@ -428,3 +435,116 @@ def test_tampered_store_cannot_republish_unallowlisted_secrets() -> None:
     observed.assert_any_call(
         "persistence", True, detail="fault_evidence_state", operation="load"
     )
+
+
+def test_version_one_store_migrates_all_fields_to_one_freeze_frame() -> None:
+    """Migration retains capture and counters, then writes only the new shape."""
+
+    fault, symptom = _model()
+    store = InMemoryFaultEvidenceStore()
+    journal = FaultEvidenceJournal(store, max_frame_bytes=800)
+    journal.activate(
+        fault, symptom, {"location": "Office", "reason": "x" * 160, "providers": "y" * 160}
+    )
+    journal.clear(fault.name)
+    expected = journal.get(fault.name)
+    frame = expected["freeze_frame"]
+    assert len(json.dumps(frame).encode("utf-8")) > 800
+    store.snapshot = {
+        "version": 1,
+        "records": {
+            fault.name: {
+                "active": False,
+                "freeze_frame": {
+                    **{key: frame[key] for key in FRAME_FIELDS},
+                    "version": 1,
+                },
+                "extended_data": {key: frame[key] for key in LIFECYCLE_FIELDS},
+            }
+        },
+    }
+
+    restored = FaultEvidenceJournal(store, max_frame_bytes=800)
+    assert restored.get(fault.name) == expected
+    assert store.snapshot["version"] == 2
+    assert store.snapshot["records"][fault.name] == expected
+    assert "extended_data" not in json.dumps(store.snapshot)
+
+
+def test_version_one_migration_rejects_unallowlisted_lifecycle_fields() -> None:
+    """Legacy diagnostics cannot bypass validation on the way to MQTT."""
+
+    fault, symptom = _model()
+    store = InMemoryFaultEvidenceStore()
+    FaultEvidenceJournal(store).activate(fault, symptom, {})
+    frame = store.snapshot["records"][fault.name]["freeze_frame"]
+    store.snapshot = {
+        "version": 1,
+        "records": {
+            fault.name: {
+                "active": True,
+                "freeze_frame": {
+                    **{key: frame[key] for key in FRAME_FIELDS},
+                    "version": 1,
+                },
+                "extended_data": {
+                    **{key: frame[key] for key in LIFECYCLE_FIELDS},
+                    "token": "hidden",
+                },
+            }
+        },
+    }
+    observed = Mock()
+
+    restored = FaultEvidenceJournal(store, diagnostics_observer=observed)
+    assert restored.get(fault.name) is None
+    observed.assert_any_call(
+        "persistence", True, detail="fault_evidence_state", operation="load"
+    )
+
+
+def test_lifecycle_updates_keep_captured_fields_and_capture_bound() -> None:
+    """Clear and restart change lifecycle fields without rewriting the sample."""
+
+    fault, symptom = _model()
+    store = InMemoryFaultEvidenceStore()
+    now = [datetime(2026, 10, 3, 8, tzinfo=timezone.utc)]
+    elapsed = [10.0]
+    journal = _journal(store, now, elapsed, max_frame_bytes=1024)
+    journal.activate(fault, symptom, {"reason": "x" * 160, "location": "Office"})
+    captured = journal.get(fault.name)["freeze_frame"]
+    now[0] += timedelta(minutes=1, microseconds=1)
+    elapsed[0] += 60.123
+    journal.clear(fault.name)
+    cleared = journal.get(fault.name)["freeze_frame"]
+    assert {key: captured[key] for key in FRAME_FIELDS} == {
+        key: cleared[key] for key in FRAME_FIELDS
+    }
+    assert cleared["active_duration_seconds"] == 60.123
+    capture = {key: cleared[key] for key in FRAME_FIELDS}
+    assert len(json.dumps(capture, ensure_ascii=False).encode("utf-8")) <= 1024
+    assert FaultEvidenceJournal(store, max_frame_bytes=1024).get(fault.name) is not None
+
+
+def test_entity_registration_publishes_only_unified_freeze_frame(
+    mocked_hass_app_with_temp_component,
+) -> None:
+    """Initial discovery exposes the same schema as subsequent fault updates."""
+
+    app, *_ = mocked_hass_app_with_temp_component
+    app.initialize()
+    fault = app.faults["RiskyTemperature"]
+    symptom = app.symptoms["RiskyTemperatureOffice"]
+    app.fault_evidence.activate(fault, symptom, {"reason": "cold"})
+    app.mqtt_entities = Mock(spec=MqttEntityManager)
+
+    app.register_entities()
+
+    registration = next(
+        call for call in app.mqtt_entities.register_sensor.call_args_list
+        if call.args[0] == "sensor.fault_RiskyTemperature"
+    )
+    attributes = registration.kwargs["attributes"]
+    assert attributes["freeze_frame"] == app.fault_evidence.get(fault.name)["freeze_frame"]
+    assert attributes["freeze_frame"]["activation_count"] == 1
+    assert "extended_data" not in attributes

@@ -10,7 +10,7 @@ from typing import Any, Mapping, Protocol
 
 
 class FaultEvidenceStore(Protocol):
-    """Persistence boundary for freeze frames and extended data."""
+    """Persistence boundary for unified freeze frames."""
 
     def load(self) -> dict[str, Any]:
         ...

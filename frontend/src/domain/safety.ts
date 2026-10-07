@@ -49,6 +49,7 @@ export interface FaultView {
   active: boolean | null;
   shadowedBy: string[];
   notificationTag: string;
+  freezeFrame: Record<string, unknown> | null;
   lastChanged?: string;
 }
 
@@ -303,6 +304,7 @@ export function getFaults(entities: EntityMap): FaultView[] {
       active: typeof entity.attributes.active === 'boolean' ? entity.attributes.active : null,
       shadowedBy: stringArrayAttribute(entity, 'shadowed_by'),
       notificationTag: stringAttribute(entity, 'notification_tag'),
+      freezeFrame: getFreezeFrame(entity),
       lastChanged: entity.last_changed,
     }))
     .sort(
@@ -312,6 +314,16 @@ export function getFaults(entities: EntityMap): FaultView[] {
         (left.level ?? 99) - (right.level ?? 99) ||
         left.name.localeCompare(right.name, 'pl')
     );
+}
+
+export function getFreezeFrame(entity: EntitySnapshot): Record<string, unknown> | null {
+  const frame = entity.attributes.freeze_frame;
+  if (!frame || typeof frame !== 'object' || Array.isArray(frame)) return null;
+  const legacy = frame && 'version' in frame && frame.version === 2 ? null : entity.attributes.extended_data;
+  if (legacy && typeof legacy === 'object' && !Array.isArray(legacy)) {
+    return { ...legacy, ...frame };
+  }
+  return { ...frame };
 }
 
 export function getRecoveries(entities: EntityMap): RecoveryView[] {

@@ -106,6 +106,7 @@ class FaultManager:
             attributes if attributes is not None else self._get_entity_attributes(entity_id)
         )
         payload = dict(current_attributes) if isinstance(current_attributes, dict) else {}
+        payload.pop("extended_data", None)
         payload.update(
             active=fault.evaluation.active,
             shadowed_by=sorted(fault.evaluation.shadowed_by),
@@ -117,10 +118,8 @@ class FaultManager:
         )
         if evidence is not None:
             payload["freeze_frame"] = evidence["freeze_frame"]
-            payload["extended_data"] = evidence["extended_data"]
         else:
             payload.pop("freeze_frame", None)
-            payload.pop("extended_data", None)
         self._set_internal_entity(entity_id, fault.evaluation.status.value, payload)
 
     def _capture_activation(

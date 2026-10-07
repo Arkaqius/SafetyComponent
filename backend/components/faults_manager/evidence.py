@@ -13,7 +13,7 @@ from typing import Any, Callable, Mapping
 from components.core.types_common import Fault, Symptom
 from components.faults_manager.evidence_store import FaultEvidenceStore
 
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2
 CONTEXT_FIELDS = frozenset(
     {
         "location",
@@ -130,7 +130,7 @@ FRAME_FIELDS = frozenset(
         "subject",
     }
 )
-EXTENDED_FIELDS = frozenset(
+LIFECYCLE_FIELDS = frozenset(
     {
         "first_failure_at",
         "last_failure_at",
@@ -198,15 +198,14 @@ def _valid_timestamp(value: Any, *, nullable: bool = False) -> bool:
 def _validate_record(name: str, record: dict[str, Any], max_frame_bytes: int) -> None:
     """Do not re-publish arbitrary values from a corrupt or altered state file."""
 
-    if set(record) != {"active", "freeze_frame", "extended_data"} or not isinstance(
+    if set(record) != {"active", "freeze_frame"} or not isinstance(
         record["active"], bool
     ):
         raise ValueError("Invalid fault evidence record")
     frame = record["freeze_frame"]
-    extended = record["extended_data"]
     if (
         not isinstance(frame, dict)
-        or set(frame) != FRAME_FIELDS
+        or set(frame) != FRAME_FIELDS | LIFECYCLE_FIELDS
         or frame["version"] != FORMAT_VERSION
     ):
         raise ValueError("Invalid freeze-frame fields")
@@ -255,25 +254,23 @@ def _validate_record(name: str, record: dict[str, Any], max_frame_bytes: int) ->
         )
     ):
         raise ValueError("Invalid freeze-frame restrictions")
-    if _encoded_size(frame) > max_frame_bytes:
+    if _capture_size(frame) > max_frame_bytes:
         raise ValueError("Fault freeze frame exceeds bound")
-    if not isinstance(extended, dict) or set(extended) != EXTENDED_FIELDS:
-        raise ValueError("Invalid fault extended data")
     if any(
-        not _valid_timestamp(extended[key], nullable=key == "last_valid_pass_at")
+        not _valid_timestamp(frame[key], nullable=key == "last_valid_pass_at")
         for key in ("first_failure_at", "last_failure_at", "last_valid_pass_at")
     ):
-        raise ValueError("Invalid fault extended timestamp")
-    count = extended["activation_count"]
+        raise ValueError("Invalid freeze-frame timestamp")
+    count = frame["activation_count"]
     if (
         isinstance(count, bool)
         or not isinstance(count, int)
         or not 1 <= count <= 2147483647
     ):
         raise ValueError("Invalid fault activation count")
-    if not isinstance(extended["clock_uncertain"], bool):
+    if not isinstance(frame["clock_uncertain"], bool):
         raise ValueError("Invalid fault clock flag")
-    duration = extended["active_duration_seconds"]
+    duration = frame["active_duration_seconds"]
     if duration is not None and (
         isinstance(duration, bool)
         or not isinstance(duration, (int, float))
@@ -281,15 +278,42 @@ def _validate_record(name: str, record: dict[str, Any], max_frame_bytes: int) ->
         or duration < 0
     ):
         raise ValueError("Invalid fault duration")
-    reason = extended["last_reason"]
+    reason = frame["last_reason"]
     if reason is not None and (
         not isinstance(reason, str) or _safe_scalar(reason) != reason
     ):
         raise ValueError("Invalid fault reason")
 
 
+def _migrate_legacy_record(record: dict[str, Any]) -> dict[str, Any]:
+    """Combine strictly shaped version-one data without trusting stored values."""
+
+    if set(record) != {"active", "freeze_frame", "extended_data"}:
+        raise ValueError("Invalid legacy fault evidence record")
+    capture = record["freeze_frame"]
+    lifecycle = record["extended_data"]
+    if (
+        not isinstance(capture, dict)
+        or set(capture) != FRAME_FIELDS
+        or capture["version"] != 1
+        or not isinstance(lifecycle, dict)
+        or set(lifecycle) != LIFECYCLE_FIELDS
+    ):
+        raise ValueError("Invalid legacy freeze-frame fields")
+    return {
+        "active": record["active"],
+        "freeze_frame": {**capture, **lifecycle, "version": FORMAT_VERSION},
+    }
+
+
+def _capture_size(frame: dict[str, Any]) -> int:
+    """Keep the existing capture budget independent of lifecycle updates."""
+
+    return _encoded_size({key: frame[key] for key in FRAME_FIELDS})
+
+
 class FaultEvidenceJournal:
-    """Retain one immutable freeze frame and bounded counters per fault key."""
+    """Retain one bounded freeze frame with capture and lifecycle fields."""
 
     def __init__(
         self,
@@ -348,8 +372,12 @@ class FaultEvidenceJournal:
             if not snapshot:
                 self._report(False, "load")
                 return
-            if snapshot.get("version") != FORMAT_VERSION or not isinstance(
-                snapshot.get("records"), dict
+            version = snapshot.get("version")
+            if (
+                not isinstance(version, int)
+                or isinstance(version, bool)
+                or version not in (1, FORMAT_VERSION)
+                or not isinstance(snapshot.get("records"), dict)
             ):
                 raise ValueError("Unsupported fault evidence snapshot")
             if _encoded_size(snapshot) > self.max_total_bytes:
@@ -360,11 +388,21 @@ class FaultEvidenceJournal:
             for name, record in records.items():
                 if not isinstance(name, str) or not isinstance(record, dict):
                     raise ValueError("Invalid fault evidence record")
+                if version == 1:
+                    record = _migrate_legacy_record(record)
+                    records[name] = record
                 _validate_record(name, record, self.max_frame_bytes)
                 if record["active"]:
-                    record["extended_data"]["clock_uncertain"] = True
-                    record["extended_data"]["active_duration_seconds"] = None
+                    record["freeze_frame"]["clock_uncertain"] = True
+                    record["freeze_frame"]["active_duration_seconds"] = None
+            if (
+                _encoded_size({"version": FORMAT_VERSION, "records": records})
+                > self.max_total_bytes
+            ):
+                raise ValueError("Migrated fault evidence snapshot exceeds bound")
             self.records = records
+            if version == 1:
+                self._save()
         except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
             self.records = {}
             if self.log is not None:
@@ -442,14 +480,27 @@ class FaultEvidenceJournal:
             if isinstance(subject, str) and _safe_scalar(subject) == subject
             else symptom.name[:160]
         )
-        while _encoded_size(frame) > self.max_frame_bytes and frame["context"]:
+        previous_frame = previous["freeze_frame"] if previous is not None else {}
+        reason = frame["context"].get("reason") or frame["context"].get("failed_check")
+        frame.update(
+            first_failure_at=previous_frame.get("first_failure_at", now),
+            last_failure_at=now,
+            last_valid_pass_at=previous_frame.get("last_valid_pass_at"),
+            activation_count=min(
+                int(previous_frame.get("activation_count", 0)) + 1, 2147483647
+            ),
+            last_reason=reason if isinstance(reason, str) else None,
+            active_duration_seconds=None,
+            clock_uncertain=False,
+        )
+        while _capture_size(frame) > self.max_frame_bytes and frame["context"]:
             frame["context"].pop(next(reversed(frame["context"])))
-        while _encoded_size(frame) > self.max_frame_bytes and frame["configuration"]:
+        while _capture_size(frame) > self.max_frame_bytes and frame["configuration"]:
             frame["configuration"].pop(next(reversed(frame["configuration"])))
         frame["configuration_fingerprint"] = hashlib.sha256(
             json.dumps(frame["configuration"], sort_keys=True).encode("utf-8")
         ).hexdigest()
-        if _encoded_size(frame) > self.max_frame_bytes:
+        if _capture_size(frame) > self.max_frame_bytes:
             if self.log is not None:
                 self.log(
                     f"Fault evidence frame bound reached for {fault.name}",
@@ -459,22 +510,9 @@ class FaultEvidenceJournal:
             self._report(True, "capacity")
             return
 
-        old_extended = previous["extended_data"] if previous is not None else {}
-        reason = frame["context"].get("reason") or frame["context"].get("failed_check")
         record = {
             "active": True,
             "freeze_frame": frame,
-            "extended_data": {
-                "first_failure_at": old_extended.get("first_failure_at", now),
-                "last_failure_at": now,
-                "last_valid_pass_at": old_extended.get("last_valid_pass_at"),
-                "activation_count": min(
-                    int(old_extended.get("activation_count", 0)) + 1, 2147483647
-                ),
-                "last_reason": reason if isinstance(reason, str) else None,
-                "active_duration_seconds": None,
-                "clock_uncertain": False,
-            },
         }
         candidate = dict(self.records)
         candidate[fault.name] = record
@@ -500,7 +538,7 @@ class FaultEvidenceJournal:
             oldest = min(
                 inactive,
                 key=lambda pair: (
-                    pair[1]["extended_data"].get("last_failure_at", ""),
+                    pair[1]["freeze_frame"].get("last_failure_at", ""),
                     pair[0],
                 ),
             )
@@ -518,11 +556,11 @@ class FaultEvidenceJournal:
             return
         now = self.clock().astimezone(timezone.utc).isoformat()
         record["active"] = False
-        extended = record["extended_data"]
-        extended["last_valid_pass_at"] = now
+        frame = record["freeze_frame"]
+        frame["last_valid_pass_at"] = now
         start = self._active_since.pop(fault_name, None)
-        if start is not None and not extended["clock_uncertain"]:
-            extended["active_duration_seconds"] = max(
+        if start is not None and not frame["clock_uncertain"]:
+            frame["active_duration_seconds"] = max(
                 0, round(self.elapsed_clock() - start, 3)
             )
         while (
@@ -540,7 +578,7 @@ class FaultEvidenceJournal:
             oldest = min(
                 inactive,
                 key=lambda pair: (
-                    pair[1]["extended_data"].get("last_failure_at", ""),
+                    pair[1]["freeze_frame"].get("last_failure_at", ""),
                     pair[0],
                 ),
             )

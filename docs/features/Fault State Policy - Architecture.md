@@ -86,8 +86,9 @@ shadowing from the evaluation status alone.
 
 ## Diagnostic evidence
 
-Each fault retains one versioned freeze frame from its first active transition.
-The frame contains only selected contributor context, subject, fault priority
+Each fault retains one versioned `freeze_frame` object combining first-activation
+evidence with bounded lifecycle metadata. The captured evidence contains only
+selected contributor context, subject, fault priority
 and category, safety-relevant configuration fields and their SHA-256
 fingerprint, selected source value/timestamp/age/quality, and active restriction causes.
 Temperature predicates supply their sampled value, modeled forecast where
@@ -97,23 +98,38 @@ timestamp. Arbitrary entity attributes, payload objects, recommendation text,
 credentials and secret-like values are excluded. A missing or invalid source
 timestamp is explicitly uncertain; it is not treated as a fresh sample.
 
-The freeze frame is immutable while the fault remains active, including when
+The captured evidence is immutable while the fault remains active, including when
 another symptom joins, a shadow owner changes, or notification content is
 quietly refreshed. Valid recovery retains that frame for diagnosis. The next
 activation replaces it and increments the activation count. A restart that
 restores an active record does not increment the count on the first repeated
 SET; a valid PASS must be observed before a later activation is new.
 
-Extended data contains first and last activation UTC timestamps, last valid
-PASS time, activation count, last activation reason, and active duration. Live
-duration uses a monotonic process clock. An active record restored after a
+The same object contains `first_failure_at`, `last_failure_at`,
+`last_valid_pass_at`, `activation_count`, `last_reason`,
+`active_duration_seconds`, and `clock_uncertain` alongside the captured fields.
+These lifecycle fields can update on valid clear or restart without rewriting
+the activation evidence. Live duration uses a monotonic process clock. An active
+record restored after a
 restart sets `clock_uncertain: true` and leaves duration unknown; elapsed time
 across downtime is never inferred from wall-clock subtraction. UTC timestamps
 are diagnostic chronology, not qualification timers.
 
+MQTT fault attributes and API fault records shall expose only `freeze_frame`
+for this evidence and metadata. The frontend shall show them in one **Freeze
+frame** section. The atomic store uses format version 2; loading a validated
+version 1 record combines its existing capture and lifecycle metadata into the
+same object before publication. Migration preserves the captured values and
+activation count within the original capture and lifecycle validation bounds
+and does not create a new activation.
+
 `runtime_cfg.fault_evidence` limits the independent atomic JSON store to 256
-fault records, 4096 UTF-8 bytes per frame and 1 MiB total. Capacity evicts the
-oldest inactive record by last activation time, never an active record. If all
+fault records, 4096 UTF-8 bytes for the activation-capture fields of each frame,
+and 1 MiB for the complete persisted JSON, including lifecycle fields. Lifecycle
+fields retain their own bounded validation and do not consume the capture byte
+budget. Combining them in one object does not tighten the original capture
+limit or discard previously valid legacy data. Capacity evicts the oldest
+inactive record by last activation time, never an active record. If all
 records are active, the new capture is dropped and App Health reports durability
 loss; an older cleared frame must not be presented as evidence for that new
 activation. Detection, notification, recovery and degradation continue. A cleared

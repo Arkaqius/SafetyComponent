@@ -117,8 +117,7 @@ runtime contracts or resolve the open policy choices listed at the glossary's en
 | Delivery deadline / acceptance | The allocated time for notification submission and the transport's acknowledgement of that submission. HA acceptance is not proof that a physical phone displayed the notification. |
 | Recovery action / recovery proposal | A configured mitigation action, or its current operator-visible offer. Modes are none, manual, user-confirmed or explicitly supported automatic execution. Neither a proposal nor a command acknowledgement clears the originating fault. |
 | Postcondition | Observable evidence required to verify an action's result, such as a closed contact after a close command. It is distinct from the service accepting the command. |
-| Freeze frame | A bounded snapshot of the evidence/context supporting a fault activation. Later source changes do not rewrite that captured evidence. Replacement/retention follow explicit storage policy. |
-| Extended data | Bounded supplementary diagnostic metadata such as first/last failure time, last valid pass, activation count and last reason. It is not a continuous raw-data archive. |
+| Freeze frame | One bounded `freeze_frame` object containing the evidence/context captured at fault activation and lifecycle metadata such as first/last failure time, last valid pass, activation count, last reason, duration and clock uncertainty. Later source changes do not rewrite captured evidence; valid clear or restart may update lifecycle fields. Replacement/retention follow explicit storage policy. It is not a continuous raw-data archive. |
 | Persistence / durability | Storage and restoration of selected state across process restarts. A durability failure reports loss of that guarantee; it must not manufacture recovery or authorize command replay. |
 | Fault episode | A separate historical occurrence identity/object with its own lifecycle. Excluded from this plan; bounded timestamps and activation counts do not introduce an episode subsystem. |
 | FDC / pending-confirmed DTC / operation-cycle aging | Automotive-style failure counting, diagnostic maturity and cycle-based historical clearing mechanisms. Excluded; do not confuse them with the selected qualification timers or bounded storage retention. |
@@ -158,7 +157,7 @@ not approve the review's proposed solutions or silently change section 2.
 | System coverage | Include `FULL`, `PARTIAL`, `DEGRADED`, `UNKNOWN`. |
 | Priority | One level 1..4 is both fault priority and notification level; it selects handling defaults, while explicit fault configuration selects recovery/degradation targets and permissions. |
 | Highest-priority latch | Include latching for the highest priority. |
-| Freeze frame and extended data | Include bounded diagnostic evidence and counters/timestamps. |
+| Freeze frame | Include bounded diagnostic evidence and lifecycle counters/timestamps in one object and one operator section. |
 | Enable/storage conditions | Handle eligibility with degradation/user control; no independent automotive subsystem. Storage remains a separate evidence-retention decision. |
 | Pending/confirmed DTC | Excluded as an additional maturation model. |
 | Fault Detection Counter | Excluded. |
@@ -332,7 +331,7 @@ new field names are design notation, not keys accepted by today's YAML schema.
 | Latch/reset | P1 latch only; fresh recovery plus authorized reset. P2..P4 auto-heal after their recovery policy. | Level selects latch; recovery evidence remains fault-specific. |
 | User control | Level constrains eligibility; per-fault allowlist specifies temporary/permanent control and bounds. Muting D warnings never restores invalid data. | Only the default/ceiling, not permission by itself. |
 | `shadows` | Explicit fault relation; no automatic suppression solely because another fault has a higher priority. | No. |
-| Freeze frame / extended data | Bounded capture on activation and explicit retention/allowlist. All matrix faults inherit this policy. | No; retain diagnostic evidence at all levels. |
+| Freeze frame | Bounded activation capture and lifecycle metadata in one object, with explicit retention/allowlist. All matrix faults inherit this policy. | No; retain diagnostic evidence at all levels. |
 
 For example, proposed `TemperatureRecoveryUnavailable` has class D, level 3,
 notification profile 3, no latch, and no automatic repair. Its explicit
@@ -551,8 +550,8 @@ matrix, not maintained as a second catalog.
    age/quality, thresholds/timers, subject, priority, configuration fingerprint,
    and active restrictions. Capture before asynchronous processing can change
    the evidence. Allowlisted fields and bounded payloads exclude secrets.
-8. Extended data stores first/last failure times, last valid pass, activation
-   count, duration where trustworthy, and last diagnostic reason. Add explicit
+8. The same freeze frame stores first/last failure times, last valid pass,
+   activation count, duration where trustworthy, and last diagnostic reason. Add explicit
    clock uncertainty; do not manufacture elapsed observations during downtime.
    Repeated context updates do not increment activation count. Define bounded
    replacement/retention without operation-cycle aging or a FaultEpisode model.
@@ -576,7 +575,7 @@ First reconcile the matrix baseline and settle section 2's open semantic choices
 | FH-03 | `feature/fault-degradation` | FH-01, FH-02 | Scoped restriction handling and FULL/PARTIAL/DEGRADED/UNKNOWN coverage. |
 | FH-04 | `feature/fault-user-control` | FH-03 | Temporary/permanent controls, persistence, expiry, and immediate operator UI. |
 | FH-05 | `feature/fault-priority-latch` | FH-01, FH-02 | Highest-priority latch/reset, integrated with control permissions when FH-04 lands. |
-| FH-06 | `feature/fault-freeze-frame` | FH-01, FH-02 | Bounded freeze frames and extended data; later fields integrate degradation/control metadata. |
+| FH-06 | `feature/fault-freeze-frame` | FH-01, FH-02 | One bounded freeze frame containing activation evidence and lifecycle metadata; later fields integrate degradation/control metadata. |
 | FH-07 | `feature/fault-diagnostics-ui` | FH-02..FH-06, FH-08 | Unified fault/coverage/evidence views and migration regression checks. |
 | FH-08 | `feature/fault-self-diagnostics` | FH-01, FH-02, FH-03 | App-health aggregation, real provider D faults, bypass-monitor integration and independent supervisor allocation. |
 
@@ -683,10 +682,12 @@ reset UI with the backend, then integrate into FH-07. Acceptance: active conditi
 reset rejection, unavailable evidence rejection, valid reset, restart, multiple
 detectors, and no implicit release of independent restrictions.
 
-### FH-06: Freeze frame and extended data
+### FH-06: Freeze frame
 
-Implement versioned allowlisted first-activation capture and bounded extended
-data independently of notification delivery history. Specify capacity, eviction,
+Implement one versioned `freeze_frame` object combining allowlisted
+first-activation capture and bounded lifecycle metadata independently of
+notification delivery history. Use one Freeze frame section in the frontend
+and one object in API/MQTT fault records. Specify capacity, eviction,
 replacement on next activation, persistence errors, and clock semantics. Optional
 recovery/significant-change captures require explicit bounds; no continuous HA
 payload archive. Acceptance: immutable original evidence after source changes,
@@ -694,8 +695,12 @@ no extra activation counts on quiet refresh, secret filtering, size bounds,
 restart, and storage failure isolation. No episode objects or IDs.
 
 The system-owned baseline is one frame per fault key, at most 256 records,
-4096 UTF-8 bytes per frame and 1 MiB for the atomic JSON state. Keep cleared
-frames until replacement or oldest-inactive eviction; never evict an active
+4096 UTF-8 bytes for activation-capture fields per frame and 1 MiB for the
+complete atomic JSON state, including lifecycle metadata. Lifecycle fields
+retain their original bounded validation independently of the capture byte
+budget. Schema migration preserves validated legacy data within those original
+bounds. Keep cleared frames until replacement or oldest-inactive
+eviction; never evict an active
 frame to make room. Capacity or I/O loss reports App Health durability without
 blocking fault handling. UTC timestamps record chronology; only same-process
 monotonic observation permits a duration. An active record restored at restart
@@ -704,8 +709,9 @@ has unknown duration, and a repeated SET does not become a new activation.
 ### FH-07: Diagnostic presentation and integration
 
 Show category/priority, requested rich status, active/latch indication, contributors,
-shadowed-by identities, coverage, restriction causes, user controls, freeze frame,
-and extended data. Show the D-to-H capability relationship and App Health causes
+shadowed-by identities, coverage, restriction causes, user controls, and one
+Freeze frame section containing captured evidence and lifecycle metadata.
+Show the D-to-H capability relationship and App Health causes
 without presenting a notification outage as loss of hazard detection.
 Keep Group C inventory informational. A healthy-looking PASS label cannot hide an
 active latch; FULL coverage cannot imply absence of hazards. Complete EN/PL/DE

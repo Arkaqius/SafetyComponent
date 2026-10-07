@@ -990,7 +990,6 @@ class SafetyFunctions(hass.Hass):
             if evidence is not None:
                 evidence_attributes = {
                     "freeze_frame": evidence["freeze_frame"],
-                    "extended_data": evidence["extended_data"],
                 }
             self.mqtt_entities.register_sensor(
                 "sensor.fault_" + name,
