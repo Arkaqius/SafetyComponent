@@ -105,18 +105,22 @@ Severities, source freshness and technical scheduling remain system-owned.
 
 ### Input acquisition and evaluation cadence
 
-A shared Home Assistant report reader performs authenticated batch reads in a
-background worker. Only one network request may be in flight; bounded timeouts
-and transport/schema failures invalidate the affected batch rather than
-refreshing old evidence. Responses later than 3 seconds are discarded; reader
-evidence expires at acquisition start plus its group interval plus 3 seconds.
+A shared Home Assistant report reader performs authenticated batch reads in
+independent ordinary and short-budget background workers. Each worker admits
+at most one network request in flight; bounded timeouts and transport/schema
+failures invalidate the affected batch rather than refreshing old evidence.
+Ordinary responses later than 120 seconds and short-budget responses later
+than 3 seconds are discarded. Ordinary reader evidence expires at acquisition
+start plus its group interval, the 120-second deadline and a 5-second scheduling
+allowance; short-budget evidence uses its interval plus 3 seconds.
 A delayed or stalled request cannot extend previously acquired evidence.
 The reader preserves source `last_reported` and `last_updated`
 timestamps. A successful read is not itself a new measurement, and an
 integration write is only as trustworthy as its declared input contract.
 
-Entity Monitor uses a 60-second report group for ordinary dependencies and a
-5-second group for dependencies with detection budgets of at most 60 seconds.
+Entity Monitor reads temperature-owned and shared outside-temperature
+dependencies every 120 seconds, other ordinary dependencies every 60 seconds,
+and dependencies with detection budgets of at most 60 seconds every 5 seconds.
 Its state-change listeners remain
 an immediate supplement. Owning safety components retain their immediate alarm
 event paths; polling snapshots shall not replace them or hide short alarm
@@ -133,9 +137,11 @@ diagnostics remain identified by their source timestamps between attempts;
 failed evidence cannot positively clear an active condition. Detector and
 operational-test attestations retain their explicit event path.
 
-Network acquisition and policy evaluation are separate: the existing short
-evaluation timers qualify failure/recovery and supervise component progress
-without performing a blocking request on the alarm callback path.
+Network acquisition and policy evaluation are separate. Entity Monitor
+evaluates ordinary dependencies every 60 seconds by default and short-budget
+dependencies with a separate 5-second timer. Functional safety retains its
+15-second evaluation timer. These timers qualify failure/recovery and supervise
+component progress without a blocking request on the alarm callback path.
 
 ### Severity boundaries
 

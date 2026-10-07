@@ -80,24 +80,32 @@ inside the generated runtime payload and diagnostics. Editable calibration uses
 | `default_startup_grace_seconds` | seconds `60` | Prevents startup transients from immediately becoming dependency faults. | `installation.component_settings.entity_monitor.startup_grace_seconds` |
 | `default_failure_debounce_seconds` | seconds `15` | Default persistence required before a dependency becomes unhealthy. | Per explicit entity or component dependency |
 | `default_recovery_debounce_seconds` | seconds `60` | Default persistence required before recovery is accepted. | Per explicit entity or component dependency |
-| `default_evaluation_interval_seconds` | seconds `5` | Baseline freshness/debounce evaluation cadence, separate from live report acquisition. | `installation.component_settings.entity_monitor.evaluation_interval_seconds` |
+| `default_evaluation_interval_seconds` | seconds `60` | Ordinary freshness/debounce evaluation cadence, separate from live report acquisition. Dependencies with detection budgets of at most 60 seconds retain 5-second reconciliation. | `installation.component_settings.entity_monitor.evaluation_interval_seconds` |
 | `unhealthy_summary_limit` | integer `32` | Bounds diagnostic publication size. | No |
 | `component_overrides` | mapping, empty | Reviewed calibration for stable component-owned dependency keys. | Merged with `installation.component_settings.entity_monitor.component_overrides` |
 
-The shared background reader acquires ordinary Entity Monitor reports every
-60 seconds and uses a 5-second group for dependencies whose detection budgets
-are at most 60 seconds. State-change
-listeners supplement these reads immediately. Changing the evaluation interval
-does not change the report-reader cadence. Temperature inputs use live
-`last_reported` confirmation rather than requiring a value change; a declared
-timestamp contract remains necessary to relate integration reports to actual
-measurements. See the [Entity Monitor architecture](../features/Entity%20Health%20Monitoring%20-%20Architecture.md#82-optional-checks)
+The shared background reader acquires temperature-owned and shared
+outside-temperature dependency reports every 120 seconds, other ordinary
+Entity Monitor reports every 60 seconds, and dependencies whose detection
+budgets are at most 60 seconds every 5 seconds. The short-budget group uses an
+independent worker with a 3-second response deadline; ordinary reads have a
+120-second deadline. Reader evidence lasts from acquisition start through the
+group interval, response deadline and a 5-second scheduling allowance for
+ordinary reads. Short-budget evidence uses its group interval plus 3 seconds.
+State-change listeners supplement these reads immediately. Changing the
+evaluation interval does not change the report-reader cadence. Temperature
+inputs use live `last_reported` confirmation rather than requiring a value
+change; a declared timestamp contract remains necessary to relate integration
+reports to actual measurements. MQTT integrations may suppress unchanged
+writes unless `force_update` is enabled, so repeated messages do not necessarily
+advance `last_reported`. See the [Entity Monitor architecture](../features/Entity%20Health%20Monitoring%20-%20Architecture.md#82-optional-checks)
 for source semantics and detection-budget allocation.
 
 Room-temperature and shared outside-temperature dependencies use a 3600-second
-report-silence limit and a 3690-second detection budget. The forecast-rate
+report-silence limit, 60-second failure confirmation and a 4020-second detection
+budget. The forecast-rate
 dependency retains failure debounce of its derivative sampling interval plus
-60 seconds and allocates that interval plus 150 seconds as its detection
+60 seconds and allocates that interval plus 390 seconds as its detection
 budget. These dependency defaults reserve acquisition/evaluation allowance;
 they do not extend the immediate hazard alarm paths.
 

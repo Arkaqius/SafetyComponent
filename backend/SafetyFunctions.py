@@ -504,7 +504,10 @@ class SafetyFunctions(hass.Hass):
                         "purpose": f"Shared application entity: {key}",
                         "checks": checks,
                         "detection_budget_seconds": (
-                            3690 if key == "outside_temp" else 30
+                            4020 if key == "outside_temp" else 30
+                        ),
+                        "failure_debounce_seconds": (
+                            60 if key == "outside_temp" else failure_debounce
                         ),
                     },
                     component_overrides,

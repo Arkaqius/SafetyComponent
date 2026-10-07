@@ -27,6 +27,7 @@ def test_example_installation_config_compiles() -> None:
     )
 
     assert compiled["SafetyFunctions"]["module"] == "SafetyFunctions"
+    assert compiled["SafetyFunctions"]["app_config"]["calibration"]["entity_monitor"]["evaluation_interval_seconds"] == 60
     assert compiled["SafetyFunctions"]["user_config"]["site"]["country_code"] == "PL"
     assert compiled["SafetyFunctions"]["user_config"]["site"]["latitude"] == 50.0
     assert compiled["SafetyFunctions"]["user_config"]["site"]["longitude"] == 20.0

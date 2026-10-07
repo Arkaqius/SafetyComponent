@@ -310,6 +310,9 @@ Freshness uses only the configured trustworthy source:
 
 `last_reported` advances when the integration writes the entity, including an
 unchanged value. It is not independently proof of a new physical measurement.
+MQTT may suppress an unchanged entity write unless `force_update` is enabled;
+receiving another MQTT message therefore does not necessarily advance
+`last_reported`.
 A device-level `last_seen` may represent a humidity, battery, or other message;
 it shall not serve as temperature confirmation without a declared source
 contract. No global `last_seen` fallback shall be inferred.
@@ -353,7 +356,13 @@ dependency default, so the first missing rate does not set a fault before the
 second sample is due. A configured component override may replace the debounce.
 The temperature derivative dependency uses a failure debounce of the sampling
 interval plus 60 seconds and a detection budget of the sampling interval plus
-150 seconds, reserving a further 90 seconds for acquisition and evaluation.
+390 seconds, reserving a further 330 seconds for acquisition and evaluation.
+Room-temperature and shared outside-temperature dependencies retain their
+3600-second report-silence limit, use 60-second failure confirmation and allocate
+a 4020-second detection budget. The budget covers report silence, 120-second
+acquisition cadence, a 120-second read deadline, scheduling and evaluation
+phase allowances, and failure confirmation. It does not change temperature
+hazard thresholds or the owning component's direct alarm paths.
 
 ### 8.3 Debounce policy
 
@@ -371,28 +380,36 @@ only when recovery debounce expires without another failure.
 3. Merge records and reject incompatible contracts.
 4. Register bounded MQTT diagnostics for Groups A and B.
 5. Register the deduplicated Group A/B entity set with the shared live Home
-   Assistant report reader. The ordinary batch cadence is 60 seconds;
-   dependencies with detection budgets of at most 60 seconds use a 5-second
-   group within their allocated budget.
+   Assistant report reader. Temperature-owned and shared outside-temperature
+   dependencies use a 120-second batch cadence, other ordinary dependencies
+   use 60 seconds, and dependencies with detection budgets of at most
+   60 seconds use a 5-second group within their allocated budget.
 6. Subscribe to state updates as an immediate supplement. A newer state or
    attribute transition shall not wait for the next periodic report read.
 7. Apply startup grace, then schedule freshness and debounce evaluation
-   independently of network acquisition.
+   independently of network acquisition. Ordinary evaluation runs every
+   60 seconds by default; a separate 5-second timer reconciles dependencies
+   whose detection budgets are at most 60 seconds.
 8. Evaluate mandatory checks before optional checks.
 9. Update per-check debounce state and the combined entity health state.
 10. Publish diagnostics and emit only C-ENT-owned symptom transitions.
 11. Cancel listeners, reader activity and timers before MQTT availability is set
     offline.
 
-The shared reader performs authenticated batch reads in the background, with
-one request in flight and a 3-second response deadline. Responses arriving
-after that deadline are discarded. Reader evidence expires at acquisition start
-plus the group's polling interval plus 3 seconds; response delivery time cannot
-extend it. Repeated reads retain the original source timestamps; they do not
-invent heartbeats. A failed attempt invalidates the affected group's previous
-reports, and a stalled request cannot renew them. Missing or expired acquisition
-evidence shall not advance recovery or clear an active symptom. State-change
-cache data alone shall not supply the report timestamp for an unchanged input.
+The shared reader performs authenticated batch reads in background workers.
+Ordinary reads have a 120-second response deadline. Short-budget reads use an
+independent worker and a 3-second deadline so an ordinary timeout cannot block
+their next acquisition. Each worker admits at most one request in flight;
+responses after its deadline are discarded. Ordinary reader evidence expires
+at acquisition start plus the group's polling interval, the 120-second deadline
+and a 5-second scheduling allowance. Short-budget evidence expires at acquisition
+start plus its interval plus 3 seconds. Response delivery time cannot extend
+either expiry. Repeated reads retain the original source timestamps; they do
+not invent heartbeats. A failed attempt invalidates the affected group's
+previous reports, and a stalled request cannot renew them. Missing or expired
+acquisition evidence shall not advance recovery or clear an active symptom.
+State-change cache data alone shall not supply the report timestamp for an
+unchanged input.
 
 Availability failure dominates freshness and optional checks. Freshness failure
 dominates optional checks. The entity state is `healthy` only when every enabled
@@ -532,10 +549,11 @@ calibration:
     default_startup_grace_seconds: 60
     default_failure_debounce_seconds: 15
     default_recovery_debounce_seconds: 60
-    default_evaluation_interval_seconds: 5
+    default_evaluation_interval_seconds: 60
     component_overrides:
       TemperatureBedroom:
-        detection_budget_seconds: 690
+        detection_budget_seconds: 990
+        failure_debounce_seconds: 60
         checks:
           freshness:
             timestamp_source: "last_reported"
@@ -561,7 +579,8 @@ user_config:
         evaluation_interval_seconds: 2
         component_overrides:
           TemperatureExampleRoom:
-            detection_budget_seconds: 690
+            detection_budget_seconds: 990
+            failure_debounce_seconds: 60
             checks:
               freshness:
                 timestamp_source: "last_reported"

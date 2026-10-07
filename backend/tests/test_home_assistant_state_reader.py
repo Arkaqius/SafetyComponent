@@ -49,7 +49,7 @@ def test_batches_due_groups_and_keeps_maintenance_hourly(scheduled_reader):
     assert reader.reports("runtime") == {}
     jobs.pop()()
     provider.poll.assert_called_once_with(
-        {"sensor.temperature", "sensor.battery", "update.core"}
+        {"sensor.temperature", "sensor.battery", "update.core"}, timeout_seconds=120
     )
 
     clock[0] += 59
@@ -98,7 +98,7 @@ def test_stalled_schedule_expires_and_shutdown_rejects_late_response(scheduled_r
     provider.poll.return_value = {"sensor.temperature": snapshot("21.21")}
     reader.tick()
     jobs.pop()()
-    clock[0] += 69
+    clock[0] += 186
     assert reader.reports("runtime") == {}
     assert reader.revision("runtime") == -1
     reader.tick()
@@ -116,7 +116,7 @@ def test_late_response_is_not_accepted_as_recovery_evidence(scheduled_reader):
     reader.register("runtime", {"sensor.temperature"}, 60)
     provider.poll.return_value = {"sensor.temperature": snapshot("21.21")}
     reader.tick()
-    clock[0] += 4
+    clock[0] += 121
     jobs.pop()()
     assert reader.reports("runtime") == {}
     assert reader.revision("runtime") == 1
@@ -183,7 +183,7 @@ def test_hourly_maintenance_does_not_follow_runtime_reads_or_heal_on_failure(
         "sensor.battery": snapshot("5", unit="%", kind="battery"),
         "update.core": snapshot("on"),
     }
-    provider.poll.side_effect = lambda entities: {
+    provider.poll.side_effect = lambda entities, **_: {
         entity: reports[entity] for entity in entities if entity in reports
     }
     reader.tick()
@@ -220,10 +220,68 @@ def test_hourly_maintenance_does_not_follow_runtime_reads_or_heal_on_failure(
     assert monitor.symptom_states["fsm_RemoteBatteryLowRemote"] == FaultState.SET
     assert len(bus.events) == event_count
     clock[0] += 3600
-    provider.poll.side_effect = lambda entities: {
+    provider.poll.side_effect = lambda entities, **_: {
         entity: reports[entity] for entity in entities if entity in reports
     }
     reader.tick()
     jobs.pop()()
     monitor.evaluate()
     assert monitor.symptom_states["fsm_RemoteBatteryLowRemote"] == FaultState.CLEARED
+
+
+@pytest.mark.parametrize("elapsed", [119, 120])
+def test_ordinary_read_accepts_response_within_two_minutes(scheduled_reader, elapsed):
+    reader, provider, clock, jobs = scheduled_reader
+    reader.register("temperature", {"sensor.temperature"}, 120)
+    row = snapshot("21.21")
+    provider.poll.return_value = {"sensor.temperature": row}
+    reader.tick()
+    clock[0] += elapsed
+    jobs.pop()()
+    assert reader.report("temperature", "sensor.temperature") == row
+    provider.poll.assert_called_once_with({"sensor.temperature"}, timeout_seconds=120)
+
+
+def test_temperature_poll_and_delayed_response_do_not_expire_healthy_cache(scheduled_reader):
+    reader, provider, clock, jobs = scheduled_reader
+    reader.register("temperature", {"sensor.temperature"}, 120)
+    row = snapshot("21.21")
+    provider.poll.return_value = {"sensor.temperature": row}
+    reader.tick()
+    jobs.pop()()
+    clock[0] += 119
+    reader.tick()
+    assert not jobs
+    clock[0] += 6  # A five-second scheduling delay at the next acquisition.
+    reader.tick()
+    clock[0] += 119
+    assert reader.report("temperature", "sensor.temperature") == row
+    jobs.pop()()
+    assert reader.report("temperature", "sensor.temperature") == row
+    assert reader.revision("temperature") == 2
+
+
+def test_slow_request_cannot_block_fast_reconciliation(scheduled_reader):
+    reader, provider, clock, jobs = scheduled_reader
+    reader.register("temperature", {"sensor.temperature"}, 120)
+    reader.register("fast", {"binary_sensor.window"}, 5)
+    provider.poll.return_value = {
+        "sensor.temperature": snapshot("21.21"),
+        "binary_sensor.window": snapshot("on"),
+    }
+    reader.tick()
+    assert len(jobs) == 2
+    slow_job, fast_job = jobs
+    jobs.clear()
+    fast_job()
+    clock[0] += 5
+    reader.tick()
+    assert len(jobs) == 1
+    jobs.pop()()
+    assert reader.revision("fast") == 2
+    assert reader.report("fast", "binary_sensor.window")["state"] == "on"
+    assert reader.revision("temperature") == 0
+    clock[0] += 116
+    slow_job()
+    assert reader.report("temperature", "sensor.temperature") is None
+    assert provider.poll.call_args.kwargs["timeout_seconds"] == 120

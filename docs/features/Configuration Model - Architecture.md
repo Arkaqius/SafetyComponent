@@ -311,10 +311,19 @@ configured detection budget. The dependency contract must additionally allocate
 input-acquisition, bounded read timeout and evaluation scheduling allowances
 within the applicable detection path. The evaluation timer is separate from
 the shared report-reader cadence.
+The baseline ordinary evaluation interval is 60 seconds. Dependencies with
+detection budgets of at most 60 seconds retain a separate 5-second evaluation
+timer and an independent read worker with a 3-second deadline; ordinary reads
+have a 120-second deadline. Temperature-owned and shared outside-temperature
+dependencies use a 120-second read cadence, while other ordinary dependencies
+use 60 seconds.
 `last_reported` is a live integration-report timestamp, including unchanged
 writes, and may be used only under a trustworthy input contract. A named
 timestamp attribute remains supported; device-level `last_seen` is not an
 automatic fallback for every measurement.
+For MQTT entities, unchanged messages may not write the entity unless
+`force_update` is enabled; repeated message reception alone therefore does not
+establish a current `last_reported` timestamp.
 
 ## 4. Generated component bindings
 

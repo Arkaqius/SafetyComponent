@@ -1156,6 +1156,8 @@ entity is safety-relevant through Group A or B.
   timeout, evaluation scheduling, failure debounce and any freshness timeout
   shall fit its allocated detection path and applicable FTTI. Immediate alarm
   paths shall remain independent of periodic diagnostic reconciliation.
+  Short-budget diagnostic acquisition and evaluation shall remain independent
+  of ordinary read timeouts and slower ordinary evaluation schedules.
 - **SYS-SR-ENT-005:** Optional required-value, allowed-values, finite-number,
   numeric-range, and rate-of-change checks shall run only when their complete
   calibration is present and the current input is valid for that check.

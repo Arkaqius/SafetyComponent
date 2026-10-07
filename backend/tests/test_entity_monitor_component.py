@@ -203,6 +203,66 @@ def test_entity_monitor_debounces_failure_and_recovery(mocked_hass_app_basic):
     assert runtime.last_valid_at == clock["now"]
 
 
+def test_minute_evaluation_preserves_fast_dependencies(mocked_hass_app_basic):
+    app, _, component = _component(mocked_hass_app_basic)
+    now = datetime(2026, 10, 8, 10, 0, tzinfo=timezone.utc)
+    app.get_state = MagicMock(return_value=_snapshot("21.21", now))
+    component.state_reader = SimpleNamespace(register=MagicMock(), report=MagicMock())
+    config = _config()
+    config["evaluation_interval_seconds"] = 60
+    temperature = config["component_entities"][0]
+    temperature["detection_budget_seconds"] = 4020
+    config["component_entities"].append({
+        **temperature, "key": "TemperatureWindowOffice",
+        "entity_id": "binary_sensor.window", "checks": {},
+        "detection_budget_seconds": 30,
+    })
+    symptoms, _ = component.get_symptoms_data({component.component_name: component}, config)
+    for symptom in symptoms.values():
+        component.init_safety_mechanism(symptom.sm_name, symptom.name, symptom.parameters)
+    assert component._report_groups["sensor.office_temperature"] == "EntityMonitorComponent:120"
+    assert component._report_groups["binary_sensor.window"] == "EntityMonitorComponent:5"
+    scheduled = app.run_every.call_args_list
+    assert any(call.args == (component._tick, "now", 60) for call in scheduled)
+    assert any(call.args == (component._fast_tick, "now", 5) for call in scheduled)
+    component._evaluate_entity = MagicMock()
+    component._fast_tick()
+    component._evaluate_entity.assert_called_once_with("TemperatureWindowOffice")
+    component._evaluate_entity.reset_mock()
+    component._tick()
+    assert component._evaluate_entity.call_count == 2
+
+
+def test_temperature_freshness_requires_full_minute_before_setting_fault(mocked_hass_app_basic):
+    app, bus, component = _component(mocked_hass_app_basic)
+    base = datetime(2026, 10, 8, 10, 0, tzinfo=timezone.utc)
+    clock = [base]
+    component._now = lambda: clock[0]
+    old = _snapshot("21.21", base - timedelta(seconds=3601))
+    old["last_reported"] = old["last_updated"]
+    app.get_state = MagicMock(return_value=old)
+    config = _config()
+    config["evaluation_interval_seconds"] = 60
+    config["component_entities"][0].update(
+        failure_debounce_seconds=60,
+        detection_budget_seconds=4020,
+        checks={"freshness": {"timestamp_source": "last_reported", "max_silence_seconds": 3600}},
+    )
+    events = []
+    bus.subscribe("symptom", lambda **event: events.append(event))
+    symptoms, _ = component.get_symptoms_data({component.component_name: component}, config)
+    for symptom in symptoms.values():
+        component.init_safety_mechanism(symptom.sm_name, symptom.name, symptom.parameters)
+        component.enable_safety_mechanism(symptom.name, SMState.ENABLED)
+    component._tick()
+    clock[0] += timedelta(seconds=59)
+    component._tick()
+    assert not any(event["symptom_id"].endswith("Freshness") for event in events)
+    clock[0] += timedelta(seconds=1)
+    component._tick()
+    assert any(event["symptom_id"].endswith("Freshness") and event["state"] == FaultState.SET for event in events)
+
+
 def test_generated_rate_waits_for_second_sample_before_failure(
     mocked_hass_app_basic,
 ):

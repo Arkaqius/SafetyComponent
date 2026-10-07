@@ -31,7 +31,7 @@ calibration:
     default_startup_grace_seconds: 60
     default_failure_debounce_seconds: 15
     default_recovery_debounce_seconds: 60
-    default_evaluation_interval_seconds: 5
+    default_evaluation_interval_seconds: 60
     unhealthy_summary_limit: 32
     component_overrides: {}
 

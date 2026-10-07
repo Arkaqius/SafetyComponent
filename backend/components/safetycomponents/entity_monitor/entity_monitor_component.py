@@ -16,6 +16,7 @@ from components.core.types_common import FaultState, RecoveryAction, SMState, Sy
 from components.external_apis.home_assistant_state_reader import (
     HomeAssistantStateReader,
     STATE_POLL_SECONDS,
+    TEMPERATURE_POLL_SECONDS,
 )
 from components.safetycomponents.core.safety_component import (
     SafetyComponent,
@@ -69,6 +70,7 @@ class EntityMonitorComponent(SafetyComponent):
         self._symptom_to_check: dict[str, tuple[str, str]] = {}
         self._fault_definitions: dict[str, dict[str, Any]] = {}
         self._timer_handle: Any | None = None
+        self._fast_timer_handle: Any | None = None
         self._startup_at = self._now()
         self._policy: dict[str, Any] = {}
         self.state_reader: HomeAssistantStateReader | None = None
@@ -102,11 +104,17 @@ class EntityMonitorComponent(SafetyComponent):
             groups: dict[int, set[str]] = {}
             for dependency in dependencies:
                 # Short availability budgets keep their fast reconciliation.
-                short_budget = (
-                    dependency.detection_budget_seconds is not None
-                    and dependency.detection_budget_seconds <= STATE_POLL_SECONDS
+                short_budget = self._has_short_budget(dependency)
+                temperature = (
+                    "TemperatureComponent" in dependency.owners
+                    or "CommonOutsideTemp" in dependency.consumer_keys
                 )
-                interval = 5 if short_budget else STATE_POLL_SECONDS
+                if short_budget:
+                    interval = 5
+                elif temperature:
+                    interval = TEMPERATURE_POLL_SECONDS
+                else:
+                    interval = STATE_POLL_SECONDS
                 key = f"{COMPONENT_NAME}:{interval}"
                 self._report_groups[dependency.entity_id] = key
                 groups.setdefault(interval, set()).add(dependency.entity_id)
@@ -246,6 +254,8 @@ class EntityMonitorComponent(SafetyComponent):
                 "now",
                 int(self._policy["evaluation_interval_seconds"]),
             )
+        if self._has_short_budget(runtime.dependency) and self._fast_timer_handle is None:
+            self._fast_timer_handle = self.hass_app.run_every(self._fast_tick, "now", 5)
         return True
 
     def enable_safety_mechanism(self, name: str, state: SMState) -> bool:
@@ -271,9 +281,11 @@ class EntityMonitorComponent(SafetyComponent):
                     self.hass_app.cancel_listen_state(runtime.listener_handle)
                 except Exception:
                     pass
-        if self._timer_handle is not None:
+        for handle in (self._timer_handle, self._fast_timer_handle):
+            if handle is None:
+                continue
             try:
-                self.hass_app.cancel_timer(self._timer_handle)
+                self.hass_app.cancel_timer(handle)
             except Exception:
                 pass
 
@@ -290,6 +302,20 @@ class EntityMonitorComponent(SafetyComponent):
         for key in self._entities:
             self._evaluate_entity(key)
         self.record_evaluation()
+
+    @staticmethod
+    def _has_short_budget(dependency: EntityDependency) -> bool:
+        """Identify dependencies whose deadline needs faster reconciliation."""
+        return (
+            dependency.detection_budget_seconds is not None
+            and dependency.detection_budget_seconds <= STATE_POLL_SECONDS
+        )
+
+    def _fast_tick(self, **_: Any) -> None:
+        """Reconcile short safety deadlines independently of ordinary diagnostics."""
+        for key, runtime in self._entities.items():
+            if self._has_short_budget(runtime.dependency):
+                self._evaluate_entity(key)
 
     def _evaluate_mechanism(
         self,

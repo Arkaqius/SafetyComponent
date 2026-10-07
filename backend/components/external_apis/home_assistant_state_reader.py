@@ -8,10 +8,16 @@ from threading import Lock, Thread
 from time import monotonic
 from typing import Any
 
-from .home_assistant_state import HomeAssistantStateProvider, REPORT_TIMEOUT_SECONDS
+from .home_assistant_state import (
+    FAST_REPORT_TIMEOUT_SECONDS,
+    HomeAssistantStateProvider,
+    REPORT_TIMEOUT_SECONDS,
+)
 
 STATE_POLL_SECONDS = 60
+TEMPERATURE_POLL_SECONDS = 120
 MAINTENANCE_POLL_SECONDS = 3600
+SCHEDULE_SECONDS = 5
 
 
 @dataclass
@@ -20,6 +26,8 @@ class ReportGroup:
 
     entities: set[str]
     interval: int
+    timeout_seconds: int
+    scheduling_margin_seconds: int
     next_poll: float = 0.0
     completed_at: float | None = None
     valid_until: float = 0.0
@@ -34,7 +42,7 @@ class HomeAssistantStateReader:
         self.provider = provider
         self._groups: dict[str, ReportGroup] = {}
         self._lock = Lock()
-        self._refreshing = False
+        self._refreshing: set[int] = set()
         self._closed = False
         self._timer: Any = None
         self._app: Any = None
@@ -46,12 +54,18 @@ class HomeAssistantStateReader:
         with self._lock:
             if key in self._groups:
                 raise ValueError(f"Duplicate HA report group: {key}")
-            self._groups[key] = ReportGroup(set(entities), interval)
+            fast = interval <= SCHEDULE_SECONDS
+            self._groups[key] = ReportGroup(
+                set(entities),
+                interval,
+                FAST_REPORT_TIMEOUT_SECONDS if fast else REPORT_TIMEOUT_SECONDS,
+                0 if fast else SCHEDULE_SECONDS,
+            )
 
     def start(self, app: Any) -> None:
         """Start reads after application initialization; callbacks never wait."""
         self._app = app
-        self._timer = app.run_every(self.tick, "now", 5)
+        self._timer = app.run_every(self.tick, "now", SCHEDULE_SECONDS)
 
     def stop(self) -> None:
         """Prevent late responses and cancel the schedule on shutdown."""
@@ -63,30 +77,30 @@ class HomeAssistantStateReader:
             self._app.cancel_timer(self._timer)
 
     def tick(self, *_: Any, **__: Any) -> None:
-        """Submit due groups once; an in-flight request cannot overlap."""
+        """Keep fast and ordinary requests independent, with one worker each."""
         now = monotonic()
+        batches: dict[int, dict[str, set[str]]] = {}
         with self._lock:
-            if self._closed or self._refreshing:
+            if self._closed:
                 return
-            due = {
-                key: set(group.entities)
-                for key, group in self._groups.items()
-                if now >= group.next_poll
-            }
-            if not due:
-                return
-            for key in due:
-                self._groups[key].next_poll = now + self._groups[key].interval
-            self._refreshing = True
-        try:
-            Thread(
-                target=self._refresh,
-                args=(due, now),
-                name="ha-source-reports",
-                daemon=True,
-            ).start()
-        except RuntimeError:
-            self._complete(due, {}, now)
+            for key, group in self._groups.items():
+                if (
+                    now >= group.next_poll
+                    and group.timeout_seconds not in self._refreshing
+                ):
+                    batches.setdefault(group.timeout_seconds, {})[key] = set(group.entities)
+                    group.next_poll = now + group.interval
+            self._refreshing.update(batches)
+        for timeout_seconds, due in batches.items():
+            try:
+                Thread(
+                    target=self._refresh,
+                    args=(due, now, timeout_seconds),
+                    name=f"ha-source-reports-{timeout_seconds}",
+                    daemon=True,
+                ).start()
+            except RuntimeError:
+                self._complete(due, {}, now, timeout_seconds)
 
     def reports(self, key: str) -> dict[str, dict[str, Any]]:
         """Return source evidence, never a new timestamp for a cached read."""
@@ -123,23 +137,28 @@ class HomeAssistantStateReader:
                 return None
             return deepcopy(group.reports.get(entity))
 
-    def _refresh(self, due: dict[str, set[str]], started_at: float) -> None:
+    def _refresh(
+        self, due: dict[str, set[str]], started_at: float, timeout_seconds: int
+    ) -> None:
         reports: dict[str, dict[str, Any]] = {}
         try:
-            reports = self.provider.poll(set().union(*due.values()))
+            reports = self.provider.poll(
+                set().union(*due.values()), timeout_seconds=timeout_seconds
+            )
         except Exception:
             # A provider exception is missing evidence, not a healthy cache hit.
             reports = {}
         finally:
-            if monotonic() - started_at > REPORT_TIMEOUT_SECONDS:
+            if monotonic() - started_at > timeout_seconds:
                 reports = {}
-            self._complete(due, reports, started_at)
+            self._complete(due, reports, started_at, timeout_seconds)
 
     def _complete(
         self,
         due: dict[str, set[str]],
         reports: dict[str, dict[str, Any]],
         started_at: float,
+        timeout_seconds: int,
     ) -> None:
         """Invalidate failed/late reads without extending old evidence's life."""
         with self._lock:
@@ -153,7 +172,8 @@ class HomeAssistantStateReader:
                     }
                     group.completed_at = monotonic()
                     group.valid_until = (
-                        started_at + group.interval + REPORT_TIMEOUT_SECONDS
+                        started_at + group.interval + group.timeout_seconds
+                        + group.scheduling_margin_seconds
                     )
                     group.revision += 1
-            self._refreshing = False
+            self._refreshing.discard(timeout_seconds)
