@@ -59,6 +59,7 @@ from components.core.functional_safety_diagnostics import (
 )
 from components.core.functional_safety_monitor import FunctionalSafetyMonitor
 from components.external_apis.home_assistant_state import HomeAssistantStateProvider
+from components.external_apis.home_assistant_state_reader import HomeAssistantStateReader
 from components.external_apis.stable_releases import StableReleaseProvider
 from components.core.derivative_monitor import DerivativeMonitor
 from components.core.localization import LocalizationSettings
@@ -178,6 +179,13 @@ class SafetyFunctions(hass.Hass):
                 http_client=HttpJsonClient(allowed_hosts={provider_host}),
             )
 
+        state_provider = HomeAssistantStateProvider.from_environment()
+        self.ha_state_reader: HomeAssistantStateReader | None = (
+            HomeAssistantStateReader(state_provider)
+            if state_provider is not None
+            else None
+        )
+
         # Instantiate configured components and collect their runtime contracts.
         for component_name, component_cls in get_registered_components().items():
             if component_name in self.safety_components_cfg:
@@ -188,6 +196,8 @@ class SafetyFunctions(hass.Hass):
                     self.mqtt_entities,
                 )
                 self.sm_modules[component_name] = component_instance
+                if component_name == "EntityMonitorComponent":
+                    component_instance.state_reader = self.ha_state_reader
 
                 component_cfg = self.safety_components_cfg[component_name]
                 symptoms_data, recovery_data = component_instance.get_symptoms_data(
@@ -225,7 +235,6 @@ class SafetyFunctions(hass.Hass):
                 for key, value in detector_cfg.get("detectors", {}).items()
                 if value.get("enabled", True)
             }
-            state_provider = HomeAssistantStateProvider.from_environment()
             self.functional_safety_monitor = FunctionalSafetyMonitor(
                 self,
                 self.event_bus,
@@ -235,6 +244,7 @@ class SafetyFunctions(hass.Hass):
                 wan_entity=self.notification_cfg.get("wan_entity"),
                 detector_names=detector_names,
                 state_provider=state_provider,
+                state_reader=self.ha_state_reader,
                 stable_release_provider=StableReleaseProvider() if state_provider else None,
                 diagnostics_store=JsonFunctionalSafetyDiagnosticsStore(),
             )
@@ -425,6 +435,8 @@ class SafetyFunctions(hass.Hass):
                 self.detector_test_monitor.start()
 
         # Remote polling starts only after managers, listeners and entities exist.
+        if self.ha_state_reader is not None:
+            self.ha_state_reader.start(self)
         if self.api_modules:
             runtime_cls = getattr(self, "_external_api_runtime_cls", ExternalApiRuntime)
             self.external_api_runtime = runtime_cls(
@@ -472,7 +484,7 @@ class SafetyFunctions(hass.Hass):
             checks = (
                 {
                     "freshness": {
-                        "timestamp_source": "last_updated",
+                        "timestamp_source": "last_reported",
                         "max_silence_seconds": 3600,
                     },
                     "finite_number": {"target": "state"},
@@ -492,7 +504,7 @@ class SafetyFunctions(hass.Hass):
                         "purpose": f"Shared application entity: {key}",
                         "checks": checks,
                         "detection_budget_seconds": (
-                            3615 if key == "outside_temp" else 30
+                            3690 if key == "outside_temp" else 30
                         ),
                     },
                     component_overrides,
@@ -651,6 +663,9 @@ class SafetyFunctions(hass.Hass):
 
     def terminate(self) -> None:
         """Publish offline availability during a clean AppDaemon shutdown."""
+        state_reader = getattr(self, "ha_state_reader", None)
+        if state_reader is not None:
+            state_reader.stop()
         detector_monitor = getattr(self, "detector_test_monitor", None)
         periodic_monitor = getattr(self, "periodic_test_monitor", None)
         if periodic_monitor is not None:

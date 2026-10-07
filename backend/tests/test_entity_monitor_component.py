@@ -1,6 +1,7 @@
 """Behavior tests for Entity Health Monitoring."""
 
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -76,6 +77,63 @@ def _mqtt_topic_calls(app, topic: str) -> list:
         and call.args[0] == "mqtt/publish"
         and call.kwargs["topic"] == topic
     ]
+
+
+def test_unchanged_temperature_uses_live_reports_and_failed_reads_do_not_heal(mocked_hass_app_basic):
+    app, _, component = _component(mocked_hass_app_basic)
+    now = datetime(2026, 10, 7, 7, 49, 3, tzinfo=timezone.utc)
+    old = _snapshot("21.21", now - timedelta(seconds=3618))
+    report = {**old, "last_reported": (now - timedelta(seconds=19)).isoformat()}
+    app.get_state = MagicMock(return_value=old)
+    current = {"report": report}
+    component.state_reader = SimpleNamespace(register=MagicMock(), report=lambda *_: current["report"])
+    config = _config()
+    config["component_entities"][0]["checks"]["freshness"] = {"timestamp_source": "last_reported", "max_silence_seconds": 3600}
+    component._now = lambda: now
+    symptoms, _ = component.get_symptoms_data({"EntityMonitorComponent": component}, config)
+    for symptom in symptoms.values():
+        component.init_safety_mechanism(symptom.sm_name, symptom.name, symptom.parameters)
+        component.enable_safety_mechanism(symptom.name, SMState.ENABLED)
+    component._now = lambda: now
+    component._evaluate_entity("TemperatureOffice")
+    runtime = component._entities["TemperatureOffice"]
+    assert runtime.checks["freshness"].reason == "fresh"
+    assert runtime.checks["freshness"].observed_value == 19
+    assert runtime.last_valid_at == now - timedelta(seconds=19)
+
+    runtime.checks["freshness"].active = True
+    current["report"] = None
+    component._evaluate_entity("TemperatureOffice")
+    assert runtime.checks["freshness"].active
+    assert runtime.checks["freshness"].result == "unevaluable"
+    assert runtime.checks["freshness"].pending_recovery_since is None
+
+    current["report"] = report
+    component._evaluate_entity("TemperatureOffice")
+    assert runtime.checks["freshness"].active
+    now += timedelta(seconds=10)
+    component._evaluate_entity("TemperatureOffice")
+    assert not runtime.checks["freshness"].active
+
+
+def test_new_cache_transition_is_seen_before_next_authoritative_poll(mocked_hass_app_basic):
+    app, _, component = _component(mocked_hass_app_basic)
+    now = datetime(2026, 10, 7, 7, 0, tzinfo=timezone.utc)
+    report = _snapshot("on", now)
+    app.get_state = MagicMock(return_value=_snapshot("unavailable", now + timedelta(seconds=1)))
+    component.state_reader = SimpleNamespace(report=lambda *_: report)
+    component._report_groups["binary_sensor.window"] = "EntityMonitorComponent:5"
+    result = component._check_availability(component._read_snapshot("binary_sensor.window"))
+    assert result == (True, "entity_unavailable", "unavailable")
+
+
+def test_future_report_timestamp_cannot_prove_freshness(mocked_hass_app_basic):
+    _, _, component = _component(mocked_hass_app_basic)
+    now = datetime(2026, 10, 7, 7, 0, tzinfo=timezone.utc)
+    component._policy = {"startup_grace_seconds": 0}
+    component._startup_at = now
+    runtime = SimpleNamespace(snapshot={"last_reported": (now + timedelta(seconds=1)).isoformat()})
+    assert component._evaluate_check("freshness", {"timestamp_source": "last_reported", "max_silence_seconds": 3600}, runtime, now, available=True) == (None, "timestamp_in_future", None)
 
 
 def test_entity_monitor_routes_checks_to_component_fault(

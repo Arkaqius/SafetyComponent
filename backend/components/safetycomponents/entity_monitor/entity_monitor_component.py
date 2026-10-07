@@ -13,6 +13,10 @@ from components.core.common_entities import CommonEntities
 from components.core.event_bus import EventBus
 from components.core.mqtt_entity_manager import MqttEntityManager
 from components.core.types_common import FaultState, RecoveryAction, SMState, Symptom
+from components.external_apis.home_assistant_state_reader import (
+    HomeAssistantStateReader,
+    STATE_POLL_SECONDS,
+)
 from components.safetycomponents.core.safety_component import (
     SafetyComponent,
     register_safety_component,
@@ -67,6 +71,8 @@ class EntityMonitorComponent(SafetyComponent):
         self._timer_handle: Any | None = None
         self._startup_at = self._now()
         self._policy: dict[str, Any] = {}
+        self.state_reader: HomeAssistantStateReader | None = None
+        self._report_groups: dict[str, str] = {}
 
     def __getattr__(self, name: str) -> Callable[[SafetyMechanism], bool]:
         """Resolve deterministic per-entity safety-mechanism callbacks."""
@@ -92,6 +98,22 @@ class EntityMonitorComponent(SafetyComponent):
             ]
         )
         symptoms: dict[str, Symptom] = {}
+        if self.state_reader is not None:
+            groups: dict[int, set[str]] = {}
+            for dependency in dependencies:
+                # Short availability budgets keep their fast reconciliation.
+                short_budget = (
+                    dependency.detection_budget_seconds is not None
+                    and dependency.detection_budget_seconds <= STATE_POLL_SECONDS
+                )
+                interval = 5 if short_budget else STATE_POLL_SECONDS
+                key = f"{COMPONENT_NAME}:{interval}"
+                self._report_groups[dependency.entity_id] = key
+                groups.setdefault(interval, set()).add(dependency.entity_id)
+            for interval, entities in groups.items():
+                self.state_reader.register(
+                    f"{COMPONENT_NAME}:{interval}", entities, interval
+                )
 
         self.mqtt_entities.register_sensor(
             "sensor.entity_monitor_summary",
@@ -341,7 +363,12 @@ class EntityMonitorComponent(SafetyComponent):
         if results and all(result[0] is False for result in results.values()):
             runtime.last_valid_value = (runtime.snapshot or {}).get("state")
             runtime.last_valid_at = (
-                self._timestamp_value(runtime.snapshot or {}, "last_updated")
+                self._timestamp_value(
+                    runtime.snapshot or {},
+                    str(runtime.dependency.checks.get("freshness", {}).get(
+                        "timestamp_source", "last_updated"
+                    )),
+                )
                 or now
             )
 
@@ -380,6 +407,8 @@ class EntityMonitorComponent(SafetyComponent):
         state.evaluated_at = now
         if failing is None:
             state.result = "unevaluable"
+            state.pending_failure_since = None
+            state.pending_recovery_since = None
             return
 
         symptom_name = self._symptom_name(runtime.dependency.key, check_name)
@@ -453,7 +482,9 @@ class EntityMonitorComponent(SafetyComponent):
             timestamp = self._timestamp_value(snapshot, source)
             if timestamp is None:
                 return None, "timestamp_unavailable", None
-            age = max(0.0, (now - timestamp).total_seconds())
+            age = (now - timestamp).total_seconds()
+            if age < 0:
+                return None, "timestamp_in_future", None
             maximum = float(config["max_silence_seconds"])
             return age > maximum, "freshness_expired" if age > maximum else "fresh", round(age, 3)
 
@@ -613,6 +644,7 @@ class EntityMonitorComponent(SafetyComponent):
             ),
             "last_changed": snapshot.get("last_changed"),
             "last_updated": snapshot.get("last_updated"),
+            "last_reported": snapshot.get("last_reported"),
             "failure_debounce_seconds": dependency.failure_debounce_seconds,
             "recovery_debounce_seconds": dependency.recovery_debounce_seconds,
             "detection_budget_seconds": dependency.detection_budget_seconds,
@@ -666,6 +698,7 @@ class EntityMonitorComponent(SafetyComponent):
             repr(attributes["last_valid_value"]),
             attributes["last_changed"],
             attributes["last_updated"],
+            attributes["last_reported"],
             attributes["failure_debounce_seconds"],
             attributes["recovery_debounce_seconds"],
             attributes["detection_budget_seconds"],
@@ -823,25 +856,47 @@ class EntityMonitorComponent(SafetyComponent):
         return sorted(merged, key=lambda item: item.key.lower())
 
     def _read_snapshot(self, entity_id: str) -> dict[str, Any] | None:
+        report = (
+            self.state_reader.report(self._report_groups[entity_id], entity_id)
+            if self.state_reader is not None else None
+        )
+        if self.state_reader is not None and report is None:
+            return {"state": None, "attributes": {}, "_report_unavailable": True}
         try:
             raw = self.hass_app.get_state(entity_id, attribute="all")
         except Exception:
-            return None
+            return report
         if raw is None:
-            return None
+            return report
         if isinstance(raw, dict):
-            return {
+            snapshot = {
                 "state": raw.get("state"),
                 "attributes": raw.get("attributes") if isinstance(raw.get("attributes"), dict) else {},
                 "last_changed": raw.get("last_changed"),
                 "last_updated": raw.get("last_updated"),
+                "last_reported": raw.get("last_reported"),
             }
+            if self.state_reader is not None:
+                # Preserve immediate state/attribute transitions while report
+                # polling also sees writes whose value did not change.
+                cached_at = self._timestamp_value(snapshot, "last_updated")
+                reported_at = self._timestamp_value(report, "last_updated")
+                if (
+                    cached_at is not None
+                    and reported_at is not None
+                    and cached_at > reported_at
+                ):
+                    return snapshot
+                return report
+            return snapshot
         return {"state": raw, "attributes": {}, "last_changed": None, "last_updated": None}
 
     @staticmethod
     def _check_availability(snapshot: dict[str, Any] | None) -> tuple[bool, str, Any]:
         if snapshot is None:
             return True, "entity_missing", None
+        if snapshot.get("_report_unavailable"):
+            return True, "source_report_unavailable", None
         state = snapshot.get("state")
         normalized = str(state).strip().lower() if state is not None else "none"
         failing = normalized in UNAVAILABLE_STATES
@@ -856,7 +911,7 @@ class EntityMonitorComponent(SafetyComponent):
 
     @classmethod
     def _timestamp_value(cls, snapshot: dict[str, Any], source: str) -> datetime | None:
-        value = snapshot.get(source) if source in {"last_changed", "last_updated"} else (snapshot.get("attributes") or {}).get(source)
+        value = snapshot.get(source) if source in {"last_changed", "last_updated", "last_reported"} else (snapshot.get("attributes") or {}).get(source)
         if isinstance(value, datetime):
             parsed = value
         elif isinstance(value, str):

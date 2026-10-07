@@ -1108,9 +1108,11 @@ entity is safety-relevant through Group A or B.
   check result. C-ENT shall apply a startup grace period before evaluating
   freshness.
 - For a safety-relevant dependency, availability failure debounce shall not
-  exceed the detection budget allocated from its applicable FTTI. When
-  freshness is enabled, freshness timeout plus failure debounce shall also fit
-  that budget.
+  exceed the detection budget allocated from its applicable FTTI. The applicable
+  acquisition delay, bounded read timeout and evaluation scheduling shall also
+  be allocated; freshness paths shall additionally include the freshness
+  timeout. Event reception and periodic reconciliation shall retain separate
+  timing bounds without enlarging a life-safety FTTI.
 - Calibration is per entity for Group A and per stable dependency key for Group
   B. A Group B override may replace debounce, detection budget, and optional
   check thresholds without changing the component-owned entity binding.
@@ -1147,9 +1149,13 @@ entity is safety-relevant through Group A or B.
 - **SYS-SR-ENT-004:** Availability shall be evaluated for every Group A and
   Group B entity. Freshness shall be evaluated only when the applicable
   calibration declares a trustworthy heartbeat or timestamp source and
-  `max_silence_seconds`. For a safety-relevant dependency, freshness timeout
-  plus failure debounce shall fit its allocated FTTI detection budget, and the
-  availability failure debounce shall independently fit that budget.
+  `max_silence_seconds`. Live Home Assistant `last_reported` may confirm an
+  unchanged report only under the integration's declared input contract;
+  successful polling and unrelated device traffic shall not invent a fresh
+  measurement. For a safety-relevant dependency, acquisition, bounded read
+  timeout, evaluation scheduling, failure debounce and any freshness timeout
+  shall fit its allocated detection path and applicable FTTI. Immediate alarm
+  paths shall remain independent of periodic diagnostic reconciliation.
 - **SYS-SR-ENT-005:** Optional required-value, allowed-values, finite-number,
   numeric-range, and rate-of-change checks shall run only when their complete
   calibration is present and the current input is valid for that check.

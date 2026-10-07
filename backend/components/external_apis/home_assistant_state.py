@@ -11,6 +11,7 @@ from urllib.request import Request, urlopen
 
 from components.external_apis.battery_inventory import BATTERY_TEMPLATE, group_batteries
 
+REPORT_TIMEOUT_SECONDS = 3
 
 REPORT_TEMPLATE = """
 {% set ns = namespace(rows=[]) %}
@@ -20,7 +21,7 @@ REPORT_TEMPLATE = """
     {% set s = matches[0] %}
     {% set ns.rows = ns.rows + [dict(entity_id=s.entity_id, state=s.state,
       attributes=s.attributes, last_reported=s.last_reported.isoformat(),
-      last_updated=s.last_updated.isoformat())] %}
+      last_updated=s.last_updated.isoformat(), last_changed=s.last_changed.isoformat())] %}
   {% endif %}
 {% endfor %}
 {{ ns.rows | to_json }}
@@ -70,7 +71,7 @@ class HomeAssistantStateProvider:
             method="POST",
         )
         try:
-            with urlopen(request, timeout=3) as response:
+            with urlopen(request, timeout=REPORT_TIMEOUT_SECONDS) as response:
                 body = response.read(512 * 1024 + 1)
             if len(body) > 512 * 1024:
                 return None

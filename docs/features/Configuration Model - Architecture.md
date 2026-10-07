@@ -307,7 +307,14 @@ non-empty `description`, optional `enabled`, non-negative
 | `rate_of_change` | Positive `window_seconds`, `min_samples >= 2`, and at least one non-negative rise/fall-per-minute limit. |
 
 Entity Monitor rejects any debounce/freshness combination that exceeds the
-configured detection budget.
+configured detection budget. The dependency contract must additionally allocate
+input-acquisition, bounded read timeout and evaluation scheduling allowances
+within the applicable detection path. The evaluation timer is separate from
+the shared report-reader cadence.
+`last_reported` is a live integration-report timestamp, including unchanged
+writes, and may be used only under a trustworthy input contract. A named
+timestamp attribute remains supported; device-level `last_seen` is not an
+automatic fallback for every measurement.
 
 ## 4. Generated component bindings
 

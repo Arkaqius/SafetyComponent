@@ -179,8 +179,8 @@ updates.
                               |
                               v
                     EntityMonitorComponent
-                    - initial HA snapshot
-                    - state listeners
+                    - shared live HA report reader
+                    - immediate state listeners
                     - freshness scheduler
                     - check evaluation
                     - debounce/state machine
@@ -302,9 +302,17 @@ dependent numeric check or clear an active symptom.
 
 Freshness uses only the configured trustworthy source:
 
-- `last_updated` when the owning integration is known to publish a real periodic
-  update or heartbeat; or
+- `last_reported` from a live Home Assistant read when the integration's entity
+  reports are a trustworthy confirmation of the monitored input;
+- `last_updated` only when the owning integration guarantees a real periodic
+  state or attribute update; or
 - one named timestamp attribute supplied by the entity.
+
+`last_reported` advances when the integration writes the entity, including an
+unchanged value. It is not independently proof of a new physical measurement.
+A device-level `last_seen` may represent a humidity, battery, or other message;
+it shall not serve as temperature confirmation without a declared source
+contract. No global `last_seen` fallback shall be inferred.
 
 `last_changed` is presentation metadata and is never a freshness source. A
 change in value is not required for freshness, and an unchanged door, switch,
@@ -317,10 +325,13 @@ not infer a heartbeat from entity domain or from repeated reads performed by
 C-ENT itself.
 
 For a safety-relevant dependency, the owning contract shall allocate a detection
-budget from its applicable FTTI. Availability failure debounce shall fit that
-budget. When freshness is enabled, freshness timeout plus failure debounce shall
-also fit the budget. If the real source cadence cannot satisfy the budget, the
-source cannot serve as the sole safety channel for that requirement.
+budget from its applicable FTTI. The applicable input-acquisition delay, bounded
+read timeout, evaluation scheduling and failure debounce shall fit that budget.
+Freshness paths shall additionally allocate the freshness timeout. Immediate
+event reception and periodic reconciliation have different acquisition bounds;
+a nominal polling period alone is not a complete detection budget. If the real
+source cadence cannot satisfy the budget, the source cannot serve as the sole
+safety channel for that requirement.
 
 Optional checks are generic channel-health diagnostics. Safety-specific
 thresholds, such as unsafe room temperature, remain in the owning Safety
@@ -340,6 +351,9 @@ value is not evidence of a safe forecast. Its availability failure debounce
 shall use that same interval-derived threshold, rather than the generic
 dependency default, so the first missing rate does not set a fault before the
 second sample is due. A configured component override may replace the debounce.
+The temperature derivative dependency uses a failure debounce of the sampling
+interval plus 60 seconds and a detection budget of the sampling interval plus
+150 seconds, reserving a further 90 seconds for acquisition and evaluation.
 
 ### 8.3 Debounce policy
 
@@ -356,13 +370,29 @@ only when recovery debounce expires without another failure.
 2. Resolve entity IDs, area names, and Group B registrations.
 3. Merge records and reject incompatible contracts.
 4. Register bounded MQTT diagnostics for Groups A and B.
-5. Read one initial Home Assistant state snapshot.
-6. Subscribe to state updates for the deduplicated Group A/B entity set.
-7. Apply startup grace, then schedule freshness evaluation.
+5. Register the deduplicated Group A/B entity set with the shared live Home
+   Assistant report reader. The ordinary batch cadence is 60 seconds;
+   dependencies with detection budgets of at most 60 seconds use a 5-second
+   group within their allocated budget.
+6. Subscribe to state updates as an immediate supplement. A newer state or
+   attribute transition shall not wait for the next periodic report read.
+7. Apply startup grace, then schedule freshness and debounce evaluation
+   independently of network acquisition.
 8. Evaluate mandatory checks before optional checks.
 9. Update per-check debounce state and the combined entity health state.
 10. Publish diagnostics and emit only C-ENT-owned symptom transitions.
-11. Cancel listeners and timers before MQTT availability is set offline.
+11. Cancel listeners, reader activity and timers before MQTT availability is set
+    offline.
+
+The shared reader performs authenticated batch reads in the background, with
+one request in flight and a 3-second response deadline. Responses arriving
+after that deadline are discarded. Reader evidence expires at acquisition start
+plus the group's polling interval plus 3 seconds; response delivery time cannot
+extend it. Repeated reads retain the original source timestamps; they do not
+invent heartbeats. A failed attempt invalidates the affected group's previous
+reports, and a stalled request cannot renew them. Missing or expired acquisition
+evidence shall not advance recovery or clear an active symptom. State-change
+cache data alone shall not supply the report timestamp for an unchanged input.
 
 Availability failure dominates freshness and optional checks. Freshness failure
 dominates optional checks. The entity state is `healthy` only when every enabled
@@ -505,10 +535,10 @@ calibration:
     default_evaluation_interval_seconds: 5
     component_overrides:
       TemperatureBedroom:
-        detection_budget_seconds: 615
+        detection_budget_seconds: 690
         checks:
           freshness:
-            timestamp_source: "last_updated"
+            timestamp_source: "last_reported"
             max_silence_seconds: 600
 
 user_config:
@@ -531,10 +561,10 @@ user_config:
         evaluation_interval_seconds: 2
         component_overrides:
           TemperatureExampleRoom:
-            detection_budget_seconds: 615
+            detection_budget_seconds: 690
             checks:
               freshness:
-                timestamp_source: "last_updated"
+                timestamp_source: "last_reported"
                 max_silence_seconds: 600
 ```
 
@@ -559,9 +589,11 @@ Strict validation rejects:
 
 ## 15. Performance and boundedness
 
-- Group A/B state listeners are deduplicated by entity ID.
-- Freshness uses one scheduler over deadline entries rather than one unbounded
-  polling loop per entity.
+- Group A/B state listeners are deduplicated by entity ID and supplement shared
+  periodic report reads without replacing the owning component's alarm path.
+- One background reader batches all due entity groups and prevents overlapping
+  network reads. Freshness and debounce evaluation use a separate scheduler;
+  there is no network polling loop per entity.
 - MQTT diagnostics use bounded attributes and unhealthy summaries.
 - Group C uses Home Assistant's existing frontend state/registry connection.
 - Frontend filtering uses memoized indexes and bounded rendering.
@@ -589,6 +621,12 @@ Strict validation rejects:
 - Startup grace and restart snapshots.
 - Optional check calibration and target validation.
 - Freshness and rate-of-change edge cases.
+- Unchanged valid reports, future/malformed timestamps, expired reader evidence,
+  failed or late batch reads, and preservation of active faults during transport
+  loss.
+- A stalled read with no state-change event and an unchanged cache shall cause
+  the 5-second dependency group to assert unavailability within its 30-second
+  detection budget, with reason `source_report_unavailable`.
 - Independent failure and recovery debounce.
 - Fault ownership and duplicate-fault prevention.
 - Same-entity check aggregation, per-entity fault separation, and no false clear.
@@ -598,7 +636,7 @@ Strict validation rejects:
 ### 17.2 Backend integration tests
 
 - AppCfgValidator and component registry integration.
-- State-listener deduplication.
+- State-listener deduplication, shared batch scheduling, and single-flight reads.
 - EventBus and FaultManager transitions.
 - Application startup/termination and MQTT availability.
 - Component-owned fault behavior remains authoritative.

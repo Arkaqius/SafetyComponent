@@ -80,9 +80,26 @@ inside the generated runtime payload and diagnostics. Editable calibration uses
 | `default_startup_grace_seconds` | seconds `60` | Prevents startup transients from immediately becoming dependency faults. | `installation.component_settings.entity_monitor.startup_grace_seconds` |
 | `default_failure_debounce_seconds` | seconds `15` | Default persistence required before a dependency becomes unhealthy. | Per explicit entity or component dependency |
 | `default_recovery_debounce_seconds` | seconds `60` | Default persistence required before recovery is accepted. | Per explicit entity or component dependency |
-| `default_evaluation_interval_seconds` | seconds `5` | Baseline periodic evaluation cadence. | `installation.component_settings.entity_monitor.evaluation_interval_seconds` |
+| `default_evaluation_interval_seconds` | seconds `5` | Baseline freshness/debounce evaluation cadence, separate from live report acquisition. | `installation.component_settings.entity_monitor.evaluation_interval_seconds` |
 | `unhealthy_summary_limit` | integer `32` | Bounds diagnostic publication size. | No |
 | `component_overrides` | mapping, empty | Reviewed calibration for stable component-owned dependency keys. | Merged with `installation.component_settings.entity_monitor.component_overrides` |
+
+The shared background reader acquires ordinary Entity Monitor reports every
+60 seconds and uses a 5-second group for dependencies whose detection budgets
+are at most 60 seconds. State-change
+listeners supplement these reads immediately. Changing the evaluation interval
+does not change the report-reader cadence. Temperature inputs use live
+`last_reported` confirmation rather than requiring a value change; a declared
+timestamp contract remains necessary to relate integration reports to actual
+measurements. See the [Entity Monitor architecture](../features/Entity%20Health%20Monitoring%20-%20Architecture.md#82-optional-checks)
+for source semantics and detection-budget allocation.
+
+Room-temperature and shared outside-temperature dependencies use a 3600-second
+report-silence limit and a 3690-second detection budget. The forecast-rate
+dependency retains failure debounce of its derivative sampling interval plus
+60 seconds and allocates that interval plus 150 seconds as its detection
+budget. These dependency defaults reserve acquisition/evaluation allowance;
+they do not extend the immediate hazard alarm paths.
 
 ### 4.3 Safety Door
 
@@ -151,7 +168,8 @@ capacity and workload before an installation relies on L2 memory detection.
 
 | Policy field | Packaged value | Effect |
 | --- | --- | --- |
-| `evaluation_interval_seconds` | 15 s | Periodic in-process sample; not an independent watchdog. |
+| `evaluation_interval_seconds` | 15 s | In-process host/WAN policy and progress evaluation; source acquisition is a separate 60-second background batch, not an independent watchdog. |
+| `maintenance_poll_interval_seconds` | 3600 s | Battery, backup and update batch-read cadence; completed attempts and expired reader evidence trigger maintenance policy evaluation. System-only integer, at least 1 s. |
 | `memory_low_available_mib` / `memory_recovery_available_mib` | 256 / 384 MiB | L2 assertion and recovery margins, requiring corroborating PSI. |
 | `memory_high_psi_percent` / `memory_recovery_psi_percent` | 10% / 5% | PSI qualification and recovery margins. |
 | `memory_qualification_seconds` / `memory_recovery_seconds` | 120 / 120 s | Sustained L2 assertion and distinct recovery duration. |

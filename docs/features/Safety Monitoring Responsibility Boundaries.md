@@ -103,6 +103,40 @@ cannot identify a unique suitable source. System configuration supplies calibrat
 and timing defaults; approved installation overrides refine them after validation.
 Severities, source freshness and technical scheduling remain system-owned.
 
+### Input acquisition and evaluation cadence
+
+A shared Home Assistant report reader performs authenticated batch reads in a
+background worker. Only one network request may be in flight; bounded timeouts
+and transport/schema failures invalidate the affected batch rather than
+refreshing old evidence. Responses later than 3 seconds are discarded; reader
+evidence expires at acquisition start plus its group interval plus 3 seconds.
+A delayed or stalled request cannot extend previously acquired evidence.
+The reader preserves source `last_reported` and `last_updated`
+timestamps. A successful read is not itself a new measurement, and an
+integration write is only as trustworthy as its declared input contract.
+
+Entity Monitor uses a 60-second report group for ordinary dependencies and a
+5-second group for dependencies with detection budgets of at most 60 seconds.
+Its state-change listeners remain
+an immediate supplement. Owning safety components retain their immediate alarm
+event paths; polling snapshots shall not replace them or hide short alarm
+transitions. Reception, polling, timeout, evaluation and debounce allowances
+shall fit each path's allocated detection budget.
+
+Functional safety reads host-resource and WAN evidence every 60 seconds.
+Battery, backup and update evidence uses the system-owned
+`maintenance_poll_interval_seconds`, packaged as 3600 seconds. Maintenance
+policy is evaluated after each completed maintenance attempt, including failed
+attempts, and when reader evidence expires, rather than on every fast evaluation
+tick. Cached maintenance
+diagnostics remain identified by their source timestamps between attempts;
+failed evidence cannot positively clear an active condition. Detector and
+operational-test attestations retain their explicit event path.
+
+Network acquisition and policy evaluation are separate: the existing short
+evaluation timers qualify failure/recovery and supervise component progress
+without performing a blocking request on the alarm callback path.
+
 ### Severity boundaries
 
 | Condition | Safety meaning | Allocation |

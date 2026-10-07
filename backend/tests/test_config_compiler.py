@@ -34,6 +34,7 @@ def test_example_installation_config_compiles() -> None:
     assert "model_version" not in compiled["SafetyFunctions"]["user_config"]
     assert compiled["SafetyFunctions"]["user_config"]["functional_safety"]["remote_batteries"] == {}
     assert compiled["SafetyFunctions"]["app_config"]["calibration"]["functional_safety"]["memory_low_available_mib"] == 256
+    assert compiled["SafetyFunctions"]["app_config"]["calibration"]["functional_safety"]["maintenance_poll_interval_seconds"] == 3600
     assert compiled["SafetyFunctions"]["app_config"]["calibration"]["functional_safety"]["battery_fault_catalog_file"] == "/config/appdaemon/battery_fault_catalog.json"
 
 

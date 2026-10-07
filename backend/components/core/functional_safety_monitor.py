@@ -17,6 +17,11 @@ from components.core.maintenance_evidence import ResourceRule, aware_time
 from components.core.types_common import FaultState, SMState, Symptom
 from components.external_apis.battery_inventory import battery_entities, resolve_batteries
 from components.external_apis.home_assistant_state import HomeAssistantStateProvider
+from components.external_apis.home_assistant_state_reader import (
+    HomeAssistantStateReader,
+    MAINTENANCE_POLL_SECONDS,
+    STATE_POLL_SECONDS,
+)
 from components.external_apis.stable_releases import StableReleaseProvider
 
 UPDATE_PRODUCTS = (
@@ -54,6 +59,7 @@ class FunctionalSafetyMonitor:
         wan_entity: str | None,
         detector_names: Mapping[str, str] | None = None,
         state_provider: HomeAssistantStateProvider | None = None,
+        state_reader: HomeAssistantStateReader | None = None,
         stable_release_provider: StableReleaseProvider | None = None,
         diagnostics_store: FunctionalSafetyDiagnosticsStore | None = None,
     ) -> None:
@@ -65,9 +71,13 @@ class FunctionalSafetyMonitor:
         self.wan_entity = wan_entity
         self.detector_names = dict(detector_names or {})
         self.state_provider = state_provider
+        self.state_reader = state_reader
         self.stable_release_provider = stable_release_provider
         self.diagnostics_store = diagnostics_store
         self._reports: dict[str, dict[str, Any]] = {}
+        self._maintenance_diagnostics: dict[str, Any] = {}
+        self._maintenance_revision = -1
+        self._next_maintenance = 0.0
         battery_config = self.bindings.get("battery_monitoring", {})
         self._battery_discovery: dict[str, Any] = {"status": "disabled", "devices": []}
         if battery_config.get("enabled", True):
@@ -90,6 +100,18 @@ class FunctionalSafetyMonitor:
             self.get_battery_fault_names()
         )
         self.safety_mechanisms: dict[str, None] = {}
+        if self.state_reader is not None:
+            fast, maintenance = self._report_entities()
+            self.state_reader.register(
+                f"{self.component_name}:runtime", fast, STATE_POLL_SECONDS
+            )
+            self.state_reader.register(
+                f"{self.component_name}:maintenance",
+                maintenance,
+                int(self.policy.get(
+                    "maintenance_poll_interval_seconds", MAINTENANCE_POLL_SECONDS
+                )),
+            )
         self.symptom_states: dict[str, FaultState] = {}
         self._enabled: set[str] = set()
         self._fault_definitions: dict[str, dict[str, Any]] = {}
@@ -250,16 +272,27 @@ class FunctionalSafetyMonitor:
         """Sample configured sources; unknown readings never heal active faults."""
 
         diagnostics: dict[str, Any] = {}
-        if self.state_provider is not None:
-            entities = set(self.bindings.get("updates", {}).values())
-            entities.update(self.bindings.get("host_memory", {}).values())
-            entities.update([self.wan_entity, self.bindings.get("host_cpu_entity")])
-            entities.update([self.bindings.get("host_disk_free_entity"), self.bindings.get("host_temperature_entity")])
-            entities.update(self.bindings.get("backup", {}).values())
-            for binding in self.bindings.get("remote_batteries", {}).values():
-                if binding.get("enabled", True):
-                    entities.update(battery_entities(binding, "percentage") + battery_entities(binding, "low"))
-            self._reports = self.state_provider.poll({entity for entity in entities if entity})
+        maintenance_due = monotonic() >= self._next_maintenance
+        if self.state_reader is not None:
+            maintenance_key = f"{self.component_name}:maintenance"
+            revision = self.state_reader.revision(maintenance_key)
+            maintenance_due = revision != self._maintenance_revision
+            self._maintenance_revision = revision
+            self._reports = {
+                **self.state_reader.reports(f"{self.component_name}:runtime"),
+                **self.state_reader.reports(maintenance_key),
+            }
+        elif self.state_provider is not None:
+            fast, maintenance = self._report_entities()
+            retained = {
+                entity: self._reports[entity]
+                for entity in maintenance if entity in self._reports
+            }
+            fresh = self.state_provider.poll(
+                fast | (maintenance if maintenance_due else set())
+            )
+            # A failed maintenance attempt cannot retain old positive evidence.
+            self._reports = fresh if maintenance_due else {**retained, **fresh}
         host = self.bindings.get("host_memory")
         if host:
             available, available_reason = self._number(host["available_entity"], {"MiB": 1, "GiB": 1024, "MB": 0.953674, "GB": 953.674}, "memory")
@@ -281,17 +314,29 @@ class FunctionalSafetyMonitor:
         diagnostics["cpu"] = self._evaluate_cpu()
         diagnostics["disk"] = self._evaluate_resource("disk", "host_disk_free_entity", "HostDiskLow", "free_mib", {"MiB": 1, "GiB": 1024, "MB": 0.953674, "GB": 953.674, "B": 1 / 1048576}, "disk")
         diagnostics["host_temperature"] = self._evaluate_resource("host_temperature", "host_temperature_entity", "HostTemperatureHigh", "temperature_c", {"°C": 1}, "temperature")
-        diagnostics["backup"] = self._evaluate_backup()
-
         diagnostics["wan"] = self._evaluate_wan()
-        diagnostics["updates"] = self._evaluate_updates()
-        diagnostics["remote_batteries"] = self._evaluate_batteries()
+        if maintenance_due:
+            self._next_maintenance = monotonic() + int(self.policy.get(
+                "maintenance_poll_interval_seconds", MAINTENANCE_POLL_SECONDS
+            ))
+            self._maintenance_diagnostics = {
+                "backup": self._evaluate_backup(),
+                "updates": self._evaluate_updates(),
+                "remote_batteries": self._evaluate_batteries(),
+            }
+            backup = self._maintenance_diagnostics["backup"]
+            backup["checked_at"] = datetime.now(timezone.utc).isoformat()
+            backup["sources"] = [
+                self._source_evidence(entity)
+                for entity in backup.get("source_entities", [])
+            ]
+        diagnostics.update(self._maintenance_diagnostics)
         diagnostics["battery_discovery"] = {
             "status": "observed" if self._battery_discovery["status"] == "ready" else "unknown" if self._battery_discovery["status"] == "error" else "disabled",
             "device_count": len(self._battery_discovery["devices"]),
             "reason": "inventory_unavailable" if self._battery_discovery["status"] == "error" else None,
         }
-        for key in ("memory", "cpu", "disk", "host_temperature", "backup", "wan"):
+        for key in ("memory", "cpu", "disk", "host_temperature", "wan"):
             item = diagnostics[key]
             sources = item.get("source_entities", [item.get("source_entity")])
             item["sources"] = [self._source_evidence(entity) for entity in sources if entity]
@@ -703,10 +748,32 @@ class FunctionalSafetyMonitor:
         self.event_bus.publish("symptom", symptom_id=symptom_id, state=next_state)
 
     def _snapshot(self, entity: str) -> dict[str, Any]:
-        if self.state_provider is not None:
+        if self.state_reader is not None or self.state_provider is not None:
             return self._reports.get(entity, {})
         raw = self.hass_app.get_state(entity, attribute="all")
         return raw if isinstance(raw, dict) else {"state": raw, "attributes": {}}
+
+    def _report_entities(self) -> tuple[set[str], set[str]]:
+        """Separate runtime evidence from hourly maintenance sources."""
+        fast = set(self.bindings.get("host_memory", {}).values())
+        fast.update([
+            self.wan_entity,
+            self.bindings.get("host_cpu_entity"),
+            self.bindings.get("host_disk_free_entity"),
+            self.bindings.get("host_temperature_entity"),
+        ])
+        maintenance = set(self.bindings.get("updates", {}).values())
+        maintenance.update(self.bindings.get("backup", {}).values())
+        for binding in self.bindings.get("remote_batteries", {}).values():
+            if binding.get("enabled", True):
+                maintenance.update(
+                    battery_entities(binding, "percentage")
+                    + battery_entities(binding, "low")
+                )
+        return (
+            {entity for entity in fast if entity},
+            {entity for entity in maintenance if entity},
+        )
 
     def _number(self, entity: str, units: Mapping[str, float], device_class: str) -> tuple[float | None, str | None]:
         snapshot = self._snapshot(entity)
