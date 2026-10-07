@@ -50,7 +50,11 @@ from components.core.battery_fault_catalog import (
     reconcile_battery_faults,
 )
 from components.core.common_entities import CommonEntities
-from components.core.degradation import DegradationRegistry, compile_runtime_bindings
+from components.core.degradation import (
+    DegradationRegistry,
+    RestrictionEffect,
+    compile_runtime_bindings,
+)
 from components.core.event_bus import EventBus
 from components.core.detector_test_monitor import DetectorTestMonitor
 from components.core.periodic_test_monitor import PeriodicTestMonitor
@@ -72,6 +76,11 @@ from components.external_apis import (
 )
 from components.faults_manager import cfg_parser as cfg_pr
 from components.faults_manager.fault_manager import FaultManager
+from components.faults_manager.evidence import FaultEvidenceJournal
+from components.faults_manager.evidence_store import (
+    InMemoryFaultEvidenceStore,
+    JsonFaultEvidenceStore,
+)
 from components.notification_manager.notification_manager import NotificationManager
 from components.notification_manager.state_store import (
     InMemoryNotificationStateStore,
@@ -212,7 +221,11 @@ class SafetyFunctions(hass.Hass):
                             )
                         self.fault_dict[fault_name] = fault_config
 
-        persistence_stores = {"notification_state", "recovery_state"}
+        persistence_stores = {
+            "notification_state",
+            "recovery_state",
+            "fault_evidence_state",
+        }
         indoor_monitor = self.sm_modules.get("InternalEnvironmentalHazardMonitorComponent")
         if indoor_monitor is not None:
             persistence_stores.add("internal_environment_state")
@@ -373,6 +386,24 @@ class SafetyFunctions(hass.Hass):
         )
 
         # Create the fault aggregation and lifecycle manager.
+        evidence_cfg = self.runtime_config["app_config"]["fault_evidence"]
+        if evidence_cfg["enabled"]:
+            evidence_store = JsonFaultEvidenceStore(
+                evidence_cfg["state_file"], max_bytes=evidence_cfg["max_total_bytes"]
+            )
+        else:
+            evidence_store = InMemoryFaultEvidenceStore()
+        self.fault_evidence = FaultEvidenceJournal(
+            evidence_store,
+            max_records=evidence_cfg["max_records"],
+            max_frame_bytes=evidence_cfg["max_frame_bytes"],
+            max_total_bytes=evidence_cfg["max_total_bytes"],
+            log=self.log,
+            diagnostics_observer=self.self_diagnostics.record_app_cause,
+            schedule_flush=lambda callback, delay: self.run_in(
+                lambda **_: callback(), delay
+            ),
+        )
         self.fm: FaultManager = FaultManager(
             self,
             self.sm_modules,
@@ -380,6 +411,7 @@ class SafetyFunctions(hass.Hass):
             self.faults,
             self.event_bus,
             self.mqtt_entities,
+            evidence_journal=self.fault_evidence,
         )
         entity_monitor = self.sm_modules.get("EntityMonitorComponent")
         monitor_bindings = (
@@ -397,6 +429,11 @@ class SafetyFunctions(hass.Hass):
             ),
             on_change=self._on_coverage_changed,
             isolate_invalid=True,
+        )
+        self.fm.restriction_provider = lambda symptom_id: tuple(
+            f"{effect.value}:{cause}"
+            for effect in RestrictionEffect
+            for cause in self.degradation.causes_for(symptom_id, effect)
         )
         for source, error in self.degradation.binding_errors.items():
             self.log(f"Rejected degradation binding {source}: {error}", level="ERROR")
@@ -843,6 +880,9 @@ class SafetyFunctions(hass.Hass):
                     f"Unable to persist recovery manager state: {exc}",
                     level="ERROR",
                 )
+        fault_evidence = getattr(self, "fault_evidence", None)
+        if fault_evidence is not None:
+            fault_evidence.stop()
         mqtt_entities = getattr(self, "mqtt_entities", None)
         if mqtt_entities is None:
             return
@@ -945,6 +985,12 @@ class SafetyFunctions(hass.Hass):
 
         # Register fault entities
         for name, fault in self.faults.items():
+            evidence = self.fault_evidence.get(name)
+            evidence_attributes = {}
+            if evidence is not None:
+                evidence_attributes = {
+                    "freeze_frame": evidence["freeze_frame"],
+                }
             self.mqtt_entities.register_sensor(
                 "sensor.fault_" + name,
                 fault.friendly_name,
@@ -956,6 +1002,7 @@ class SafetyFunctions(hass.Hass):
                     "active": fault.evaluation.active,
                     "shadowed_by": [],
                     "latched": fault.evaluation.latched,
+                    **evidence_attributes,
                 },
                 icon="mdi:alert-outline",
                 entity_category="diagnostic",

@@ -372,7 +372,12 @@ class TemperatureComponent(SafetyComponent):
         sm_result: bool = temperature < cold_threshold
         additional_info: dict[str, str] = {"location": location}
 
-        return SafetyMechanismResult(result=sm_result, additional_info=additional_info)
+        return SafetyMechanismResult(
+            result=sm_result, additional_info=additional_info,
+            diagnostic_evidence={
+                "state": temperature, "threshold": cold_threshold, "unit": "°C",
+            },
+        )
 
     @safety_mechanism_decorator
     def sm_tc_2(
@@ -432,7 +437,14 @@ class TemperatureComponent(SafetyComponent):
         sm_result: bool = forecasted_temperature < cold_threshold
         additional_info: dict[str, str] = {"location": location}
 
-        return SafetyMechanismResult(result=sm_result, additional_info=additional_info)
+        return SafetyMechanismResult(
+            result=sm_result, additional_info=additional_info,
+            diagnostic_evidence={
+                "state": temperature, "modeled_value": forecasted_temperature,
+                "rate_per_minute": temperature_rate,
+                "threshold": cold_threshold, "unit": "°C",
+            },
+        )
 
     @safety_mechanism_decorator
     def sm_tc_3(
@@ -458,7 +470,12 @@ class TemperatureComponent(SafetyComponent):
         sm_result: bool = temperature > hot_threshold
         additional_info: dict[str, str] = {"location": location}
 
-        return SafetyMechanismResult(result=sm_result, additional_info=additional_info)
+        return SafetyMechanismResult(
+            result=sm_result, additional_info=additional_info,
+            diagnostic_evidence={
+                "state": temperature, "threshold": hot_threshold, "unit": "°C",
+            },
+        )
 
     @safety_mechanism_decorator
     def sm_tc_4(
@@ -503,7 +520,14 @@ class TemperatureComponent(SafetyComponent):
         sm_result: bool = forecasted_temperature > hot_threshold
         additional_info: dict[str, str] = {"location": location}
 
-        return SafetyMechanismResult(result=sm_result, additional_info=additional_info)
+        return SafetyMechanismResult(
+            result=sm_result, additional_info=additional_info,
+            diagnostic_evidence={
+                "state": temperature, "modeled_value": forecasted_temperature,
+                "rate_per_minute": temperature_rate,
+                "threshold": hot_threshold, "unit": "°C",
+            },
+        )
 
     def forecast_temperature(
         self,

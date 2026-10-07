@@ -389,6 +389,7 @@ class SafetyComponent:
         pr_test: bool,
         additional_info: dict,
         debounce_limit: int = 2,
+        diagnostic_evidence: dict[str, Any] | None = None,
     ) -> tuple[int, bool]:
         """
         Handles the debouncing of a symptom condition based on a symptom test (pr_test).
@@ -451,6 +452,7 @@ class SafetyComponent:
                     symptom_id=symptom_id,
                     state=FaultState.SET,
                     additional_info=additional_info,
+                    diagnostic_evidence=diagnostic_evidence,
                 )
                 self.hass_app.log(
                     f"symptom {symptom_id} with {additional_info} was set",
@@ -465,6 +467,7 @@ class SafetyComponent:
                     symptom_id=symptom_id,
                     state=FaultState.CLEARED,
                     additional_info=additional_info,
+                    diagnostic_evidence=diagnostic_evidence,
                 )
                 self.hass_app.log(
                     f"symptom {symptom_id} with {additional_info} was cleared",
@@ -586,6 +589,7 @@ def safety_mechanism_decorator(func: Callable) -> Callable:
                 pr_test=sm_return.result,
                 additional_info=sm_return.additional_info,
                 debounce_limit=debounce_limit,
+                diagnostic_evidence=sm_return.diagnostic_evidence,
             )
 
             # Update the debounce state with the new values
@@ -625,3 +629,4 @@ class SafetyMechanismResult(NamedTuple):
     result: bool
     additional_info: Optional[dict[str, Any]] = None
     is_evaluable: bool = True
+    diagnostic_evidence: Optional[dict[str, Any]] = None

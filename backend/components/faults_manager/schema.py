@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Literal
 
-from pydantic import ConfigDict, Field, ValidationError
+from pydantic import ConfigDict, Field, ValidationError, model_validator
 
 from components.core.pydantic_utils import StrictBaseModel, log_extra_keys
 
@@ -20,6 +20,26 @@ class FaultEntry(StrictBaseModel):
     related_sms: list[str]
     related_symptom_ids: list[str] = Field(default_factory=list)
     shadows: list[str] = Field(default_factory=list)
+
+
+class FaultEvidenceConfig(StrictBaseModel):
+    """Bounded, independent freeze-frame persistence policy."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool
+    state_file: str = Field(min_length=1)
+    max_records: int = Field(ge=1, le=1024)
+    max_frame_bytes: int = Field(ge=512, le=8192)
+    max_total_bytes: int = Field(ge=4096, le=4194304)
+
+    @model_validator(mode="after")
+    def validate_capacity(self) -> "FaultEvidenceConfig":
+        """Reserve room for at least one complete frame and record envelope."""
+
+        if self.max_total_bytes < self.max_frame_bytes + 512:
+            raise ValueError("fault evidence total bound cannot hold one frame")
+        return self
 
 
 def validate_faults_config(

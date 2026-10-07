@@ -70,6 +70,13 @@ def _app_config_base():
                 "validate_entity_existence": False,
             },
             "faults": _base_faults(),
+            "fault_evidence": {
+                "enabled": False,
+                "state_file": "test_fault_evidence_state.json",
+                "max_records": 256,
+                "max_frame_bytes": 4096,
+                "max_total_bytes": 1048576,
+            },
         },
         "user_config": _base_user_config(),
     }

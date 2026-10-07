@@ -8,7 +8,7 @@ from pydantic import ConfigDict, Field, ValidationError, model_validator
 
 from components.core.mqtt_entity_manager import MqttSettings
 from components.core.pydantic_utils import StrictBaseModel
-from components.faults_manager.schema import FaultEntry
+from components.faults_manager.schema import FaultEntry, FaultEvidenceConfig
 from components.notification_manager.schema import (
     LevelOneRepeatPolicy,
     MobileProfile,
@@ -241,6 +241,7 @@ class RuntimeSource(SystemSourceModel):
     providers: ProviderRuntimeSet
     notification: NotificationRuntimeSource
     recovery: RecoveryRuntimeSource
+    fault_evidence: FaultEvidenceConfig
     mqtt: MqttSettings
 
 

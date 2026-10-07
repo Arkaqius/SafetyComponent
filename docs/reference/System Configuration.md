@@ -215,6 +215,25 @@ annunciators, and WAN evidence.
 actions. Installation assets and actuation eligibility remain in the private
 opening/room registry.
 
+`runtime_cfg.fault_evidence` owns the independent fault diagnostic store. Its
+`enabled` switch defaults to `true`; `state_file` is
+`/config/appdaemon/fault_evidence_state.json`. `max_records: 256` limits fault
+keys, `max_frame_bytes: 4096` limits the UTF-8 activation-capture fields within
+one freeze frame, and `max_total_bytes: 1048576` limits the complete persisted
+JSON snapshot, including lifecycle timestamps, counters, reason, duration and
+clock uncertainty. Lifecycle fields retain their own bounded validation and do
+not consume the capture byte budget. The
+closed source schema requires all five fields and rejects a total limit too
+small to contain one frame. Operators do not configure this policy through
+private installation YAML. Setting `enabled: false` retains bounded evidence
+in process memory only; it does not suppress first-activation capture.
+
+The same `freeze_frame` object carries the capture and lifecycle fields in
+MQTT and API fault records. The persisted store uses format version 2 and
+migrates validated version 1 records on load, preserving their captured values
+and lifecycle metadata within the original validation bounds. This changes
+neither the configured limits nor the state-file path.
+
 ### 5.4 MQTT
 
 `runtime_cfg.mqtt` owns discovery topics, device identity, retain/QoS behavior,

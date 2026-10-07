@@ -9,6 +9,7 @@ import {
   type StatusTone,
 } from '../domain/safety';
 import Icon from './Icon';
+import FreezeFrame from './FreezeFrame';
 import StatusBadge from './StatusBadge';
 import { notificationAcknowledgementEvent } from '../domain/notificationHistory';
 
@@ -210,6 +211,7 @@ function FaultCard({
             <dd>{formatRelativeTime(fault.lastChanged)}</dd>
           </div>
         </dl>
+        {fault.freezeFrame && <FreezeFrame record={fault.freezeFrame} />}
         {canAcknowledge && (
           <div className='fault-acknowledgement'>
             <button

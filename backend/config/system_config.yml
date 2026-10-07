@@ -259,6 +259,13 @@ runtime_cfg:
       enabled: true
       state_file: /config/appdaemon/recovery_state.json
 
+  fault_evidence:
+    enabled: true
+    state_file: /config/appdaemon/fault_evidence_state.json
+    max_records: 256
+    max_frame_bytes: 4096
+    max_total_bytes: 1048576
+
   mqtt:
     discovery_prefix: homeassistant
     base_topic: safety_component
