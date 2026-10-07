@@ -9,6 +9,7 @@ import {
   type StatusTone,
 } from '../domain/safety';
 import Icon from './Icon';
+import FreezeFrame from './FreezeFrame';
 import HelpTooltip from './HelpTooltip';
 import StatusBadge from './StatusBadge';
 import { notificationAcknowledgementEvent } from '../domain/notificationHistory';
@@ -264,10 +265,7 @@ function FaultCard({
             </ul>
           </div>
         )}
-        {fault.diagnosticData.freezeFrame && (
-          <DiagnosticRecord label='Freeze frame — pierwsza aktywacja' record={fault.diagnosticData.freezeFrame} />
-        )}
-        {fault.diagnosticData.extendedData && <DiagnosticRecord label='Dane rozszerzone' record={fault.diagnosticData.extendedData} />}
+        {fault.diagnosticData.freezeFrame && <FreezeFrame record={fault.diagnosticData.freezeFrame} />}
         {canAcknowledge && (
           <div className='fault-acknowledgement'>
             <button
@@ -294,34 +292,4 @@ function FaultCard({
       </div>
     </details>
   );
-}
-
-function DiagnosticRecord({ label, record }: { label: string; record: Record<string, unknown> }) {
-  return (
-    <div className='fault-diagnostic-block'>
-      <strong>{label}</strong>
-      <dl className='details-grid'>
-        {Object.entries(record).map(([key, value]) => (
-          <div key={key}>
-            <dt>{humanizeDiagnosticKey(key)}</dt>
-            <dd>{formatDiagnosticValue(value)}</dd>
-          </div>
-        ))}
-      </dl>
-    </div>
-  );
-}
-
-function formatDiagnosticValue(value: unknown): string {
-  if (value === null || value === undefined || value === '') return '—';
-  if (typeof value === 'boolean') return value ? 'Tak' : 'Nie';
-  if (typeof value === 'string' || typeof value === 'number') return String(value);
-  return JSON.stringify(value);
-}
-
-function humanizeDiagnosticKey(value: string): string {
-  return value
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .replace(/[_-]+/g, ' ')
-    .replace(/^\w/, letter => letter.toUpperCase());
 }

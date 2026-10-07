@@ -47,6 +47,19 @@ w przeglądarce. Bezpośredni odnośnik do diagnostyki otwiera widok rozszerzony
 powrót do podstawowego prowadzi na pulpit. Brak połączenia i ograniczenia danych
 są widoczne w obu widokach. Zmiana widoku nie wysyła poleceń do Home Assistanta.
 
+## Freeze frame
+
+Przełącz widok na **Rozszerzony**, otwórz **Fault Management**, a potem
+rozwiń kartę w sekcji **Zdarzenia i stan oceny**. Jedna sekcja **Freeze frame**
+pokazuje zapis aktywacji oraz liczniki i czasy z jednego obiektu
+`freeze_frame` w atrybutach encji usterki (API/MQTT).
+
+Dane przechwycone podczas aktywacji pozostają stałe; poprawne ustąpienie
+uzupełnia czasy, a kolejna aktywacja zastępuje zapis i zwiększa licznik.
+Po restarcie przerwanego pomiaru czas aktywności pozostaje nieznany. Brak
+freeze frame nie oznacza ustąpienia usterki. Starszy backend z osobnymi
+atrybutami jest prezentowany w tej samej sekcji.
+
 ## Pomoc w aplikacji
 
 Pozycja **Pomoc** w nawigacji otwiera stronę `#/help`. Zawiera krótką instrukcję

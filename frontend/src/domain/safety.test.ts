@@ -135,8 +135,8 @@ test('discovers faults from MQTT entity IDs and orders active faults first', () 
   assert.equal(faults[0].latched, true);
   assert.deepEqual(faults[0].contributors, ['RiskyTemperatureOffice', 'RiskyTemperatureBedroom']);
   assert.deepEqual(faults[0].activeContributors, ['RiskyTemperatureOffice']);
-  assert.deepEqual(faults[0].diagnosticData.freezeFrame, { measured_value: 31.2, threshold: 28 });
-  assert.deepEqual(faults[0].diagnosticData.extendedData, { source: 'sensor.office_temperature' });
+  assert.deepEqual(faults[0].diagnosticData.freezeFrame, { measured_value: 31.2, threshold: 28, source: 'sensor.office_temperature' });
+  assert.deepEqual(Object.keys(faults[0].diagnosticData), ['freezeFrame']);
 });
 
 test('keeps missing or malformed diagnostic metadata explicit', () => {
@@ -153,6 +153,18 @@ test('keeps missing or malformed diagnostic metadata explicit', () => {
   assert.equal(fault.latched, null);
   assert.deepEqual(fault.contributors, []);
   assert.equal(fault.diagnosticData.freezeFrame, null);
+});
+
+test('uses the unified freeze frame without stale legacy lifecycle values', () => {
+  const frame = { version: 2, captured_at: timestamp, activation_count: 3, last_valid_pass_at: null };
+  const [fault] = getFaults({
+    'sensor.fault_hazard': entity('FAIL', {
+      freeze_frame: frame,
+      extended_data: { activation_count: 99, stale_field: 'obsolete' },
+    }),
+  });
+  assert.deepEqual(fault.diagnosticData.freezeFrame, frame);
+  assert.deepEqual(Object.keys(fault.diagnosticData), ['freezeFrame']);
 });
 
 test('keeps evaluation, activation and shadowing independent', () => {

@@ -41,7 +41,6 @@ export type FaultCategory = 'H' | 'D' | 'unknown';
 
 export interface FaultDiagnosticData {
   freezeFrame: Record<string, unknown> | null;
-  extendedData: Record<string, unknown> | null;
 }
 
 export interface FaultView {
@@ -320,8 +319,7 @@ export function getFaults(entities: EntityMap): FaultView[] {
       shadowedBy: stringArrayAttribute(entity, 'shadowed_by'),
       notificationTag: stringAttribute(entity, 'notification_tag'),
       diagnosticData: {
-        freezeFrame: recordAttribute(entity, 'freeze_frame'),
-        extendedData: recordAttribute(entity, 'extended_data'),
+        freezeFrame: getFreezeFrame(entity),
       },
       lastChanged: entity.last_changed,
     }))
@@ -332,6 +330,13 @@ export function getFaults(entities: EntityMap): FaultView[] {
         (left.level ?? 99) - (right.level ?? 99) ||
         left.name.localeCompare(right.name, 'pl')
     );
+}
+
+export function getFreezeFrame(entity: EntitySnapshot): Record<string, unknown> | null {
+  const frame = recordAttribute(entity, 'freeze_frame');
+  if (!frame) return null;
+  const legacy = frame.version === 2 ? null : recordAttribute(entity, 'extended_data');
+  return { ...legacy, ...frame };
 }
 
 export function entityLocations(entity: EntitySnapshot): string[] {

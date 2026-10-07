@@ -1507,6 +1507,15 @@ details summary:focus-visible {
   padding-top: 14px;
 }
 
+.fault-diagnostic-block > p {
+  color: var(--text-soft);
+  font-size: 0.76rem;
+}
+
+.fault-diagnostic-block dd {
+  overflow-wrap: anywhere;
+}
+
 .fault-contributor-list,
 .coverage-diagnostic-list ul {
   display: grid;
