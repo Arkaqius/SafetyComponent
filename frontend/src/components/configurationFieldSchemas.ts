@@ -42,7 +42,11 @@ const checks = object('Kontrole zdrowia', {
   freshness: object(
     'Aktualność danych',
     {
-      timestamp_source: text('Źródło znacznika czasu', true, 'Wiarygodny raport źródła, np. last_reported lub uzgodniony atrybut czasu. Sam odczyt HA nie odnawia świeżości.'),
+      timestamp_source: text(
+        'Źródło znacznika czasu',
+        true,
+        'Wiarygodny raport źródła, np. last_reported lub uzgodniony atrybut czasu. Sam odczyt HA nie odnawia świeżości.'
+      ),
       max_silence_seconds: { ...number('Maksymalny wiek raportu (stare ustawienie)'), hidden: true },
     },
     { timestamp_source: '' }
@@ -69,8 +73,17 @@ const checks = object('Kontrole zdrowia', {
 });
 
 const monitorTiming = {
-  report_timeout_seconds: { ...number('Maksymalny wiek raportu (s)', 'Wymaga kontroli aktualności ze źródłem znacznika czasu. Nie jest limitem oczekiwania na odpowiedź HA.'), initial: 3600 },
-  failure_debounce_seconds: number('Czas potwierdzenia awarii (s)', 'Jak długo problem musi trwać przed zgłoszeniem. Częstotliwość kontroli jest dobierana automatycznie.'),
+  report_timeout_seconds: {
+    ...number(
+      'Maksymalny wiek raportu (s)',
+      'Wymaga kontroli aktualności ze źródłem znacznika czasu. Nie jest limitem oczekiwania na odpowiedź HA.'
+    ),
+    initial: 3600,
+  },
+  failure_debounce_seconds: number(
+    'Czas potwierdzenia awarii (s)',
+    'Jak długo problem musi trwać przed zgłoszeniem. Częstotliwość kontroli jest dobierana automatycznie.'
+  ),
   recovery_debounce_seconds: { ...number('Potwierdzenie powrotu (stare ustawienie)'), hidden: true },
   detection_budget_seconds: { ...number('Budżet wykrycia (stare ustawienie)'), hidden: true },
   checks,
@@ -159,7 +172,10 @@ export const registrySchemas: Record<string, Record<string, FieldSpec>> = {
   component_overrides: monitorTiming,
   remote_batteries: {
     friendly_name: text('Nazwa urządzenia', true),
-    percentage_entity: { ...text('Poziom baterii (%)', false, 'Encja sensor.* z klasą battery i jednostką %. Nie dodawaj tu baterii hosta.'), includeOnCreate: true },
+    percentage_entity: {
+      ...text('Poziom baterii (%)', false, 'Encja sensor.* z klasą battery i jednostką %. Nie dodawaj tu baterii hosta.'),
+      includeOnCreate: true,
+    },
     low_entity: text('Sygnalizacja niskiej baterii', false, 'Encja binary_sensor.* z klasą battery; on oznacza niski poziom.'),
     enabled: yesNo('Monitoruj urządzenie'),
   },

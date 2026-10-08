@@ -59,14 +59,21 @@ test('legacy report age migrates into two visible monitor timers without losing 
     installation: {
       monitored_entities: {
         Office: {
-          entity_id: 'sensor.office_temperature', description: 'Office',
-          failure_debounce_seconds: 60, recovery_debounce_seconds: 60, detection_budget_seconds: 4020,
+          entity_id: 'sensor.office_temperature',
+          description: 'Office',
+          failure_debounce_seconds: 60,
+          recovery_debounce_seconds: 60,
+          detection_budget_seconds: 4020,
           checks: { freshness: { timestamp_source: 'last_reported', max_silence_seconds: 3600 } },
         },
       },
-      component_settings: { entity_monitor: { component_overrides: {
-        TemperatureKitchen: { checks: { freshness: { timestamp_source: 'last_updated', max_silence_seconds: 14400 } } },
-      } } },
+      component_settings: {
+        entity_monitor: {
+          component_overrides: {
+            TemperatureKitchen: { checks: { freshness: { timestamp_source: 'last_updated', max_silence_seconds: 14400 } } },
+          },
+        },
+      },
     },
   };
   const normalized = normalizeMonitorConfiguration(legacy) as typeof legacy;
@@ -77,9 +84,15 @@ test('legacy report age migrates into two visible monitor timers without losing 
   assert.equal(entry.checks.freshness.timestamp_source, 'last_reported');
   assert.equal(entry.checks.freshness.max_silence_seconds, undefined);
   assert.equal(legacy.installation.monitored_entities.Office.checks.freshness.max_silence_seconds, 3600);
-  const html = renderToStaticMarkup(<ConfigurationObjectEditor
-    label='Monitor' description='Monitor' value={{ Office: entry }} schema={registrySchemas.monitored_entities} onChange={() => undefined}
-  />);
+  const html = renderToStaticMarkup(
+    <ConfigurationObjectEditor
+      label='Monitor'
+      description='Monitor'
+      value={{ Office: entry }}
+      schema={registrySchemas.monitored_entities}
+      onChange={() => undefined}
+    />
+  );
   assert.match(html, /Maksymalny wiek raportu/);
   assert.match(html, /Czas potwierdzenia awarii/);
   assert.doesNotMatch(html, /Nieobsługiwane pole|Budżet wykrycia|Potwierdzenie powrotu|Maksymalny wiek raportu \(stare ustawienie\)/);
