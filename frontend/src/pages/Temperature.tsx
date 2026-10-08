@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react';
 import Icon from '../components/Icon';
+import HelpTooltip from '../components/HelpTooltip';
 import { formatNumeric, formatRelativeTime, trendPresentation, type TemperatureView } from '../domain/safety';
 import { useEntityHistory } from '../hooks/useEntityHistory';
 import { useSafetyEntities } from '../hooks/useSafetyEntities';
+import { chartSegments, numericHistory } from '../domain/history';
 
 type TemperatureSort = 'name' | 'highest' | 'lowest' | 'trend';
 
@@ -36,10 +38,7 @@ export default function Temperature() {
         <div>
           <span className='section-kicker'>Temperatury</span>
           <h2>Odczyty monitorowane przez system</h2>
-          <p>
-            Lista pochodzi z encji trendu <code>_rate</code>, a wartości graniczne z osobnych encji <code>_low_threshold</code> i{' '}
-            <code>_high_threshold</code> publikowanych przez SafetyComponent.
-          </p>
+          <p>Aktualne pomiary, tempo zmian i skonfigurowane granice temperatury.</p>
         </div>
         <div className='page-introduction-stat'>
           <strong>{temperatures.length}</strong>
@@ -122,8 +121,8 @@ function TemperatureCard({ temperature }: { temperature: TemperatureView }) {
     significantChangesOnly: false,
   });
   const trend = trendPresentation(temperature.rate);
-  const historyValues = history.entityHistory.map(item => Number(item.s)).filter(value => Number.isFinite(value));
-  if (temperature.state !== null) historyValues.push(temperature.state);
+  const historyPoints = numericHistory(history.entityHistory);
+  const historyValues = historyPoints.map(item => item.value).filter((value): value is number => value !== null);
   const historyMinimum = historyValues.length > 0 ? Math.min(...historyValues) : null;
   const historyMaximum = historyValues.length > 0 ? Math.max(...historyValues) : null;
 
@@ -150,30 +149,61 @@ function TemperatureCard({ temperature }: { temperature: TemperatureView }) {
         highThreshold={temperature.highThreshold}
         loading={history.loading}
         lowThreshold={temperature.lowThreshold}
-        values={historyValues}
+        points={historyPoints}
+        error={history.error ?? (history.status === 'disconnected' ? 'Brak połączenia z historią' : null)}
       />
 
       <dl className='temperature-details'>
         <div>
-          <dt>Zmiana</dt>
+          <dt className='label-with-help'>
+            Zmiana{' '}
+            <HelpTooltip
+              label='Tempo zmiany temperatury'
+              text='Wartość dodatnia oznacza wzrost, a ujemna spadek temperatury. Jednostka °C/min opisuje zmianę na minutę, nie samą temperaturę. To raportowany trend; brak wartości oznacza brak danych do jego oceny.'
+            />
+          </dt>
           <dd>{formatNumeric(temperature.rate, 3)} °C/min</dd>
         </div>
         <div>
-          <dt>Przyspieszenie</dt>
+          <dt className='label-with-help'>
+            Przyspieszenie{' '}
+            <HelpTooltip
+              label='Przyspieszenie temperatury'
+              text='Pokazuje, jak zmienia się tempo wzrostu lub spadku. Wartość dodatnia oznacza, że tempo staje się bardziej dodatnie, a ujemna — bardziej ujemne. Jednostka to °C/min². Odczyt należy interpretować razem z temperaturą i jej tempem zmiany.'
+            />
+          </dt>
           <dd>{formatNumeric(temperature.acceleration, 3)} °C/min²</dd>
         </div>
         <div>
-          <dt>Min. / maks. 24 h</dt>
+          <dt className='label-with-help'>
+            Min. / maks. 24 h{' '}
+            <HelpTooltip
+              label='Zakres temperatury z historii'
+              text='Najniższa i najwyższa wartość w dostępnych próbkach historii Home Assistanta z ostatnich 24 godzin. Luki w historii mogą ukrywać wcześniejsze skrajne wartości. Brak próbek nie oznacza stabilnej temperatury.'
+            />
+          </dt>
           <dd>
             {formatNumeric(historyMinimum, 1)} / {formatNumeric(historyMaximum, 1)} °C
           </dd>
         </div>
         <div>
-          <dt>Próg dolny</dt>
+          <dt className='label-with-help'>
+            Próg dolny{' '}
+            <HelpTooltip
+              label='Dolna granica temperatury'
+              text='Granica skonfigurowana dla tego monitorowanego źródła. Nie jest uniwersalną temperaturą komfortu. Kreska oznacza, że próg nie został udostępniony.'
+            />
+          </dt>
           <dd>{formatThreshold(temperature.lowThreshold)}</dd>
         </div>
         <div>
-          <dt>Próg górny</dt>
+          <dt className='label-with-help'>
+            Próg górny{' '}
+            <HelpTooltip
+              label='Górna granica temperatury'
+              text='Granica skonfigurowana dla tego monitorowanego źródła. Ocenę zagrożenia przedstawiają zdarzenia systemu; sam widoczny próg nie zastępuje tej oceny. Kreska oznacza brak udostępnionego progu.'
+            />
+          </dt>
           <dd>{formatThreshold(temperature.highThreshold)}</dd>
         </div>
       </dl>
@@ -184,16 +214,25 @@ function TemperatureCard({ temperature }: { temperature: TemperatureView }) {
 }
 
 function Sparkline({
-  values,
+  points,
+  error,
   loading,
   lowThreshold,
   highThreshold,
 }: {
-  values: number[];
+  points: Array<{ time: number; value: number | null }>;
+  error: string | null;
   loading: boolean;
   lowThreshold: number | null;
   highThreshold: number | null;
 }) {
+  const values = points.map(item => item.value).filter((value): value is number => value !== null);
+  if (error)
+    return (
+      <div className='sparkline sparkline-empty' role='status'>
+        {error}
+      </div>
+    );
   if (loading && values.length < 2) {
     return <div aria-label='Ładowanie historii' className='sparkline sparkline-loading' />;
   }
@@ -212,13 +251,8 @@ function Sparkline({
   const maximum = Math.max(...chartValues);
   const range = Math.max(maximum - minimum, 0.1);
   const yForValue = (value: number) => height - ((value - minimum) / range) * (height - 12) - 6;
-  const points = values
-    .map((value, index) => {
-      const x = (index / Math.max(values.length - 1, 1)) * width;
-      const y = yForValue(value);
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(' ');
+  const end = Date.now();
+  const segments = chartSegments(points, end - 24 * 3_600_000, end, width);
 
   return (
     <div className='sparkline'>
@@ -230,7 +264,15 @@ function Sparkline({
         {highThreshold !== null ? (
           <ThresholdLine label={`Górny ${formatNumeric(highThreshold, 1)} °C`} tone='high' width={width} y={yForValue(highThreshold)} />
         ) : null}
-        <polyline className='sparkline-line' points={points} />
+        {segments.map((segment, index) => (
+          <g key={index}>
+            <polyline
+              className='sparkline-line'
+              points={segment.map(point => `${point.x.toFixed(1)},${yForValue(point.value).toFixed(1)}`).join(' ')}
+            />
+            {segment.length === 1 && <circle className='sparkline-point' cx={segment[0].x} cy={yForValue(segment[0].value)} r='2' />}
+          </g>
+        ))}
       </svg>
       <span>24 godziny</span>
     </div>

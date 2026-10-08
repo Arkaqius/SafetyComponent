@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useMemo, useRef, useState, type CSSProperties } from 'react';
 import {
   FAULT_PREFIX,
   RECOVERY_PREFIX,
@@ -14,6 +14,8 @@ import {
 import { useEntityHistory } from '../hooks/useEntityHistory';
 import Icon from './Icon';
 import StatusBadge from './StatusBadge';
+import ModalDialog from './ModalDialog';
+import { historySegments, type HistoryPoint } from '../domain/history';
 
 type HistoryHours = 6 | 24 | 72 | 168;
 
@@ -26,7 +28,7 @@ interface EntityDetailsDialogProps {
 interface HistorySegment {
   duration: number;
   label: string;
-  state: string;
+  state: string | null;
   tone: StatusTone;
 }
 
@@ -48,28 +50,7 @@ export default function EntityDetailsDialog({ entities, entityId, onClose }: Ent
         .reverse(),
     [history.timeline]
   );
-  const segments = useMemo(
-    () => buildHistorySegments(entityId, entity, history.timeline, hours),
-    [entity, entityId, history.timeline, hours]
-  );
-
-  useEffect(() => {
-    if (!entityId) return;
-    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    closeButtonRef.current?.focus();
-
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', closeOnEscape);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener('keydown', closeOnEscape);
-      previousFocus?.focus();
-    };
-  }, [entityId, onClose]);
+  const segments = useMemo(() => buildHistorySegments(entityId, history.timeline, hours), [entityId, history.timeline, hours]);
 
   if (!entityId) return null;
 
@@ -79,130 +60,124 @@ export default function EntityDetailsDialog({ entities, entityId, onClose }: Ent
   const attributes = Object.entries(entity?.attributes ?? {}).filter(([key]) => key !== 'friendly_name');
 
   return (
-    <div
-      className='entity-dialog-backdrop'
-      onMouseDown={event => {
-        if (event.target === event.currentTarget) onClose();
-      }}
-      role='presentation'
-    >
-      <section aria-labelledby='entity-dialog-title' aria-modal='true' className='entity-dialog' role='dialog'>
-        <header className='entity-dialog-header'>
-          <div className='entity-dialog-heading'>
-            <span className='section-kicker'>{entityCategory(entityId)}</span>
-            <h2 id='entity-dialog-title'>{exactName}</h2>
-            {shortName !== exactName && <p>{shortName}</p>}
-            <code>{entityId}</code>
-          </div>
-          <StatusBadge tone={presentation.tone}>{presentation.label}</StatusBadge>
-          <button
-            aria-label='Zamknij szczegóły encji'
-            className='icon-button entity-dialog-close'
-            onClick={onClose}
-            ref={closeButtonRef}
-            type='button'
-          >
-            <Icon name='close' size={20} />
-          </button>
-        </header>
-
-        <div className='entity-dialog-scroll'>
-          <dl className='entity-dialog-facts'>
-            <div>
-              <dt>Aktualny stan</dt>
-              <dd>{entity ? localizedEntityState(entityId, entity.state) : 'Encja niedostępna'}</dd>
-            </div>
-            <div>
-              <dt>Stan techniczny</dt>
-              <dd>{entity?.state ?? 'unavailable'}</dd>
-            </div>
-            <div>
-              <dt>Ostatnia zmiana</dt>
-              <dd>{formatTimestamp(entity?.last_changed)}</dd>
-            </div>
-            <div>
-              <dt>Ostatnia aktualizacja</dt>
-              <dd>{formatTimestamp(entity?.last_updated)}</dd>
-            </div>
-          </dl>
-
-          <section className='entity-dialog-history'>
-            <div className='entity-dialog-section-header'>
-              <div>
-                <span className='section-kicker'>Rejestrator Home Assistanta</span>
-                <h3>Historia stanu</h3>
-              </div>
-              <label className='select-field compact-select'>
-                <span>Zakres</span>
-                <select onChange={event => setHours(Number(event.target.value) as HistoryHours)} value={hours}>
-                  <option value={6}>6 godzin</option>
-                  <option value={24}>24 godziny</option>
-                  <option value={72}>3 dni</option>
-                  <option value={168}>7 dni</option>
-                </select>
-              </label>
-            </div>
-
-            {history.loading && transitions.length === 0 ? (
-              <div className='history-loading'>
-                <span className='loading-line' />
-                <span className='loading-line loading-line-short' />
-              </div>
-            ) : transitions.length > 0 ? (
-              <>
-                <div aria-label={`Przebieg stanu z ostatnich ${hours} godzin`} className='entity-history-bar'>
-                  {segments.map((segment, index) => (
-                    <span
-                      className={`entity-history-segment history-segment-${segment.tone}`}
-                      key={`${segment.state}-${index}`}
-                      style={{ '--segment-duration': Math.max(segment.duration, 1) } as CSSProperties}
-                      title={`${segment.label} · ${formatDuration(segment.duration)}`}
-                    />
-                  ))}
-                </div>
-                <div className='entity-history-axis'>
-                  <span>{historyRangeLabel(hours)}</span>
-                  <span>Teraz</span>
-                </div>
-                <ol className='state-timeline entity-dialog-timeline'>
-                  {transitions.map(transition => (
-                    <li key={`${transition.last_changed}-${transition.state}`}>
-                      <span className={`timeline-dot timeline-${stateTone(entityId, transition.state)}`} />
-                      <div>
-                        <strong>{localizedEntityState(entityId, transition.state)}</strong>
-                        <time dateTime={new Date(transition.last_changed).toISOString()}>
-                          {formatHistoryTimestamp(transition.last_changed)}
-                        </time>
-                      </div>
-                    </li>
-                  ))}
-                </ol>
-              </>
-            ) : (
-              <div className='history-empty'>Brak zapisanych zmian stanu w wybranym okresie.</div>
-            )}
-          </section>
-
-          <details className='entity-dialog-attributes' open={attributes.length > 0 && attributes.length <= 6}>
-            <summary>
-              Atrybuty encji <span>{attributes.length}</span>
-            </summary>
-            {attributes.length > 0 ? (
-              <dl>
-                {attributes.map(([key, value]) => (
-                  <div key={key}>
-                    <dt>{attributeLabel(key)}</dt>
-                    <dd>{formatAttributeValue(value)}</dd>
-                  </div>
-                ))}
-              </dl>
-            ) : (
-              <p>Ta encja nie publikuje dodatkowych atrybutów.</p>
-            )}
-          </details>
+    <ModalDialog initialFocus={closeButtonRef} labelledBy='entity-dialog-title' onClose={onClose} open={Boolean(entityId)}>
+      <header className='entity-dialog-header'>
+        <div className='entity-dialog-heading'>
+          <span className='section-kicker'>{entityCategory(entityId)}</span>
+          <h2 id='entity-dialog-title'>{exactName}</h2>
+          {shortName !== exactName && <p>{shortName}</p>}
+          <code>{entityId}</code>
         </div>
-      </section>
-    </div>
+        <StatusBadge tone={presentation.tone}>{presentation.label}</StatusBadge>
+        <button
+          aria-label='Zamknij szczegóły encji'
+          className='icon-button entity-dialog-close'
+          onClick={onClose}
+          ref={closeButtonRef}
+          type='button'
+        >
+          <Icon name='close' size={20} />
+        </button>
+      </header>
+
+      <div className='entity-dialog-scroll'>
+        <dl className='entity-dialog-facts'>
+          <div>
+            <dt>Aktualny stan</dt>
+            <dd>{entity ? localizedEntityState(entityId, entity.state) : 'Encja niedostępna'}</dd>
+          </div>
+          <div>
+            <dt>Stan techniczny</dt>
+            <dd>{entity?.state ?? 'unavailable'}</dd>
+          </div>
+          <div>
+            <dt>Ostatnia zmiana</dt>
+            <dd>{formatTimestamp(entity?.last_changed)}</dd>
+          </div>
+          <div>
+            <dt>Ostatnia aktualizacja</dt>
+            <dd>{formatTimestamp(entity?.last_updated)}</dd>
+          </div>
+        </dl>
+
+        <section className='entity-dialog-history'>
+          <div className='entity-dialog-section-header'>
+            <div>
+              <span className='section-kicker'>Rejestrator Home Assistanta</span>
+              <h3>Historia stanu</h3>
+            </div>
+            <label className='select-field compact-select'>
+              <span>Zakres</span>
+              <select onChange={event => setHours(Number(event.target.value) as HistoryHours)} value={hours}>
+                <option value={6}>6 godzin</option>
+                <option value={24}>24 godziny</option>
+                <option value={72}>3 dni</option>
+                <option value={168}>7 dni</option>
+              </select>
+            </label>
+          </div>
+
+          {history.status === 'error' || history.status === 'disconnected' ? (
+            <p role='status'>{history.error ?? 'Historia niedostępna: brak połączenia z Home Assistantem.'}</p>
+          ) : history.loading && transitions.length === 0 ? (
+            <div className='history-loading'>
+              <span className='loading-line' />
+              <span className='loading-line loading-line-short' />
+            </div>
+          ) : transitions.length > 0 ? (
+            <>
+              <div aria-label={`Przebieg stanu z ostatnich ${hours} godzin`} className='entity-history-bar'>
+                {segments.map((segment, index) => (
+                  <span
+                    className={`entity-history-segment history-segment-${segment.tone}`}
+                    key={`${segment.state}-${index}`}
+                    style={{ '--segment-duration': Math.max(segment.duration, 1) } as CSSProperties}
+                    title={`${segment.label} · ${formatDuration(segment.duration)}`}
+                  />
+                ))}
+              </div>
+              <div className='entity-history-axis'>
+                <span>{historyRangeLabel(hours)}</span>
+                <span>Teraz</span>
+              </div>
+              <ol className='state-timeline entity-dialog-timeline'>
+                {transitions.map(transition => (
+                  <li key={`${transition.last_changed}-${transition.state}`}>
+                    <span className={`timeline-dot timeline-${stateTone(entityId, transition.state)}`} />
+                    <div>
+                      <strong>{localizedEntityState(entityId, transition.state)}</strong>
+                      <time dateTime={new Date(transition.last_changed).toISOString()}>
+                        {formatHistoryTimestamp(transition.last_changed)}
+                      </time>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </>
+          ) : (
+            <div className='history-empty'>Brak zapisanych zmian stanu w wybranym okresie.</div>
+          )}
+        </section>
+
+        <details className='entity-dialog-attributes' open={attributes.length > 0 && attributes.length <= 6}>
+          <summary>
+            Atrybuty encji <span>{attributes.length}</span>
+          </summary>
+          {attributes.length > 0 ? (
+            <dl>
+              {attributes.map(([key, value]) => (
+                <div key={key}>
+                  <dt>{attributeLabel(key)}</dt>
+                  <dd>{formatAttributeValue(value)}</dd>
+                </div>
+              ))}
+            </dl>
+          ) : (
+            <p>Ta encja nie publikuje dodatkowych atrybutów.</p>
+          )}
+        </details>
+      </div>
+    </ModalDialog>
   );
 }
 
@@ -249,33 +224,15 @@ function stateTone(entityId: string | null, state: string): StatusTone {
   return entityPresentation(entityId ?? '', { state, attributes: {} }).tone;
 }
 
-function buildHistorySegments(
-  entityId: string | null,
-  entity: EntitySnapshot | undefined,
-  timeline: Array<{ state: string; last_changed: number }>,
-  hours: number
-): HistorySegment[] {
+function buildHistorySegments(entityId: string | null, timeline: HistoryPoint[], hours: number): HistorySegment[] {
   const end = Date.now();
   const start = end - hours * 3_600_000;
-  const points = timeline
-    .filter(point => Number.isFinite(point.last_changed))
-    .sort((left, right) => left.last_changed - right.last_changed)
-    .filter((point, index, values) => index === 0 || point.state !== values[index - 1]?.state);
-  if (points.length === 0 && entity) points.push({ state: entity.state, last_changed: start });
-  if (points.length === 0) return [];
-
-  const relevant = points.filter(point => point.last_changed >= start && point.last_changed <= end);
-  const earlier = [...points].reverse().find(point => point.last_changed < start);
-  if (earlier) relevant.unshift({ ...earlier, last_changed: start });
-  else if (relevant.length > 0 && relevant[0]!.last_changed > start) relevant[0] = { ...relevant[0]!, last_changed: start };
-
-  return relevant.map((point, index) => {
-    const next = relevant[index + 1]?.last_changed ?? end;
+  return historySegments(timeline, start, end).map(point => {
     return {
-      duration: Math.max(0, Math.min(next, end) - Math.max(point.last_changed, start)),
-      label: localizedEntityState(entityId ?? '', point.state),
+      duration: point.duration,
+      label: point.state === null ? 'Brak danych' : localizedEntityState(entityId ?? '', point.state),
       state: point.state,
-      tone: stateTone(entityId, point.state),
+      tone: point.state === null ? 'muted' : stateTone(entityId, point.state),
     };
   });
 }

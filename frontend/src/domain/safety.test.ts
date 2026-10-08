@@ -113,8 +113,14 @@ test('discovers faults from MQTT entity IDs and orders active faults first', () 
       friendly_name: 'Safety Component Fault: RiskyTemperature',
       level: 'level_2',
       active: true,
+      category: 'H',
+      latched: true,
+      contributors: ['RiskyTemperatureOffice', 'RiskyTemperatureBedroom'],
+      active_contributors: ['RiskyTemperatureOffice'],
       location: 'Office, Bedroom',
       notification_tag: 'fault-tag',
+      freeze_frame: { measured_value: 31.2, threshold: 28 },
+      extended_data: { source: 'sensor.office_temperature' },
     }),
   };
 
@@ -122,9 +128,43 @@ test('discovers faults from MQTT entity IDs and orders active faults first', () 
   assert.equal(faults.length, 2);
   assert.equal(faults[0].entityId, 'sensor.fault_hazard');
   assert.equal(faults[0].level, 2);
-  assert.deepEqual(faults[0].locations, ['Biuro', 'Sypialnia']);
+  assert.deepEqual(faults[0].locations, ['Office', 'Bedroom']);
   assert.equal(faults[0].notificationTag, 'fault-tag');
   assert.equal(faults[0].active, true);
+  assert.equal(faults[0].category, 'H');
+  assert.equal(faults[0].latched, true);
+  assert.deepEqual(faults[0].contributors, ['RiskyTemperatureOffice', 'RiskyTemperatureBedroom']);
+  assert.deepEqual(faults[0].activeContributors, ['RiskyTemperatureOffice']);
+  assert.deepEqual(faults[0].diagnosticData.freezeFrame, { measured_value: 31.2, threshold: 28, source: 'sensor.office_temperature' });
+  assert.deepEqual(Object.keys(faults[0].diagnosticData), ['freezeFrame']);
+});
+
+test('keeps missing or malformed diagnostic metadata explicit', () => {
+  const [fault] = getFaults({
+    'sensor.fault_unknown': entity('PASS', {
+      category: 'equipment',
+      latched: 'false',
+      contributors: 'not-an-array',
+      freeze_frame: ['not-an-object'],
+    }),
+  });
+
+  assert.equal(fault.category, 'unknown');
+  assert.equal(fault.latched, null);
+  assert.deepEqual(fault.contributors, []);
+  assert.equal(fault.diagnosticData.freezeFrame, null);
+});
+
+test('uses the unified freeze frame without stale legacy lifecycle values', () => {
+  const frame = { version: 2, captured_at: timestamp, activation_count: 3, last_valid_pass_at: null };
+  const [fault] = getFaults({
+    'sensor.fault_hazard': entity('FAIL', {
+      freeze_frame: frame,
+      extended_data: { activation_count: 99, stale_field: 'obsolete' },
+    }),
+  });
+  assert.deepEqual(fault.diagnosticData.freezeFrame, frame);
+  assert.deepEqual(Object.keys(fault.diagnosticData), ['freezeFrame']);
 });
 
 test('keeps evaluation, activation and shadowing independent', () => {
@@ -307,6 +347,50 @@ test('maps level 1 as the most severe active fault', () => {
   assert.equal(summary.tone, 'critical');
 });
 
+test('aggregate critical level is preserved when listed faults are less severe', () => {
+  const faults = getFaults({ 'sensor.fault_warning': entity('Set', { level: 'level_3' }) });
+  assert.equal(getSafetySummary(entity('running'), entity('emergency'), faults, []).tone, 'critical');
+});
+
+test('disconnected and suspended cache cannot produce a current safe assessment', () => {
+  for (const availability of ['disconnected', 'stale'] as const) {
+    const clear = getSafetySummary(entity('running'), entity('no_faults'), [], [], availability);
+    assert.notEqual(clear.tone, 'safe');
+    const alarm = getSafetySummary(entity('running'), entity('emergency'), [], [], availability);
+    assert.equal(alarm.tone, 'critical');
+    assert.match(alarm.detail, /Ostatni znany/);
+  }
+});
+
+test('stale or expired air quality is explicitly last-known and never green', () => {
+  for (const [status, validTo] of [
+    ['stale', undefined],
+    ['ok', '2026-01-01T00:00:00Z'],
+    ['ok', 'invalid'],
+  ]) {
+    const external = getExternalHazardMonitoring({
+      'sensor.external_provider_air': entity(status!, {
+        provider: 'OpenMeteoAirQualityApiComponent',
+        observations: [{ hazard_type: 'outdoor_air_pollution', display_value: '31', valid_to: validTo }],
+      }),
+    });
+    const view = getAirQualityPresentation(external, Date.parse('2026-10-05T12:00:00Z'));
+    assert.notEqual(view.status, 'current');
+    assert.notEqual(view.tone, 'safe');
+  }
+});
+
+test('area names are preserved instead of translating or inventing locations', () => {
+  assert.deepEqual(getFaults({ 'sensor.fault_test': entity('Set', { area_name: 'Office', location: 'Bedroom' }) })[0].locations, [
+    'Office',
+  ]);
+  const [temperature] = getMonitoredTemperatures({
+    'sensor.heatingcircuittemperature': entity('21', { friendly_name: 'Obieg grzewczy', area_name: 'Kotłownia' }),
+    'sensor.heatingcircuittemperature_rate': entity('0.01', { attribution: 'Data provided by SafetyFunction' }),
+  });
+  assert.equal(temperature.roomName, 'Kotłownia');
+});
+
 test('normalizes external hazard aggregate and independent provider diagnostics', () => {
   const external = getExternalHazardMonitoring({
     'sensor.external_hazard_state': entity('warning', {
@@ -403,6 +487,7 @@ test('presents current Open-Meteo air quality for the home coordinates', () => {
   });
 
   assert.deepEqual(getAirQualityPresentation(external), {
+    status: 'current',
     label: 'EAQI 24',
     detail: 'Bieżący model jakości powietrza dla współrzędnych domu.',
     tone: 'safe',

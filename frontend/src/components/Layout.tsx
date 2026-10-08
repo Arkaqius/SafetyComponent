@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import Topbar from './Topbar';
 import Icon, { type IconName } from './Icon';
+import { VIEW_MODE_STORAGE_KEY, type ViewMode } from './ViewModeSwitch';
 
 const MOBILE_NAVIGATION_QUERY = '(max-width: 980px)';
 const menuItems: Array<{ title: string; path: string; icon: IconName; description: string }> = [
@@ -16,6 +17,12 @@ const menuItems: Array<{ title: string; path: string; icon: IconName; descriptio
     path: '/temperature',
     icon: 'temperature',
     description: 'Odczyty i trendy pomiarów',
+  },
+  {
+    title: 'Fault Management',
+    path: '/fault-management',
+    icon: 'alert',
+    description: 'Usterki, diagnostyka i pokrycie',
   },
   {
     title: 'Wejścia',
@@ -59,10 +66,34 @@ const menuItems: Array<{ title: string; path: string; icon: IconName; descriptio
     icon: 'settings',
     description: 'Ustawienia użytkownika i instalacji',
   },
+  {
+    title: 'Pomoc',
+    path: '/help',
+    icon: 'help',
+    description: 'Statusy, dane i obsługa aplikacji',
+  },
 ];
 
 export default function Layout() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const [preferredViewMode, setPreferredViewMode] = useState<ViewMode>(() => {
+    try {
+      return window.localStorage.getItem(VIEW_MODE_STORAGE_KEY) === 'advanced' ? 'advanced' : 'basic';
+    } catch {
+      return 'basic';
+    }
+  });
+  const basicRoute = location.pathname === '/' || location.pathname === '/help';
+  const viewMode = basicRoute ? preferredViewMode : 'advanced';
+  const changeViewMode = useCallback(
+    (mode: ViewMode) => {
+      setPreferredViewMode(mode);
+      setNavigationOpen(false);
+      if (mode === 'basic') navigate('/');
+    },
+    [navigate]
+  );
   const [navigationOpen, setNavigationOpen] = useState(false);
   const [compactNavigation, setCompactNavigation] = useState(() => window.matchMedia(MOBILE_NAVIGATION_QUERY).matches);
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -70,8 +101,20 @@ export default function Layout() {
   const appMainRef = useRef<HTMLDivElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const previousPathname = useRef(location.pathname);
-  const sidebarHidden = compactNavigation && !navigationOpen;
-  const backgroundHidden = compactNavigation && navigationOpen;
+  const sidebarHidden = viewMode === 'basic' || (compactNavigation && !navigationOpen);
+  const backgroundHidden = viewMode === 'advanced' && compactNavigation && navigationOpen;
+
+  useEffect(() => {
+    if (!basicRoute) setPreferredViewMode('advanced');
+  }, [basicRoute]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(VIEW_MODE_STORAGE_KEY, viewMode);
+    } catch {
+      // Private browsing can deny storage; switching views still works in memory.
+    }
+  }, [viewMode]);
 
   const closeNavigation = useCallback(
     (restoreFocus = true) => {
@@ -133,7 +176,7 @@ export default function Layout() {
   }, [closeNavigation, location.pathname, navigationOpen]);
 
   return (
-    <div className='app-shell'>
+    <div className={`app-shell app-shell-${viewMode}`}>
       <aside className={`sidebar${navigationOpen ? ' sidebar-open' : ''}`} id='primary-navigation' ref={sidebarRef}>
         <div className='brand'>
           <div className='brand-mark'>
@@ -190,9 +233,15 @@ export default function Layout() {
       )}
 
       <div className='app-main' ref={appMainRef}>
-        <Topbar menuButtonRef={menuButtonRef} navigationOpen={navigationOpen} onMenuClick={() => setNavigationOpen(true)} />
+        <Topbar
+          menuButtonRef={menuButtonRef}
+          navigationOpen={navigationOpen}
+          onMenuClick={() => setNavigationOpen(true)}
+          viewMode={viewMode}
+          onViewModeChange={changeViewMode}
+        />
         <main className='page-content'>
-          <Outlet />
+          <Outlet context={{ viewMode, onViewModeChange: changeViewMode }} />
         </main>
       </div>
     </div>

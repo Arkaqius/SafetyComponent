@@ -1,10 +1,24 @@
-import { useMemo } from 'react';
-import { useHass, useHistory, type EntityName } from '@hakit/core';
+import { useEffect, useMemo, useState } from 'react';
+import { useHass } from '@hakit/core';
 import { MOCK_MODE } from '../config';
+import { historyTimeline, mergeHistoryStates, readHistoryStates, type HistoryState, type HistoryPoint } from '../domain/history';
 
-type HistoryOptions = NonNullable<Parameters<typeof useHistory>[1]>;
-type HistoryResult = ReturnType<typeof useHistory>;
-type Timeline = HistoryResult['timeline'];
+interface HistoryOptions {
+  disable?: boolean;
+  hoursToShow?: number;
+  minimalResponse?: boolean;
+  significantChangesOnly?: boolean;
+}
+export type HistoryStatus = 'disabled' | 'loading' | 'ready' | 'error' | 'disconnected';
+interface HistoryResult {
+  timeline: HistoryPoint[];
+  entityHistory: HistoryState[];
+  coordinates: number[][];
+  loading: boolean;
+  status: HistoryStatus;
+  error: string | null;
+}
+type Timeline = HistoryPoint[];
 
 /**
  * Reads Home Assistant history and supplies deterministic samples in local
@@ -12,10 +26,74 @@ type Timeline = HistoryResult['timeline'];
  */
 export function useEntityHistory(entityId: string, options: HistoryOptions = {}): HistoryResult {
   const currentState = useHass(store => store.entities[entityId]?.state);
-  const liveHistory = useHistory(entityId as EntityName, {
-    ...options,
-    disable: MOCK_MODE || options.disable,
-  });
+  const connection = useHass(store => store.connection);
+  const connectionStatus = useHass(store => store.connectionStatus);
+  const ready = useHass(store => store.ready);
+  const synthetic = MOCK_MODE && !connection;
+  const hours = options.hoursToShow ?? 24;
+  const minimalResponse = options.minimalResponse ?? true;
+  const significantChangesOnly = options.significantChangesOnly ?? true;
+  const disable = Boolean(options.disable);
+  const key = JSON.stringify([entityId, hours, minimalResponse, significantChangesOnly, disable]);
+  const [snapshot, setSnapshot] = useState<{ key: string; connection: typeof connection; history: HistoryResult } | null>(null);
+  useEffect(() => {
+    setSnapshot(null);
+    if (synthetic || disable || !connection || !ready || connectionStatus !== 'connected') return;
+    let cancelled = false;
+    let unsubscribe: (() => void | Promise<void>) | undefined;
+    let states: HistoryState[] = [];
+    const timer = window.setTimeout(() => publish('error', 'Historia nie odpowiedziała w wymaganym czasie.'), 8_000);
+    const publish = (status: HistoryStatus, error: string | null = null) => {
+      if (!cancelled)
+        setSnapshot({
+          key,
+          connection,
+          history: {
+            timeline: historyTimeline(states),
+            entityHistory: states,
+            coordinates: [],
+            loading: status === 'loading',
+            status,
+            error,
+          },
+        });
+    };
+    publish('loading');
+    void connection
+      .subscribeMessage<unknown>(
+        message => {
+          if (cancelled) return;
+          window.clearTimeout(timer);
+          try {
+            states = mergeHistoryStates(states, readHistoryStates(message, entityId), Date.now() - hours * 3_600_000);
+            publish('ready');
+          } catch {
+            states = [];
+            publish('error', 'Rejestrator zwrócił nieprawidłowe dane historii.');
+          }
+        },
+        {
+          type: 'history/stream',
+          entity_ids: [entityId],
+          start_time: new Date(Date.now() - hours * 3_600_000).toISOString(),
+          minimal_response: minimalResponse,
+          significant_changes_only: significantChangesOnly,
+        }
+      )
+      .then(stop => {
+        if (cancelled) void stop();
+        else unsubscribe = stop;
+      })
+      .catch(() => {
+        window.clearTimeout(timer);
+        publish('error', 'Nie udało się odczytać historii.');
+      });
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      if (unsubscribe) void unsubscribe();
+    };
+  }, [connection, connectionStatus, disable, entityId, hours, key, minimalResponse, ready, significantChangesOnly, synthetic]);
   const mockTimeline = useMemo(
     () => createMockTimeline(entityId, currentState ?? 'unknown', options.hoursToShow ?? 24),
     [currentState, entityId, options.hoursToShow]
@@ -31,12 +109,23 @@ export function useEntityHistory(entityId: string, options: HistoryOptions = {})
     [mockTimeline]
   );
 
-  return MOCK_MODE
+  const status: HistoryStatus = disable
+    ? 'disabled'
+    : !connection || !ready || connectionStatus !== 'connected'
+      ? 'disconnected'
+      : 'loading';
+  const liveHistory: HistoryResult =
+    snapshot?.key === key && snapshot.connection === connection && status === 'loading'
+      ? snapshot.history
+      : { timeline: [], entityHistory: [], coordinates: [], loading: status === 'loading', status, error: null };
+  return synthetic && !disable
     ? {
         ...liveHistory,
         entityHistory: mockEntityHistory,
         loading: false,
         timeline: mockTimeline,
+        status: 'ready',
+        error: null,
       }
     : liveHistory;
 }

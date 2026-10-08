@@ -37,6 +37,11 @@ export type RecoveryStatus =
   | 'unavailable'
   | 'unknown';
 export type StatusTone = 'safe' | 'critical' | 'danger' | 'warning' | 'info' | 'muted';
+export type FaultCategory = 'H' | 'D' | 'unknown';
+
+export interface FaultDiagnosticData {
+  freezeFrame: Record<string, unknown> | null;
+}
 
 export interface FaultView {
   entityId: string;
@@ -47,8 +52,13 @@ export interface FaultView {
   state: string;
   status: FaultStatus;
   active: boolean | null;
+  category: FaultCategory;
+  latched: boolean | null;
+  contributors: string[];
+  activeContributors: string[];
   shadowedBy: string[];
   notificationTag: string;
+  diagnosticData: FaultDiagnosticData;
   lastChanged?: string;
 }
 
@@ -183,6 +193,7 @@ export interface ExternalObservationView {
 }
 
 export interface AirQualityPresentation {
+  status: 'current' | 'stale' | 'unavailable';
   label: string;
   detail: string;
   tone: StatusTone;
@@ -296,13 +307,20 @@ export function getFaults(entities: EntityMap): FaultView[] {
       entityId,
       name: friendlyEntityName(entityId, entity),
       description: stringAttribute(entity, 'description'),
-      locations: splitLocations(entity.attributes.location).map(localizedRoomName),
+      locations: entityLocations(entity),
       level: getFaultLevel(entity),
       state: entity.state,
       status: getFaultStatus(entity.state),
       active: typeof entity.attributes.active === 'boolean' ? entity.attributes.active : null,
+      category: faultCategoryAttribute(entity),
+      latched: typeof entity.attributes.latched === 'boolean' ? entity.attributes.latched : null,
+      contributors: stringArrayAttribute(entity, 'contributors'),
+      activeContributors: stringArrayAttribute(entity, 'active_contributors'),
       shadowedBy: stringArrayAttribute(entity, 'shadowed_by'),
       notificationTag: stringAttribute(entity, 'notification_tag'),
+      diagnosticData: {
+        freezeFrame: getFreezeFrame(entity),
+      },
       lastChanged: entity.last_changed,
     }))
     .sort(
@@ -312,6 +330,17 @@ export function getFaults(entities: EntityMap): FaultView[] {
         (left.level ?? 99) - (right.level ?? 99) ||
         left.name.localeCompare(right.name, 'pl')
     );
+}
+
+export function getFreezeFrame(entity: EntitySnapshot): Record<string, unknown> | null {
+  const frame = recordAttribute(entity, 'freeze_frame');
+  if (!frame) return null;
+  const legacy = frame.version === 2 ? null : recordAttribute(entity, 'extended_data');
+  return { ...legacy, ...frame };
+}
+
+export function entityLocations(entity: EntitySnapshot): string[] {
+  return stringAttribute(entity, 'area_name') ? [stringAttribute(entity, 'area_name')] : splitLocations(entity.attributes.location);
 }
 
 export function getRecoveries(entities: EntityMap): RecoveryView[] {
@@ -555,22 +584,29 @@ export function getExternalHazardMonitoring(entities: EntityMap): ExternalHazard
   };
 }
 
-export function getAirQualityPresentation(external: ExternalHazardView): AirQualityPresentation {
+export function getAirQualityPresentation(external: ExternalHazardView, now = Date.now()): AirQualityPresentation {
   const openMeteo = external.providers.find(provider => provider.provider === 'OpenMeteoAirQualityApiComponent');
   const openMeteoObservation = openMeteo?.observations.find(observation => observation.hazardType === 'outdoor_air_pollution');
 
-  if (openMeteo && ['ok', 'stale'].includes(openMeteo.status) && openMeteoObservation?.displayValue) {
-    const value = Number(openMeteoObservation.displayValue);
-    const tone: StatusTone = Number.isFinite(value) ? (value <= 40 ? 'safe' : value <= 60 ? 'warning' : 'danger') : 'info';
+  const value = numericState(openMeteoObservation?.displayValue);
+  const expiresAt = openMeteoObservation?.validTo ? Date.parse(openMeteoObservation.validTo) : undefined;
+  const invalidExpiry = expiresAt !== undefined && !Number.isFinite(expiresAt);
+  if (openMeteo && ['ok', 'stale'].includes(openMeteo.status) && openMeteoObservation && value !== null && value >= 0 && !invalidExpiry) {
+    const stale = openMeteo.status === 'stale' || (expiresAt !== undefined && expiresAt <= now);
+    const tone: StatusTone = value <= 40 ? 'safe' : value <= 60 ? 'warning' : 'danger';
     return {
+      status: stale ? 'stale' : 'current',
       label: europeanAqiLabel(openMeteoObservation),
-      detail: 'Bieżący model jakości powietrza dla współrzędnych domu.',
-      tone,
+      detail: stale
+        ? 'Ostatni znany model jakości powietrza. Dane nie są aktualne.'
+        : 'Bieżący model jakości powietrza dla współrzędnych domu.',
+      tone: stale && tone === 'safe' ? 'warning' : tone,
       sourceName: 'Open-Meteo',
     };
   }
 
   return {
+    status: 'unavailable',
     label: 'Brak aktualnych danych',
     detail: 'Żadne źródło jakości powietrza nie przekazało bieżącego indeksu.',
     tone: 'muted',
@@ -676,11 +712,14 @@ export function getRecentActivity(entities: EntityMap, limit = 8): ActivityItem[
     .slice(0, limit);
 }
 
+export type SafetyDataAvailability = 'connected' | 'disconnected' | 'stale';
+
 export function getSafetySummary(
   healthEntity: EntitySnapshot | undefined,
   systemEntity: EntitySnapshot | undefined,
   faults: FaultView[],
-  recoveries: RecoveryView[]
+  recoveries: RecoveryView[],
+  availability: SafetyDataAvailability = 'connected'
 ): SafetySummary {
   const activeFaults = faults.filter(fault => fault.active === true);
   const shadowedFaults = faults.filter(fault => fault.active === true && fault.shadowedBy.length > 0);
@@ -694,6 +733,25 @@ export function getSafetySummary(
     shadowedFaultCount: shadowedFaults.length,
     actionableRecoveryCount: actionableRecoveries.length,
   };
+
+  if (availability !== 'connected') {
+    const reportedLevel = parseSystemLevel(systemEntity?.state);
+    const knownLevels = activeFaults.map(fault => fault.level).filter((level): level is number => level !== null);
+    if (reportedLevel !== null && reportedLevel > 0) knownLevels.push(reportedLevel);
+    const hasActiveAlarm = activeFaults.length > 0 || (reportedLevel !== null && reportedLevel > 0);
+    const effectiveLevel =
+      hasActiveAlarm && !activeFaults.some(fault => fault.level === null) && knownLevels.length > 0 ? Math.min(...knownLevels) : null;
+    const reason = availability === 'disconnected' ? 'Brak połączenia' : 'Dane nieaktualne';
+    return {
+      ...base,
+      label: hasActiveAlarm ? `${LEVEL_PRESENTATION[effectiveLevel ?? 1].label} · ${reason.toLocaleLowerCase('pl')}` : reason,
+      detail: hasActiveAlarm
+        ? 'Ostatni znany stan wskazywał aktywną usterkę. Bieżąca ocena jest niedostępna.'
+        : 'Bieżąca ocena bezpieczeństwa jest niedostępna. Wyświetlane wartości są ostatnimi znanymi danymi.',
+      tone: hasActiveAlarm ? LEVEL_PRESENTATION[effectiveLevel ?? 1].tone : 'muted',
+      effectiveLevel,
+    };
+  }
 
   if (isUnavailable(healthEntity) || isUnavailable(systemEntity)) {
     return {
@@ -763,7 +821,13 @@ export function getSafetySummary(
   }
 
   const effectiveLevel =
-    activeFaults.length > 0 ? (hasUnknownActiveLevel ? null : Math.min(...knownActiveLevels)) : hasReportedFault ? reportedLevel : null;
+    activeFaults.length > 0
+      ? hasUnknownActiveLevel
+        ? null
+        : Math.min(...knownActiveLevels, ...(hasReportedFault ? [reportedLevel] : []))
+      : hasReportedFault
+        ? reportedLevel
+        : null;
 
   if (activeFaults.length > 0 || hasReportedFault) {
     const presentation = effectiveLevel ? LEVEL_PRESENTATION[effectiveLevel] : undefined;
@@ -844,6 +908,16 @@ function stringArrayAttribute(entity: EntitySnapshot | undefined, key: string): 
     .filter(Boolean);
 }
 
+function recordAttribute(entity: EntitySnapshot | undefined, key: string): Record<string, unknown> | null {
+  const value = entity?.attributes[key];
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
+function faultCategoryAttribute(entity: EntitySnapshot): FaultCategory {
+  const category = stringAttribute(entity, 'category').toUpperCase();
+  return category === 'H' || category === 'D' ? category : 'unknown';
+}
+
 function adviceInhibitionAttribute(entity: EntitySnapshot | undefined): AdviceInhibitionView[] {
   const value = entity?.attributes.advice_inhibition;
   if (!Array.isArray(value)) return [];
@@ -913,17 +987,17 @@ function temperatureRoomName(
   lowThresholdEntity: EntitySnapshot | undefined,
   highThresholdEntity: EntitySnapshot | undefined
 ): string {
+  for (const entity of [sourceEntity, lowThresholdEntity, highThresholdEntity]) {
+    const areaName = stringAttribute(entity, 'area_name');
+    if (areaName) return areaName;
+  }
   for (const thresholdEntity of [lowThresholdEntity, highThresholdEntity]) {
     const configuredName = stringAttribute(thresholdEntity, 'friendly_name');
     const roomMatch = configuredName.match(/[—–]\s*([^—–]+)$/);
-    if (roomMatch?.[1]) return localizedRoomName(roomMatch[1]);
+    if (roomMatch?.[1]) return roomMatch[1].trim();
   }
   const sourceName = stringAttribute(sourceEntity, 'friendly_name');
-  const prefix = sourceName.split(/\s+-\s+/, 1)[0]?.trim();
-  if (prefix && prefix !== sourceName) return localizedRoomName(prefix);
-  return localizedRoomName(
-    sourceName.replace(/\s+(?:climate\s*sensor|czujnik\s+klimatu|heating\s+circuit).*$/i, '').replace(/\s+temperature$/i, '') || sourceName
-  );
+  return sourceName || 'Lokalizacja niepodana';
 }
 
 function localizedTechnicalName(value: string): string {
@@ -950,8 +1024,6 @@ function localizedRoomName(value: string): string {
     livingroom: 'Salon',
     office: 'Biuro',
     upperbathroom: 'Łazienka na piętrze',
-    heatingcircuittemperature: 'Kuchnia',
-    thermostatcurrentroomtemperature: 'Kuchnia',
     safetyapphealth: 'Kondycja usługi',
     danepogodoweopenmeteo: 'Dane pogodowe Open-Meteo',
     jakoscpowietrzaopenmeteo: 'Jakość powietrza Open-Meteo',
@@ -983,6 +1055,8 @@ function humanize(value: string): string {
 }
 
 function numericState(value: unknown): number | null {
+  if (typeof value !== 'number' && typeof value !== 'string') return null;
+  if (typeof value === 'string' && value.trim() === '') return null;
   const numberValue = Number(value);
   return Number.isFinite(numberValue) ? numberValue : null;
 }

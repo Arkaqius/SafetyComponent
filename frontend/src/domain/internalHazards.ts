@@ -15,6 +15,7 @@ export interface InternalDetectorView {
   hazard: string;
   gasIdentity?: string;
   status: InternalDetectorStatus;
+  healthStatus: 'healthy' | 'degraded' | 'unavailable';
   currentState: string;
   classification: string;
   alarmActive: boolean;
@@ -43,18 +44,30 @@ export function getInternalEnvironmentMonitoring(entities: EntityMap): InternalE
   const detectors = Object.entries(entities)
     .filter(([entityId]) => entityId.startsWith(INTERNAL_ENVIRONMENT_DETECTOR_PREFIX) && entityId !== INTERNAL_ENVIRONMENT_SUMMARY_ID)
     .map(([entityId, entity]): InternalDetectorView => {
-      const alarmActive = booleanAttribute(entity.attributes.alarm_active);
+      const alarmActive = booleanAttribute(entity.attributes.alarm_active) || entity.attributes.classification === 'alarm';
       const healthFaultActive = booleanAttribute(entity.attributes.health_fault_active);
       const classification = stringAttribute(entity.attributes.classification) || 'unknown';
       const sourceEntityId = stringAttribute(entity.attributes.source_entity_id);
       const healthEntityId = findHealthEntityId(entities, sourceEntityId);
-      const status: InternalDetectorStatus = alarmActive
-        ? 'alarm'
-        : healthFaultActive
+      const diagnosticState = stringAttribute(entity.state).toLowerCase();
+      const attributesValid =
+        typeof entity.attributes.alarm_active === 'boolean' && typeof entity.attributes.health_fault_active === 'boolean';
+      const healthStatus: InternalDetectorView['healthStatus'] =
+        diagnosticState === 'unavailable' ||
+        diagnosticState === 'unknown' ||
+        !diagnosticState ||
+        healthFaultActive ||
+        classification === 'unavailable'
           ? 'unavailable'
-          : ['unavailable', 'unevaluable'].includes(classification)
+          : diagnosticState !== 'healthy' ||
+              !attributesValid ||
+              !['clear', 'alarm'].includes(classification) ||
+              !stringAttribute(entity.attributes.current_state) ||
+              entity.attributes.current_state === 'unknown' ||
+              entity.attributes.current_state === 'unavailable'
             ? 'degraded'
             : 'healthy';
+      const status: InternalDetectorStatus = alarmActive ? 'alarm' : healthStatus;
 
       return {
         entityId,
@@ -65,6 +78,7 @@ export function getInternalEnvironmentMonitoring(entities: EntityMap): InternalE
         hazard: stringAttribute(entity.attributes.hazard) || 'unknown',
         gasIdentity: optionalStringAttribute(entity.attributes.gas_identity),
         status,
+        healthStatus,
         currentState: stringAttribute(entity.attributes.current_state) || 'unknown',
         classification,
         alarmActive,
@@ -79,16 +93,24 @@ export function getInternalEnvironmentMonitoring(entities: EntityMap): InternalE
     .sort((left, right) => hazardPriority(left.hazard) - hazardPriority(right.hazard) || left.name.localeCompare(right.name, 'pl'));
 
   const fallbackActive = detectors.filter(detector => detector.alarmActive).length;
-  const fallbackUnavailable = detectors.filter(detector => detector.healthFaultActive).length;
-  const activeHazards = numericAttribute(summary?.attributes.active_hazards) ?? fallbackActive;
-  const unavailableDetectors = numericAttribute(summary?.attributes.unavailable_detectors) ?? fallbackUnavailable;
+  const fallbackUnavailable = detectors.filter(detector => detector.healthStatus === 'unavailable').length;
+  const activeHazards = Math.max(numericAttribute(summary?.attributes.active_hazards) ?? 0, fallbackActive);
+  const unavailableDetectors = Math.max(numericAttribute(summary?.attributes.unavailable_detectors) ?? 0, fallbackUnavailable);
   const status = internalEnvironmentStatus(summary?.state, detectors, activeHazards, unavailableDetectors);
 
   return {
     entityId: INTERNAL_ENVIRONMENT_SUMMARY_ID,
-    status,
+    status:
+      status === 'healthy' && (numericAttribute(summary?.attributes.monitored_detectors) ?? detectors.length) > detectors.length
+        ? 'degraded'
+        : status,
     detectors,
-    monitoredDetectors: numericAttribute(summary?.attributes.monitored_detectors) ?? detectors.length,
+    monitoredDetectors: Math.max(
+      numericAttribute(summary?.attributes.monitored_detectors) ?? 0,
+      detectors.length,
+      activeHazards,
+      unavailableDetectors
+    ),
     activeHazards,
     unavailableDetectors,
     gasSwitchingInhibited:
@@ -119,7 +141,8 @@ function internalEnvironmentStatus(
   if (normalized === 'active_hazard' || activeHazards > 0) return 'active_hazard';
   if (normalized === 'unavailable' || unavailableDetectors > 0) return 'unavailable';
   if (normalized === 'degraded' || detectors.some(detector => detector.status === 'degraded')) return 'degraded';
-  if (normalized === 'healthy' || detectors.length > 0) return 'healthy';
+  if (normalized && normalized !== 'healthy') return 'unknown';
+  if (detectors.length > 0 && detectors.every(detector => detector.healthStatus === 'healthy')) return 'healthy';
   return 'unknown';
 }
 
@@ -145,8 +168,10 @@ function booleanAttribute(value: unknown): boolean {
 }
 
 function numericAttribute(value: unknown): number | null {
+  if (typeof value !== 'number' && typeof value !== 'string') return null;
+  if (typeof value === 'string' && !value.trim()) return null;
   const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
 }
 
 function stringAttribute(value: unknown): string {

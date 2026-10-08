@@ -93,3 +93,35 @@ function entity(state: string, attributes: Record<string, unknown>) {
     last_updated: '2026-09-13T00:00:00Z',
   };
 }
+
+test('unavailable detector with missing attributes cannot become healthy or disappear from counts', () => {
+  const view = getInternalEnvironmentMonitoring({ 'sensor.internal_environment_test': entity('unavailable', {}) });
+  assert.equal(view.detectors[0].status, 'unavailable');
+  assert.equal(view.status, 'unavailable');
+  assert.equal(view.unavailableDetectors, 1);
+});
+
+test('healthy requires explicit valid diagnostic data and known classification', () => {
+  for (const attributes of [
+    {},
+    { classification: 'surprise', alarm_active: false, health_fault_active: false },
+    { classification: 'clear', alarm_active: false, health_fault_active: false, current_state: 'unknown' },
+  ]) {
+    const view = getInternalEnvironmentMonitoring({ 'sensor.internal_environment_test': entity('healthy', attributes) });
+    assert.equal(view.status, 'degraded');
+    assert.equal(view.detectors[0].status, 'degraded');
+  }
+  assert.equal(getInternalEnvironmentMonitoring({ 'sensor.internal_environment_summary': entity('healthy', {}) }).status, 'unknown');
+});
+
+test('known alarm survives unavailable diagnostics and lower aggregate counts', () => {
+  const view = getInternalEnvironmentMonitoring({
+    'sensor.internal_environment_summary': entity('healthy', { active_hazards: 0, unavailable_detectors: null }),
+    'sensor.internal_environment_test': entity('unavailable', { alarm_active: true }),
+  });
+  assert.equal(view.status, 'active_hazard');
+  assert.equal(view.detectors[0].status, 'alarm');
+  assert.equal(view.detectors[0].healthStatus, 'unavailable');
+  assert.equal(view.activeHazards, 1);
+  assert.equal(view.unavailableDetectors, 1);
+});
