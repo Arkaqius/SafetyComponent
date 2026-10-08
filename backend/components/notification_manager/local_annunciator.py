@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
 import appdaemon.plugins.hass.hassapi as hass  # type: ignore
 
@@ -10,7 +10,10 @@ import appdaemon.plugins.hass.hassapi as hass  # type: ignore
 class LocalAnnunciator:
     """Run local outputs independently from mobile transport."""
 
-    def __init__(self, hass_app: hass.Hass, config: dict[str, Any]) -> None:
+    def __init__(
+        self, hass_app: hass.Hass, config: dict[str, Any],
+        diagnostics_observer: Callable[..., None] | None = None,
+    ) -> None:
         self.hass_app = hass_app
         self.light_entity = config.get("light_entity")
         self.alarm_entity = config.get("alarm_entity")
@@ -18,6 +21,21 @@ class LocalAnnunciator:
         self._previous_light_state: dict[str, Any] | None = None
         self._switching_inhibited = False
         self._inhibition_reason: str | None = None
+        self._diagnostics_observer = diagnostics_observer
+
+    def _call_service(self, service: str, **kwargs: Any) -> None:
+        """Report only an attempted output command, never intentional inhibition."""
+
+        try:
+            response = self.hass_app.call_service(service, **kwargs)
+            if isinstance(response, dict) and response.get("success") is False:
+                raise RuntimeError(f"Local output command rejected: {service}")
+        except Exception:
+            if self._diagnostics_observer is not None:
+                self._diagnostics_observer("local_output", True, detail=service)
+            raise
+        if self._diagnostics_observer is not None:
+            self._diagnostics_observer("local_output", False, detail=service)
 
     def inhibit_switching(self, reason: str) -> None:
         """Persistently block local electrical switching until approved clearance."""
@@ -43,11 +61,11 @@ class LocalAnnunciator:
             return
 
         if level == 1 and previous_level != 1 and self.alarm_entity:
-            self.hass_app.call_service(
+            self._call_service(
                 "alarm_control_panel/alarm_trigger", entity_id=self.alarm_entity
             )
         if level in (1, 2) and previous_level not in (1, 2) and self.light_entity:
-            self.hass_app.call_service(
+            self._call_service(
                 "light/turn_on",
                 entity_id=self.light_entity,
                 color_name="yellow",
@@ -94,7 +112,7 @@ class LocalAnnunciator:
         previous = self._previous_light_state or {}
         self._previous_light_state = None
         if previous.get("state") != "on":
-            self.hass_app.call_service("light/turn_off", entity_id=self.light_entity)
+            self._call_service("light/turn_off", entity_id=self.light_entity)
             return
         attributes = previous.get("attributes", {})
         restore = {
@@ -102,7 +120,7 @@ class LocalAnnunciator:
             for key in ("brightness", "rgb_color", "color_temp_kelvin")
             if key in attributes
         }
-        self.hass_app.call_service(
+        self._call_service(
             "light/turn_on", entity_id=self.light_entity, **restore
         )
 

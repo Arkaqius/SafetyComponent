@@ -24,7 +24,8 @@ Note: This module is designed for internal use within the Home Assistant safety 
 """
 
 import hashlib
-from typing import Any, Optional
+from datetime import datetime, timezone
+from typing import Any, Callable, Optional
 
 import appdaemon.plugins.hass.hassapi as hass
 
@@ -32,6 +33,7 @@ from components.core.types_common import FaultState, SMState, Symptom, Fault
 from components.core.event_bus import EventBus
 from components.core.mqtt_entity_manager import MqttEntityManager
 from components.core.fault_state_policy import FaultEvaluation, FaultEvaluationStatus
+from components.faults_manager.evidence import FaultEvidenceJournal
 
 
 SYSTEM_STATE_BY_FAULT_LEVEL = {
@@ -73,6 +75,8 @@ class FaultManager:
         fault_dict: dict,
         event_bus: EventBus,
         mqtt_entities: MqttEntityManager,
+        evidence_journal: FaultEvidenceJournal | None = None,
+        restriction_provider: Callable[[str], tuple[str, ...]] | None = None,
     ) -> None:
         """
         Initialize the Fault Manager.
@@ -85,6 +89,8 @@ class FaultManager:
         self.hass: hass.Hass = hass
         self.event_bus = event_bus
         self.mqtt_entities = mqtt_entities
+        self.evidence_journal = evidence_journal
+        self.restriction_provider = restriction_provider
         self._symptom_contexts: dict[str, dict[str, str]] = {}
 
     def get_fault_evaluation(self, fault_id: str) -> FaultEvaluation:
@@ -100,12 +106,89 @@ class FaultManager:
             attributes if attributes is not None else self._get_entity_attributes(entity_id)
         )
         payload = dict(current_attributes) if isinstance(current_attributes, dict) else {}
+        payload.pop("extended_data", None)
         payload.update(
             active=fault.evaluation.active,
             shadowed_by=sorted(fault.evaluation.shadowed_by),
             latched=fault.evaluation.latched,
         )
+        evidence = (
+            self.evidence_journal.get(fault.name)
+            if self.evidence_journal is not None else None
+        )
+        if evidence is not None:
+            payload["freeze_frame"] = evidence["freeze_frame"]
+        else:
+            payload.pop("freeze_frame", None)
         self._set_internal_entity(entity_id, fault.evaluation.status.value, payload)
+
+    def _capture_activation(
+        self, fault: Fault, symptom_id: str, additional_info: dict | None,
+        diagnostic_evidence: dict[str, Any] | None = None,
+    ) -> None:
+        """Read only allowlisted source fields before asynchronous fault handling."""
+
+        if self.evidence_journal is None:
+            return
+        symptom = self.symptoms[symptom_id]
+        context = additional_info if isinstance(additional_info, dict) else {}
+        source_id = context.get("source_entity") or context.get("entity_id") or (
+            symptom.parameters.get("temperature_sensor")
+            or symptom.parameters.get("entity_id")
+        )
+        source: dict[str, Any] = {"clock_uncertain": True}
+        if isinstance(source_id, str) and source_id.startswith(("sensor.", "binary_sensor.")):
+            source["entity_id"] = source_id
+            source["clock_uncertain"] = True
+            try:
+                snapshot = self.hass.get_state(source_id, attribute="all")
+                if isinstance(snapshot, dict):
+                    source["state"] = snapshot.get("state")
+                    timestamp = snapshot.get("last_updated")
+                    if isinstance(timestamp, str):
+                        observed = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+                        if observed.tzinfo is not None:
+                            source["last_updated"] = observed.astimezone(timezone.utc).isoformat()
+                            age = (datetime.now(timezone.utc) - observed).total_seconds()
+                            if age >= 0:
+                                source["age_seconds"] = round(age, 3)
+                                source["clock_uncertain"] = False
+                            else:
+                                source["clock_uncertain"] = True
+                        else:
+                            source["clock_uncertain"] = True
+                    else:
+                        source["clock_uncertain"] = True
+            except Exception:
+                source["clock_uncertain"] = True
+        if isinstance(diagnostic_evidence, dict):
+            for key in (
+                "state", "observed_value", "modeled_value", "threshold",
+                "unit", "rate_per_minute",
+            ):
+                if key in diagnostic_evidence:
+                    source[key] = diagnostic_evidence[key]
+            source["value_origin"] = "predicate"
+            source["quality"] = "eligible"
+            if "last_updated" in source:
+                source["timestamp_relation"] = "readback"
+        elif "state" in source:
+            source["value_origin"] = "readback"
+            source["quality"] = "unverified_readback"
+        try:
+            restrictions = (
+                self.restriction_provider(symptom_id)
+                if self.restriction_provider is not None else ()
+            )
+        except Exception as exc:
+            restrictions = ()
+            self.hass.log(
+                f"Unable to capture fault restrictions: {type(exc).__name__}",
+                level="ERROR",
+            )
+        self.evidence_journal.activate(
+            fault, symptom, context, source=source, restrictions=restrictions
+        )
 
     def mark_evaluation_unavailable(self, symptom_id: str) -> None:
         """Record a failed or invalid evaluation without treating it as clear."""
@@ -122,11 +205,12 @@ class FaultManager:
         symptom_id: str,
         state: FaultState,
         additional_info: Optional[dict] = None,
+        diagnostic_evidence: dict[str, Any] | None = None,
         **_: Any,
     ) -> None:
         """Handle symptom events emitted by safety components."""
         if state == FaultState.SET:
-            self.set_symptom(symptom_id, additional_info)
+            self.set_symptom(symptom_id, additional_info, diagnostic_evidence)
         elif state == FaultState.CLEARED:
             self.clear_symptom(symptom_id, additional_info or {})
 
@@ -171,7 +255,8 @@ class FaultManager:
                 self.enable_sm(sm_name=symptom_name, sm_state=SMState.ENABLED)
 
     def set_symptom(
-        self, symptom_id: str, additional_info: Optional[dict] = None
+        self, symptom_id: str, additional_info: Optional[dict] = None,
+        diagnostic_evidence: dict[str, Any] | None = None,
     ) -> None:
         """
         Sets a symptom to its active state, indicating a potential fault condition.
@@ -193,7 +278,7 @@ class FaultManager:
             }
 
         # Call Related Fault
-        self._set_fault(symptom_id, additional_info)
+        self._set_fault(symptom_id, additional_info, diagnostic_evidence)
 
     def clear_symptom(self, symptom_id: str, additional_info: dict) -> None:
         """
@@ -253,7 +338,10 @@ class FaultManager:
         """
         return self.symptoms[symptom_id].state
 
-    def _set_fault(self, symptom_id: str, additional_info: Optional[dict]) -> None:
+    def _set_fault(
+        self, symptom_id: str, additional_info: Optional[dict],
+        diagnostic_evidence: dict[str, Any] | None = None,
+    ) -> None:
         """
         Applies a qualified positive contribution to its owning fault.
 
@@ -281,7 +369,12 @@ class FaultManager:
         # Collect all faults mapped from that symptom
         fault: Fault | None = self.found_mapped_fault(symptom_id, sm_name)
         if fault:
+            was_active = fault.evaluation.active
             fault.evaluation.observe(symptom_id, True)
+            if fault.evaluation.active and not was_active:
+                self._capture_activation(
+                    fault, symptom_id, additional_info, diagnostic_evidence
+                )
             if not fault.evaluation.active:
                 self._publish_fault(fault)
                 return
@@ -558,6 +651,12 @@ class FaultManager:
         was_active = evaluation.active
         was_shadowed = bool(evaluation.shadowed_by)
         evaluation.observe(symptom_id, False)
+        if (
+            evaluation.status == FaultEvaluationStatus.PASS
+            and not evaluation.active
+            and self.evidence_journal is not None
+        ):
+            self.evidence_journal.clear(fault.name)
 
         entity_id = "sensor.fault_" + fault.name
         fault_tag: str = self._generate_fault_tag(fault.name, additional_info)
@@ -769,12 +868,14 @@ class FaultManager:
                 try:
                     sm_fcn(symptom_data.module.safety_mechanisms[symptom_data.name])
                 except Exception:
+                    self.event_bus.publish("evaluation_exception", symptom_id=sm_name)
                     self.mark_evaluation_unavailable(sm_name)
                     recorder = getattr(symptom_data.module, "record_evaluation", None)
                     if callable(recorder):
                         recorder(success=False)
                     raise
                 else:
+                    self.event_bus.publish("evaluation_succeeded", symptom_id=sm_name)
                     recorder = getattr(symptom_data.module, "record_evaluation", None)
                     if callable(recorder):
                         recorder()

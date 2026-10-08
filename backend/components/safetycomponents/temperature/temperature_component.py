@@ -65,6 +65,16 @@ class TemperatureComponent(SafetyComponent):
         dependencies: list[dict[str, Any]] = []
         for entry in component_cfg:
             for location, data in entry.items():
+                direct = (f"RiskyTemperature{location}", f"RiskyTemperatureHigh{location}")
+                forecast = (f"RiskyTemperature{location}ForeCast", f"RiskyTemperatureHigh{location}ForeCast")
+                evaluation_targets = tuple(
+                    (symptom_id, "temperature_evaluation", location, "evaluation")
+                    for symptom_id in (*direct, *forecast)
+                )
+                recovery_targets = tuple(
+                    (symptom_id, "temperature_recovery", location, "recovery")
+                    for symptom_id in (direct[0], forecast[0])
+                )
                 dependencies.append(
                     {
                         "key": f"Temperature{location}",
@@ -73,6 +83,7 @@ class TemperatureComponent(SafetyComponent):
                         "fault_owner": "component",
                         "fault_name": "TemperatureMonitoringUnavailable",
                         "purpose": f"Temperature input for {location}",
+                        "degradation_targets": evaluation_targets,
                         "checks": {
                             "freshness": {
                                 "timestamp_source": "last_reported",
@@ -99,6 +110,10 @@ class TemperatureComponent(SafetyComponent):
                         "fault_owner": "component",
                         "fault_name": "TemperatureMonitoringUnavailable",
                         "purpose": f"Forecast rate input for {location}",
+                        "degradation_targets": tuple(
+                            (symptom_id, "temperature_forecast", location, "evaluation")
+                            for symptom_id in forecast
+                        ),
                         "checks": {"finite_number": {"target": "state"}},
                         "failure_debounce_seconds": (
                             int(data["SM_TC_2_DERIVATIVE_SAMPLE_MINUTES"]) * 60 + 60
@@ -119,6 +134,7 @@ class TemperatureComponent(SafetyComponent):
                             "fault_owner": "component",
                             "fault_name": "TemperatureRecoveryUnavailable",
                             "purpose": f"Window input for {location} temperature policy",
+                            "degradation_targets": recovery_targets,
                             "checks": {},
                             "detection_budget_seconds": 30,
                             "area_id": data.get("area_id"),
@@ -134,6 +150,8 @@ class TemperatureComponent(SafetyComponent):
                             "fault_owner": "component",
                             "fault_name": "TemperatureRecoveryUnavailable",
                             "purpose": f"Configured recovery actuator for {location}",
+                            "recovery_command": True,
+                            "degradation_targets": recovery_targets,
                             "checks": {},
                             "detection_budget_seconds": 30,
                             "area_id": data.get("area_id"),
@@ -355,7 +373,12 @@ class TemperatureComponent(SafetyComponent):
         sm_result: bool = temperature < cold_threshold
         additional_info: dict[str, str] = {"location": location}
 
-        return SafetyMechanismResult(result=sm_result, additional_info=additional_info)
+        return SafetyMechanismResult(
+            result=sm_result, additional_info=additional_info,
+            diagnostic_evidence={
+                "state": temperature, "threshold": cold_threshold, "unit": "°C",
+            },
+        )
 
     @safety_mechanism_decorator
     def sm_tc_2(
@@ -415,7 +438,14 @@ class TemperatureComponent(SafetyComponent):
         sm_result: bool = forecasted_temperature < cold_threshold
         additional_info: dict[str, str] = {"location": location}
 
-        return SafetyMechanismResult(result=sm_result, additional_info=additional_info)
+        return SafetyMechanismResult(
+            result=sm_result, additional_info=additional_info,
+            diagnostic_evidence={
+                "state": temperature, "modeled_value": forecasted_temperature,
+                "rate_per_minute": temperature_rate,
+                "threshold": cold_threshold, "unit": "°C",
+            },
+        )
 
     @safety_mechanism_decorator
     def sm_tc_3(
@@ -441,7 +471,12 @@ class TemperatureComponent(SafetyComponent):
         sm_result: bool = temperature > hot_threshold
         additional_info: dict[str, str] = {"location": location}
 
-        return SafetyMechanismResult(result=sm_result, additional_info=additional_info)
+        return SafetyMechanismResult(
+            result=sm_result, additional_info=additional_info,
+            diagnostic_evidence={
+                "state": temperature, "threshold": hot_threshold, "unit": "°C",
+            },
+        )
 
     @safety_mechanism_decorator
     def sm_tc_4(
@@ -486,7 +521,14 @@ class TemperatureComponent(SafetyComponent):
         sm_result: bool = forecasted_temperature > hot_threshold
         additional_info: dict[str, str] = {"location": location}
 
-        return SafetyMechanismResult(result=sm_result, additional_info=additional_info)
+        return SafetyMechanismResult(
+            result=sm_result, additional_info=additional_info,
+            diagnostic_evidence={
+                "state": temperature, "modeled_value": forecasted_temperature,
+                "rate_per_minute": temperature_rate,
+                "threshold": hot_threshold, "unit": "°C",
+            },
+        )
 
     def forecast_temperature(
         self,

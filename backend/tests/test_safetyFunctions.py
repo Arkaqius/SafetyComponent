@@ -1,9 +1,15 @@
 from copy import deepcopy
 from unittest.mock import Mock
 
+import pytest
+
 from components.core.types_common import FaultState
 from components.core.fault_state_policy import FaultEvaluationStatus
 from components.faults_manager.cfg_parser import validate_fault_routes
+from components.recovery_manager.recovery_manager import ComponentRecoveryError
+from components.notification_manager.models import (
+    DeliveryBatchResult, DeliveryDisposition, TargetDeliveryResult,
+)
 
 from .fixtures.hass_fixture import (
     mqtt_json_payloads,
@@ -18,6 +24,8 @@ def test_safety_functions_initialization(mocked_hass_app_with_temp_component) ->
     )
     app_instance.initialize()
     validate_fault_routes(app_instance.symptoms, app_instance.faults)
+    assert app_instance.degradation.binding_errors == {}
+    assert "sensor.safety_coverage_state" in app_instance.mqtt_entities.discovered_entities
 
     # Assert the 'symptoms' dictionary content
     symptom = app_instance.symptoms["RiskyTemperatureOffice"]
@@ -239,13 +247,123 @@ def test_fault_and_symptom_registration(mocked_hass_app_with_temp_component):
 
     # Assert that all symptoms are registered
     for symptom_name in app_instance.symptoms:
-        assert app_instance.fm.check_symptom(symptom_name) == FaultState.NOT_TESTED
+        expected = (
+            FaultState.CLEARED
+            if symptom_name in {
+                "AppHealthStartup", "AppHealthPublication", "AppHealthDelivery",
+                "AppHealthPersistenceNotificationState",
+                "AppHealthPersistenceRecoveryState",
+                "AppHealthPersistenceFaultEvidenceState",
+            }
+            or symptom_name.startswith(("AppHealthEvaluation_", "AppHealthRecovery_"))
+            else FaultState.NOT_TESTED
+        )
+        assert app_instance.fm.check_symptom(symptom_name) == expected
 
     # Assert that all faults are registered
     for fault_name in app_instance.faults:
         fault = app_instance.faults[fault_name]
         assert fault.name is not None
         assert fault.level >= 0
+
+
+def test_app_health_storage_failure_routes_once_without_recursive_notification(
+    mocked_hass_app_with_temp_component,
+) -> None:
+    app_instance, _, __, ___, _ = mocked_hass_app_with_temp_component
+    app_instance.initialize()
+    store = Mock()
+    store.save.side_effect = OSError("storage unavailable")
+    app_instance.notify_man.state_store = store
+
+    app_instance.notify_man._persist_state()
+
+    assert app_instance.fm.check_symptom("AppHealthPersistenceNotificationState") == FaultState.SET
+    assert app_instance.faults["SafetyAppHealth"].evaluation.active is True
+
+
+def test_recovery_store_failure_does_not_get_swallowed_or_clear_from_other_store(
+    mocked_hass_app_with_temp_component,
+) -> None:
+    app_instance, _, __, ___, _ = mocked_hass_app_with_temp_component
+    app_instance.initialize()
+    store = Mock()
+    store.save.side_effect = OSError("recovery store unavailable")
+    app_instance.reco_man.state_store = store
+
+    with pytest.raises(OSError, match="recovery store unavailable"):
+        app_instance.reco_man._persist_state()
+    app_instance.notify_man._persist_state()
+    assert app_instance.fm.check_symptom("AppHealthPersistenceRecoveryState") == FaultState.SET
+
+    store.save.side_effect = None
+    app_instance.reco_man._persist_state()
+    assert app_instance.fm.check_symptom("AppHealthPersistenceRecoveryState") == FaultState.CLEARED
+
+
+def test_mqtt_outage_keeps_internal_cause_for_external_supervisor(
+    mocked_hass_app_with_temp_component,
+) -> None:
+    app_instance, _, __, ___, _ = mocked_hass_app_with_temp_component
+    app_instance.initialize()
+    original_call_service = app_instance.call_service
+
+    def broken_mqtt(service: str, **kwargs: object) -> object:
+        if service == "mqtt/publish":
+            raise OSError("broker unavailable")
+        return original_call_service(service, **kwargs)
+
+    app_instance.call_service = broken_mqtt
+    app_instance._mqtt_heartbeat()
+    assert app_instance.fm.check_symptom("AppHealthPublication") == FaultState.SET
+
+    app_instance.call_service = original_call_service
+    app_instance._mqtt_heartbeat()
+    assert app_instance.fm.check_symptom("AppHealthPublication") == FaultState.CLEARED
+
+
+def test_component_recovery_policy_error_is_not_shared_dispatch_failure(
+    mocked_hass_app_with_temp_component,
+) -> None:
+    app_instance, _, __, ___, _ = mocked_hass_app_with_temp_component
+    app_instance.initialize()
+    symptom_id = "RiskyTemperatureOffice"
+    app_instance.recovery_actions[symptom_id].rec_fun = Mock(
+        side_effect=RuntimeError("component policy error")
+    )
+    symptom = app_instance.symptoms[symptom_id]
+    symptom.state = FaultState.SET
+
+    with pytest.raises(ComponentRecoveryError):
+        app_instance.reco_man.handle_fault_event(
+            symptom=symptom,
+            fault_tag="test-fault-tag",
+            fault_state=FaultState.SET,
+            fault_name="RiskyTemperature",
+        )
+    assert app_instance.fm.check_symptom(
+        f"AppHealthRecovery_{symptom_id}"
+    ) == FaultState.CLEARED
+
+
+def test_failed_mobile_submission_sets_app_health_without_notification_loop(
+    mocked_hass_app_with_temp_component,
+) -> None:
+    app_instance, _, __, ___, _ = mocked_hass_app_with_temp_component
+    app_instance.initialize()
+    service = app_instance.notify_man.mobile_provider.services[0]
+    failed = DeliveryBatchResult((
+        TargetDeliveryResult(service, DeliveryDisposition.FAILED, "transport down"),
+    ))
+    sender = Mock(return_value=failed)
+    app_instance.notify_man.mobile_provider.send = sender
+
+    app_instance.notify_man.notify(
+        "Test hazard", 2, FaultState.SET, {}, "test-hazard-tag"
+    )
+
+    assert app_instance.fm.check_symptom("AppHealthDelivery") == FaultState.SET
+    assert sender.call_count == 2
 
 
 def test_trigger_symptom_sets_fault(mocked_hass_app_with_temp_component):

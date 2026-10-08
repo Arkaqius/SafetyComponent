@@ -624,10 +624,37 @@ _We model the system as **decoupled Safety Components**, each implementing one o
   active condition and shadow owners separately. Shadowing shall withdraw
   redundant responses without clearing evidence. The existing external raw
   states and notification-history codes shall remain stable during migration.
+- **Fault diagnostic evidence:** On the first active transition, C-FLT shall
+  retain one bounded, allowlisted freeze frame per fault independently of
+  notification delivery. A later source update or quiet response refresh shall
+  not replace its captured evidence or count another activation. The same
+  `freeze_frame` object shall preserve bounded lifecycle times and counters
+  alongside the capture and shall use one Freeze frame name in operator views
+  and one object in API/MQTT contracts, without creating episode identities
+  or archiving continuous Home Assistant payloads. Evidence-storage failure
+  shall be visible as an App Health durability cause without blocking the
+  safety decision or its response.
 - **Priority:** Existing fault level L1..L4 shall select the notification level
   of the same number. H/D category describes a hazard/equipment condition or a
   diagnostic capability failure, not urgency. A level alone shall not authorize
   recovery actuation or define a degradation target.
+- **Scoped degradation and coverage:** Each diagnostic dependency shall name
+  its affected H capability and subject. Technical loss shall restrict only
+  dependent evaluation or recovery, retain independent valid channels and
+  prior active hazard evidence, and expose causes and affected scope. Coverage
+  of the installed baseline shall be reported separately as `FULL`, `PARTIAL`,
+  `DEGRADED`, or `UNKNOWN`. Loss of the process itself requires observation
+  independent of that process.
+- **Fault-owned self-diagnostics:** Each installed remote adapter shall have
+  one independent D fault for its current technical health; consumer capability
+  loss shall remain distinct after provider redundancy is evaluated. One App
+  Health D fault shall aggregate independently clearing execution, delivery,
+  local-output, persistence, publication, and startup causes. A local failure
+  shall restrict only its declared H capability or response vector. Historical
+  counters and deliberate operator inhibitions shall not assert technical loss.
+  An observer outside AppDaemon shall report missing/unhealthy process or
+  publication heartbeat through an independent response path, with its HA/host
+  blind spots explicitly stated.
 
 ---
 

@@ -48,6 +48,7 @@ class NotificationManager:
         state_store: NotificationStateStore | None = None,
         mqtt_entities: Any | None = None,
         clock: Callable[[], float] | None = None,
+        diagnostics_observer: Callable[..., None] | None = None,
     ) -> None:
         """Create the manager without registering AppDaemon callbacks."""
 
@@ -72,10 +73,12 @@ class NotificationManager:
             hass_app, self.notification_config["mobile"]
         )
         self.local_annunciator = local_annunciator or LocalAnnunciator(
-            hass_app, self.notification_config["local"]
+            hass_app, self.notification_config["local"],
+            diagnostics_observer=diagnostics_observer,
         )
         self.state_store = state_store or InMemoryNotificationStateStore()
         self.mqtt_entities = mqtt_entities
+        self.diagnostics_observer = diagnostics_observer
         self._clock = clock or time.time
         self.active_notification: dict[str, dict[str, Any]] = {}
         self.pending_deliveries: dict[str, PendingDelivery] = {}
@@ -837,11 +840,18 @@ class NotificationManager:
             self.hass_app.log(
                 f"Unable to persist notification state: {exc}", level="ERROR"
             )
+            if self.diagnostics_observer is not None:
+                self.diagnostics_observer("persistence", True, detail="notification_state", operation="save")
+            return
+        if self.diagnostics_observer is not None:
+            self.diagnostics_observer("persistence", False, detail="notification_state", operation="save")
 
     def _restore_state(self) -> None:
         try:
             snapshot = self.state_store.load()
             if not snapshot:
+                if self.diagnostics_observer is not None:
+                    self.diagnostics_observer("persistence", False, detail="notification_state", operation="load")
                 return
             if int(snapshot.get("version", -1)) != _STATE_VERSION:
                 raise ValueError("Unsupported notification state version")
@@ -910,6 +920,11 @@ class NotificationManager:
             self.hass_app.log(
                 f"Unable to restore notification state: {exc}", level="ERROR"
             )
+            if self.diagnostics_observer is not None:
+                self.diagnostics_observer("persistence", True, detail="notification_state", operation="load")
+            return
+        if self.diagnostics_observer is not None:
+            self.diagnostics_observer("persistence", False, detail="notification_state", operation="load")
 
     def _publish_diagnostics(self) -> None:
         if self.mqtt_entities is None:
@@ -955,6 +970,19 @@ class NotificationManager:
             state,
             attributes=attributes,
         )
+        if self.diagnostics_observer is not None:
+            self.diagnostics_observer(
+                "delivery", pending_count > 0 and self.wan_online is False,
+                detail="wan_queue",
+            )
+            for service, status in self._channel_status.items():
+                if status["status"] in {
+                    "failed", "accepted_by_home_assistant"
+                }:
+                    self.diagnostics_observer(
+                        "delivery", status["status"] == "failed",
+                        detail=f"target:{service}",
+                    )
 
     # Compatibility helper retained for existing callers/tests.
     def _clear_symptom_msg(self, notification: dict, notification_msg: str) -> None:

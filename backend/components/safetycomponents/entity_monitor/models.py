@@ -50,6 +50,9 @@ class EntityDependency:
     detection_budget_seconds: int | None = None
     area_id: str | None = None
     area_name: str | None = None
+    degradation_targets: tuple[tuple[str, str, str, str], ...] = ()
+    external_only: bool = False
+    recovery_command: bool = False
 
 
 @dataclass

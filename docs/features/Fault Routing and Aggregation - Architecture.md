@@ -58,6 +58,14 @@ Class D and priority L3 apply to M11..M16. The matrix in
 recovery, and degradation allocation. A diagnostic fault does not itself
 erase the hazard condition whose evaluation or recovery is impaired.
 
+M13 and M15b retain a separate `RecoveryCommand` contribution for a rejected
+Home Assistant service command or a missed physical postcondition. RecoveryManager
+persists the outstanding failure and sends its exact H symptom/actuator pair to
+Entity Monitor. A successful service call is not positive repair evidence;
+clearing requires the configured contact or actuator-state postcondition.
+Availability checks continue independently, and failure does not trigger
+automatic command replay.
+
 An entity selected for Group A and consumed by Group B retains both
 memberships and the stricter applicable health-check policy, but has one
 diagnostic fault owner for a given failure. The configured owner maps each

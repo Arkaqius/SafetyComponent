@@ -3,6 +3,7 @@ entity.safety_system_state: Safety system state
 entity.entity_monitor_summary: Monitored entities
 entity.notification_delivery_health: Notification delivery health
 entity.safety_evaluation_progress: Safety evaluation progress
+entity.safety_coverage_state: Safety coverage
 entity.safety_detector_tests: Safety detector tests
 entity.safety_periodic_tests: Safety periodic checks
 test.notification_delivery: Verified warning delivery
@@ -75,6 +76,8 @@ fault.wan_unavailable: WAN unavailable
 fault.update_available: 'Update available: {product}'
 fault.remote_battery_low: 'Low battery: {device}'
 fault.detector_test_due: 'Detector test needs attention: {detector}'
+fault.external_provider_unavailable: 'External provider unavailable: {provider}'
+fault.safety_app_health: Safety application health
 hazard.label.smoke: Smoke
 hazard.label.flammable_gas: Flammable gas
 hazard.label.carbon_monoxide: Carbon monoxide

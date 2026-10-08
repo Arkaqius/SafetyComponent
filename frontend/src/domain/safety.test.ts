@@ -185,6 +185,50 @@ test('keeps evaluation, activation and shadowing independent', () => {
   assert.equal(summary.tone, 'critical');
 });
 
+test('presents capture and lifecycle metadata as one freeze frame', () => {
+  const frame = {
+    version: 2,
+    source: { state: 31.2, threshold: 28 },
+    captured_at: timestamp,
+    activation_count: 3,
+    last_valid_pass_at: null,
+    active_duration_seconds: null,
+  };
+  const [fault] = getFaults({ 'sensor.fault_hazard': entity('FAIL', { freeze_frame: frame }) });
+  assert.deepEqual(fault.diagnosticData.freezeFrame, frame);
+  assert.notEqual(fault.diagnosticData.freezeFrame, frame);
+});
+
+test('combines legacy attributes into the same freeze frame without overwriting unified fields', () => {
+  const [fault] = getFaults({
+    'sensor.fault_hazard': entity('FAIL', {
+      freeze_frame: { captured_at: timestamp, activation_count: 3 },
+      extended_data: { activation_count: 2, first_failure_at: timestamp },
+    }),
+  });
+  assert.deepEqual(fault.diagnosticData.freezeFrame, { captured_at: timestamp, activation_count: 3, first_failure_at: timestamp });
+});
+
+test('keeps absent or malformed freeze frames unavailable', () => {
+  for (const frame of [undefined, null, 'invalid', [], 123, false]) {
+    const [fault] = getFaults({
+      'sensor.fault_hazard': entity('FAIL', { freeze_frame: frame, extended_data: { activation_count: 1 } }),
+    });
+    assert.equal(fault.diagnosticData.freezeFrame, null);
+  }
+});
+
+test('does not augment a unified freeze frame with stale legacy values', () => {
+  const frame = { version: 2, captured_at: timestamp, activation_count: 3 };
+  const [fault] = getFaults({
+    'sensor.fault_hazard': entity('FAIL', {
+      freeze_frame: frame,
+      extended_data: { activation_count: 99, stale_field: 'obsolete' },
+    }),
+  });
+  assert.deepEqual(fault.diagnosticData.freezeFrame, frame);
+});
+
 test('does not accept old fault states or a missing activation field as safe', () => {
   const faults = getFaults({
     'sensor.fault_obsolete': entity('Set', { level: 'level_2' }),

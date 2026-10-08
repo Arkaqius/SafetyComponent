@@ -9,6 +9,7 @@ from pydantic import ConfigDict, Field
 from components.core.localization import LocalizationSettings
 from components.core.mqtt_entity_manager import MqttSettings
 from components.core.pydantic_utils import StrictBaseModel
+from components.faults_manager.schema import FaultEvidenceConfig
 from components.safetycomponents.external_hazard.schema import (
     ExternalHazardPolicy,
     SiteConfig,
@@ -63,6 +64,7 @@ class AppPolicy(StrictBaseModel):
     calibration: CalibrationSettings = Field(default_factory=CalibrationSettings)
     external_hazard_policy: ExternalHazardPolicy | None = None
     faults: Dict[str, Dict[str, Any]]
+    fault_evidence: FaultEvidenceConfig
 
 
 class UserConfig(StrictBaseModel):

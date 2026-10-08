@@ -120,6 +120,7 @@ class Localizer:
             "sensor.entity_monitor_summary": "entity.entity_monitor_summary",
             "sensor.notification_delivery_health": "entity.notification_delivery_health",
             "sensor.safety_evaluation_progress": "entity.safety_evaluation_progress",
+            "sensor.safety_coverage_state": "entity.safety_coverage_state",
             "sensor.safety_detector_tests": "entity.safety_detector_tests",
             "sensor.safety_periodic_tests": "entity.safety_periodic_tests",
             "sensor.functional_safety_sources": "entity.functional_safety_sources",

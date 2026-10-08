@@ -50,6 +50,11 @@ from components.core.battery_fault_catalog import (
     reconcile_battery_faults,
 )
 from components.core.common_entities import CommonEntities
+from components.core.degradation import (
+    DegradationRegistry,
+    RestrictionEffect,
+    compile_runtime_bindings,
+)
 from components.core.event_bus import EventBus
 from components.core.detector_test_monitor import DetectorTestMonitor
 from components.core.periodic_test_monitor import PeriodicTestMonitor
@@ -64,6 +69,7 @@ from components.external_apis.stable_releases import StableReleaseProvider
 from components.core.derivative_monitor import DerivativeMonitor
 from components.core.localization import LocalizationSettings
 from components.core.mqtt_entity_manager import MqttEntityManager
+from components.core.self_diagnostics import SelfDiagnosticsComponent
 from components.external_apis import (
     ExternalApiRuntime,
     HttpJsonClient,
@@ -71,6 +77,11 @@ from components.external_apis import (
 )
 from components.faults_manager import cfg_parser as cfg_pr
 from components.faults_manager.fault_manager import FaultManager
+from components.faults_manager.evidence import FaultEvidenceJournal
+from components.faults_manager.evidence_store import (
+    InMemoryFaultEvidenceStore,
+    JsonFaultEvidenceStore,
+)
 from components.notification_manager.notification_manager import NotificationManager
 from components.notification_manager.state_store import (
     InMemoryNotificationStateStore,
@@ -90,7 +101,7 @@ import components.safetycomponents.safety_doors.safety_doors_component  # noqa: 
 import components.safetycomponents.external_hazard.external_hazard_component  # noqa: F401 - component registration
 import components.safetycomponents.entity_monitor.entity_monitor_component  # noqa: F401 - component registration
 import components.safetycomponents.internal_environmental_hazard.internal_environmental_hazard_monitor_component  # noqa: F401 - component registration
-from components.core.types_common import Symptom, RecoveryAction
+from components.core.types_common import RecoveryAction, SMState, Symptom
 
 
 class SafetyFunctions(hass.Hass):
@@ -220,9 +231,51 @@ class SafetyFunctions(hass.Hass):
                             )
                         self.fault_dict[fault_name] = fault_config
 
+        persistence_stores = {
+            "notification_state",
+            "recovery_state",
+            "fault_evidence_state",
+        }
+        indoor_monitor = self.sm_modules.get("InternalEnvironmentalHazardMonitorComponent")
+        if indoor_monitor is not None:
+            persistence_stores.add("internal_environment_state")
         functional_policy = self.runtime_config["app_config"]["calibration"].get(
             "functional_safety"
         )
+        if functional_policy:
+            persistence_stores.add("periodic_test_state")
+            detector_cfg = self.safety_components_cfg.get(
+                "InternalEnvironmentalHazardMonitorComponent", {}
+            )
+            if detector_cfg.get("detectors"):
+                persistence_stores.add("detector_test_state")
+        self.self_diagnostics = SelfDiagnosticsComponent(
+            self,
+            self.common_entities,
+            self.event_bus,
+            self.mqtt_entities,
+            self.api_modules,
+            persistence_stores=frozenset(persistence_stores),
+            local_outputs_enabled=any(
+                self.notification_cfg["local"].get(key)
+                for key in ("light_entity", "alarm_entity")
+            ),
+        )
+        self.sm_modules[self.self_diagnostics.component_name] = self.self_diagnostics
+        diagnostic_symptoms, _ = self.self_diagnostics.get_symptoms_data(
+            self.sm_modules, {}
+        )
+        if indoor_monitor is not None:
+            self.self_diagnostics.record_app_cause(
+                "persistence", indoor_monitor._persistence_error is not None,
+                detail="internal_environment_state", operation="load",
+            )
+        self.symptoms.update(diagnostic_symptoms)
+        for fault_name, fault_config in self.self_diagnostics.get_fault_definitions().items():
+            if fault_name in self.fault_dict:
+                raise ValueError(f"Duplicate fault definition: {fault_name}")
+            self.fault_dict[fault_name] = fault_config
+
         self.functional_safety_monitor = None
         self.detector_test_monitor = None
         self.periodic_test_monitor = None
@@ -256,6 +309,23 @@ class SafetyFunctions(hass.Hass):
             )
             self.symptoms.update(symptoms)
             self.fault_dict.update(self.functional_safety_monitor.get_fault_definitions())
+
+        hazard_targets = {
+            symptom_id
+            for symptom_id, symptom in self.symptoms.items()
+            if any(
+                fault_config.get("category", "H") == "H"
+                and (
+                    symptom_id in fault_config.get("related_symptom_ids", ())
+                    if fault_config.get("related_symptom_ids")
+                    else symptom.sm_name in fault_config.get("related_sms", ())
+                )
+                for fault_config in self.fault_dict.values()
+            )
+        }
+        self.symptoms.update(self.self_diagnostics.add_targeted_causes(
+            hazard_targets, hazard_targets.intersection(self.recovery_actions)
+        ))
 
         for fault_name in inactive_fault_names:
             if self.fault_dict.pop(fault_name, None) is not None:
@@ -326,6 +396,24 @@ class SafetyFunctions(hass.Hass):
         )
 
         # Create the fault aggregation and lifecycle manager.
+        evidence_cfg = self.runtime_config["app_config"]["fault_evidence"]
+        if evidence_cfg["enabled"]:
+            evidence_store = JsonFaultEvidenceStore(
+                evidence_cfg["state_file"], max_bytes=evidence_cfg["max_total_bytes"]
+            )
+        else:
+            evidence_store = InMemoryFaultEvidenceStore()
+        self.fault_evidence = FaultEvidenceJournal(
+            evidence_store,
+            max_records=evidence_cfg["max_records"],
+            max_frame_bytes=evidence_cfg["max_frame_bytes"],
+            max_total_bytes=evidence_cfg["max_total_bytes"],
+            log=self.log,
+            diagnostics_observer=self.self_diagnostics.record_app_cause,
+            schedule_flush=lambda callback, delay: self.run_in(
+                lambda **_: callback(), delay
+            ),
+        )
         self.fm: FaultManager = FaultManager(
             self,
             self.sm_modules,
@@ -333,7 +421,32 @@ class SafetyFunctions(hass.Hass):
             self.faults,
             self.event_bus,
             self.mqtt_entities,
+            evidence_journal=self.fault_evidence,
         )
+        entity_monitor = self.sm_modules.get("EntityMonitorComponent")
+        monitor_bindings = (
+            entity_monitor.get_degradation_bindings()
+            if entity_monitor is not None else ()
+        )
+        self.degradation = DegradationRegistry(
+            self.symptoms,
+            self.faults,
+            compile_runtime_bindings(
+                self.symptoms,
+                monitor_bindings,
+                faults=self.faults,
+                recovery_symptoms=frozenset(self.recovery_actions),
+            ),
+            on_change=self._on_coverage_changed,
+            isolate_invalid=True,
+        )
+        self.fm.restriction_provider = lambda symptom_id: tuple(
+            f"{effect.value}:{cause}"
+            for effect in RestrictionEffect
+            for cause in self.degradation.causes_for(symptom_id, effect)
+        )
+        for source, error in self.degradation.binding_errors.items():
+            self.log(f"Rejected degradation binding {source}: {error}", level="ERROR")
 
         persistence_cfg = self.notification_cfg["persistence"]
         notification_state_store = (
@@ -349,6 +462,7 @@ class SafetyFunctions(hass.Hass):
             localizer=self.localizer,
             state_store=notification_state_store,
             mqtt_entities=self.mqtt_entities,
+            diagnostics_observer=self.self_diagnostics.record_app_cause,
         )
         for component in self.sm_modules.values():
             get_inhibitions = getattr(component, "get_output_inhibitions", None)
@@ -379,12 +493,23 @@ class SafetyFunctions(hass.Hass):
             self.notify_man,
             self.mqtt_entities,
             recovery_state_store,
+            degradation=self.degradation,
+            diagnostics_observer=self.self_diagnostics.record_app_cause,
+            recovery_observer=self.self_diagnostics.record_recovery,
+            command_observer=(
+                entity_monitor.record_recovery_command
+                if entity_monitor is not None else None
+            ),
         )
         for component in self.sm_modules.values():
             if callable(getattr(component, "evaluate_recovery_policy", None)):
                 self.reco_man.register_policy_evaluator(component)
 
         # Wire symptom and fault events in deterministic priority order.
+        self.event_bus.subscribe("symptom", self.degradation.observe, priority=-1)
+        self.event_bus.subscribe(
+            "evaluation_unavailable", self.degradation.mark_unavailable, priority=-1
+        )
         self.event_bus.subscribe("symptom", self.fm.handle_symptom_event, priority=0)
         self.event_bus.subscribe(
             "evaluation_unavailable", self.fm.mark_evaluation_unavailable, priority=0
@@ -399,12 +524,25 @@ class SafetyFunctions(hass.Hass):
         self.notify_man.start()
         self.safetyhome_api.start()
         self.reco_man.start()
+        if entity_monitor is not None:
+            entity_monitor.initialize_recovery_commands(
+                self.reco_man.failed_recovery_commands()
+            )
 
         # Initialize state listeners and timers for every safety mechanism.
         self.fm.init_safety_mechanisms()
 
+        # Core dispatch is ready before the first H evaluation can propose recovery.
+        self.self_diagnostics.record_app_cause("startup", False)
+        for symptom_id in hazard_targets.intersection(self.recovery_actions):
+            self.self_diagnostics.record_recovery(symptom_id, False)
+        for symptom_id, symptom in self.symptoms.items():
+            if symptom.module is self.self_diagnostics:
+                self.fm.enable_sm(symptom_id, SMState.ENABLED)
+
         # Enable configured symptoms after all managers and listeners exist.
         self.fm.enable_all_symptoms()
+        self.reco_man.resume_command_postconditions()
 
         if self.functional_safety_monitor is not None:
             self.functional_safety_monitor.start()
@@ -414,6 +552,7 @@ class SafetyFunctions(hass.Hass):
                 intervals={"notification_delivery": functional_policy["notification_test_interval_days"], "backup_restore": functional_policy["backup_restore_test_interval_days"]},
                 state_store=JsonNotificationStateStore(functional_policy["periodic_test_state_file"]),
                 status_observer=self.functional_safety_monitor.observe_periodic_test,
+                diagnostics_observer=self.self_diagnostics.record_app_cause,
             )
             self.periodic_test_monitor.start()
             detector_cfg = self.safety_components_cfg.get(
@@ -431,6 +570,7 @@ class SafetyFunctions(hass.Hass):
                     interval_days=functional_policy["detector_test_interval_days"],
                     state_store=test_store,
                     status_observer=self.functional_safety_monitor.observe_detector_test,
+                    diagnostics_observer=self.self_diagnostics.record_app_cause,
                 )
                 self.detector_test_monitor.start()
 
@@ -481,6 +621,18 @@ class SafetyFunctions(hass.Hass):
                     )
                 )
         for key, entity_id in self.common_entities_cfg.items():
+            temperature_entries = self.safety_components_cfg.get(
+                "TemperatureComponent", []
+            )
+            recovery_targets = tuple(
+                (symptom_id, "temperature_recovery", str(room), "recovery")
+                for entry in temperature_entries
+                for room in entry
+                for symptom_id in (
+                    f"RiskyTemperature{room}",
+                    f"RiskyTemperature{room}ForeCast",
+                )
+            ) if key == "outside_temp" else ()
             checks = (
                 {
                     "freshness": {
@@ -502,6 +654,8 @@ class SafetyFunctions(hass.Hass):
                         "fault_owner": "component",
                         "fault_name": "CommonInputUnavailable",
                         "purpose": f"Shared application entity: {key}",
+                        "degradation_targets": recovery_targets,
+                        "external_only": not recovery_targets,
                         "checks": checks,
                         "detection_budget_seconds": (
                             4020 if key == "outside_temp" else 30
@@ -633,6 +787,11 @@ class SafetyFunctions(hass.Hass):
     def _start_mqtt_reporting(self) -> None:
         """Make MQTT entities available and keep their states fresh."""
         self.mqtt_entities.publish_availability(True)
+        diagnostics = getattr(self, "self_diagnostics", None)
+        if diagnostics is not None:
+            diagnostics.record_app_cause(
+                "publication", False, detail="mqtt_heartbeat"
+            )
         if self.mqtt_entities.settings.heartbeat_seconds > 0:
             self.run_every(
                 self._mqtt_heartbeat,
@@ -642,7 +801,28 @@ class SafetyFunctions(hass.Hass):
 
     def _mqtt_heartbeat(self, **_: Any) -> None:
         """Refresh MQTT sensor states used by ``expire_after``."""
-        self.mqtt_entities.publish_heartbeat()
+        try:
+            self.mqtt_entities.publish_heartbeat()
+        except Exception as exc:
+            self.log(f"MQTT heartbeat publication failed: {exc}", level="ERROR")
+            diagnostics = getattr(self, "self_diagnostics", None)
+            if diagnostics is not None:
+                try:
+                    diagnostics.record_app_cause(
+                        "publication", True, detail="mqtt_heartbeat"
+                    )
+                except Exception as routing_error:
+                    # The same broken MQTT path cannot carry this D transition.
+                    self.log(
+                        f"MQTT App Health routing unavailable: {routing_error}",
+                        level="ERROR",
+                    )
+            return
+        diagnostics = getattr(self, "self_diagnostics", None)
+        if diagnostics is not None:
+            diagnostics.record_app_cause(
+                "publication", False, detail="mqtt_heartbeat"
+            )
 
     def record_safety_evaluation(self, component: str, *, success: bool) -> None:
         """Accept evidence only after a component callback has completed."""
@@ -718,6 +898,9 @@ class SafetyFunctions(hass.Hass):
                     f"Unable to persist recovery manager state: {exc}",
                     level="ERROR",
                 )
+        fault_evidence = getattr(self, "fault_evidence", None)
+        if fault_evidence is not None:
+            fault_evidence.stop()
         mqtt_entities = getattr(self, "mqtt_entities", None)
         if mqtt_entities is None:
             return
@@ -757,6 +940,25 @@ class SafetyFunctions(hass.Hass):
             attributes=attributes,
         )
 
+    def _on_coverage_changed(self) -> None:
+        """Apply scoped restrictions before downstream fault recovery handlers."""
+
+        recovery_manager = getattr(self, "reco_man", None)
+        if recovery_manager is not None:
+            try:
+                recovery_manager.invalidate_restricted_proposals()
+            except Exception as exc:
+                self.log(f"Unable to withdraw restricted recovery: {exc}", level="ERROR")
+        coverage = self.degradation.snapshot(limit=32)
+        try:
+            self._set_internal_entity(
+                "sensor.safety_coverage_state",
+                coverage["state"],
+                attributes={key: value for key, value in coverage.items() if key != "state"},
+            )
+        except Exception as exc:
+            self.log(f"Unable to publish safety coverage: {exc}", level="ERROR")
+
 
     def register_entities(self) -> None:
         """
@@ -789,8 +991,24 @@ class SafetyFunctions(hass.Hass):
             entity_category="diagnostic",
         )
 
+        coverage = self.degradation.snapshot(limit=32)
+        self.mqtt_entities.register_sensor(
+            "sensor.safety_coverage_state",
+            "Safety Coverage",
+            state=coverage["state"],
+            attributes={key: value for key, value in coverage.items() if key != "state"},
+            icon="mdi:shield-search",
+            entity_category="diagnostic",
+        )
+
         # Register fault entities
         for name, fault in self.faults.items():
+            evidence = self.fault_evidence.get(name)
+            evidence_attributes = {}
+            if evidence is not None:
+                evidence_attributes = {
+                    "freeze_frame": evidence["freeze_frame"],
+                }
             self.mqtt_entities.register_sensor(
                 "sensor.fault_" + name,
                 fault.friendly_name,
@@ -802,6 +1020,7 @@ class SafetyFunctions(hass.Hass):
                     "active": fault.evaluation.active,
                     "shadowed_by": [],
                     "latched": fault.evaluation.latched,
+                    **evidence_attributes,
                 },
                 icon="mdi:alert-outline",
                 entity_category="diagnostic",

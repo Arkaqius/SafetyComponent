@@ -3,6 +3,7 @@ entity.safety_system_state: Status des Sicherheitssystems
 entity.entity_monitor_summary: Überwachte Entitäten
 entity.notification_delivery_health: Status der Benachrichtigungszustellung
 entity.safety_evaluation_progress: Fortschritt der Sicherheitsbewertung
+entity.safety_coverage_state: Abdeckung der Sicherheitsüberwachung
 entity.safety_detector_tests: Tests der Sicherheitsmelder
 entity.safety_periodic_tests: Regelmäßige Sicherheitsprüfungen
 test.notification_delivery: Bestätigte Warnungszustellung
@@ -75,6 +76,8 @@ fault.wan_unavailable: WAN nicht verfügbar
 fault.update_available: 'Update verfügbar: {product}'
 fault.remote_battery_low: 'Niedriger Batteriestand: {device}'
 fault.detector_test_due: 'Meldertest erfordert Prüfung: {detector}'
+fault.external_provider_unavailable: 'Externer Datenanbieter nicht verfügbar: {provider}'
+fault.safety_app_health: Zustand der Sicherheitsanwendung
 hazard.label.smoke: Rauch
 hazard.label.flammable_gas: Brennbares Gas
 hazard.label.carbon_monoxide: Kohlenmonoxid

@@ -9,6 +9,14 @@ from unittest.mock import Mock
 import pytest
 
 
+def _isolated_recovery_manager(app_instance):
+    """Exercise recovery mechanics with synthetic, unbound unit-test symptoms."""
+
+    manager = app_instance.reco_man
+    manager.degradation = None
+    return manager
+
+
 def test_recovery_cleared_state(mocked_hass_app_with_temp_component):
     """
     Test Case: Execute recovery process when symptom is in CLEARED state.
@@ -141,7 +149,7 @@ def test_successful_recovery_execution_basic(mocked_hass_app_with_temp_component
 
     app_instance.initialize()
 
-    recovery_manager = app_instance.reco_man
+    recovery_manager = _isolated_recovery_manager(app_instance)
     recovery_action = Mock()
     recovery_action.name = symptom.name
     recovery_result = Mock()
@@ -176,7 +184,7 @@ def test_dry_test_failure_aborts_recovery(mocked_hass_app_with_temp_component):
 
     app_instance.initialize()
 
-    recovery_manager = app_instance.reco_man
+    recovery_manager = _isolated_recovery_manager(app_instance)
     recovery_action = Mock()
     recovery_action.name = symptom.name
     recovery_result = Mock()
@@ -218,7 +226,7 @@ def test_recovery_conflict_aborts_recovery(mocked_hass_app_with_temp_component):
 
     app_instance.initialize()
 
-    recovery_manager = app_instance.reco_man
+    recovery_manager = _isolated_recovery_manager(app_instance)
     recovery_action = Mock()
     recovery_action.name = symptom.name
     recovery_result = Mock()
@@ -261,7 +269,7 @@ def test_successful_recovery_execution(mocked_hass_app_with_temp_component):
 
     app_instance.initialize()
 
-    recovery_manager = app_instance.reco_man
+    recovery_manager = _isolated_recovery_manager(app_instance)
     recovery_action = Mock()
     recovery_action.name = symptom.name
     recovery_result = Mock()
@@ -298,7 +306,7 @@ def test_recovery_execution_multiple_entities(mocked_hass_app_with_temp_componen
 
     app_instance.initialize()
 
-    recovery_manager = app_instance.reco_man
+    recovery_manager = _isolated_recovery_manager(app_instance)
     recovery_result = RecoveryResult(
         changed_sensors={"sensor.test_1": "on", "sensor.test_2": "off"},
         changed_actuators={"switch.actuator_1": "on", "light.actuator_2": "off"},
@@ -349,7 +357,7 @@ def test_integration_with_fault_and_notification_managers(
     fault_manager.symptoms = {symptom.name: symptom}
 
     # Prepare the RecoveryManager and NotificationManager
-    recovery_manager = app_instance.reco_man
+    recovery_manager = _isolated_recovery_manager(app_instance)
     recovery_result = RecoveryResult(
         changed_sensors={},  # No sensor changes
         changed_actuators={"switch.actuator_1": "on"},
@@ -403,7 +411,7 @@ def test_recovery_action_state_transition(mocked_hass_app_with_temp_component):
 
     app_instance.initialize()
 
-    recovery_manager = app_instance.reco_man
+    recovery_manager = _isolated_recovery_manager(app_instance)
     recovery_result = RecoveryResult(
         changed_sensors={"sensor.test_1": "on", "sensor.test_2": "off"},
         changed_actuators={"switch.actuator_1": "on", "light.actuator_2": "off"},
@@ -500,7 +508,7 @@ def test_recovery_conflict_with_higher_priority(mocked_hass_app_with_temp_compon
 
     app_instance.initialize()
 
-    recovery_manager = app_instance.reco_man
+    recovery_manager = _isolated_recovery_manager(app_instance)
 
     # Mock the RecoveryAction
     recovery_result = RecoveryResult(
@@ -630,6 +638,143 @@ def test_perform_recovery_with_exception_handling(mocked_hass_app_with_temp_comp
 
     # Assert that notifications were processed
     recovery_manager.nm._add_recovery_action.assert_called_once_with("Test notification", fault_tag)
+
+
+def test_failed_actuator_command_persists_and_notifies_diagnostic_owner(
+    mocked_hass_app_with_temp_component,
+):
+    app_instance, _, __, ___, _ = mocked_hass_app_with_temp_component
+    app_instance.initialize()
+    manager = app_instance.reco_man
+    manager.command_observer = Mock()
+    manager.state_store = InMemoryRecoveryStateStore()
+    symptom = Mock(name="symptom")
+    symptom.name = "RiskyTemperatureOffice"
+    action = Mock()
+    action.name = symptom.name
+    manager.recovery_actions = {symptom.name: action}
+    manager._execute_entity_action = Mock(side_effect=RuntimeError("service rejected"))
+
+    assert manager._perform_recovery(
+        symptom, [], {"cover.office": "closed"}, "tag"
+    ) == {}
+    assert manager.failed_recovery_commands() == {
+        (symptom.name, "cover.office"): "command_failed: RuntimeError"
+    }
+    manager.command_observer.assert_called_once_with(
+        symptom.name, "cover.office", True, "command_failed: RuntimeError"
+    )
+    assert manager.state_store.load()["command_failures"] == [{
+        "symptom_id": symptom.name,
+        "entity_id": "cover.office",
+        "detail": "command_failed: RuntimeError",
+        "postconditions": {},
+    }]
+
+    restored = RecoveryManager(
+        app_instance, manager.fm, {}, manager.common_entities,
+        manager.nm, manager.mqtt_entities, manager.state_store,
+    )
+    restored._restore_state()
+    assert restored.failed_recovery_commands() == manager.failed_recovery_commands()
+
+
+def test_command_failure_clears_only_after_observed_postcondition(
+    mocked_hass_app_with_temp_component,
+):
+    app_instance, _, __, ___, _ = mocked_hass_app_with_temp_component
+    app_instance.initialize()
+    manager = app_instance.reco_man
+    manager.command_observer = Mock()
+    manager.state_store = InMemoryRecoveryStateStore()
+    symptom_id = "ExternalWeatherExposureWindGate"
+    manager._proposals[symptom_id] = {"actuator_entity_id": "cover.gate"}
+    manager._record_command_outcome(
+        symptom_id, "cover.gate", True, "postcondition_timeout"
+    )
+    manager._pending_recovery_confirmations[symptom_id] = {
+        "binary_sensor.gate": "off"
+    }
+    app_instance.get_state = Mock(return_value="on")
+    assert not manager._all_recovery_postconditions_met(symptom_id)
+    assert manager.failed_recovery_commands()
+
+    app_instance.get_state.return_value = "off"
+    assert manager._all_recovery_postconditions_met(symptom_id)
+    manager._confirm_command_postcondition(symptom_id)
+    assert manager.failed_recovery_commands() == {}
+    manager.command_observer.assert_called_with(
+        symptom_id, "cover.gate", False, "postcondition_confirmed"
+    )
+
+
+def test_postcondition_timeout_sets_command_fault_but_unconfirmed_offer_does_not(
+    mocked_hass_app_with_temp_component,
+):
+    app_instance, _, __, ___, _ = mocked_hass_app_with_temp_component
+    app_instance.initialize()
+    manager = app_instance.reco_man
+    manager.command_observer = Mock()
+    manager.state_store = InMemoryRecoveryStateStore()
+    symptom_id = "ExternalWeatherExposureWindGate"
+    action = Mock()
+    action.name = symptom_id
+    manager.recovery_actions = {symptom_id: action}
+    manager._proposals[symptom_id] = {
+        "status": RecoveryActionState.AWAITING_CONFIRMATION.name,
+        "actuator_entity_id": "cover.gate",
+    }
+    manager._mark_recovery_timed_out(symptom_id)
+    assert manager.failed_recovery_commands() == {}
+    manager.command_observer.assert_not_called()
+
+    manager._proposals[symptom_id]["status"] = RecoveryActionState.EXECUTING.name
+    manager._mark_recovery_timed_out(symptom_id)
+    assert manager.failed_recovery_commands() == {
+        (symptom_id, "cover.gate"): "postcondition_timeout"
+    }
+    manager.command_observer.assert_called_once_with(
+        symptom_id, "cover.gate", True, "postcondition_timeout"
+    )
+
+
+def test_restored_failure_observes_manual_postcondition_without_command_replay(
+    mocked_hass_app_with_temp_component,
+):
+    app_instance, _, __, ___, _ = mocked_hass_app_with_temp_component
+    app_instance.initialize()
+    manager = app_instance.reco_man
+    manager.command_observer = Mock()
+    symptom_id = "ExternalWeatherExposureWindGate"
+    manager.state_store = InMemoryRecoveryStateStore({
+        "version": 1,
+        "proposals": [],
+        "command_failures": [{
+            "symptom_id": symptom_id,
+            "entity_id": "cover.gate",
+            "detail": "postcondition_timeout",
+            "postconditions": {"binary_sensor.gate": "off"},
+        }],
+    })
+    app_instance.get_state = Mock(return_value="on")
+    app_instance.call_service.reset_mock()
+    manager._restore_state()
+    manager.resume_command_postconditions()
+    assert manager.failed_recovery_commands()
+    assert not any(
+        call.args[0] == "cover/close_cover"
+        for call in app_instance.call_service.call_args_list
+    )
+
+    app_instance.get_state.return_value = "off"
+    manager._command_failure_postcondition_changed(
+        "binary_sensor.gate", "state", "on", "off",
+        failure_symptom_id=symptom_id, failure_actuator="cover.gate",
+    )
+    assert manager.failed_recovery_commands() == {}
+    manager.command_observer.assert_called_once_with(
+        symptom_id, "cover.gate", False, "postcondition_confirmed"
+    )
 
 
 def test_perform_recovery_no_recovery_action_found(mocked_hass_app_with_temp_component):
@@ -927,7 +1072,7 @@ def test_recovery_restore_rotates_tokens_without_replaying_commands(
                     "proposal_id": proposal_id,
                     "action_name": action.name,
                     "execution_policy": "user_confirmed",
-                    "status": "EXECUTING",
+                    "status": "AWAITING_CONFIRMATION",
                     "confirmation_token": "persisted-token",
                 },
             ]
@@ -954,18 +1099,24 @@ def test_recovery_restore_rotates_tokens_without_replaying_commands(
                     "action_name": action.name,
                     "execution_policy": "automatic",
                     "status": "EXECUTING",
+                    "actuator_entity_id": "cover.gate",
+                    "expected_postconditions": {"binary_sensor.gate": "off"},
                 }
             ]
         }
     )
     manager._restore_state()
     assert manager._proposals[proposal_id]["status"] == (
-        RecoveryActionState.TO_PERFORM.name
+        RecoveryActionState.FAILED.name
     )
+    assert manager.failed_recovery_commands() == {
+        (proposal_id, "cover.gate"): "postcondition_unverified_after_restart"
+    }
 
     manager.state_store = Mock()
     manager.state_store.load.side_effect = ValueError("broken snapshot")
     manager._restore_state()
+    assert manager.failed_recovery_commands() is None
     app_instance.log.assert_any_call(
         "Unable to restore recovery state: broken snapshot", level="ERROR"
     )

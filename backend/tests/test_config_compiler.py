@@ -264,6 +264,28 @@ def test_system_source_rejects_unknown_keys(tmp_path) -> None:
         )
 
 
+def test_fault_evidence_policy_is_system_owned_and_bounded(tmp_path) -> None:
+    """The installation cannot silently remove diagnostic capacity limits."""
+
+    system = yaml.safe_load(
+        (BACKEND_DIR / "config" / "system_config.yml").read_text(encoding="utf-8")
+    )
+    compiled = compile_config(
+        user_path=BACKEND_DIR / "config" / "user_config.example.yml"
+    )["SafetyFunctions"]
+    assert compiled["app_config"]["fault_evidence"] == system["runtime_cfg"]["fault_evidence"]
+    assert "fault_evidence" not in compiled["user_config"]
+
+    system["runtime_cfg"]["fault_evidence"]["max_total_bytes"] = 4096
+    system_path = tmp_path / "system.yml"
+    system_path.write_text(yaml.safe_dump(system), encoding="utf-8")
+    with pytest.raises(ValueError, match="cannot hold one frame"):
+        compile_config(
+            system_path=system_path,
+            user_path=BACKEND_DIR / "config" / "user_config.example.yml",
+        )
+
+
 def test_user_example_does_not_inherit_production_entity_collections() -> None:
     compiled = compile_config(
         user_path=BACKEND_DIR / "config" / "user_config.example.yml"

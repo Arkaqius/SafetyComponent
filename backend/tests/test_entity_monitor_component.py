@@ -7,9 +7,15 @@ from unittest.mock import MagicMock
 import pytest
 
 from components.core.common_entities import CommonEntities
+from components.core.degradation import (
+    DegradationRegistry,
+    RestrictionEffect,
+    compile_runtime_bindings,
+)
 from components.core.event_bus import EventBus
 from components.core.mqtt_entity_manager import MqttEntityManager
-from components.core.types_common import FaultState, SMState
+from components.core.types_common import Fault, FaultState, SMState, Symptom
+from components.faults_manager.cfg_parser import get_faults
 from components.safetycomponents.entity_monitor.entity_monitor_component import (
     EntityMonitorComponent,
 )
@@ -159,6 +165,38 @@ def test_entity_monitor_routes_checks_to_component_fault(
     runtime = component._entities["TemperatureOffice"]
     attributes = component._diagnostic_attributes(runtime)
     assert attributes["source_entity_id"] == "sensor.office_temperature"
+
+
+def test_entity_monitor_compiles_declared_group_b_and_external_only_group_a(
+    mocked_hass_app_basic,
+):
+    app, _, component = _component(mocked_hass_app_basic)
+    app.get_state = MagicMock(return_value=None)
+    config = _config()
+    config["component_entities"][0]["degradation_targets"] = (
+        ("RiskyTemperatureOffice", "temperature_evaluation", "Office", "evaluation"),
+    )
+    config["explicit_entities"] = [{
+        "key": "ExternalFan",
+        "entity_id": "binary_sensor.external_fan",
+        "owner": "EntityMonitorComponent",
+        "purpose": "External automation",
+        "source": "explicit",
+        "failure_debounce_seconds": 10,
+        "recovery_debounce_seconds": 10,
+        "checks": {},
+    }]
+    component.get_symptoms_data({"EntityMonitorComponent": component}, config)
+
+    bindings = component.get_degradation_bindings()
+    room = [item for item in bindings if "TemperatureOffice" in item.symptom_id]
+    external = [item for item in bindings if "ExternalFan" in item.symptom_id]
+    assert len(room) == 3
+    assert all(item.targets[0].symptom_id == "RiskyTemperatureOffice" for item in room)
+    assert all(not item.external_only for item in room)
+    assert len(external) == 1
+    assert external[0].targets == ()
+    assert external[0].external_only
 
 
 def test_entity_monitor_debounces_failure_and_recovery(mocked_hass_app_basic):
@@ -536,3 +574,128 @@ def test_freshness_fault_context_formats_age_as_duration(mocked_hass_app_basic):
 
     assert context["freshness_age"] == "2 h 0 min 23 s"
     assert "observed_value" not in context
+
+
+@pytest.mark.parametrize(
+    ("fault_name", "entity_id", "target", "key"),
+    [
+        ("TemperatureRecoveryUnavailable", "cover.office", "RiskyTemperatureOffice", "TemperatureActuatorOffice"),
+        ("ExternalRecoveryUnavailable", "cover.gate", "ExternalWeatherExposureWindGate", "ExternalRecoveryGate"),
+    ],
+)
+def test_recovery_command_failure_routes_to_scoped_group_b_fault(
+    mocked_hass_app_basic, fault_name, entity_id, target, key,
+):
+    app, bus, component = _component(mocked_hass_app_basic)
+    now = datetime(2026, 8, 13, 10, 0, tzinfo=timezone.utc)
+    app.get_state = MagicMock(return_value=_snapshot("open", now))
+    config = _config(entity_id)
+    config["component_entities"][0].update(
+        key=key,
+        fault_name=fault_name,
+        checks={},
+        recovery_command=True,
+        degradation_targets=((target, "recovery", "Office", "recovery"),),
+    )
+    symptoms, _ = component.get_symptoms_data(
+        {"EntityMonitorComponent": component}, config
+    )
+    command_id = f"EntityHealthFailure{key}RecoveryCommand"
+    assert command_id in symptoms
+    assert component.get_fault_definitions()[fault_name]["related_sms"] == [
+        component._mechanism_name(key)
+    ]
+    assert component.get_degradation_bindings()[-1].symptom_id == command_id
+
+    hazard_symptom = Symptom(target, "sm_hazard_test", component, {})
+    installed = {**symptoms, target: hazard_symptom}
+    faults = get_faults(component.get_fault_definitions())
+    faults["HazardTest"] = Fault("HazardTest", ["sm_hazard_test"], 2)
+    registry = DegradationRegistry(
+        installed, faults,
+        compile_runtime_bindings(
+            installed, component.get_degradation_bindings(), faults=faults
+        ),
+    )
+    bus.subscribe("symptom", registry.observe, priority=-1)
+    registry.observe(symptom_id=target, state=FaultState.SET)
+
+    events = []
+    bus.subscribe("symptom", lambda **event: events.append(event))
+    for symptom in symptoms.values():
+        component.init_safety_mechanism(
+            symptom.sm_name, symptom.name, symptom.parameters
+        )
+    component.initialize_recovery_commands({})
+    for symptom in symptoms.values():
+        component.enable_safety_mechanism(symptom.name, SMState.ENABLED)
+    assert any(event["symptom_id"] == command_id and event["state"] == FaultState.CLEARED for event in events)
+    registry.observe(
+        symptom_id=f"EntityHealthFailure{key}Availability",
+        state=FaultState.CLEARED,
+    )
+
+    component.record_recovery_command(target, entity_id, True, "command_failed")
+    assert events[-1]["symptom_id"] == command_id
+    assert events[-1]["state"] == FaultState.SET
+    assert component._entities[key].checks["recovery_command"].reason == "command_failed"
+    assert registry.causes_for(target, RestrictionEffect.RECOVERY) == (command_id,)
+    component._evaluate_entity(key)
+    assert events[-1]["state"] == FaultState.SET
+    component.record_recovery_command("UnrelatedHazard", entity_id, False, "postcondition_confirmed")
+    assert events[-1]["state"] == FaultState.SET
+    component.record_recovery_command(target, entity_id, False, "postcondition_confirmed")
+    assert events[-1]["state"] == FaultState.CLEARED
+    assert registry.causes_for(target, RestrictionEffect.RECOVERY) == ()
+
+
+def test_recovery_command_failure_restores_without_false_clear(mocked_hass_app_basic):
+    app, bus, component = _component(mocked_hass_app_basic)
+    app.get_state = MagicMock(return_value=_snapshot("open", datetime.now(timezone.utc)))
+    config = _config("cover.office")
+    config["component_entities"][0].update(
+        key="TemperatureActuatorOffice", fault_name="TemperatureRecoveryUnavailable",
+        checks={}, recovery_command=True,
+        degradation_targets=(("RiskyTemperatureOffice", "temperature_recovery", "Office", "recovery"),),
+    )
+    symptoms, _ = component.get_symptoms_data({"EntityMonitorComponent": component}, config)
+    events = []
+    bus.subscribe("symptom", lambda **event: events.append(event))
+    for symptom in symptoms.values():
+        component.init_safety_mechanism(symptom.sm_name, symptom.name, symptom.parameters)
+    component.initialize_recovery_commands({("RiskyTemperatureOffice", "cover.office"): "postcondition_timeout"})
+    for symptom in symptoms.values():
+        component.enable_safety_mechanism(symptom.name, SMState.ENABLED)
+    command_events = [event for event in events if event["symptom_id"].endswith("RecoveryCommand")]
+    assert len(command_events) == 1
+    assert command_events[0]["state"] == FaultState.SET
+
+
+def test_unreadable_recovery_store_leaves_command_health_unevaluated(
+    mocked_hass_app_basic,
+):
+    app, bus, component = _component(mocked_hass_app_basic)
+    app.get_state = MagicMock(return_value=_snapshot("open", datetime.now(timezone.utc)))
+    config = _config("cover.office")
+    config["component_entities"][0].update(
+        key="TemperatureActuatorOffice",
+        fault_name="TemperatureRecoveryUnavailable",
+        checks={},
+        recovery_command=True,
+        degradation_targets=(("RiskyTemperatureOffice", "temperature_recovery", "Office", "recovery"),),
+    )
+    symptoms, _ = component.get_symptoms_data(
+        {"EntityMonitorComponent": component}, config
+    )
+    events = []
+    bus.subscribe("symptom", lambda **event: events.append(event))
+    for symptom in symptoms.values():
+        component.init_safety_mechanism(
+            symptom.sm_name, symptom.name, symptom.parameters
+        )
+    component.initialize_recovery_commands(None)
+    for symptom in symptoms.values():
+        component.enable_safety_mechanism(symptom.name, SMState.ENABLED)
+    assert not any(
+        event["symptom_id"].endswith("RecoveryCommand") for event in events
+    )
