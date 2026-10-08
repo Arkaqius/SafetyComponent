@@ -22,6 +22,8 @@ test('renders registry values as fields rather than raw JSON', () => {
   assert.match(html, /Dodaj pole/);
   assert.doesNotMatch(html, /Nowe pole w/);
   assert.doesNotMatch(html, /<textarea/);
+  assert.match(html, /role="combobox"/);
+  assert.match(html, /aria-label="Czujnik temperatury"/);
 });
 
 test('new objects include all required typed fields', () => {

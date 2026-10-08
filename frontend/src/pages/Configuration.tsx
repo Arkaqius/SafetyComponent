@@ -1,8 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useConfig, useHass } from '@hakit/core';
 import { NavLink, useLocation } from 'react-router-dom';
 import ConfigurationObjectEditor from '../components/ConfigurationObjectEditor';
 import BatteryDiscovery from '../components/BatteryDiscovery';
+import EntityInput from '../components/EntityInput';
+import { ConfigurationEntityContext } from '../components/configurationEntityContext';
+import { configurationEntityOptions } from '../domain/configurationEntities';
+import type { EntityMap } from '../domain/safety';
 import { normalizeMonitorConfiguration, registrySchemas } from '../components/configurationFieldSchemas';
 import { effectiveFunctionalSafetySettings, functionalSafetySettings } from '../domain/functionalSafetySettings';
 import {
@@ -32,6 +36,8 @@ export default function Configuration() {
   const [template, setTemplate] = useState<ConfigurationMap | null>(null);
   const haConfig = useConfig();
   const connection = useHass(store => store.connection);
+  const rawEntities = useHass(store => store.entities);
+  const entityOptions = useMemo(() => configurationEntityOptions(rawEntities as unknown as EntityMap), [rawEntities]);
   const [restarting, setRestarting] = useState(false);
   const [restartMessage, setRestartMessage] = useState('');
   const [draft, setDraft] = useState<ConfigurationMap | null>(null);
@@ -220,7 +226,7 @@ export default function Configuration() {
     : registrySchemas.detectors;
   const timezones = supportedTimezones(stringValue(site.timezone));
 
-  return (
+  const pageContent = (
     <div className='page-stack'>
       <section className='page-introduction configuration-introduction'>
         <div>
@@ -407,17 +413,20 @@ export default function Configuration() {
           />
           <TextField
             label='Encja łączności WAN (opcjonalnie)'
+            entityDomains={[]}
             help='Wspólna dla powiadomień i diagnostyki WAN. Stany on/online/connected oznaczają połączenie; off/offline/disconnected — brak. Sam stan nie dowodzi, że każdy serwis w Internecie działa.'
             value={stringValue(notification.wan_entity)}
             onChange={value => update(['notification', 'wan_entity'], value || null)}
           />
           <TextField
             label='Lokalna encja światła (opcjonalnie)'
+            entityDomains={['light']}
             value={stringValue(localNotification.light_entity)}
             onChange={value => update(['notification', 'local', 'light_entity'], value || undefined)}
           />
           <TextField
             label='Lokalna encja alarmu (opcjonalnie)'
+            entityDomains={[]}
             value={stringValue(localNotification.alarm_entity)}
             onChange={value => update(['notification', 'local', 'alarm_entity'], value || undefined)}
           />
@@ -454,6 +463,7 @@ export default function Configuration() {
           />
           <TextField
             label='Encja temperatury zewnętrznej'
+            entityDomains={['sensor']}
             help='Encja używana przez komponent temperatury, jeśli jest włączony.'
             value={stringValue(commonEntities.outside_temp)}
             onChange={value => update(['installation', 'common_entities', 'outside_temp'], value)}
@@ -473,12 +483,14 @@ export default function Configuration() {
         <div className='configuration-grid'>
           <TextField
             label='Pamięć dostępna hosta'
+            entityDomains={['sensor']}
             help='Encja sensor.* podająca dostępną pamięć tego samego hosta co Home Assistant; wymagana razem z PSI.'
             value={stringValue(hostMemory.available_entity)}
             onChange={value => update(['installation', 'functional_safety', 'host_memory', 'available_entity'], value)}
           />
           <TextField
             label='Presja pamięci hosta (PSI, %)'
+            entityDomains={['sensor']}
             help='Encja sensor.* memory PSI some, np. średnia 60 s. Obie encje muszą dotyczyć tego samego hosta.'
             value={stringValue(hostMemory.psi_entity)}
             onChange={value => update(['installation', 'functional_safety', 'host_memory', 'psi_entity'], value)}
@@ -501,6 +513,7 @@ export default function Configuration() {
         <div className='configuration-grid'>
           <TextField
             label='Obciążenie CPU hosta (%)'
+            entityDomains={['sensor']}
             help='Opcjonalna encja sensor.* procesora hosta Home Assistant. Czas potwierdzenia można nadpisać w Ustawieniach komponentów.'
             value={stringValue(functionalSafety.host_cpu_entity)}
             onChange={value => update(['installation', 'functional_safety', 'host_cpu_entity'], value || null)}
@@ -515,18 +528,21 @@ export default function Configuration() {
           <div className='configuration-grid'>
             <TextField
               label='Wolne miejsce na dysku hosta'
+              entityDomains={['sensor']}
               help='Opcjonalna encja sensor.* dla dysku Home Assistant, w MiB, GiB lub bajtach. Nie podawaj procentu zajętości.'
               value={stringValue(functionalSafety.host_disk_free_entity)}
               onChange={value => update(['installation', 'functional_safety', 'host_disk_free_entity'], value || null)}
             />
             <TextField
               label='Temperatura hosta (°C)'
+              entityDomains={['sensor']}
               help='Opcjonalna encja sensor.* temperatury procesora lub hosta Home Assistant; nie temperatura pomieszczenia.'
               value={stringValue(functionalSafety.host_temperature_entity)}
               onChange={value => update(['installation', 'functional_safety', 'host_temperature_entity'], value || null)}
             />
             <TextField
               label='Ostatnia udana kopia zapasowa'
+              entityDomains={['sensor']}
               help='Encja sensor.* z datą i czasem ostatniej udanej kopii (nie ostatniej próby). Wypełnienie włącza monitoring backupu.'
               value={stringValue(backup.last_success_entity)}
               onChange={value =>
@@ -535,6 +551,7 @@ export default function Configuration() {
             />
             <TextField
               label='Błąd kopii zapasowej (opcjonalnie)'
+              entityDomains={['binary_sensor']}
               help='Encja binary_sensor.*: on oznacza błąd. Najpierw podaj encję ostatniej udanej kopii.'
               value={stringValue(backup.failure_entity)}
               disabled={!backup.last_success_entity}
@@ -590,6 +607,7 @@ export default function Configuration() {
               <TextField
                 key={key}
                 label={`Encja aktualizacji: ${label}`}
+                entityDomains={['update']}
                 help='Opcjonalna encja update.*; dostępna aktualizacja ma poziom informacyjny L4.'
                 value={stringValue(updates[key])}
                 onChange={value => update(['installation', 'functional_safety', 'updates', key], value || null)}
@@ -774,6 +792,7 @@ export default function Configuration() {
       ))}
     </div>
   );
+  return <ConfigurationEntityContext.Provider value={entityOptions}>{pageContent}</ConfigurationEntityContext.Provider>;
 }
 
 function SectionHeader({ title, description }: { title: string; description: string }) {
@@ -803,6 +822,7 @@ function TextField({
   help,
   defaultValue,
   disabled = false,
+  entityDomains,
 }: {
   label: string;
   value: string;
@@ -810,11 +830,16 @@ function TextField({
   help?: string;
   defaultValue?: string;
   disabled?: boolean;
+  entityDomains?: string[];
 }) {
   return (
     <label className='configuration-field'>
       <span title={help}>{label}</span>
-      <input disabled={disabled} onChange={event => onChange(event.target.value)} value={value} />
+      {entityDomains ? (
+        <EntityInput label={label} value={value} onChange={onChange} domains={entityDomains} disabled={disabled} />
+      ) : (
+        <input disabled={disabled} onChange={event => onChange(event.target.value)} value={value} />
+      )}
       <FieldHelp help={help} defaultValue={defaultValue} />
     </label>
   );

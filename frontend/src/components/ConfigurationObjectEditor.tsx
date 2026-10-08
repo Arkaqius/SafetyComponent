@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import EntityInput from './EntityInput.js';
 import { initialObject, updateObjectField, type FieldSpec } from './configurationFieldSchemas.js';
 
 type ConfigurationMap = Record<string, unknown>;
@@ -235,6 +236,8 @@ function SchemaField({ field, value, onChange }: { field: FieldSpec; value: unkn
             </option>
           ))}
         </select>
+      ) : field.kind === 'entity' ? (
+        <EntityInput label={field.label} value={String(value ?? '')} domains={field.domains} onChange={onChange} />
       ) : (
         <input
           type={field.kind === 'number' ? 'number' : 'text'}
