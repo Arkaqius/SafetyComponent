@@ -199,7 +199,7 @@ The existing `ForeCast` capitalization is part of the runtime contract.
 | --- | --- | --- |
 | SWR-MQTT-001 | Internal entities shall use MQTT discovery with stable unique IDs and default entity IDs. | `MqttEntityManager` |
 | SWR-MQTT-002 | Discovery payloads may be retained; transient state and attribute payloads shall not be retained. | MQTT settings and publisher |
-| SWR-MQTT-003 | Startup shall clear configured legacy discovery topics and stale retained state before publishing current state. | MQTT startup flow |
+| SWR-MQTT-003 | Startup shall clear explicitly configured retired entities and legacy discovery topics before publishing current state. Active entity state and attributes shall not be cleared during ordinary startup; stale retained messages shall be audited, removed, and verified through an explicit one-time migration. Empty attribute payloads shall preserve the last attributes without asserting freshness or clearance. | MQTT startup flow, discovery attribute template, retained-message migration |
 | SWR-MQTT-004 | Availability shall be `offline` during initialization and `online` after successful startup or diagnostic invalid-configuration startup. | `SafetyFunctions` |
 | SWR-MQTT-005 | The heartbeat period shall remain shorter than `expire_after` so unchanged entities do not become unavailable. | `heartbeat_seconds`, `expire_after` |
 | SWR-MQTT-006 | Application termination shall publish health and system state `stopped` before publishing availability `offline`. | `SafetyFunctions.terminate` |

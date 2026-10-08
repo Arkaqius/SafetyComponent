@@ -34,7 +34,7 @@ class MqttSettings(StrictBaseModel):
     device_name: StrictStr = "Safety Component"
     retain_discovery: StrictBool = True
     retain_state: StrictBool = False
-    clear_retained_state_on_start: StrictBool = True
+    clear_retained_state_on_start: StrictBool = False
     qos: StrictInt = Field(default=0, ge=0, le=2)
     heartbeat_seconds: StrictInt = Field(default=60, ge=0)
     expire_after: StrictInt = Field(default=180, ge=0)
@@ -373,6 +373,9 @@ class MqttEntityManager:
             "default_entity_id": entity_id,
             "state_topic": self.state_topic(entity_id),
             "json_attributes_topic": self.attributes_topic(entity_id),
+            "json_attributes_template": (
+                "{{ value if value | trim else this.attributes | to_json }}"
+            ),
             "availability_topic": self.availability_topic,
             "qos": self.qos,
             "device": {

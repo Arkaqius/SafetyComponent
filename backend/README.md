@@ -44,3 +44,83 @@ only explicit `user_config.model_version: 2`; missing, older, or unknown
 versions fail before AppDaemon starts. Print the machine-readable contract with
 `python backend/build_app_config.py --print-user-schema`. See
 [`Configuration Model - Architecture.md`](<../docs/features/Configuration Model - Architecture.md>).
+
+## MQTT retained-message migration
+
+Ordinary startup preserves active entity topics. Both `MqttSettings` and the
+packaged system configuration default `clear_retained_state_on_start` to
+`false`. Keep `retain_state: false`, `heartbeat_seconds: 60`, and
+`expire_after: 180`. Discovery includes an attribute template that preserves
+the last attributes when an empty or whitespace-only payload arrives; valid
+JSON replaces them. Nonempty malformed JSON remains an error. Historical
+attributes do not establish current availability or clear an active fault.
+See [Home Assistant's MQTT sensor contract](https://www.home-assistant.io/integrations/sensor.mqtt/).
+
+The existing `clear_retained_state_on_start: true` setting remains accepted
+for compatibility. An explicit override still clears active entity topics on
+each application start and must be disabled after a migration. Configured
+retired entities and legacy discovery topics are still removed at startup.
+The [software requirement](../docs/sys/SafetyComponent%20-%20SSRD.md#47-mqtt-lifecycle-and-diagnostics)
+separates this retirement from active-topic migration.
+
+The [migration tool](migrate_mqtt_retained.py) audits only retained messages on
+`<base_topic>/state/+` and `<base_topic>/attributes/+`. It never changes discovery,
+availability, commands, other applications, or broker sessions belonging to
+other clients. It uses a unique, authenticated MQTT 3.1.1 client with
+`clean_session=True`, no automatic reconnection, bounded scan/acknowledgement
+windows, and disconnects on success or failure. MQTT 5 diagnostics outside this
+tool must use `clean_start=True` with a zero session expiry interval. See
+[Paho's session settings](https://eclipse.dev/paho/files/paho.mqtt.python/html/client.html).
+
+Run the following only against an explicitly authorized broker. These steps
+require a maintenance window because retained deletion reaches active
+subscribers too:
+
+1. Audit before switching an existing installation to the new defaults. Install
+   the [tool dependencies](requirements-mqtt-tools.txt), set `MQTT_USERNAME`
+   and `MQTT_PASSWORD` in the process environment using your secret store,
+   and use the installation's actual base topic. Never put credentials on the
+   command line. `--tls` enables certificate-verified TLS; select the broker's
+   TLS port explicitly when needed.
+
+   ```powershell
+   python -m pip install -r backend/requirements-mqtt-tools.txt
+   python backend/migrate_mqtt_retained.py --host <broker> --base-topic safety_component
+   ```
+
+2. Prepare the release with startup cleanup disabled and the empty-attribute
+   guard. With deployment separately authorized, load its updated discovery
+   and confirm the guard on active sensors before deleting retained messages.
+   Then stop the SafetyComponent publisher and confirm availability is
+   `offline`. Do not run an older publisher concurrently. Review the audit's
+   topic list and ensure the broker account has read/write access to both
+   scoped topic families.
+
+3. If retained topics were observed, execute the explicit, one-time migration
+   while the publisher is stopped:
+
+   ```powershell
+   python backend/migrate_mqtt_retained.py --host <broker> --base-topic safety_component --apply
+   ```
+
+   Only observed retained state/attribute topics receive zero-length retained
+   messages. The tool waits for each QoS 1 acknowledgement and resubscribes to
+   check for remaining retained messages. An empty audit is a no-op.
+
+4. Restart the authorized installation with startup cleanup disabled. Confirm
+   fresh state/attributes, availability, and heartbeat beyond 180 seconds.
+   Repeat the read-only audit to detect any publisher recreating retained state.
+   A failed migration must be resolved before accepting the release; do not
+   interpret missing state or old attributes as healthy monitoring.
+
+Exit codes are `0` when no retained topics were observed (including verified
+cleanup), `2` when an audit finds retained topics, and `1` for a failed operation.
+The scan defaults to five seconds after SUBACK; increase `--scan-seconds` up to
+60 for a slow broker. MQTT 3.1.1 supplies no end-of-retained-snapshot marker, so
+absence means none observed within the scan window and the account's ACL scope.
+The tool prints topic names and counts, never payloads or credentials.
+
+This migration addresses SafetyComponent empty attribute messages. Investigate
+unrelated `value_json` failures by identifying their topic and publisher before
+changing Zigbee2MQTT or other application templates. Persistent scanner sessions
+and Mosquitto ACL cleanup are separate broker administration work.
