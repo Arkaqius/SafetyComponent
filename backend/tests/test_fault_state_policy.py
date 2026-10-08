@@ -156,7 +156,11 @@ def test_disabling_active_contributor_publishes_unevaluable_without_clearing() -
     manager.mqtt_entities.publish_sensor_state.assert_called_with(
         "sensor.fault_Hazard",
         "UNEVALUABLE",
-        attributes={"active": True, "shadowed_by": [], "latched": False},
+        attributes={
+            "active": True, "shadowed_by": [], "latched": False,
+            "level": "level_2", "category": "H",
+            "contributors": ["room"], "active_contributors": ["room"],
+        },
     )
 
 
@@ -182,7 +186,11 @@ def test_shadowing_with_two_owners_withdraws_and_restores_correct_fault() -> Non
     manager.mqtt_entities.publish_sensor_state.assert_any_call(
         "sensor.fault_Forecast",
         "FAIL",
-        attributes={"active": True, "shadowed_by": ["Direct"], "latched": False},
+        attributes={
+            "active": True, "shadowed_by": ["Direct"], "latched": False,
+            "level": "level_3", "category": "H",
+            "contributors": ["forecast"], "active_contributors": ["forecast"],
+        },
     )
     shadow_event = events[-1]
     assert shadow_event["fault_name"] == "Forecast"
@@ -192,7 +200,11 @@ def test_shadowing_with_two_owners_withdraws_and_restores_correct_fault() -> Non
     manager.mqtt_entities.publish_sensor_state.assert_any_call(
         "sensor.fault_Forecast",
         "FAIL",
-        attributes={"active": True, "shadowed_by": ["Another", "Direct"], "latched": False},
+        attributes={
+            "active": True, "shadowed_by": ["Another", "Direct"], "latched": False,
+            "level": "level_3", "category": "H",
+            "contributors": ["forecast"], "active_contributors": ["forecast"],
+        },
     )
     manager.clear_symptom("direct", {})
     assert faults["Forecast"].evaluation.shadowed_by == {"Another"}

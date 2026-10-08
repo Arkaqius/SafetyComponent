@@ -1003,6 +1003,15 @@ class SafetyFunctions(hass.Hass):
 
         # Register fault entities
         for name, fault in self.faults.items():
+            contributors = sorted(
+                symptom_id
+                for symptom_id, symptom in self.symptoms.items()
+                if (
+                    symptom_id in fault.related_symptom_ids
+                    if fault.related_symptom_ids
+                    else symptom.sm_name in fault.related_symptoms
+                )
+            )
             evidence = self.fault_evidence.get(name)
             evidence_attributes = {}
             if evidence is not None:
@@ -1020,6 +1029,9 @@ class SafetyFunctions(hass.Hass):
                     "active": fault.evaluation.active,
                     "shadowed_by": [],
                     "latched": fault.evaluation.latched,
+                    "category": fault.category.value,
+                    "contributors": contributors,
+                    "active_contributors": sorted(fault.evaluation.active_contributors),
                     **evidence_attributes,
                 },
                 icon="mdi:alert-outline",
