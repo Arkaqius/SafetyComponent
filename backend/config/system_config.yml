@@ -31,7 +31,7 @@ calibration:
     default_startup_grace_seconds: 60
     default_failure_debounce_seconds: 15
     default_recovery_debounce_seconds: 60
-    default_evaluation_interval_seconds: 5
+    default_evaluation_interval_seconds: 60
     unhealthy_summary_limit: 32
     component_overrides: {}
 
@@ -86,6 +86,7 @@ calibration:
 
   functional_safety:
     evaluation_interval_seconds: 15
+    maintenance_poll_interval_seconds: 3600
     memory_low_available_mib: 256
     memory_recovery_available_mib: 384
     memory_high_psi_percent: 10

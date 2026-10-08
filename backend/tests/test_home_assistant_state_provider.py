@@ -13,13 +13,24 @@ from tests.test_functional_safety_monitor import make_monitor, snapshot
 def test_provider_keeps_actual_report_timestamp(monkeypatch):
     row = {"entity_id": "binary_sensor.wan", **snapshot("on")}
     def open_report(request, timeout):
-        assert timeout == 3
+        assert timeout == 120
         payload = json.loads(request.data)
         assert payload["variables"]["entities"] == ["binary_sensor.wan"]
         assert "last_reported" in payload["template"]
         return BytesIO(json.dumps([row]).encode())
     monkeypatch.setattr("components.external_apis.home_assistant_state.urlopen", open_report)
     assert HomeAssistantStateProvider("test").poll({"binary_sensor.wan"}) == {"binary_sensor.wan": row}
+
+
+def test_provider_honors_independent_fast_timeout(monkeypatch):
+    row = {"entity_id": "binary_sensor.window", **snapshot("on")}
+    def open_report(request, timeout):
+        assert timeout == 3
+        return BytesIO(json.dumps([row]).encode())
+    monkeypatch.setattr("components.external_apis.home_assistant_state.urlopen", open_report)
+    assert HomeAssistantStateProvider("test").poll(
+        {"binary_sensor.window"}, timeout_seconds=3
+    ) == {"binary_sensor.window": row}
 
 
 @pytest.mark.parametrize("payload", ["{}", "null", '[{"entity_id":"other"}]', "invalid", '[{"entity_id":"binary_sensor.wan","state":"on","attributes":{}}]'])

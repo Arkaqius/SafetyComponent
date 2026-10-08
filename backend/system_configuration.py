@@ -131,6 +131,7 @@ class FunctionalSafetyCalibrationSource(SystemSourceModel):
     """Installation-independent qualification and maintenance policy."""
 
     evaluation_interval_seconds: int = Field(ge=5)
+    maintenance_poll_interval_seconds: int = Field(default=3600, ge=1)
     memory_low_available_mib: float = Field(gt=0)
     memory_recovery_available_mib: float = Field(gt=0)
     memory_high_psi_percent: float = Field(gt=0, le=100)

@@ -27,6 +27,7 @@ def test_example_installation_config_compiles() -> None:
     )
 
     assert compiled["SafetyFunctions"]["module"] == "SafetyFunctions"
+    assert compiled["SafetyFunctions"]["app_config"]["calibration"]["entity_monitor"]["evaluation_interval_seconds"] == 60
     assert compiled["SafetyFunctions"]["user_config"]["site"]["country_code"] == "PL"
     assert compiled["SafetyFunctions"]["user_config"]["site"]["latitude"] == 50.0
     assert compiled["SafetyFunctions"]["user_config"]["site"]["longitude"] == 20.0
@@ -34,6 +35,7 @@ def test_example_installation_config_compiles() -> None:
     assert "model_version" not in compiled["SafetyFunctions"]["user_config"]
     assert compiled["SafetyFunctions"]["user_config"]["functional_safety"]["remote_batteries"] == {}
     assert compiled["SafetyFunctions"]["app_config"]["calibration"]["functional_safety"]["memory_low_available_mib"] == 256
+    assert compiled["SafetyFunctions"]["app_config"]["calibration"]["functional_safety"]["maintenance_poll_interval_seconds"] == 3600
     assert compiled["SafetyFunctions"]["app_config"]["calibration"]["functional_safety"]["battery_fault_catalog_file"] == "/config/appdaemon/battery_fault_catalog.json"
 
 

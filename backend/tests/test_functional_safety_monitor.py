@@ -51,6 +51,8 @@ class FakeEntities:
 
 POLICY = {
     "evaluation_interval_seconds": 15,
+    # Individual policy tests evaluate each supplied sample immediately.
+    "maintenance_poll_interval_seconds": 0,
     "memory_low_available_mib": 256,
     "memory_recovery_available_mib": 384,
     "memory_high_psi_percent": 10,

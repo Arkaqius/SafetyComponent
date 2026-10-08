@@ -11,6 +11,8 @@ from urllib.request import Request, urlopen
 
 from components.external_apis.battery_inventory import BATTERY_TEMPLATE, group_batteries
 
+REPORT_TIMEOUT_SECONDS = 120
+FAST_REPORT_TIMEOUT_SECONDS = 3
 
 REPORT_TEMPLATE = """
 {% set ns = namespace(rows=[]) %}
@@ -20,7 +22,7 @@ REPORT_TEMPLATE = """
     {% set s = matches[0] %}
     {% set ns.rows = ns.rows + [dict(entity_id=s.entity_id, state=s.state,
       attributes=s.attributes, last_reported=s.last_reported.isoformat(),
-      last_updated=s.last_updated.isoformat())] %}
+      last_updated=s.last_updated.isoformat(), last_changed=s.last_changed.isoformat())] %}
   {% endif %}
 {% endfor %}
 {{ ns.rows | to_json }}
@@ -39,11 +41,15 @@ class HomeAssistantStateProvider:
         token = os.environ.get("SUPERVISOR_TOKEN")
         return cls(token) if token else None
 
-    def poll(self, entities: set[str]) -> dict[str, dict[str, Any]]:
+    def poll(
+        self, entities: set[str], *, timeout_seconds: int = REPORT_TIMEOUT_SECONDS
+    ) -> dict[str, dict[str, Any]]:
         """Return no evidence on transport/schema failure; never reuse old data."""
         if not entities:
             return {}
-        rows = self.render(REPORT_TEMPLATE, {"entities": sorted(entities)})
+        rows = self.render(
+            REPORT_TEMPLATE, {"entities": sorted(entities)}, timeout_seconds=timeout_seconds
+        )
         if not isinstance(rows, list):
             return {}
         result: dict[str, dict[str, Any]] = {}
@@ -59,9 +65,17 @@ class HomeAssistantStateProvider:
 
     def discover_batteries(self) -> dict[str, Any]:
         """Read enabled HA battery states plus associated registry device IDs."""
-        return group_batteries(self.render(BATTERY_TEMPLATE, {}))
+        return group_batteries(
+            self.render(BATTERY_TEMPLATE, {}, timeout_seconds=FAST_REPORT_TIMEOUT_SECONDS)
+        )
 
-    def render(self, template: str, variables: dict[str, Any]) -> Any:
+    def render(
+        self,
+        template: str,
+        variables: dict[str, Any],
+        *,
+        timeout_seconds: int = REPORT_TIMEOUT_SECONDS,
+    ) -> Any:
         """Render only provider-owned templates using existing App authorization."""
         request = Request(
             "http://supervisor/core/api/template",
@@ -70,7 +84,7 @@ class HomeAssistantStateProvider:
             method="POST",
         )
         try:
-            with urlopen(request, timeout=3) as response:
+            with urlopen(request, timeout=timeout_seconds) as response:
                 body = response.read(512 * 1024 + 1)
             if len(body) > 512 * 1024:
                 return None

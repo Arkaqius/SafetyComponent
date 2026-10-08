@@ -75,7 +75,7 @@ class TemperatureComponent(SafetyComponent):
                         "purpose": f"Temperature input for {location}",
                         "checks": {
                             "freshness": {
-                                "timestamp_source": "last_updated",
+                                "timestamp_source": "last_reported",
                                 "max_silence_seconds": 3600,
                             },
                             "finite_number": {"target": "state"},
@@ -85,7 +85,8 @@ class TemperatureComponent(SafetyComponent):
                                 "maximum": data["SM_TC_MAX_VALID_TEMPERATURE_C"],
                             },
                         },
-                        "detection_budget_seconds": 3615,
+                        "failure_debounce_seconds": 60,
+                        "detection_budget_seconds": 4020,
                         "area_id": data.get("area_id"),
                         "area_name": data.get("area_name"),
                     }
@@ -103,7 +104,7 @@ class TemperatureComponent(SafetyComponent):
                             int(data["SM_TC_2_DERIVATIVE_SAMPLE_MINUTES"]) * 60 + 60
                         ),
                         "detection_budget_seconds": (
-                            int(data["SM_TC_2_DERIVATIVE_SAMPLE_MINUTES"]) * 60 + 60
+                            int(data["SM_TC_2_DERIVATIVE_SAMPLE_MINUTES"]) * 60 + 390
                         ),
                         "area_id": data.get("area_id"),
                         "area_name": data.get("area_name"),

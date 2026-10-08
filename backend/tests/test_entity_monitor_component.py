@@ -1,6 +1,7 @@
 """Behavior tests for Entity Health Monitoring."""
 
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -78,6 +79,63 @@ def _mqtt_topic_calls(app, topic: str) -> list:
     ]
 
 
+def test_unchanged_temperature_uses_live_reports_and_failed_reads_do_not_heal(mocked_hass_app_basic):
+    app, _, component = _component(mocked_hass_app_basic)
+    now = datetime(2026, 10, 7, 7, 49, 3, tzinfo=timezone.utc)
+    old = _snapshot("21.21", now - timedelta(seconds=3618))
+    report = {**old, "last_reported": (now - timedelta(seconds=19)).isoformat()}
+    app.get_state = MagicMock(return_value=old)
+    current = {"report": report}
+    component.state_reader = SimpleNamespace(register=MagicMock(), report=lambda *_: current["report"])
+    config = _config()
+    config["component_entities"][0]["checks"]["freshness"] = {"timestamp_source": "last_reported", "max_silence_seconds": 3600}
+    component._now = lambda: now
+    symptoms, _ = component.get_symptoms_data({"EntityMonitorComponent": component}, config)
+    for symptom in symptoms.values():
+        component.init_safety_mechanism(symptom.sm_name, symptom.name, symptom.parameters)
+        component.enable_safety_mechanism(symptom.name, SMState.ENABLED)
+    component._now = lambda: now
+    component._evaluate_entity("TemperatureOffice")
+    runtime = component._entities["TemperatureOffice"]
+    assert runtime.checks["freshness"].reason == "fresh"
+    assert runtime.checks["freshness"].observed_value == 19
+    assert runtime.last_valid_at == now - timedelta(seconds=19)
+
+    runtime.checks["freshness"].active = True
+    current["report"] = None
+    component._evaluate_entity("TemperatureOffice")
+    assert runtime.checks["freshness"].active
+    assert runtime.checks["freshness"].result == "unevaluable"
+    assert runtime.checks["freshness"].pending_recovery_since is None
+
+    current["report"] = report
+    component._evaluate_entity("TemperatureOffice")
+    assert runtime.checks["freshness"].active
+    now += timedelta(seconds=10)
+    component._evaluate_entity("TemperatureOffice")
+    assert not runtime.checks["freshness"].active
+
+
+def test_new_cache_transition_is_seen_before_next_authoritative_poll(mocked_hass_app_basic):
+    app, _, component = _component(mocked_hass_app_basic)
+    now = datetime(2026, 10, 7, 7, 0, tzinfo=timezone.utc)
+    report = _snapshot("on", now)
+    app.get_state = MagicMock(return_value=_snapshot("unavailable", now + timedelta(seconds=1)))
+    component.state_reader = SimpleNamespace(report=lambda *_: report)
+    component._report_groups["binary_sensor.window"] = "EntityMonitorComponent:5"
+    result = component._check_availability(component._read_snapshot("binary_sensor.window"))
+    assert result == (True, "entity_unavailable", "unavailable")
+
+
+def test_future_report_timestamp_cannot_prove_freshness(mocked_hass_app_basic):
+    _, _, component = _component(mocked_hass_app_basic)
+    now = datetime(2026, 10, 7, 7, 0, tzinfo=timezone.utc)
+    component._policy = {"startup_grace_seconds": 0}
+    component._startup_at = now
+    runtime = SimpleNamespace(snapshot={"last_reported": (now + timedelta(seconds=1)).isoformat()})
+    assert component._evaluate_check("freshness", {"timestamp_source": "last_reported", "max_silence_seconds": 3600}, runtime, now, available=True) == (None, "timestamp_in_future", None)
+
+
 def test_entity_monitor_routes_checks_to_component_fault(
     mocked_hass_app_basic,
 ):
@@ -143,6 +201,66 @@ def test_entity_monitor_debounces_failure_and_recovery(mocked_hass_app_basic):
     runtime = component._entities["TemperatureOffice"]
     assert runtime.last_valid_value == "21.5"
     assert runtime.last_valid_at == clock["now"]
+
+
+def test_minute_evaluation_preserves_fast_dependencies(mocked_hass_app_basic):
+    app, _, component = _component(mocked_hass_app_basic)
+    now = datetime(2026, 10, 8, 10, 0, tzinfo=timezone.utc)
+    app.get_state = MagicMock(return_value=_snapshot("21.21", now))
+    component.state_reader = SimpleNamespace(register=MagicMock(), report=MagicMock())
+    config = _config()
+    config["evaluation_interval_seconds"] = 60
+    temperature = config["component_entities"][0]
+    temperature["detection_budget_seconds"] = 4020
+    config["component_entities"].append({
+        **temperature, "key": "TemperatureWindowOffice",
+        "entity_id": "binary_sensor.window", "checks": {},
+        "detection_budget_seconds": 30,
+    })
+    symptoms, _ = component.get_symptoms_data({component.component_name: component}, config)
+    for symptom in symptoms.values():
+        component.init_safety_mechanism(symptom.sm_name, symptom.name, symptom.parameters)
+    assert component._report_groups["sensor.office_temperature"] == "EntityMonitorComponent:120"
+    assert component._report_groups["binary_sensor.window"] == "EntityMonitorComponent:5"
+    scheduled = app.run_every.call_args_list
+    assert any(call.args == (component._tick, "now", 60) for call in scheduled)
+    assert any(call.args == (component._fast_tick, "now", 5) for call in scheduled)
+    component._evaluate_entity = MagicMock()
+    component._fast_tick()
+    component._evaluate_entity.assert_called_once_with("TemperatureWindowOffice")
+    component._evaluate_entity.reset_mock()
+    component._tick()
+    assert component._evaluate_entity.call_count == 2
+
+
+def test_temperature_freshness_requires_full_minute_before_setting_fault(mocked_hass_app_basic):
+    app, bus, component = _component(mocked_hass_app_basic)
+    base = datetime(2026, 10, 8, 10, 0, tzinfo=timezone.utc)
+    clock = [base]
+    component._now = lambda: clock[0]
+    old = _snapshot("21.21", base - timedelta(seconds=3601))
+    old["last_reported"] = old["last_updated"]
+    app.get_state = MagicMock(return_value=old)
+    config = _config()
+    config["evaluation_interval_seconds"] = 60
+    config["component_entities"][0].update(
+        failure_debounce_seconds=60,
+        detection_budget_seconds=4020,
+        checks={"freshness": {"timestamp_source": "last_reported", "max_silence_seconds": 3600}},
+    )
+    events = []
+    bus.subscribe("symptom", lambda **event: events.append(event))
+    symptoms, _ = component.get_symptoms_data({component.component_name: component}, config)
+    for symptom in symptoms.values():
+        component.init_safety_mechanism(symptom.sm_name, symptom.name, symptom.parameters)
+        component.enable_safety_mechanism(symptom.name, SMState.ENABLED)
+    component._tick()
+    clock[0] += timedelta(seconds=59)
+    component._tick()
+    assert not any(event["symptom_id"].endswith("Freshness") for event in events)
+    clock[0] += timedelta(seconds=1)
+    component._tick()
+    assert any(event["symptom_id"].endswith("Freshness") and event["state"] == FaultState.SET for event in events)
 
 
 def test_generated_rate_waits_for_second_sample_before_failure(
