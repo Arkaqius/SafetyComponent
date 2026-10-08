@@ -80,9 +80,12 @@ No unsupported External Hazard opening kind may define an actuator.
 
 ## 5. Persistence and notification ownership
 
-Active proposal state is stored atomically in
-`/config/appdaemon/recovery_state.json`, outside the deployed application
-directory. Restart restores operator-visible state without replaying a command.
+Active proposal state is stored atomically in the `recovery_state` namespace of
+the shared `/config/appdaemon/safety_state.sqlite3` database, outside the deployed
+application directory. The existing `/config/appdaemon/recovery_state.json`
+configuration path remains a one-time legacy import source, as defined by
+[Runtime State Storage](<Runtime State Storage - Architecture.md>).
+Restart restores operator-visible state without replaying a command.
 A restored confirmation proposal receives a new token.
 
 Notification guidance is keyed by proposal ID. An updated proposal replaces its

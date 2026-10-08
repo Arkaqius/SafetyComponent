@@ -94,7 +94,10 @@ extend in-process coverage or prove an actuator effect.
 
 `EntityMonitorComponent` remains the authority for availability, freshness,
 type, and value checks of declared Home Assistant input entities. It already
-provides Group A/B diagnostics and owns its existing level-3 per-entity faults.
+provides Group A/B diagnostics, external-only Group A per-entity faults, and
+the shared level-3 `InputMonitoringUnavailable` fault for temperature,
+safety-door, external-opening and common inputs. Components still declare
+their checks and exact consumer bindings; other diagnostics remain separate.
 The platform monitor must not repurpose those generic faults to express a
 different severity. It should consume the entity-quality result as evidence and
 own the host, runtime, network, update, and battery policy separately. A host

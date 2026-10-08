@@ -54,8 +54,9 @@ and TERYT codes remain installation-owned.
   installation-independent defaults.
 - `apps.yaml` is generated inside the container on every start and must not be
   edited.
-- `appdaemon/*.json` contains notification, recovery, and component persistence
-  owned by the running App.
+- `appdaemon/safety_state.sqlite3` contains notification, recovery, Freeze frame,
+  detector, operator-test, and battery-fault retirement state owned by the running
+  App. Existing JSON state-file settings remain one-time legacy import paths.
 
 The public repository contains a minimal
 [`user_config.example.yml`](../backend/config/user_config.example.yml) and a
@@ -86,10 +87,13 @@ Use a controlled cutover so two SafetyFunctions instances never run at once:
 3. Open **Safety Home → Konfiguracja**, import the reviewed version 2
    `user_config.yml`, inspect it, and save. Alternatively copy the file into
    the App-specific configuration directory while the App is stopped.
-4. If lifecycle continuity is required, copy the old
-   `appdaemon/notification_state.json`, `appdaemon/recovery_state.json`, and
-   `appdaemon/internal_environment_state.json` files into the new App's
-   `appdaemon/` directory. Missing files are created by the backend as needed.
+4. If lifecycle continuity is required, stop the source App before copying state
+   into the new App's `appdaemon/` directory. For a JSON-only source, preserve
+   its notification, recovery, fault-evidence, internal-environment, detector-test,
+   periodic-test, and battery-fault catalogue files at their configured paths.
+   Each is imported once on first load of its SQLite namespace; missing files
+   initialize empty namespaces. For a SQLite-aware source, preserve
+   `safety_state.sqlite3` and any existing `-wal`/`-shm` sidecars together.
 5. Stop the separate AppDaemon App, or remove its `SafetyFunctions` entry.
 6. Restart SafetyComponent and inspect the App log for configuration or entity
    validation errors.
@@ -115,6 +119,13 @@ does not prove physical phone delivery.
 
 ## Backup and recovery
 
-The App uses cold backups so its persisted JSON state is not changing while the
-Supervisor captures it. Restore both `user_config.yml` and the `appdaemon/`
-state directory before starting a recovered instance.
+The App uses cold-backup mode when Supervisor backup is requested, so runtime
+state is not changing during capture. Restore both `user_config.yml` and the
+complete `appdaemon/` state directory while the App is stopped. Do not copy only
+a live SQLite main file: committed changes may still be in its `-wal` sidecar.
+
+Legacy JSON files are retained unchanged after import and are not dual-written.
+An older JSON-only release cannot restore state changes made after migration;
+code rollback alone does not preserve newer acknowledgements or safety latches.
+See [Runtime State Storage](<../docs/features/Runtime State Storage - Architecture.md>)
+for migration, storage-failure diagnostics, and the restore boundary.

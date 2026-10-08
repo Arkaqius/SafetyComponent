@@ -123,10 +123,11 @@ same object before publication. Migration preserves the captured values and
 activation count within the original capture and lifecycle validation bounds
 and does not create a new activation.
 
-`runtime_cfg.fault_evidence` limits the independent atomic JSON store to 256
-fault records, 4096 UTF-8 bytes for the activation-capture fields of each frame,
-and 1 MiB for the complete persisted JSON, including lifecycle fields. Lifecycle
-fields retain their own bounded validation and do not consume the capture byte
+`runtime_cfg.fault_evidence` limits the independent atomic evidence namespace to
+256 fault records, 4096 UTF-8 bytes for the activation-capture fields of each frame,
+and 1 MiB for its logical serialized snapshot, including lifecycle fields. This
+is an evidence-content bound, not the size of the shared SQLite database.
+Lifecycle fields retain their own bounded validation and do not consume the capture byte
 budget. Combining them in one object does not tighten the original capture
 limit or discard previously valid legacy data. Capacity evicts the oldest
 inactive record by last activation time, never an active record. If all
@@ -136,7 +137,9 @@ activation. Detection, notification, recovery and degradation continue. A cleare
 record may be evicted when the total bound is otherwise exceeded. The store is
 separate from notification delivery history. No periodic, recovery, or
 significant-change snapshots and no episode objects are created.
-The in-memory frame is available to fault publication immediately; atomic disk
-replacement is scheduled after the current response dispatch. Failed writes
-assert the independent App Health persistence contributor and retry no more
+The [SQLite store](<Runtime State Storage - Architecture.md>) retains evidence
+separately from notification history and imports the configured legacy JSON
+only once. The in-memory frame is available to fault publication immediately;
+the atomic store transaction is scheduled after the current response dispatch.
+Failed writes assert the independent App Health persistence contributor and retry no more
 often than every 60 seconds, with one final attempt on orderly shutdown.

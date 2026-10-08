@@ -15,14 +15,9 @@ from components.safetycomponents.core.safety_component import SafetyComponent
 from components.safetycomponents.core.safety_mechanism import SafetyMechanism
 
 PROVIDER_FAULTS: Mapping[str, str] = {
-    "OpenMeteoWeatherApiComponent": "ExternalProviderUnavailableOpenMeteoWeather",
-    "ImgwWarningsApiComponent": "ExternalProviderUnavailableImgwWarnings",
-    "OpenMeteoAirQualityApiComponent": "ExternalProviderUnavailableOpenMeteoAirQuality",
-}
-PROVIDER_LABELS: Mapping[str, str] = {
-    "OpenMeteoWeatherApiComponent": "Open-Meteo weather",
-    "ImgwWarningsApiComponent": "IMGW warnings",
-    "OpenMeteoAirQualityApiComponent": "Open-Meteo air quality",
+    "OpenMeteoWeatherApiComponent": "ExternalDataUnavailable",
+    "ImgwWarningsApiComponent": "ExternalDataUnavailable",
+    "OpenMeteoAirQualityApiComponent": "ExternalDataUnavailable",
 }
 APP_CAUSES = (
     "startup",
@@ -33,6 +28,7 @@ APP_CAUSES = (
 PERSISTENCE_STORES = (
     "notification_state", "recovery_state", "internal_environment_state",
     "periodic_test_state", "detector_test_state", "fault_evidence_state",
+    "battery_fault_catalog",
 )
 
 
@@ -104,7 +100,7 @@ class SelfDiagnosticsComponent(SafetyComponent):
     def get_symptoms_data(
         self, modules: dict[str, SafetyComponent], component_cfg: Any
     ) -> tuple[dict[str, Symptom], dict[str, Any]]:
-        """Declare one installed D contributor and fault per enabled adapter."""
+        """Declare independent adapter contributors under one external D fault."""
 
         symptoms: dict[str, Symptom] = {}
         localizer = getattr(self.hass_app, "localizer", None)
@@ -119,15 +115,11 @@ class SelfDiagnosticsComponent(SafetyComponent):
             )
             self._fault_definitions[fault_name] = {
                 "name": (
-                    localizer.text(
-                        "fault.external_provider_unavailable",
-                        provider=PROVIDER_LABELS[provider],
-                    )
+                    localizer.text("fault.external_data_unavailable")
                     if localizer is not None
-                    else f"External provider unavailable: {PROVIDER_LABELS[provider]}"
+                    else "External data problem"
                 ),
-                "related_sms": ["sm_provider_adapter_health"],
-                "related_symptom_ids": [symptom_id],
+                "related_sms": ["sm_provider_adapter_health", "sm_ext_provider_unavailable"],
                 "level": 3,
                 "category": "D",
             }

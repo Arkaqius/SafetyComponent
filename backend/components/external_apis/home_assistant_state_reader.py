@@ -84,8 +84,11 @@ class HomeAssistantStateReader:
             if self._closed:
                 return
             for key, group in self._groups.items():
+                # Fast groups run on every five-second scheduler tick. Comparing
+                # against the preceding callback's actual start time can skip
+                # a whole cycle when the next callback arrives slightly earlier.
                 if (
-                    now >= group.next_poll
+                    (group.interval <= SCHEDULE_SECONDS or now >= group.next_poll)
                     and group.timeout_seconds not in self._refreshing
                 ):
                     batches.setdefault(group.timeout_seconds, {})[key] = set(group.entities)

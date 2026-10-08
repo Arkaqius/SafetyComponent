@@ -37,7 +37,7 @@ def _config(entity_id: str = "sensor.office_temperature") -> dict:
                 "purpose": "Temperature input for Office",
                 "source": "component",
                 "fault_owner": "component",
-                "fault_name": "TemperatureMonitoringUnavailable",
+                "fault_name": "InputMonitoringUnavailable",
                 "failure_debounce_seconds": 10,
                 "recovery_debounce_seconds": 10,
                 "area_id": "office",
@@ -159,7 +159,7 @@ def test_entity_monitor_routes_checks_to_component_fault(
         "EntityHealthFailureTemperatureOfficeFreshness",
         "EntityHealthFailureTemperatureOfficeFiniteNumber",
     }
-    fault = component.get_fault_definitions()["TemperatureMonitoringUnavailable"]
+    fault = component.get_fault_definitions()["InputMonitoringUnavailable"]
     assert fault["level"] == 3
     assert fault["related_sms"] == ["sm_entity_health_temperature_office"]
     runtime = component._entities["TemperatureOffice"]
@@ -250,6 +250,8 @@ def test_minute_evaluation_preserves_fast_dependencies(mocked_hass_app_basic):
     config["evaluation_interval_seconds"] = 60
     temperature = config["component_entities"][0]
     temperature["detection_budget_seconds"] = 4020
+    temperature["failure_debounce_seconds"] = 60
+    temperature["checks"]["freshness"]["max_silence_seconds"] = 3600
     config["component_entities"].append({
         **temperature, "key": "TemperatureWindowOffice",
         "entity_id": "binary_sensor.window", "checks": {},
@@ -479,8 +481,8 @@ def test_entity_monitor_merges_memberships_for_same_entity(mocked_hass_app_basic
         "TemperatureOffice",
         "ExternalOpeningOffice",
     )
-    assert dependency.fault_name == "CommonInputUnavailable"
-    assert set(component.get_fault_definitions()) == {"CommonInputUnavailable"}
+    assert dependency.fault_name == "InputMonitoringUnavailable"
+    assert set(component.get_fault_definitions()) == {"InputMonitoringUnavailable"}
 
 
 def test_multiple_component_inputs_aggregate_into_one_diagnostic_fault(
@@ -506,10 +508,10 @@ def test_multiple_component_inputs_aggregate_into_one_diagnostic_fault(
 
     assert len(component._entities) == 2
     assert set(component.get_fault_definitions()) == {
-        "TemperatureMonitoringUnavailable"
+        "InputMonitoringUnavailable"
     }
     assert set(
-        component.get_fault_definitions()["TemperatureMonitoringUnavailable"][
+        component.get_fault_definitions()["InputMonitoringUnavailable"][
             "related_sms"
         ]
     ) == {
@@ -556,7 +558,7 @@ def test_explicit_dependency_controls_stable_key_for_merged_entity(
 
     assert set(component._entities) == {"ExternalOpeningUpperBathroomWindow"}
     assert set(component.get_fault_definitions()) == {
-        "TemperatureMonitoringUnavailable"
+        "InputMonitoringUnavailable"
     }
 
 

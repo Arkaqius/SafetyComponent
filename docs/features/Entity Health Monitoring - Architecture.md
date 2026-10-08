@@ -23,13 +23,16 @@ The following decisions define the feature boundary:
    opt-in and require complete, type-compatible calibration.
 6. Entity Monitor observes and diagnoses. It shall not call a Home Assistant
    actuator service or modify a monitored entity.
-7. One underlying failure has one fault owner. Entity Monitor shall not create a
-   duplicate fault when the owning component already defines failure semantics.
+7. Each logical check contribution has one fault owner. Entity Monitor shall
+   not create a duplicate Group A fault when a Group B role owns that check.
+   Distinct input, recovery, detector or application-health roles may share one
+   physical entity while retaining their separate fault families.
 8. The complete Group C inventory is read through the authenticated Home
    Assistant frontend connection. It is not copied into MQTT attributes.
 9. C-ENT creates at most one `EntityHealth{EntityKey}` fault per unhealthy Group
-   A entity that it owns. Group B checks contribute to their requesting
-   component's scoped diagnostic fault, without a duplicate C-ENT fault.
+   A entity that it owns. Temperature, door, external-opening and shared Group B
+   inputs contribute to `InputMonitoringUnavailable`; recovery and detector
+   diagnostics retain their separate faults without duplicate C-ENT faults.
 10. Failure and recovery debounce govern the transition of each check result
     between passing and failed states.
 
@@ -44,8 +47,8 @@ The feature shall:
 - make SafetyFunctions aware of the health of every entity dependency consumed
   by its components and core services;
 - expose one consistent view of explicit and component-owned entity health;
-- keep failures of different entities in separate faults while aggregating all
-  failed checks of one entity without losing context;
+- preserve independent entity/check evidence inside shared input faults, while
+  retaining separate faults for external-only Group A entities;
 - provide an entity/device audit view for the complete Home Assistant instance;
 - make entity source, owner, state, availability, timestamps, device, and area
   easy to filter in SafetyHome;
@@ -96,7 +99,7 @@ Each entry has a stable installation key and contains:
 - mandatory availability monitoring;
 - optional freshness, required-value, allowed-values, finite-number, numeric-
   range, or rate-of-change checks;
-- failure and recovery debounce;
+- optional report-age timeout and failure debounce; recovery policy is system-owned;
 - an enabled/disabled flag that preserves the stable key.
 
 Group A selection belongs to the installation registry under
@@ -114,16 +117,17 @@ contains:
 - `entity_id` resolved from validated configuration;
 - owner component/core service;
 - purpose and expected value kind;
-- optional freshness contract with a trustworthy timestamp source;
+- optional `report_timeout_seconds` and a trustworthy source timestamp contract;
 - enabled optional checks;
 - fault ownership;
 - optional area/device context.
 
-All entries in `user_config.common_entities` are registered as Group B records.
+All entries in `installation.common_entities` are registered as Group B records.
 Component schemas or core policy own defaults. System calibration may override
 failure/recovery debounce, detection budget, and check thresholds by stable
 dependency key. An entity may also be selected in Group A; the registry retains
-both memberships and resolves one owner for each underlying failure.
+both memberships and resolves one owner for each logical check contribution;
+distinct fault-family roles remain separate records.
 
 Examples of Group B dependencies include temperature inputs registered by
 `TemperatureComponent`, door contacts registered by `SafetyDoorsComponent`,
@@ -256,14 +260,25 @@ class EntityDependency:
     area_id: str | None = None
 ```
 
-One backend registry record exists per Group A/B Home Assistant entity ID. When
-multiple owners or sources reference the same entity, the record preserves each
-membership and merges compatible checks. The frontend joins those records with
-the complete Group C inventory. A component-owned check cannot be disabled or
-relaxed by Group A configuration.
+Backend registry records are keyed by physical entity and diagnostic fault
+family. Compatible declarations for the same input family merge their checks,
+consumers and memberships. A recovery, detector or application-health family
+retains a separate logical record even when it references the same physical
+entity. For example, one window contact may contribute to both
+`InputMonitoringUnavailable` and `TemperatureRecoveryUnavailable`; the merge
+shall not rename or discard the recovery fault.
 
-Conflicting value kinds or fault owners are configuration errors. Two identical
-checks are deduplicated by their stable check key.
+Group A membership attaches once when Group B records exist, preferring the
+input-monitoring record when present. It does not create duplicate Group A
+faults for the other logical roles. The shared reader acquires one physical
+entity at the shortest derived cadence required by its records; every logical
+record retains independent checks, debounce state and coverage bindings.
+The frontend joins those diagnostics with the complete Group C inventory.
+A component-owned check cannot be disabled or relaxed by Group A configuration.
+
+Conflicting value kinds or ownership within the same logical record are
+configuration errors. Distinct fault-family roles are not an ownership conflict.
+Identical checks within a record are deduplicated by their stable check key.
 
 ## 8. Check model
 
@@ -288,7 +303,7 @@ Every optional check targets either the entity `state` or one named attribute.
 
 | Check code | Required calibration | Exact pass condition | Failure state |
 | --- | --- | --- | --- |
-| `freshness` | `timestamp_source` and positive `max_silence_seconds` | The age of the latest valid confirmation is no greater than `max_silence_seconds` | `stale` |
+| `freshness` | `timestamp_source` and positive dependency-level `report_timeout_seconds` | The age of the latest valid confirmation is no greater than `report_timeout_seconds` | `stale` |
 | `required_value` | Target | The target exists and is neither `None` nor an empty string | `degraded` |
 | `allowed_values` | Target and non-empty set of normalized values | The normalized target value belongs to the configured set | `degraded` |
 | `finite_number` | Target | The target converts to a finite number; `NaN` and positive/negative infinity fail | `degraded` |
@@ -320,7 +335,7 @@ contract. No global `last_seen` fallback shall be inferred.
 `last_changed` is presentation metadata and is never a freshness source. A
 change in value is not required for freshness, and an unchanged door, switch,
 valve, or temperature remains fresh while its configured source continues to
-provide valid confirmations within `max_silence_seconds`.
+provide valid confirmations within `report_timeout_seconds`.
 
 The freshness timer starts after the initial snapshot and startup grace. The
 configured timeout shall reflect the source's real update behavior; C-ENT shall
@@ -381,15 +396,17 @@ only when recovery debounce expires without another failure.
 4. Register bounded MQTT diagnostics for Groups A and B.
 5. Register the deduplicated Group A/B entity set with the shared live Home
    Assistant report reader. Temperature-owned and shared outside-temperature
-   dependencies use a 120-second batch cadence, other ordinary dependencies
-   use 60 seconds, and dependencies with detection budgets of at most
-   60 seconds use a 5-second group within their allocated budget.
+   dependencies have a 120-second baseline batch cadence, other ordinary
+   dependencies have a 60-second baseline, and short-budget dependencies use
+   the fast group. Effective intervals may be shortened by report-age and
+   confirmation requirements, with a 5-second minimum. Multiple logical
+   records share the shortest interval for their physical entity.
 6. Subscribe to state updates as an immediate supplement. A newer state or
    attribute transition shall not wait for the next periodic report read.
 7. Apply startup grace, then schedule freshness and debounce evaluation
-   independently of network acquisition. Ordinary evaluation runs every
-   60 seconds by default; a separate 5-second timer reconciles dependencies
-   whose detection budgets are at most 60 seconds.
+   independently of network acquisition. Ordinary evaluation has a 60-second
+   baseline capped by derived monitor requirements; a separate 5-second timer
+   reconciles short-budget dependencies.
 8. Evaluate mandatory checks before optional checks.
 9. Update per-check debounce state and the combined entity health state.
 10. Publish diagnostics and emit only C-ENT-owned symptom transitions.
@@ -466,9 +483,10 @@ before state listeners and check evaluation start. Registration is deterministic
 from the stable entity key. The operator-facing fault name uses the current
 friendly entity name while the runtime IDs remain unchanged.
 
-For Group B, the requesting component owns the fault for a dependency required
-by its evaluation or recovery. C-ENT provides Boolean health checks and
-diagnostics, but does not emit a duplicate `EntityHealth` fault. A shared input
+For Group B, the requesting component declares each dependency and its consumer
+bindings. C-ENT routes temperature, door, external-opening and shared input
+checks into `InputMonitoringUnavailable`; recovery and detector diagnostics
+retain separate faults. It does not emit a duplicate `EntityHealth` fault. A shared input
 has one declared owner and explicit consumer bindings. `none` is allowed only
 for an informational diagnostic and never weakens an existing safety contract.
 For configured temperature and external-hazard recovery actuators, C-ENT also
@@ -480,7 +498,9 @@ are restored from recovery state before fault evaluation after restart.
 An interrupted executing proposal is marked failed rather than made executable
 again; its persisted expected state is observed passively so a later manual
 repair can release only that command contributor.
-The binding and per-component fault identities are defined in
+The shared input fault retains independent per-source contributors, so repair
+of one entity cannot clear another failure or enable an unrelated H consumer.
+The binding and fault identities are defined in
 [Fault Routing and Aggregation](Fault%20Routing%20and%20Aggregation%20-%20Architecture.md).
 
 ## 12. MQTT diagnostics
@@ -549,6 +569,25 @@ stable component dependency IDs belong under
 repository contains only schema-safe examples and shall not contain bindings
 from a real Home Assistant installation.
 
+The ordinary monitor timing contract exposes two fields per dependency:
+`report_timeout_seconds` is the maximum age of a trusted source report, and
+`failure_debounce_seconds` is the continuous failed-check period needed to
+confirm a problem. A successful HA read never resets the source-report age.
+Freshness is opt-in and requires a trustworthy timestamp source; availability
+checks still apply when no freshness contract is declared.
+
+The monitor derives read/evaluation cadence within its system-owned limits and
+allocated detection budget. Derived cadence has system-owned bounds, including
+a 5-second minimum; accepting a timing configuration does not by itself prove
+that the complete acquisition/evaluation/notification path meets its FTTI.
+The schema checks the freshness-plus-debounce allocation; the owning dependency
+contract must separately allocate transport and scheduling overhead.
+Reader request deadlines, startup grace, recovery
+debounce and FTTI allocations remain internal safety policy. In particular, a
+report-age timeout is not the network request timeout. A tighter requirement
+shall cap a legacy global evaluation interval rather than wait for that slower
+interval. Immediate life-safety alarm paths remain independent.
+
 The following is a structural example; the entity ID is illustrative rather
 than an installation mapping:
 
@@ -562,11 +601,11 @@ calibration:
     component_overrides:
       TemperatureBedroom:
         detection_budget_seconds: 990
+        report_timeout_seconds: 600
         failure_debounce_seconds: 60
         checks:
           freshness:
             timestamp_source: "last_reported"
-            max_silence_seconds: 600
 
 user_config:
   model_version: 2
@@ -575,37 +614,43 @@ user_config:
       ExampleHeatingAppHealth:
         entity_id: "sensor.example_heating_app_health"
         description: "Health output of another AppDaemon application"
-        detection_budget_seconds: 30
+        report_timeout_seconds: 600
         failure_debounce_seconds: 15
-        recovery_debounce_seconds: 60
         checks:
+          freshness:
+            timestamp_source: "last_reported"
           allowed_values:
             target: "state"
             values: ["running"]
-    defaults:
+    component_settings:
       entity_monitor:
-        startup_grace_seconds: 30
-        evaluation_interval_seconds: 2
         component_overrides:
           TemperatureExampleRoom:
-            detection_budget_seconds: 990
+            report_timeout_seconds: 600
             failure_debounce_seconds: 60
             checks:
               freshness:
                 timestamp_source: "last_reported"
-                max_silence_seconds: 600
 ```
 
 Group B declarations are created from already validated component bindings and
 code-owned defaults. The system calibration remains the baseline; an
 installation may refine one dependency only by its stable key under the
-dedicated Entity Monitor installation-default override map.
+dedicated Entity Monitor component override map.
+
+For migration, legacy `checks.freshness.max_silence_seconds` remains accepted as
+the report-age timeout alias. Existing recovery, startup, evaluation and
+detection-budget fields remain accepted and validated; new installation
+examples use the two monitor timing fields. When both freshness timeout forms
+are supplied they must agree. The normalized diagnostic representation may
+retain `max_silence_seconds` for existing consumers. A legacy timing field cannot
+relax a declared life-safety detection budget or extend a derived safety cadence.
 
 Strict validation rejects:
 
 - missing or invalid entity IDs;
 - duplicate stable keys pointing to different entities;
-- non-positive timing values;
+- non-positive report-age deadlines or negative debounce values;
 - an availability debounce that exceeds its allocated FTTI detection budget;
 - a safety freshness/debounce combination that exceeds that budget;
 - freshness checks without a trustworthy timestamp source or timeout;
@@ -619,8 +664,9 @@ Strict validation rejects:
 
 - Group A/B state listeners are deduplicated by entity ID and supplement shared
   periodic report reads without replacing the owning component's alarm path.
-- One background reader batches all due entity groups and prevents overlapping
-  network reads. Freshness and debounce evaluation use a separate scheduler;
+- The shared background reader batches due entity groups and prevents
+  overlapping network reads within each worker. The short-budget worker is
+  independent of ordinary reads. Freshness and debounce use a separate scheduler;
   there is no network polling loop per entity.
 - MQTT diagnostics use bounded attributes and unhealthy summaries.
 - Group C uses Home Assistant's existing frontend state/registry connection.
@@ -645,6 +691,8 @@ Strict validation rejects:
 - Group B registration for Temperature, Safety Doors, shared application inputs,
   and every common entity.
 - Membership merge and conflict rejection.
+- Shared physical entities with independent input/recovery/application-health
+  fault families, single Group A membership and shortest-cadence acquisition.
 - Missing, `unknown`, `unavailable`, stale, and recovered states.
 - Startup grace and restart snapshots.
 - Optional check calibration and target validation.
@@ -657,7 +705,10 @@ Strict validation rejects:
   detection budget, with reason `source_report_unavailable`.
 - Independent failure and recovery debounce.
 - Fault ownership and duplicate-fault prevention.
-- Same-entity check aggregation, per-entity fault separation, and no false clear.
+- Same-entity check aggregation, shared input aggregation with independent
+  contributors, per-entity Group A fault separation, and no false clear.
+- Two-field monitor calibration, legacy alias normalization/conflict rejection,
+  derived scheduling and preservation of allocated detection budgets.
 - Stable MQTT IDs and bounded attributes.
 - No RecoveryManager registration or actuator service calls.
 

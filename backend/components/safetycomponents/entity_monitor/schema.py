@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Any, Callable
 
 from pydantic import ConfigDict, Field, ValidationError, field_validator, model_validator
@@ -126,15 +127,37 @@ class EntityChecks(StrictBaseModel):
     rate_of_change: RateOfChangeCheck | None = None
 
 
+def normalize_report_timeout(raw: Any) -> Any:
+    """Translate source report age into the legacy internal freshness check."""
+
+    if not isinstance(raw, dict) or raw.get("report_timeout_seconds") is None:
+        return raw
+    normalized = deepcopy(raw)
+    checks = normalized.get("checks")
+    freshness = checks.get("freshness") if isinstance(checks, dict) else None
+    if isinstance(freshness, dict):
+        legacy = freshness.get("max_silence_seconds")
+        if legacy is not None and legacy != normalized["report_timeout_seconds"]:
+            raise ValueError("Conflicting report_timeout_seconds and max_silence_seconds")
+        freshness["max_silence_seconds"] = normalized["report_timeout_seconds"]
+    return normalized
+
+
 class ComponentEntityOverride(StrictBaseModel):
     """System calibration override for one component-owned dependency."""
 
     model_config = ConfigDict(extra="allow")
 
+    report_timeout_seconds: int | None = Field(default=None, ge=1)
     failure_debounce_seconds: int | None = Field(default=None, ge=0)
     recovery_debounce_seconds: int | None = Field(default=None, ge=0)
     detection_budget_seconds: int | None = Field(default=None, ge=1)
     checks: EntityChecks | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_timing(cls, raw: Any) -> Any:
+        return normalize_report_timeout(raw)
 
 
 class ExplicitEntityConfig(StrictBaseModel):
@@ -146,10 +169,22 @@ class ExplicitEntityConfig(StrictBaseModel):
     area_id: str | None = None
     description: str
     enabled: bool = True
+    report_timeout_seconds: int | None = Field(default=None, ge=1)
     failure_debounce_seconds: int | None = Field(default=None, ge=0)
     recovery_debounce_seconds: int | None = Field(default=None, ge=0)
     detection_budget_seconds: int | None = Field(default=None, ge=1)
     checks: EntityChecks = Field(default_factory=EntityChecks)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_timing(cls, raw: Any) -> Any:
+        return normalize_report_timeout(raw)
+
+    @model_validator(mode="after")
+    def _require_report_source(self) -> "ExplicitEntityConfig":
+        if self.report_timeout_seconds is not None and self.checks.freshness is None:
+            raise ValueError("report_timeout_seconds requires a trustworthy freshness timestamp_source")
+        return self
 
     @field_validator("entity_id", "description")
     @classmethod

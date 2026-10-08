@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import EntityInput from './EntityInput.js';
 import { initialObject, updateObjectField, type FieldSpec } from './configurationFieldSchemas.js';
 
 type ConfigurationMap = Record<string, unknown>;
@@ -86,6 +87,7 @@ function ObjectFields({
 }) {
   const [selected, setSelected] = useState('');
   const available = Object.entries(schema).filter(([key]) => {
+    if (schema[key].hidden) return false;
     if (Object.prototype.hasOwnProperty.call(value, key)) return false;
     if (key === 'gas_identity' && value.hazard !== 'flammable_gas') return false;
     if (key === 'actuator_entity_id' && value.execution_policy !== 'user_confirmed') return false;
@@ -95,7 +97,7 @@ function ObjectFields({
   return (
     <div className='configuration-nested-fields'>
       {Object.entries(schema)
-        .filter(([key]) => key in value)
+        .filter(([key, field]) => key in value && !field.hidden)
         .map(([key, field]) => (
           <div className='configuration-nested-row' key={key}>
             <SchemaField field={field} value={value[key]} onChange={next => updateField(key, next)} />
@@ -234,6 +236,8 @@ function SchemaField({ field, value, onChange }: { field: FieldSpec; value: unkn
             </option>
           ))}
         </select>
+      ) : field.kind === 'entity' ? (
+        <EntityInput label={field.label} value={String(value ?? '')} domains={field.domains} onChange={onChange} />
       ) : (
         <input
           type={field.kind === 'number' ? 'number' : 'text'}

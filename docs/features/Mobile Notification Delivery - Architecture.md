@@ -94,7 +94,8 @@ shall not release this output restriction.
 
 ### 2.4 `NotificationStateStore`
 
-- writes a versioned JSON snapshot atomically;
+- commits versioned notification records atomically in the shared SQLite
+  database, with one-time import from the configured legacy JSON path;
 - restores active records, acknowledgements, pending deliveries, repeat state,
   counters, last transport result, and submission history;
 - retains restored active records until a current fault event confirms SET,
@@ -154,8 +155,10 @@ including successful Home Assistant acceptance and failed submissions. Each
 retry shall produce a separate entry only for the targets actually attempted.
 Waiting for WAN recovery shall not create a submission-history entry.
 
-The journal shall use the existing notification state snapshot and persistence
-configuration. A compatible snapshot without history shall restore an empty
+The journal shall use the notification store namespace and existing persistence
+configuration. Its logical snapshot shape remains compatible after the
+[SQLite migration](<Runtime State Storage - Architecture.md>). A compatible
+snapshot without history shall restore an empty
 journal without discarding active or pending notification state.
 
 Each entry shall contain:

@@ -111,6 +111,10 @@ class FaultManager:
             active=fault.evaluation.active,
             shadowed_by=sorted(fault.evaluation.shadowed_by),
             latched=fault.evaluation.latched,
+            level=f"level_{fault.level}",
+            category=fault.category.value,
+            contributors=self._configured_contributors(fault),
+            active_contributors=sorted(fault.evaluation.active_contributors),
         )
         evidence = (
             self.evidence_journal.get(fault.name)
@@ -188,6 +192,15 @@ class FaultManager:
             )
         self.evidence_journal.activate(
             fault, symptom, context, source=source, restrictions=restrictions
+        )
+
+    def _configured_contributors(self, fault: Fault) -> list[str]:
+        """Return the configured symptom identities belonging to this fault."""
+
+        return sorted(
+            symptom_id
+            for symptom_id, symptom in self.symptoms.items()
+            if self._belongs_to_fault(fault, symptom_id, symptom.sm_name)
         )
 
     def mark_evaluation_unavailable(self, symptom_id: str) -> None:

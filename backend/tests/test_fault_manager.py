@@ -220,6 +220,10 @@ def test_set_fault(fault_manager, mocked_hass_app, fault):
         attributes={
             "Location": "Kitchen, Office",
             "notification_tag": "mocked_fault_tag",
+            "level": "level_2",
+            "category": "H",
+            "contributors": ["RiskyTemperatureOffice"],
+            "active_contributors": ["RiskyTemperatureOffice"],
             "active": True,
             "shadowed_by": [],
             "latched": False,
@@ -256,7 +260,11 @@ def test_clear_fault(fault_manager, mocked_hass_app, fault):
     fault_manager.mqtt_entities.publish_sensor_state.assert_any_call(
         "sensor.fault_RiskyTemperature",
         "PASS",
-        attributes={"Location": "", "active": False, "shadowed_by": [], "latched": False}
+        attributes={
+            "Location": "", "active": False, "shadowed_by": [], "latched": False,
+            "level": "level_2", "category": "H",
+            "contributors": ["RiskyTemperatureOffice"], "active_contributors": [],
+        }
     )
     fault_manager.notify_spy.assert_any_call(
         "RiskyTemperature",
@@ -335,6 +343,10 @@ def test_fault_manager_multiple_symptoms(fault_manager, mocked_hass_app, fault):
         attributes={
             "Location": "Living Room, Office",
             "notification_tag": "mocked_fault_tag",
+            "level": "level_2",
+            "category": "H",
+            "contributors": ["RiskyTemperatureKitchen", "RiskyTemperatureOffice"],
+            "active_contributors": ["RiskyTemperatureOffice"],
             "active": True,
             "shadowed_by": [],
             "latched": False,
@@ -363,6 +375,10 @@ def test_fault_manager_multiple_symptoms(fault_manager, mocked_hass_app, fault):
         attributes={
             "Location": "Living Room, Kitchen",
             "notification_tag": "mocked_fault_tag",
+            "level": "level_2",
+            "category": "H",
+            "contributors": ["RiskyTemperatureKitchen", "RiskyTemperatureOffice"],
+            "active_contributors": ["RiskyTemperatureKitchen", "RiskyTemperatureOffice"],
             "active": True,
             "shadowed_by": [],
             "latched": False,
@@ -393,7 +409,12 @@ def test_fault_manager_multiple_symptoms(fault_manager, mocked_hass_app, fault):
     fault_manager.mqtt_entities.publish_sensor_state.assert_any_call(
         "sensor.fault_RiskyTemperature",
         "PASS",
-        attributes={"Location": "", "active": False, "shadowed_by": [], "latched": False},
+        attributes={
+            "Location": "", "active": False, "shadowed_by": [], "latched": False,
+            "level": "level_2", "category": "H",
+            "contributors": ["RiskyTemperatureKitchen", "RiskyTemperatureOffice"],
+            "active_contributors": [],
+        },
     )
     fault_manager.notify_spy.assert_any_call(
         "RiskyTemperature",

@@ -86,6 +86,34 @@ def test_provider_adapter_bindings_preserve_weather_aq_isolation() -> None:
     assert registry.causes_for("aq_window", RestrictionEffect.EVALUATION) == ()
 
 
+def test_shared_input_fault_retains_independent_room_coverage() -> None:
+    symptoms = {
+        name: SimpleNamespace(sm_name=name)
+        for name in ("room_a", "room_b", "input_a", "input_b")
+    }
+    faults = {
+        "RiskyTemperature": Fault("RiskyTemperature", ["room_a", "room_b"], 2),
+        "InputMonitoringUnavailable": Fault(
+            "InputMonitoringUnavailable", ["input_a", "input_b"], 3, category=FaultCategory.D,
+        ),
+    }
+    registry = DegradationRegistry(symptoms, faults, tuple(
+        DiagnosticBinding(
+            f"input_{room}",
+            (DegradationTarget(f"room_{room}", "temperature", room, RestrictionEffect.EVALUATION),),
+        )
+        for room in ("a", "b")
+    ))
+    for name in symptoms:
+        registry.observe(symptom_id=name, state=FaultState.CLEARED)
+    registry.observe(symptom_id="input_a", state=FaultState.SET)
+    registry.observe(symptom_id="input_b", state=FaultState.SET)
+    registry.observe(symptom_id="input_a", state=FaultState.CLEARED)
+    assert registry.causes_for("room_a", RestrictionEffect.EVALUATION) == ()
+    assert registry.causes_for("room_b", RestrictionEffect.EVALUATION) == ("input_b",)
+    assert registry.snapshot()["state"] == CoverageState.DEGRADED.value
+
+
 def test_room_loss_is_local_and_overlapping_causes_clear_independently() -> None:
     registry = _registry()
     for name in ("input_a", "provider_a", "external_only", "room_a", "room_b"):

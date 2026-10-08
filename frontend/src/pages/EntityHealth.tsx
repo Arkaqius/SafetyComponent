@@ -1026,7 +1026,8 @@ function reasonLabel(check: string, reason: string, value: unknown): string {
 function calibrationLabel(calibration: Record<string, unknown>): string {
   const labels: Record<string, string> = {
     timestamp_source: 'Źródło czasu',
-    max_silence_seconds: 'Maksymalny czas bez danych',
+    max_silence_seconds: 'Maksymalny wiek raportu',
+    report_timeout_seconds: 'Maksymalny wiek raportu',
     target: 'Badana wartość',
     value: 'Wymagana wartość',
     values: 'Dozwolone wartości',
@@ -1039,9 +1040,10 @@ function calibrationLabel(calibration: Record<string, unknown>): string {
   };
   const values: Record<string, string> = {
     last_updated: 'ostatnia aktualizacja',
+    last_reported: 'ostatni raport źródła',
     state: 'stan encji',
   };
-  const seconds = new Set(['max_silence_seconds', 'window_seconds']);
+  const seconds = new Set(['max_silence_seconds', 'report_timeout_seconds', 'window_seconds']);
   return Object.entries(calibration)
     .map(([key, value]) => {
       const rendered = Array.isArray(value) ? value.join(', ') : (values[String(value)] ?? String(value));

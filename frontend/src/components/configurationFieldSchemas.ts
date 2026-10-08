@@ -2,15 +2,22 @@
 export type FieldSpec = {
   label: string;
   help?: string;
-  kind: 'text' | 'number' | 'boolean' | 'select' | 'list' | 'object';
+  kind: 'text' | 'entity' | 'number' | 'boolean' | 'select' | 'list' | 'object';
+  domains?: string[];
   required?: boolean;
   includeOnCreate?: boolean;
+  hidden?: boolean;
   initial?: unknown;
   options?: Array<[string, string]>;
   fields?: Record<string, FieldSpec>;
 };
 
 const text = (label: string, required = false, help?: string): FieldSpec => ({ label, kind: 'text', required, help, initial: '' });
+const entity = (label: string, required = false, domains: string[] = [], help?: string): FieldSpec => ({
+  ...text(label, required, help),
+  kind: 'entity',
+  domains,
+});
 const number = (label: string, help?: string): FieldSpec => ({ label, kind: 'number', help, initial: 0 });
 const list = (label: string, help?: string, options?: Array<[string, string]>): FieldSpec => ({
   label,
@@ -41,10 +48,14 @@ const checks = object('Kontrole zdrowia', {
   freshness: object(
     'Aktualność danych',
     {
-      timestamp_source: text('Źródło znacznika czasu', true, 'Np. last_updated lub nazwa atrybutu czasu.'),
-      max_silence_seconds: { ...number('Maksymalna cisza (s)'), required: true },
+      timestamp_source: text(
+        'Źródło znacznika czasu',
+        true,
+        'Wiarygodny raport źródła, np. last_reported lub uzgodniony atrybut czasu. Sam odczyt HA nie odnawia świeżości.'
+      ),
+      max_silence_seconds: { ...number('Maksymalny wiek raportu (stare ustawienie)'), hidden: true },
     },
-    { timestamp_source: '', max_silence_seconds: 60 }
+    { timestamp_source: '' }
   ),
   required_value: object('Wymagana wartość', targetFields),
   allowed_values: object(
@@ -68,9 +79,19 @@ const checks = object('Kontrole zdrowia', {
 });
 
 const monitorTiming = {
-  failure_debounce_seconds: number('Opóźnienie wykrycia awarii (s)'),
-  recovery_debounce_seconds: number('Opóźnienie potwierdzenia powrotu (s)'),
-  detection_budget_seconds: { ...number('Budżet wykrycia (s)'), initial: 60 },
+  report_timeout_seconds: {
+    ...number(
+      'Maksymalny wiek raportu (s)',
+      'Wymaga kontroli aktualności ze źródłem znacznika czasu. Nie jest limitem oczekiwania na odpowiedź HA.'
+    ),
+    initial: 3600,
+  },
+  failure_debounce_seconds: number(
+    'Czas potwierdzenia awarii (s)',
+    'Jak długo problem musi trwać przed zgłoszeniem. Częstotliwość kontroli jest dobierana automatycznie.'
+  ),
+  recovery_debounce_seconds: { ...number('Potwierdzenie powrotu (stare ustawienie)'), hidden: true },
+  detection_budget_seconds: { ...number('Budżet wykrycia (stare ustawienie)'), hidden: true },
   checks,
 };
 
@@ -85,9 +106,9 @@ const hazardOptions: Array<[string, string]> = [
 export const registrySchemas: Record<string, Record<string, FieldSpec>> = {
   rooms: {
     area_id: text('Obszar Home Assistant', true),
-    temperature_sensor: text('Czujnik temperatury', true, 'Pełny identyfikator encji, np. sensor.temperatura.'),
+    temperature_sensor: entity('Czujnik temperatury', true, ['sensor'], 'Pełny identyfikator encji, np. sensor.temperatura.'),
     window: text('Okno z listy otworów'),
-    actuator: text('Osłona cover.*'),
+    actuator: entity('Osłona cover.*', false, ['cover']),
     temperature: object('Progi temperatury tego pomieszczenia', {
       low_temperature_c: number('Minimalna temperatura (°C)'),
       high_temperature_c: number('Maksymalna temperatura (°C)'),
@@ -95,7 +116,7 @@ export const registrySchemas: Record<string, Record<string, FieldSpec>> = {
   },
   openings: {
     area_id: text('Obszar Home Assistant', true),
-    entity_id: text('Czujnik otwarcia', true),
+    entity_id: entity('Czujnik otwarcia', true, ['binary_sensor', 'cover']),
     friendly_name: text('Nazwa otworu', true),
     kind: select(
       'Rodzaj otworu',
@@ -112,7 +133,7 @@ export const registrySchemas: Record<string, Record<string, FieldSpec>> = {
       condition: object(
         'Warunek monitorowania',
         {
-          entity_id: text('Encja warunku', true),
+          entity_id: entity('Encja warunku', true),
           pass_states: { ...list('Stany zezwalające'), required: true },
           blocked_states: { ...list('Stany blokujące'), required: true },
         },
@@ -121,7 +142,7 @@ export const registrySchemas: Record<string, Record<string, FieldSpec>> = {
     }),
     external_hazard: object('Zagrożenia zewnętrzne', {
       hazards: list('Monitorowane zagrożenia', 'Pomiń to pole, aby użyć zagrożeń systemowych.', hazardOptions),
-      actuator_entity_id: text('Osłona cover.*'),
+      actuator_entity_id: entity('Osłona cover.*', false, ['cover']),
       execution_policy: select('Tryb wykonania', [
         ['manual', 'Ręczny'],
         ['user_confirmed', 'Po potwierdzeniu użytkownika'],
@@ -131,7 +152,7 @@ export const registrySchemas: Record<string, Record<string, FieldSpec>> = {
   },
   detectors: {
     area_id: text('Obszar Home Assistant', true),
-    entity_id: text('Encja detektora', true),
+    entity_id: entity('Encja detektora', true, ['binary_sensor']),
     friendly_name: text('Nazwa detektora', true),
     hazard: select(
       'Wykrywane zagrożenie',
@@ -148,7 +169,7 @@ export const registrySchemas: Record<string, Record<string, FieldSpec>> = {
     enabled: yesNo('Włączony'),
   },
   monitored_entities: {
-    entity_id: text('Monitorowana encja', true),
+    entity_id: entity('Monitorowana encja', true),
     description: text('Opis celu monitoringu', true),
     area_id: text('Obszar Home Assistant'),
     enabled: yesNo('Włączona'),
@@ -157,8 +178,16 @@ export const registrySchemas: Record<string, Record<string, FieldSpec>> = {
   component_overrides: monitorTiming,
   remote_batteries: {
     friendly_name: text('Nazwa urządzenia', true),
-    percentage_entity: { ...text('Poziom baterii (%)', false, 'Encja sensor.* z klasą battery i jednostką %. Nie dodawaj tu baterii hosta.'), includeOnCreate: true },
-    low_entity: text('Sygnalizacja niskiej baterii', false, 'Encja binary_sensor.* z klasą battery; on oznacza niski poziom.'),
+    percentage_entity: {
+      ...entity('Poziom baterii (%)', false, ['sensor'], 'Encja sensor.* z klasą battery i jednostką %. Nie dodawaj tu baterii hosta.'),
+      includeOnCreate: true,
+    },
+    low_entity: entity(
+      'Sygnalizacja niskiej baterii',
+      false,
+      ['binary_sensor'],
+      'Encja binary_sensor.* z klasą battery; on oznacza niski poziom.'
+    ),
     enabled: yesNo('Monitoruj urządzenie'),
   },
 };
@@ -182,4 +211,25 @@ export function updateObjectField(value: Record<string, unknown>, key: string, n
     if (next === 'manual') delete updated.actuator_entity_id;
   }
   return updated;
+}
+
+export function normalizeMonitorConfiguration(source: Record<string, unknown>): Record<string, unknown> {
+  const normalized = structuredClone(source);
+  const asMap = (value: unknown): Record<string, unknown> =>
+    value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+  const installation = asMap(normalized.installation);
+  const settings = asMap(installation.component_settings);
+  const monitor = asMap(settings.entity_monitor);
+  for (const group of [asMap(installation.monitored_entities), asMap(monitor.component_overrides)]) {
+    for (const raw of Object.values(group)) {
+      const dependency = asMap(raw);
+      const freshness = asMap(asMap(dependency.checks).freshness);
+      const legacy = freshness.max_silence_seconds;
+      if (legacy !== undefined && (dependency.report_timeout_seconds === undefined || dependency.report_timeout_seconds === legacy)) {
+        dependency.report_timeout_seconds = legacy;
+        delete freshness.max_silence_seconds;
+      }
+    }
+  }
+  return normalized;
 }

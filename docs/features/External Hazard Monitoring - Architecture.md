@@ -359,12 +359,18 @@ IDs, not per-condition symptom IDs.
 | --- | --- | --- | ---: | --- |
 | `ExternalWeatherExposure` | `sm_ext_weather_exposure` | `ExternalWeatherExposure{HazardId}{OpeningId}` | 2 | One or more open apertures exposed to rain, storm, frost, or damaging wind |
 | `OutdoorAirQualityExposure` | `sm_ext_outdoor_air_quality_exposure` | `OutdoorAirQualityExposure{OpeningId}` | 3 | One or more open apertures during unacceptable outdoor AQ |
-| `ExternalHazardDataUnavailable` | `sm_ext_provider_unavailable` | `ExternalHazardDataUnavailable{CapabilityId}` | 3 | Every provider required for an enabled capability is stale or unavailable |
+| `ExternalDataUnavailable` | `sm_ext_provider_unavailable`, `sm_provider_adapter_health` | `ExternalHazardDataUnavailable{CapabilityId}`, `ProviderHealth{ProviderId}` | 3 | Qualified provider failure or loss of required evidence for an enabled capability |
 
-`HazardId`, `OpeningId`, and `CapabilityId` are
+`HazardId`, `OpeningId`, `CapabilityId`, and `ProviderId` are
 stable PascalCase identifiers derived from validated configuration keys or
 normalized provider identities. Human-readable hazard, opening, and area names
 are carried as localized attributes; they do not alter runtime IDs.
+Provider-health contributors and capability-health contributors share one D
+fault but retain independent scope, timestamps, reasons and recovery evidence.
+Consumer redundancy policy determines capability availability. Failure of one
+provider does not by itself invalidate independent usable provider evidence.
+Coverage restrictions remain per contributor and consumer rather than applying
+the whole fault's union of targets to every failed source.
 The weather fault uses one static level because the current FaultManager schema
 assigns one level to each fault key. Level 2 covers the most urgent event in the
 aggregated rain/storm/frost/wind family.
@@ -471,11 +477,13 @@ runtime_cfg:
       level: 3
       related_sms:
         - "sm_ext_outdoor_air_quality_exposure"
-    ExternalHazardDataUnavailable:
+    ExternalDataUnavailable:
       name: "Brak danych o zagrożeniach zewnętrznych"
       level: 3
+      category: D
       related_sms:
         - "sm_ext_provider_unavailable"
+        - "sm_provider_adapter_health"
 
 user_config:
   model_version: 2

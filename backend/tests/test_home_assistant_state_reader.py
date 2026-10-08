@@ -38,6 +38,58 @@ def scheduled_reader(monkeypatch):
     return HomeAssistantStateReader(provider), provider, clock, jobs
 
 
+def test_fast_reads_follow_scheduler_ticks_despite_submillisecond_jitter(
+    scheduled_reader,
+):
+    reader, provider, clock, jobs = scheduled_reader
+    row = snapshot("on")
+    provider.poll.return_value = {"binary_sensor.window": row}
+    reader.register("fast", {"binary_sensor.window"}, 5)
+    reader.register("maintenance", {"sensor.battery"}, 3600)
+    reader.tick()
+    while jobs:
+        jobs.pop()()
+    provider.poll.reset_mock()
+
+    for tick_at in (104.999, 109.999, 114.998, 119.998):
+        clock[0] = tick_at
+        assert reader.report("fast", "binary_sensor.window") == row
+        reader.tick()
+        reader.tick()  # An in-flight read must not spawn a duplicate worker.
+        assert len(jobs) == 1
+        jobs.pop()()
+        assert reader.report("fast", "binary_sensor.window") == row
+
+    assert provider.poll.call_count == 4
+    for call in provider.poll.call_args_list:
+        assert call.args == ({"binary_sensor.window"},)
+        assert call.kwargs == {"timeout_seconds": 3}
+
+
+def test_fast_read_failure_and_late_response_still_discard_evidence(
+    scheduled_reader,
+):
+    reader, provider, clock, jobs = scheduled_reader
+    provider.poll.return_value = {"binary_sensor.window": snapshot("on")}
+    reader.register("fast", {"binary_sensor.window"}, 5)
+    reader.tick()
+    jobs.pop()()
+    clock[0] = 104.999
+    provider.poll.side_effect = OSError("offline")
+    reader.tick()
+    assert len(jobs) == 1
+    jobs.pop()()
+    assert reader.report("fast", "binary_sensor.window") is None
+
+    clock[0] = 109.999
+    provider.poll.side_effect = None
+    reader.tick()
+    clock[0] += 3.001
+    jobs.pop()()
+    assert reader.report("fast", "binary_sensor.window") is None
+    assert reader.revision("fast") == 3
+
+
 def test_batches_due_groups_and_keeps_maintenance_hourly(scheduled_reader):
     reader, provider, clock, jobs = scheduled_reader
     reader.register("runtime", {"sensor.temperature"}, 60)

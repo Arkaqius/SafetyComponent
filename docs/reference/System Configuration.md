@@ -79,21 +79,32 @@ inside the generated runtime payload and diagnostics. Editable calibration uses
 | --- | --- | --- | --- |
 | `default_startup_grace_seconds` | seconds `60` | Prevents startup transients from immediately becoming dependency faults. | `installation.component_settings.entity_monitor.startup_grace_seconds` |
 | `default_failure_debounce_seconds` | seconds `15` | Default persistence required before a dependency becomes unhealthy. | Per explicit entity or component dependency |
-| `default_recovery_debounce_seconds` | seconds `60` | Default persistence required before recovery is accepted. | Per explicit entity or component dependency |
-| `default_evaluation_interval_seconds` | seconds `60` | Ordinary freshness/debounce evaluation cadence, separate from live report acquisition. Dependencies with detection budgets of at most 60 seconds retain 5-second reconciliation. | `installation.component_settings.entity_monitor.evaluation_interval_seconds` |
+| `default_recovery_debounce_seconds` | seconds `60` | Default persistence required before recovery is accepted. | Legacy per-entity/dependency migration input |
+| `default_evaluation_interval_seconds` | seconds `60` | Baseline ordinary freshness/debounce cadence; the monitor caps it to meet derived requirements. Short-budget dependencies retain 5-second reconciliation. | Legacy `installation.component_settings.entity_monitor.evaluation_interval_seconds`, validated and capped |
 | `unhealthy_summary_limit` | integer `32` | Bounds diagnostic publication size. | No |
 | `component_overrides` | mapping, empty | Reviewed calibration for stable component-owned dependency keys. | Merged with `installation.component_settings.entity_monitor.component_overrides` |
 
 The shared background reader acquires temperature-owned and shared
-outside-temperature dependency reports every 120 seconds, other ordinary
-Entity Monitor reports every 60 seconds, and dependencies whose detection
-budgets are at most 60 seconds every 5 seconds. The short-budget group uses an
+outside-temperature dependency reports on a 120-second baseline, other ordinary
+Entity Monitor reports on a 60-second baseline, and short-budget dependencies
+on a 5-second baseline. Monitor requirements may shorten ordinary intervals,
+with a 5-second minimum. Logical records in distinct fault families share
+physical acquisition at the shortest required interval without merging faults.
+The short-budget group uses an
 independent worker with a 3-second response deadline; ordinary reads have a
 120-second deadline. Reader evidence lasts from acquisition start through the
 group interval, response deadline and a 5-second scheduling allowance for
 ordinary reads. Short-budget evidence uses its group interval plus 3 seconds.
-State-change listeners supplement these reads immediately. Changing the
-evaluation interval does not change the report-reader cadence. Temperature
+State-change listeners supplement these reads immediately. Dependency timing
+uses `report_timeout_seconds` for maximum source-report age and
+`failure_debounce_seconds` for confirmation. The monitor derives scheduling
+within its system-owned reader bounds and detection allocation; request
+deadlines remain internal HA-reader policy. Legacy nested
+`checks.freshness.max_silence_seconds` is accepted as an equivalent report-age
+alias, and both forms must agree when present. Successful acquisition does not
+reset the age of a source report. Schema validation checks freshness plus
+debounce, while the dependency
+contract separately allocates transport and scheduling overhead. Temperature
 inputs use live `last_reported` confirmation rather than requiring a value
 change; a declared timestamp contract remains necessary to relate integration
 reports to actual measurements. MQTT integrations may suppress unchanged
@@ -190,14 +201,14 @@ capacity and workload before an installation relies on L2 memory detection.
 | `backup_stale_after_seconds` | 86400 s | Maximum observation age for an optional backup-failure source; not a substitute for backup-success age. |
 | `wan_qualification_seconds` / `wan_recovery_seconds` | 60 / 60 s | Sustained L3 WAN fault and recovery. |
 | `battery_low_percent` | 15% | L4 maintenance threshold per configured remote device. |
-| `battery_fault_catalog_file` | `/config/appdaemon/battery_fault_catalog.json` | Durable active/retired battery-fault identities for MQTT discovery cleanup after exclusions or removal; system-owned. |
+| `battery_fault_catalog_file` | `/config/appdaemon/battery_fault_catalog.json` | One-time legacy import path for active/retired battery-fault identities; SQLite retains MQTT discovery cleanup state after exclusions or removal. |
 | `detector_test_interval_days` | 180 days | L4 due/failed maintenance condition per configured detector. |
 | `notification_test_interval_days` | 30 days | Due date after an operator-attested notification-receipt pass. |
 | `backup_restore_test_interval_days` | 180 days | Due date after an operator-attested restore pass on a separate installation, when enabled. |
 | `resource_stale_after_seconds` / `wan_stale_after_seconds` | 180 / 180 s | Maximum age for accepted host and WAN evidence. |
 | `update_stale_after_seconds` / `battery_stale_after_seconds` | 86400 / 86400 s | Maximum age for accepted update and battery evidence. |
-| `detector_test_state_file` | `/config/appdaemon/detector_tests.json` | Durable operator-reported test results. |
-| `periodic_test_state_file` | `/config/appdaemon/periodic_tests.json` | Durable operational-test attestations, separate from detector records and editable configuration. |
+| `detector_test_state_file` | `/config/appdaemon/detector_tests.json` | One-time legacy import path for operator-reported detector results stored in SQLite. |
+| `periodic_test_state_file` | `/config/appdaemon/periodic_tests.json` | One-time legacy import path for SQLite operational-test attestations, separate from detector records and editable configuration. |
 | `memory_fault_level` / `wan_fault_level` / `cpu_fault_level` / `maintenance_fault_level` | L2 / L3 / L4 / L4 | Fixed reviewed severities for host memory, WAN, CPU, and maintenance. |
 
 Disk and temperature baselines require review against the actual host and normal
@@ -241,12 +252,21 @@ annunciators, and WAN evidence.
 actions. Installation assets and actuation eligibility remain in the private
 opening/room registry.
 
+Enabled runtime persistence uses the shared SQLite database described in
+[Runtime State Storage](<../features/Runtime State Storage - Architecture.md>).
+The existing state-file fields are retained as one-time JSON import paths;
+notification and recovery saves use their separate store namespaces afterwards.
+The database is `safety_state.sqlite3` beside `runtime_cfg.fault_evidence.state_file`,
+which defaults to `/config/appdaemon/safety_state.sqlite3`. Configuration YAML,
+API/MQTT JSON, and transient `/run` diagnostic JSON retain their current formats.
+
 `runtime_cfg.fault_evidence` owns the independent fault diagnostic store. Its
 `enabled` switch defaults to `true`; `state_file` is
-`/config/appdaemon/fault_evidence_state.json`. `max_records: 256` limits fault
+`/config/appdaemon/fault_evidence_state.json` as a legacy import path.
+`max_records: 256` limits fault
 keys, `max_frame_bytes: 4096` limits the UTF-8 activation-capture fields within
 one freeze frame, and `max_total_bytes: 1048576` limits the complete persisted
-JSON snapshot, including lifecycle timestamps, counters, reason, duration and
+logical serialized snapshot, including lifecycle timestamps, counters, reason, duration and
 clock uncertainty. Lifecycle fields retain their own bounded validation and do
 not consume the capture byte budget. The
 closed source schema requires all five fields and rejects a total limit too
@@ -258,7 +278,8 @@ The same `freeze_frame` object carries the capture and lifecycle fields in
 MQTT and API fault records. The persisted store uses format version 2 and
 migrates validated version 1 records on load, preserving their captured values
 and lifecycle metadata within the original validation bounds. This changes
-neither the configured limits nor the state-file path.
+neither the configured content limits nor the accepted legacy state-file path.
+The 1 MiB bound applies to evidence content, not the complete shared database.
 
 ### 5.4 MQTT
 

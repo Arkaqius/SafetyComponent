@@ -859,13 +859,15 @@ temperature.
 | --- | --- | --- | ---: |
 | `ExternalWeatherExposure` | `sm_ext_weather_exposure` | `ExternalWeatherExposure{HazardId}{OpeningId}` | 2 |
 | `OutdoorAirQualityExposure` | `sm_ext_outdoor_air_quality_exposure` | `OutdoorAirQualityExposure{OpeningId}` | 3 |
-| `ExternalHazardDataUnavailable` | `sm_ext_provider_unavailable` | `ExternalHazardDataUnavailable{CapabilityId}` | 3 |
+| `ExternalDataUnavailable` | `sm_ext_provider_unavailable`, `sm_provider_adapter_health` | `ExternalHazardDataUnavailable{CapabilityId}`, `ProviderHealth{ProviderId}` | 3 |
 
 Each Safety Mechanism ID occurs in exactly one fault's `related_sms` list.
 `ExternalWeatherExposure` aggregates affected hazards and openings;
 `OutdoorAirQualityExposure` aggregates affected openings and pollutant/AQI
-context; and `ExternalHazardDataUnavailable` aggregates capabilities for which every required
-provider is unusable beyond its stale timeout.
+context; and `ExternalDataUnavailable` aggregates independent provider failures
+and capabilities for which required provider evidence is unusable beyond its
+stale timeout. Provider identity and consumer redundancy policy shall remain
+distinct; one failed adapter shall not disable independently supplied evidence.
 
 #### 8.3.6 Requirements (C-EXT → SYS-SR-EXT-xxx)
 
@@ -1124,7 +1126,7 @@ entity is safety-relevant through Group A or B.
 
 - Availability is mandatory for every Group A and Group B record.
 - Freshness is enabled only when the entity contract identifies a trustworthy
-  heartbeat or source timestamp and defines `max_silence_seconds`. The check
+  heartbeat or source timestamp and defines `report_timeout_seconds`. The check
   evaluates the age of the latest valid confirmation from that source.
 - Optional checks are allowed for required state/attribute values, allowed
   values, finite numeric values, numeric range, and rate of change.
@@ -1143,6 +1145,13 @@ entity is safety-relevant through Group A or B.
 - Calibration is per entity for Group A and per stable dependency key for Group
   B. A Group B override may replace debounce, detection budget, and optional
   check thresholds without changing the component-owned entity binding.
+- Ordinary monitor timing shall expose maximum trusted source-report age
+  (`report_timeout_seconds`) and failure confirmation
+  (`failure_debounce_seconds`). Acquisition/evaluation cadence shall be derived
+  within allocated detection budgets. Network request deadlines, startup and
+  recovery policy shall remain distinct internal timing mechanisms. Legacy
+  calibration aliases shall retain their meaning and shall not weaken an
+  applicable FTTI allocation.
 
 #### 8.5.4 Runtime identifier contract
 
@@ -1152,6 +1161,7 @@ entity is safety-relevant through Group A or B.
 | Per-entity Safety Mechanism | `sm_entity_health_<entity_key>` |
 | Per-check symptom | `EntityHealthFailure{EntityKey}{CheckKey}` |
 | Group A-owned fault | `EntityHealth{EntityKey}` |
+| Shared component-input fault | `InputMonitoringUnavailable` |
 | Fault level | 3 |
 | Per-entity diagnostic | `sensor.entity_health_<entity_key>` |
 | Aggregate diagnostic | `sensor.entity_monitor_summary` |
@@ -1176,7 +1186,8 @@ entity is safety-relevant through Group A or B.
 - **SYS-SR-ENT-004:** Availability shall be evaluated for every Group A and
   Group B entity. Freshness shall be evaluated only when the applicable
   calibration declares a trustworthy heartbeat or timestamp source and
-  `max_silence_seconds`. Live Home Assistant `last_reported` may confirm an
+  `report_timeout_seconds` (legacy `max_silence_seconds` alias). Live Home
+  Assistant `last_reported` may confirm an
   unchanged report only under the integration's declared input contract;
   successful polling and unrelated device traffic shall not invent a fresh
   measurement. For a safety-relevant dependency, acquisition, bounded read
@@ -1193,11 +1204,14 @@ entity is safety-relevant through Group A or B.
 - **SYS-SR-ENT-007:** When C-ENT owns a Group A failure, it shall set
   `EntityHealthFailure{EntityKey}{CheckKey}` after failure debounce and clear it
   only after fresh valid observations pass recovery debounce.
-- **SYS-SR-ENT-008:** The requesting component shall own the diagnostic fault
-  for a Group B dependency used by its evaluation or recovery. C-ENT shall
-  expose the dependency's health without creating a duplicate Group A fault for
-  the same failure. Shared inputs shall have one declared owner and explicit
-  consumer bindings.
+- **SYS-SR-ENT-008:** Components shall declare their Group B dependencies and
+  explicit consumer bindings. Temperature, safety-door, external-opening and
+  shared-input health checks shall contribute to one level-3
+  `InputMonitoringUnavailable` fault with independent entity/check evidence.
+  Recovery and indoor-detector diagnostic faults shall remain separate. C-ENT
+  shall expose dependency health without creating a duplicate Group A fault
+  for the same failure. Shared inputs shall retain one declared owner and all
+  explicit consumer bindings.
 - **SYS-SR-ENT-009:** All C-ENT-owned Group A check symptoms for one entity shall
   aggregate into that entity's level-3 `EntityHealth{EntityKey}` fault. A
   different unhealthy entity shall have a different fault. The fault shall
@@ -1220,9 +1234,16 @@ entity is safety-relevant through Group A or B.
   explicit diagnostic-only exemption. Missing or ambiguous ownership, unknown
   mechanism IDs, and invalid shadow references shall prevent monitoring startup.
 - **SYS-SR-ENT-016:** A Group A/B entity shall retain both memberships and the
-  stricter applicable check policy, but one failure shall have one diagnostic
-  fault owner. A Group B failure shall restrict only explicitly dependent
-  evaluation or recovery capabilities and subjects.
+  stricter applicable check policy within its logical fault-family record.
+  Each check contribution shall have one diagnostic fault owner. Input,
+  recovery, detector and application-health roles may share a physical entity
+  but shall retain separate logical records and their designated fault families.
+  Acquisition shall use the shortest derived interval for that physical entity.
+  Group A membership shall attach once, preferring the input record when present.
+  A Group B failure shall restrict only explicitly dependent
+  evaluation or recovery capabilities and subjects. Aggregating multiple input
+  failures into one D fault shall not broaden an individual contributor's
+  restriction or let recovery of one source clear another failed contributor.
 
 #### 8.5.6 Mapping and verification
 
