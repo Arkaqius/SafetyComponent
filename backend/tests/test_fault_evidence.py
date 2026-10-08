@@ -6,8 +6,11 @@ import json
 from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock
 
+import pytest
+
 from components.core.event_bus import EventBus
 from components.core.mqtt_entity_manager import MqttEntityManager
+from components.core.sqlite_state_store import SqliteStateDatabase
 from components.core.types_common import Fault, FaultState, Symptom
 from components.faults_manager.evidence import (
     FRAME_FIELDS,
@@ -16,6 +19,7 @@ from components.faults_manager.evidence import (
 )
 from components.faults_manager.evidence_store import (
     InMemoryFaultEvidenceStore,
+    FaultEvidenceStore,
     JsonFaultEvidenceStore,
 )
 from components.faults_manager.fault_manager import FaultManager
@@ -36,7 +40,7 @@ def _model() -> tuple[Fault, Symptom]:
 
 
 def _journal(
-    store: InMemoryFaultEvidenceStore,
+    store: FaultEvidenceStore,
     now: list[datetime],
     elapsed: list[float],
     **bounds: int,
@@ -49,13 +53,18 @@ def _journal(
     )
 
 
-def test_first_activation_is_immutable_through_refresh_and_source_change() -> None:
+@pytest.mark.parametrize("durable", [False, True])
+def test_first_activation_is_immutable_through_refresh_and_source_change(tmp_path, durable) -> None:
     """Quiet SET refreshes never replace first evidence or increment count."""
 
     fault, symptom = _model()
     now = [datetime(2026, 10, 3, 8, tzinfo=timezone.utc)]
     elapsed = [100.0]
-    journal = _journal(InMemoryFaultEvidenceStore(), now, elapsed)
+    store = (
+        SqliteStateDatabase(tmp_path / "state.sqlite3").store("fault_evidence_state", tmp_path / "evidence.json")
+        if durable else InMemoryFaultEvidenceStore()
+    )
+    journal = _journal(store, now, elapsed)
     hass = Mock()
     hass.get_state.return_value = {
         "state": "17.2",
@@ -102,6 +111,9 @@ def test_first_activation_is_immutable_through_refresh_and_source_change() -> No
     manager.mark_evaluation_unavailable(symptom.name)
     assert journal.get(fault.name) == original
     assert journal.get(fault.name)["active"] is True
+    assert _journal(store, now, elapsed).get(fault.name) == {
+        **original, "freeze_frame": {**original["freeze_frame"], "clock_uncertain": True}
+    }
 
 
 def test_predicate_sample_is_not_replaced_by_later_ha_readback() -> None:

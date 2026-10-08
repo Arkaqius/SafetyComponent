@@ -60,6 +60,7 @@ restriction clears. An unavailable D observation does not clear an active fault.
 | Notification delivery, local output commands, notification/recovery stores, SM invocation, and recovery dispatch | `SafetyAppHealth` contributors, retaining raw health entities and logs. |
 | Functional Safety Monitor source faults, periodic tests, detector tests, and battery exclusions | Their individual D faults; operator attestations are evidence, not implicit positive checks. Their storage failures have separate App Health contributors. |
 | Bounded freeze-frame capture and persistence | `SafetyAppHealth` fault-evidence-store contributor for capacity or durability loss; no additional H fault and no clearing of active H evidence. |
+| Battery-fault retirement catalogue persistence | Independent `SafetyAppHealth` battery-catalogue contributor; failed reconciliation shall not abort hazard-monitor startup or prove obsolete MQTT identities were retired. |
 | MQTT heartbeat and process/startup absence | In-process `SafetyAppHealth` publication contribution when observable; HA-hosted independent observer for the outage itself. |
 | Derivative Monitor numerical outputs and evaluation-progress timestamps | Measurement and progress evidence consumed by the owning H or component D mechanisms; no second fault for the helper. |
 | SafetyHome request-local validation errors and diagnostic snapshot export | Request response or debug projection only; not a safety capability loss by themselves. |

@@ -70,6 +70,7 @@ from components.core.derivative_monitor import DerivativeMonitor
 from components.core.localization import LocalizationSettings
 from components.core.mqtt_entity_manager import MqttEntityManager
 from components.core.self_diagnostics import SelfDiagnosticsComponent
+from components.core.sqlite_state_store import SqliteStateDatabase, state_database_path
 from components.external_apis import (
     ExternalApiRuntime,
     HttpJsonClient,
@@ -80,17 +81,14 @@ from components.faults_manager.fault_manager import FaultManager
 from components.faults_manager.evidence import FaultEvidenceJournal
 from components.faults_manager.evidence_store import (
     InMemoryFaultEvidenceStore,
-    JsonFaultEvidenceStore,
 )
 from components.notification_manager.notification_manager import NotificationManager
 from components.notification_manager.state_store import (
     InMemoryNotificationStateStore,
-    JsonNotificationStateStore,
 )
 from components.recovery_manager.recovery_manager import RecoveryManager
 from components.recovery_manager.state_store import (
     InMemoryRecoveryStateStore,
-    JsonRecoveryStateStore,
 )
 from components.safetyhome_api import SafetyHomeApiGateway
 from components.safetycomponents.core.safety_component import (
@@ -156,6 +154,11 @@ class SafetyFunctions(hass.Hass):
             "api_components", {}
         )
         self.site_cfg: dict = self.runtime_config["user_config"].get("site", {})
+        self.state_database = SqliteStateDatabase(
+            state_database_path(
+                self.runtime_config["app_config"]["fault_evidence"]["state_file"]
+            )
+        )
 
         # Create access to installation-wide Home Assistant entities.
         self.common_entities: CommonEntities = CommonEntities(
@@ -244,6 +247,7 @@ class SafetyFunctions(hass.Hass):
         )
         if functional_policy:
             persistence_stores.add("periodic_test_state")
+            persistence_stores.add("battery_fault_catalog")
             detector_cfg = self.safety_components_cfg.get(
                 "InternalEnvironmentalHazardMonitorComponent", {}
             )
@@ -377,7 +381,12 @@ class SafetyFunctions(hass.Hass):
             try:
                 reconcile_battery_faults(
                     BatteryFaultCatalog(
-                        functional_policy["battery_fault_catalog_file"]
+                        functional_policy["battery_fault_catalog_file"],
+                        state_store=self.state_database.store(
+                            "battery_fault_catalog",
+                            functional_policy["battery_fault_catalog_file"],
+                            legacy_validator=BatteryFaultCatalog.validate_snapshot,
+                        ),
                     ),
                     self.mqtt_entities,
                     current=self.functional_safety_monitor.get_battery_fault_names(),
@@ -393,13 +402,13 @@ class SafetyFunctions(hass.Hass):
                     f"Unable to reconcile battery fault catalog: {exc}",
                     level="ERROR",
                 )
-                self._set_internal_entity(
-                    "sensor.safety_app_health",
-                    "invalid_cfg",
-                    attributes={"configuration_error": f"Battery fault catalog: {exc}"},
+                self.self_diagnostics.record_app_cause(
+                    "persistence", True, detail="battery_fault_catalog", operation="reconcile"
                 )
-                self._start_mqtt_reporting()
-                return
+            else:
+                self.self_diagnostics.record_app_cause(
+                    "persistence", False, detail="battery_fault_catalog", operation="reconcile"
+                )
 
         # The former shared door fault has no owner in the per-door contract.
         # Retire retained MQTT discovery/state without publishing a false clear.
@@ -423,8 +432,10 @@ class SafetyFunctions(hass.Hass):
         # Create the fault aggregation and lifecycle manager.
         evidence_cfg = self.runtime_config["app_config"]["fault_evidence"]
         if evidence_cfg["enabled"]:
-            evidence_store = JsonFaultEvidenceStore(
-                evidence_cfg["state_file"], max_bytes=evidence_cfg["max_total_bytes"]
+            evidence_store = self.state_database.store(
+                "fault_evidence_state",
+                evidence_cfg["state_file"],
+                max_bytes=evidence_cfg["max_total_bytes"],
             )
         else:
             evidence_store = InMemoryFaultEvidenceStore()
@@ -475,7 +486,7 @@ class SafetyFunctions(hass.Hass):
 
         persistence_cfg = self.notification_cfg["persistence"]
         notification_state_store = (
-            JsonNotificationStateStore(persistence_cfg["state_file"])
+            self.state_database.store("notification_state", persistence_cfg["state_file"])
             if persistence_cfg["enabled"]
             else InMemoryNotificationStateStore()
         )
@@ -506,7 +517,7 @@ class SafetyFunctions(hass.Hass):
             .get("persistence", {})
         )
         recovery_state_store = (
-            JsonRecoveryStateStore(recovery_persistence_cfg["state_file"])
+            self.state_database.store("recovery_state", recovery_persistence_cfg["state_file"])
             if recovery_persistence_cfg.get("enabled", False)
             else InMemoryRecoveryStateStore()
         )
@@ -575,7 +586,9 @@ class SafetyFunctions(hass.Hass):
                 self, self.mqtt_entities,
                 self.runtime_config["user_config"].get("functional_safety", {}).get("periodic_tests", {"notification_delivery": True}),
                 intervals={"notification_delivery": functional_policy["notification_test_interval_days"], "backup_restore": functional_policy["backup_restore_test_interval_days"]},
-                state_store=JsonNotificationStateStore(functional_policy["periodic_test_state_file"]),
+                state_store=self.state_database.store(
+                    "periodic_test_state", functional_policy["periodic_test_state_file"]
+                ),
                 status_observer=self.functional_safety_monitor.observe_periodic_test,
                 diagnostics_observer=self.self_diagnostics.record_app_cause,
             )
@@ -585,8 +598,8 @@ class SafetyFunctions(hass.Hass):
             )
             detectors = detector_cfg.get("detectors", {})
             if detectors:
-                test_store = JsonNotificationStateStore(
-                    functional_policy["detector_test_state_file"]
+                test_store = self.state_database.store(
+                    "detector_test_state", functional_policy["detector_test_state_file"]
                 )
                 self.detector_test_monitor = DetectorTestMonitor(
                     self,

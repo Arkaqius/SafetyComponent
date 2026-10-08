@@ -379,8 +379,8 @@ and safe actuation constraints.
 Configuration model version 2 is the only accepted editable source format.
 Missing versions, model version 1, and unknown future versions fail before
 AppDaemon starts. Generated component keys, entity IDs, MQTT identities,
-persistence files, fault keys, and safety behavior remain separate runtime
-contracts.
+persistence namespaces and legacy import paths, fault keys, and safety behavior
+remain separate runtime contracts.
 
 Print the machine-readable JSON Schema without reading an installation file:
 

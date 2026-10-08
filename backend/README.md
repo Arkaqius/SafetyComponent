@@ -45,6 +45,17 @@ versions fail before AppDaemon starts. Print the machine-readable contract with
 `python backend/build_app_config.py --print-user-schema`. See
 [`Configuration Model - Architecture.md`](<../docs/features/Configuration Model - Architecture.md>).
 
+## Runtime state storage
+
+The runtime stores notification, recovery, fault evidence, internal detector,
+periodic-test, detector-test, and battery-fault retirement state in a shared
+SQLite database outside the deployed image. The default is
+`/config/appdaemon/safety_state.sqlite3`.
+Existing JSON state paths remain one-time import inputs; they are not
+dual-written after import. Store transactions and health contributors remain
+independent. See [Runtime State Storage](<../docs/features/Runtime State Storage - Architecture.md>)
+for schema ownership, migration, failure handling, and stopped-App copying.
+
 ## MQTT retained-message migration
 
 ### Diagnostic fault and monitor timing migration

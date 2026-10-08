@@ -271,6 +271,10 @@ profile/configuration fingerprint and initialization marker. PM history shall
 be persisted only within configured bounds; missing history shall rebuild with
 explicit coverage loss. Notification persistence shall not substitute for this
 domain state.
+The runtime uses a separate `internal_environment_state` namespace in the
+[shared SQLite database](<Runtime State Storage - Architecture.md>), retaining
+the configured JSON state path for one-time import. Sharing storage does not
+merge detector-state validation with notification persistence.
 The snapshot shall also retain channel clear-order watermarks and any gas
 switching-inhibition latch/clearance evidence defined in section 7. These shall
 survive the associated fault's HEAL.

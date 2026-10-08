@@ -41,6 +41,8 @@ def test_example_external_hazard_startup_is_wired_before_polling(tmp_path, monke
     raw["app_config"]["calibration"]["functional_safety"][
         "battery_fault_catalog_file"
     ] = str(tmp_path / "battery_fault_catalog.json")
+    for key in ("periodic_test_state_file", "detector_test_state_file"):
+        raw["app_config"]["calibration"]["functional_safety"][key] = str(tmp_path / f"{key}.json")
     state_file = tmp_path / "notification_state.json"
     raw["user_config"]["notification"]["persistence"]["state_file"] = str(
         state_file
@@ -106,4 +108,7 @@ def test_example_external_hazard_startup_is_wired_before_polling(tmp_path, monke
 
     app.terminate()
     assert app.external_api_runtime.started is False
-    assert state_file.exists()
+    assert not state_file.exists()
+    assert app.state_database.path == tmp_path / "safety_state.sqlite3"
+    assert app.state_database.path.exists()
+    assert app.notify_man.state_store.load()["version"] == 1

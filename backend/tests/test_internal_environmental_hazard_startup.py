@@ -4,6 +4,8 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
 
+import pytest
+
 from build_app_config import compile_config
 from SafetyFunctions import SafetyFunctions
 from components.core.fault_state_policy import FaultEvaluationStatus
@@ -11,7 +13,8 @@ from components.core.degradation import RestrictionEffect
 from components.core.types_common import FaultState
 
 
-def test_gas_alarm_reaches_l1_fault_without_co_consensus(tmp_path, monkeypatch) -> None:
+@pytest.mark.parametrize("unwritable_database", [False, True])
+def test_gas_alarm_reaches_l1_fault_without_co_consensus(tmp_path, monkeypatch, unwritable_database) -> None:
     from components.core.functional_safety_diagnostics import JsonFunctionalSafetyDiagnosticsStore
 
     monkeypatch.setattr(
@@ -26,6 +29,8 @@ def test_gas_alarm_reaches_l1_fault_without_co_consensus(tmp_path, monkeypatch) 
     raw["app_config"]["calibration"]["functional_safety"][
         "battery_fault_catalog_file"
     ] = str(tmp_path / "battery_fault_catalog.json")
+    for key in ("periodic_test_state_file", "detector_test_state_file"):
+        raw["app_config"]["calibration"]["functional_safety"][key] = str(tmp_path / f"{key}.json")
     raw["app_config"]["validation"]["validate_entity_existence"] = False
     raw["user_config"]["components_enabled"] = {
         "InternalEnvironmentalHazardMonitorComponent": True,
@@ -61,6 +66,8 @@ def test_gas_alarm_reaches_l1_fault_without_co_consensus(tmp_path, monkeypatch) 
         },
     }
     internal["persistence"]["state_file"] = str(tmp_path / "internal.json")
+    if unwritable_database:
+        (tmp_path / "safety_state.sqlite3").mkdir()
     app = SafetyFunctions(args=raw)
     service_calls: list[tuple[str, dict[str, Any]]] = []
 
@@ -82,6 +89,18 @@ def test_gas_alarm_reaches_l1_fault_without_co_consensus(tmp_path, monkeypatch) 
     assert app.degradation.binding_errors == {}
 
     monitor = app.sm_modules["InternalEnvironmentalHazardMonitorComponent"]
+    assert app.state_database.path == tmp_path / "safety_state.sqlite3"
+    for store in (
+        monitor._state_store, app.notify_man.state_store, app.reco_man.state_store,
+        app.fault_evidence.store, app.periodic_test_monitor.state_store,
+        app.detector_test_monitor.state_store,
+    ):
+        assert store.database is app.state_database
+    if unwritable_database:
+        assert app.fm.check_symptom("AppHealthPersistenceBatteryFaultCatalog") == FaultState.SET
+        assert app.fm.check_fault("SafetyAppHealth") is FaultEvaluationStatus.FAIL
+    else:
+        assert monitor._state_store.load()["detectors"]["ExampleUtilityFlammableGas"]["gas_switching_inhibited"] is True
     failed_store = Mock()
     failed_store.save.side_effect = OSError("detector state unavailable")
     monitor._state_store = failed_store
@@ -99,7 +118,9 @@ def test_gas_alarm_reaches_l1_fault_without_co_consensus(tmp_path, monkeypatch) 
     )
     failed_store.save.side_effect = None
     monitor._persist_state()
-    assert app.fm.check_symptom(cause) == FaultState.CLEARED
+    assert app.fm.check_symptom(cause) == (
+        FaultState.SET if unwritable_database else FaultState.CLEARED
+    )
 
     assert app.fm.check_fault("InternalFlammableGasDetected") is FaultEvaluationStatus.FAIL
     assert app.fm.check_fault("InternalCarbonMonoxideDetected") is not FaultEvaluationStatus.FAIL
