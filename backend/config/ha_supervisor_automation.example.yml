@@ -1,0 +1,32 @@
+# Optional Home Assistant automation. Install outside the SafetyComponent AppDaemon
+# process; do not treat it as supervision of Home Assistant itself.
+- id: safety_component_independent_supervisor
+  alias: SafetyComponent independent supervisor
+  mode: single
+  triggers:
+    - trigger: homeassistant
+      event: start
+    - trigger: time_pattern
+      minutes: "/1"
+  actions:
+    - choose:
+        - conditions:
+            - condition: template
+              value_template: >-
+                {{ states('sensor.safety_app_health') != 'running' }}
+          sequence:
+            - action: persistent_notification.create
+              data:
+                notification_id: safety_component_supervisor
+                title: SafetyComponent / Nadzór / Supervisor / Überwachung
+                message: >-
+                  PL: Działanie monitoringu bezpieczeństwa nie jest potwierdzone.
+                  Sprawdź aplikację AppDaemon, integrację MQTT w HA i broker.
+                  EN: Safety monitoring is not confirmed. Check the AppDaemon
+                  app, HA MQTT integration, and broker.
+                  DE: Die Sicherheitsüberwachung ist nicht bestätigt. Prüfen
+                  Sie die AppDaemon-App, die MQTT-Integration in HA und den Broker.
+      default:
+        - action: persistent_notification.dismiss
+          data:
+            notification_id: safety_component_supervisor

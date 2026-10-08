@@ -49,6 +49,9 @@ def test_example_external_hazard_startup_is_wired_before_polling(tmp_path, monke
     raw["user_config"]["recovery"]["persistence"]["state_file"] = str(
         recovery_state_file
     )
+    raw["app_config"]["fault_evidence"]["state_file"] = str(
+        tmp_path / "fault_evidence_state.json"
+    )
     app = SafetyFunctions(args=raw)
     service_calls: list[str] = []
 
@@ -64,12 +67,20 @@ def test_example_external_hazard_startup_is_wired_before_polling(tmp_path, monke
 
     app.initialize()
 
+    assert app.degradation.binding_errors == {}
+
     assert sorted(app.api_modules) == [
         "ImgwWarningsApiComponent",
         "OpenMeteoAirQualityApiComponent",
         "OpenMeteoWeatherApiComponent",
     ]
     assert "ExternalHazardComponent" in app.sm_modules
+    assert "SelfDiagnosticsComponent" in app.sm_modules
+    assert {
+        "ExternalProviderUnavailableOpenMeteoWeather",
+        "ExternalProviderUnavailableImgwWarnings",
+        "ExternalProviderUnavailableOpenMeteoAirQuality",
+    }.issubset(app.faults)
     assert app.external_api_runtime.started is True
     assert not any(service != "mqtt/publish" for service in service_calls)
 

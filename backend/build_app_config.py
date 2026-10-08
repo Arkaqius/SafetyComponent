@@ -254,6 +254,7 @@ def _build_app_config(
             "providers": provider_policy,
         },
         "faults": copy.deepcopy(runtime_cfg.get("faults", {})),
+        "fault_evidence": copy.deepcopy(runtime_cfg.get("fault_evidence", {})),
     }
 
 

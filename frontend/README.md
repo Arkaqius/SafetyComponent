@@ -51,7 +51,8 @@ są widoczne w obu widokach. Zmiana widoku nie wysyła poleceń do Home Assistan
 
 Przełącz widok na **Rozszerzony**, otwórz **Fault Management**, a potem
 rozwiń kartę w sekcji **Zdarzenia i stan oceny**. Jedna sekcja **Freeze frame**
-pokazuje zapis aktywacji oraz liczniki i czasy z jednego obiektu
+pokazuje zapis aktywacji, ostatnią przyczynę, liczniki, czasy i niepewność
+pomiaru czasu z jednego obiektu
 `freeze_frame` w atrybutach encji usterki (API/MQTT).
 
 Dane przechwycone podczas aktywacji pozostają stałe; poprawne ustąpienie
