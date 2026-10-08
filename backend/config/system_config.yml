@@ -275,7 +275,7 @@ runtime_cfg:
     device_name: Safety Component
     retain_discovery: true
     retain_state: false
-    clear_retained_state_on_start: true
+    clear_retained_state_on_start: false
     qos: 0
     heartbeat_seconds: 60
     expire_after: 180
