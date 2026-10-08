@@ -79,21 +79,32 @@ inside the generated runtime payload and diagnostics. Editable calibration uses
 | --- | --- | --- | --- |
 | `default_startup_grace_seconds` | seconds `60` | Prevents startup transients from immediately becoming dependency faults. | `installation.component_settings.entity_monitor.startup_grace_seconds` |
 | `default_failure_debounce_seconds` | seconds `15` | Default persistence required before a dependency becomes unhealthy. | Per explicit entity or component dependency |
-| `default_recovery_debounce_seconds` | seconds `60` | Default persistence required before recovery is accepted. | Per explicit entity or component dependency |
-| `default_evaluation_interval_seconds` | seconds `60` | Ordinary freshness/debounce evaluation cadence, separate from live report acquisition. Dependencies with detection budgets of at most 60 seconds retain 5-second reconciliation. | `installation.component_settings.entity_monitor.evaluation_interval_seconds` |
+| `default_recovery_debounce_seconds` | seconds `60` | Default persistence required before recovery is accepted. | Legacy per-entity/dependency migration input |
+| `default_evaluation_interval_seconds` | seconds `60` | Baseline ordinary freshness/debounce cadence; the monitor caps it to meet derived requirements. Short-budget dependencies retain 5-second reconciliation. | Legacy `installation.component_settings.entity_monitor.evaluation_interval_seconds`, validated and capped |
 | `unhealthy_summary_limit` | integer `32` | Bounds diagnostic publication size. | No |
 | `component_overrides` | mapping, empty | Reviewed calibration for stable component-owned dependency keys. | Merged with `installation.component_settings.entity_monitor.component_overrides` |
 
 The shared background reader acquires temperature-owned and shared
-outside-temperature dependency reports every 120 seconds, other ordinary
-Entity Monitor reports every 60 seconds, and dependencies whose detection
-budgets are at most 60 seconds every 5 seconds. The short-budget group uses an
+outside-temperature dependency reports on a 120-second baseline, other ordinary
+Entity Monitor reports on a 60-second baseline, and short-budget dependencies
+on a 5-second baseline. Monitor requirements may shorten ordinary intervals,
+with a 5-second minimum. Logical records in distinct fault families share
+physical acquisition at the shortest required interval without merging faults.
+The short-budget group uses an
 independent worker with a 3-second response deadline; ordinary reads have a
 120-second deadline. Reader evidence lasts from acquisition start through the
 group interval, response deadline and a 5-second scheduling allowance for
 ordinary reads. Short-budget evidence uses its group interval plus 3 seconds.
-State-change listeners supplement these reads immediately. Changing the
-evaluation interval does not change the report-reader cadence. Temperature
+State-change listeners supplement these reads immediately. Dependency timing
+uses `report_timeout_seconds` for maximum source-report age and
+`failure_debounce_seconds` for confirmation. The monitor derives scheduling
+within its system-owned reader bounds and detection allocation; request
+deadlines remain internal HA-reader policy. Legacy nested
+`checks.freshness.max_silence_seconds` is accepted as an equivalent report-age
+alias, and both forms must agree when present. Successful acquisition does not
+reset the age of a source report. Schema validation checks freshness plus
+debounce, while the dependency
+contract separately allocates transport and scheduling overhead. Temperature
 inputs use live `last_reported` confirmation rather than requiring a value
 change; a declared timestamp contract remains necessary to relate integration
 reports to actual measurements. MQTT integrations may suppress unchanged

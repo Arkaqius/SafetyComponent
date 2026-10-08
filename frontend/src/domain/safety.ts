@@ -1009,6 +1009,8 @@ function localizedTechnicalName(value: string): string {
     externalweatherexposure: 'Narażenie domu na pogodę',
     outdoorairqualityexposure: 'Narażenie na zanieczyszczone powietrze',
     externalhazarddataunavailable: 'Brak danych o warunkach zewnętrznych',
+    externaldataunavailable: 'Problem z danymi zewnętrznymi',
+    inputmonitoringunavailable: 'Problem z monitorowanymi wejściami',
   };
   return labels[normalized] ?? localizedRoomName(value);
 }

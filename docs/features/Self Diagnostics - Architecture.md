@@ -4,10 +4,11 @@
 
 Provider adapters own polling, schema validation, freshness, normalized results,
 and raw provider-health telemetry. `SelfDiagnosticsComponent` converts each
-installed adapter's current health to its own L3 diagnostic (`D`) fault. The
-consumer's `ExternalHazardDataUnavailable` is separate: it describes loss of a
-required household capability after redundancy policy, not the failure of one
-adapter. A failed weather provider must not disable independent IMGW or outdoor
+installed adapter's current health to an independent contributor of the shared
+`ExternalDataUnavailable` L3 diagnostic (`D`) fault. Consumer capability-health
+contributors share that fault and retain their separate meaning: loss of a
+required household capability after redundancy policy differs from failure of
+one adapter. A failed weather provider must not disable independent IMGW or outdoor
 air-quality evidence. See [External Hazard Monitoring](External%20Hazard%20Monitoring%20-%20Architecture.md)
 and [Fault Degradation and Coverage](Fault%20Degradation%20and%20Coverage%20-%20Architecture.md).
 
@@ -28,7 +29,8 @@ health entities retain detail and are not replaced by fault state.
 
 | Contributor | Fault and priority | Restriction target | Clear evidence |
 | --- | --- | --- | --- |
-| Each installed provider adapter | Own `ExternalProviderUnavailable{Provider}`, D/L3 | Installed weather or AQ H symptoms using that provider's capability | Fresh `OK` adapter result |
+| Each installed provider adapter | `ExternalDataUnavailable`, D/L3, separate provider contributor | Installed weather or AQ H symptoms using that provider's capability; consumer redundancy still applies | Fresh `OK` result from the same adapter |
+| Required external capability | `ExternalDataUnavailable`, D/L3, separate capability contributor | Exact weather/AQ capability unavailable after consumer redundancy policy | Fresh sufficient evidence for the same capability |
 | Core startup/process | `SafetyAppHealth`, D/L2 | Installed H evaluation; process outage also needs external observation | Core managers and fault routes initialized |
 | MQTT publication | `SafetyAppHealth`, D/L2 | H publication/UI freshness, not independent detection | Observed publication and fresh heartbeat |
 | Mobile delivery | `SafetyAppHealth`, D/L2 | L1-L3 notification path only | Accepted target submission or restored confirmed transport; not handset receipt |
@@ -51,10 +53,10 @@ restriction clears. An unavailable D observation does not clear an active fault.
 
 | Signal class | Fault owner or explicit exemption |
 | --- | --- |
-| Entity Monitor Group A/B input checks | `EntityHealth{EntityKey}` for external-only Group A, or requesting component's D fault for Group B; Group C is passive inventory and creates no fault. |
-| Temperature, door, external-opening, and recovery dependencies | `TemperatureMonitoringUnavailable`, `TemperatureRecoveryUnavailable`, `SafetyDoorMonitoringUnavailable`, `ExternalOpeningMonitoringUnavailable`, or `ExternalRecoveryUnavailable` with exact subject bindings. |
+| Entity Monitor Group A/B input checks | `EntityHealth{EntityKey}` for external-only Group A; component input checks share `InputMonitoringUnavailable`; recovery dependencies retain their designated D fault. Group C is passive inventory and creates no fault. |
+| Temperature, door, external-opening, shared-input, and recovery dependencies | `InputMonitoringUnavailable` for input checks; `TemperatureRecoveryUnavailable` or `ExternalRecoveryUnavailable` for recovery checks, all with exact consumer and subject bindings. |
 | Indoor detector trouble/unavailable and persisted alarm state | `InternalEnvironmentalDetectorUnavailable` for detector input; `SafetyAppHealth` detector-store contributor for durability. |
-| External provider adapter health and consumer capability health | Per-provider `ExternalProviderUnavailable{Provider}`; `ExternalHazardDataUnavailable` only after consumer redundancy policy. |
+| External provider adapter health and consumer capability health | One `ExternalDataUnavailable` fault with independent provider and capability contributors; capability coverage follows consumer redundancy policy. |
 | Notification delivery, local output commands, notification/recovery stores, SM invocation, and recovery dispatch | `SafetyAppHealth` contributors, retaining raw health entities and logs. |
 | Functional Safety Monitor source faults, periodic tests, detector tests, and battery exclusions | Their individual D faults; operator attestations are evidence, not implicit positive checks. Their storage failures have separate App Health contributors. |
 | Bounded freeze-frame capture and persistence | `SafetyAppHealth` fault-evidence-store contributor for capacity or durability loss; no additional H fault and no clearing of active H evidence. |

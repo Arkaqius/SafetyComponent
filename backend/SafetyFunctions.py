@@ -273,7 +273,19 @@ class SafetyFunctions(hass.Hass):
         self.symptoms.update(diagnostic_symptoms)
         for fault_name, fault_config in self.self_diagnostics.get_fault_definitions().items():
             if fault_name in self.fault_dict:
-                raise ValueError(f"Duplicate fault definition: {fault_name}")
+                if fault_name != "ExternalDataUnavailable":
+                    raise ValueError(f"Duplicate fault definition: {fault_name}")
+                existing = self.fault_dict[fault_name]
+                if existing.get("level") != 3 or existing.get("category") != "D":
+                    raise ValueError("ExternalDataUnavailable must remain a D/L3 fault")
+                fault_config = {
+                    **existing,
+                    **fault_config,
+                    "related_sms": list(dict.fromkeys([
+                        *existing.get("related_sms", []),
+                        *fault_config["related_sms"],
+                    ])),
+                }
             self.fault_dict[fault_name] = fault_config
 
         self.functional_safety_monitor = None
@@ -394,6 +406,19 @@ class SafetyFunctions(hass.Hass):
         self.mqtt_entities.remove_sensor(
             "sensor.fault_SafetyDoorOpenTimeout", remove_legacy_topic=True
         )
+        for retired_fault in (
+            "TemperatureMonitoringUnavailable",
+            "SafetyDoorMonitoringUnavailable",
+            "ExternalOpeningMonitoringUnavailable",
+            "CommonInputUnavailable",
+            "ExternalHazardDataUnavailable",
+            "ExternalProviderUnavailableOpenMeteoWeather",
+            "ExternalProviderUnavailableImgwWarnings",
+            "ExternalProviderUnavailableOpenMeteoAirQuality",
+        ):
+            self.mqtt_entities.remove_sensor(
+                f"sensor.fault_{retired_fault}", remove_legacy_topic=True
+            )
 
         # Create the fault aggregation and lifecycle manager.
         evidence_cfg = self.runtime_config["app_config"]["fault_evidence"]
@@ -652,7 +677,7 @@ class SafetyFunctions(hass.Hass):
                         "entity_id": entity_id,
                         "owner": "SafetyFunctions",
                         "fault_owner": "component",
-                        "fault_name": "CommonInputUnavailable",
+                        "fault_name": "InputMonitoringUnavailable",
                         "purpose": f"Shared application entity: {key}",
                         "degradation_targets": recovery_targets,
                         "external_only": not recovery_targets,
@@ -739,6 +764,36 @@ class SafetyFunctions(hass.Hass):
         ):
             if key in override:
                 calibrated[key] = override[key]
+        report_timeout = override.get("report_timeout_seconds")
+        freshness = calibrated.get("checks", {}).get("freshness")
+        if report_timeout is not None:
+            if not freshness or not freshness.get("timestamp_source"):
+                raise ValueError(
+                    f"{dependency['key']} report_timeout_seconds requires a trustworthy timestamp_source"
+                )
+            calibrated["checks"] = {
+                **calibrated.get("checks", {}),
+                "freshness": {**freshness, "max_silence_seconds": report_timeout},
+            }
+            freshness = calibrated["checks"]["freshness"]
+        # Preserve the internal acquisition/evaluation allocation when only the
+        # report age or qualification duration is changed by the installation.
+        original_freshness = dependency.get("checks", {}).get("freshness")
+        if (
+            freshness and original_freshness
+            and dependency.get("detection_budget_seconds") is not None
+            and "detection_budget_seconds" not in override
+        ):
+            overhead = (
+                int(dependency["detection_budget_seconds"])
+                - int(original_freshness["max_silence_seconds"])
+                - int(dependency.get("failure_debounce_seconds", default_failure_debounce))
+            )
+            calibrated["detection_budget_seconds"] = (
+                int(freshness["max_silence_seconds"])
+                + int(calibrated["failure_debounce_seconds"])
+                + overhead
+            )
         return calibrated
 
     def _initialize_mqtt(self) -> bool:

@@ -218,7 +218,7 @@ def test_entity_monitor_is_wired_into_application_startup(
 
     assert "EntityMonitorComponent" in app_instance.sm_modules
     assert "sensor.entity_monitor_summary" in app_instance.mqtt_entities.discovered_entities
-    assert "TemperatureMonitoringUnavailable" in app_instance.faults
+    assert "InputMonitoringUnavailable" in app_instance.faults
     assert "EntityHealthTemperatureOffice" not in app_instance.faults
     assert (
         "EntityHealthFailureTemperatureOfficeAvailability" in app_instance.symptoms

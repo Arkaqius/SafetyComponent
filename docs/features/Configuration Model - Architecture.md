@@ -239,7 +239,7 @@ Result submission changes no backup or notification route.
 | `component_settings.temperature` | Optional `low_temperature_c` and `high_temperature_c`. Resolved low must remain below resolved high. The forecast horizon is system-owned. |
 | `component_settings.safety_door` | Optional positive `timeout_seconds`. |
 | `component_settings.external_hazard` | Optional weather and outdoor-air-quality threshold overrides. The default hazard list and forecast horizon are system-owned; an opening may still select its applicable hazards. |
-| `component_settings.entity_monitor` | Optional `startup_grace_seconds`, positive `evaluation_interval_seconds`, and component override map keyed by stable dependency ID. Each component override may refine debounce, detection budget, and checks. |
+| `component_settings.entity_monitor` | Component override map keyed by stable dependency ID. Ordinary monitor timing uses optional positive `report_timeout_seconds` and non-negative `failure_debounce_seconds`, plus checks with a trusted timestamp source when freshness is enabled. Legacy startup/evaluation, recovery and detection-budget overrides remain accepted and validated for migration. |
 | `component_settings.functional_safety` | Optional calibration fields listed below; omitted or null values inherit system defaults. Effective recovery margins are checked after merging. |
 
 Functional-safety overrides use these exact fields:
@@ -293,13 +293,15 @@ Each detector accepts:
 | `enabled` | No | Boolean, default `true`; disabled detectors are omitted from runtime. |
 
 Each `monitored_entities` entry accepts `entity_id`, optional `area_id`,
-non-empty `description`, optional `enabled`, non-negative
-`failure_debounce_seconds` and `recovery_debounce_seconds`, positive
-`detection_budget_seconds`, and `checks`:
+non-empty `description`, optional `enabled`, positive `report_timeout_seconds`,
+non-negative `failure_debounce_seconds`, and `checks`. The report timeout is the
+maximum age of the trusted source report, not a Home Assistant request deadline.
+Legacy `recovery_debounce_seconds` and `detection_budget_seconds` remain accepted
+as validated migration inputs.
 
 | Check | Contract |
 | --- | --- |
-| `freshness` | Non-empty `timestamp_source` and positive `max_silence_seconds`. |
+| `freshness` | Non-empty trustworthy `timestamp_source` and positive dependency-level `report_timeout_seconds`. Legacy nested `max_silence_seconds` remains an accepted alias; simultaneous forms must agree. |
 | `required_value` | Optional non-empty `target`; default `state`. |
 | `allowed_values` | Non-empty unique normalized `values` and optional `target`. |
 | `finite_number` | Optional `target`; the resolved value must be finite. |
@@ -311,12 +313,21 @@ configured detection budget. The dependency contract must additionally allocate
 input-acquisition, bounded read timeout and evaluation scheduling allowances
 within the applicable detection path. The evaluation timer is separate from
 the shared report-reader cadence.
+Read/evaluation cadence is derived internally from the effective monitor
+requirements and allocated budget within system-owned bounds. A legacy global
+evaluation override cannot slow a tighter dependency requirement.
+Derived cadence has a 5-second minimum; schema acceptance of freshness plus
+debounce does not establish that transport and scheduling overhead fit an
+arbitrary supplied budget. The dependency contract retains that allocation.
 The baseline ordinary evaluation interval is 60 seconds. Dependencies with
 detection budgets of at most 60 seconds retain a separate 5-second evaluation
 timer and an independent read worker with a 3-second deadline; ordinary reads
 have a 120-second deadline. Temperature-owned and shared outside-temperature
-dependencies use a 120-second read cadence, while other ordinary dependencies
-use 60 seconds.
+dependencies have a 120-second baseline read cadence, while other ordinary
+dependencies have a 60-second baseline. Report-age and confirmation requirements
+may shorten those intervals within system-owned limits. Distinct logical fault
+families may share one physical entity; acquisition uses the shortest required
+interval without merging their fault ownership or check state.
 `last_reported` is a live integration-report timestamp, including unchanged
 writes, and may be used only under a trustworthy input contract. A named
 timestamp attribute remains supported; device-level `last_seen` is not an

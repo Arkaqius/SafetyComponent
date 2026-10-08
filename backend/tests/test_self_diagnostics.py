@@ -69,7 +69,7 @@ def test_each_provider_fault_sets_and_clears_only_from_its_own_result() -> None:
         (weather, FaultState.CLEARED),
     ]
     assert diagnostics.get_fault_definitions()[
-        "ExternalProviderUnavailableOpenMeteoWeather"
+        "ExternalDataUnavailable"
     ]["category"] == "D"
 
 

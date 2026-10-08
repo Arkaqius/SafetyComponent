@@ -113,7 +113,7 @@ class ExternalHazardComponent(SafetyComponent):
                 "entity_id": opening["entity_id"],
                 "owner": cls.component_name,
                 "fault_owner": "component",
-                "fault_name": "ExternalOpeningMonitoringUnavailable",
+                "fault_name": "InputMonitoringUnavailable",
                 "purpose": f"External-hazard opening input for {opening_name}",
                 "degradation_targets": tuple(
                     (symptom_id, "external_exposure", opening_name, "evaluation")

@@ -3,7 +3,7 @@ import { useConfig, useHass } from '@hakit/core';
 import { NavLink, useLocation } from 'react-router-dom';
 import ConfigurationObjectEditor from '../components/ConfigurationObjectEditor';
 import BatteryDiscovery from '../components/BatteryDiscovery';
-import { registrySchemas } from '../components/configurationFieldSchemas';
+import { normalizeMonitorConfiguration, registrySchemas } from '../components/configurationFieldSchemas';
 import { effectiveFunctionalSafetySettings, functionalSafetySettings } from '../domain/functionalSafetySettings';
 import {
   importUserConfiguration,
@@ -48,8 +48,8 @@ export default function Configuration() {
     setError(null);
     try {
       const document = await loadUserConfiguration();
-      setDraft(document.user_config);
-      setTemplate(document.template_user_config ?? null);
+      setDraft(normalizeMonitorConfiguration(document.user_config));
+      setTemplate(document.template_user_config ? normalizeMonitorConfiguration(document.template_user_config) : null);
       setSystemDefaults(document.system_defaults ?? {});
       setRevision(document.revision);
       setSetupRequired(document.setup_required);
@@ -81,7 +81,7 @@ export default function Configuration() {
     setError(null);
     try {
       const document = await saveUserConfiguration(draft, revision);
-      setDraft(document.user_config);
+      setDraft(normalizeMonitorConfiguration(document.user_config));
       setRevision(document.revision);
       setSetupRequired(false);
       setValidationError(null);
@@ -149,7 +149,7 @@ export default function Configuration() {
     setError(null);
     try {
       const imported = await importUserConfiguration(await file.text());
-      setDraft(imported);
+      setDraft(normalizeMonitorConfiguration(imported));
       setDirty(true);
       setSaveState('idle');
       setValidationError(null);
@@ -701,14 +701,9 @@ export default function Configuration() {
               value={numberValue(entityMonitorDefaults.startup_grace_seconds)}
               onChange={value => update(['installation', 'component_settings', 'entity_monitor', 'startup_grace_seconds'], value)}
             />
-            <NumberField
-              label='Interwał oceny encji (s)'
-              optional
-              defaultValue={String(entityMonitorSystem.default_evaluation_interval_seconds ?? '')}
-              help='Częstotliwość sprawdzania zdrowia monitorowanych encji.'
-              value={numberValue(entityMonitorDefaults.evaluation_interval_seconds)}
-              onChange={value => update(['installation', 'component_settings', 'entity_monitor', 'evaluation_interval_seconds'], value)}
-            />
+            <p className='configuration-field-help'>
+              Częstotliwość kontroli jest dobierana automatycznie do maksymalnego wieku raportu i czasu potwierdzenia awarii.
+            </p>
           </div>
           <ConfigurationObjectEditor
             description='Wyjątki dla zależności należących do komponentów. Monitorowane encje dodatkowe są poniżej.'

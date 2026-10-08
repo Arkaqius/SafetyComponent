@@ -149,12 +149,13 @@ runtime_cfg:
       level: 3
       related_sms:
         - sm_ext_outdoor_air_quality_exposure
-    ExternalHazardDataUnavailable:
-      name: Brak danych o zagrożeniach zewnętrznych
+    ExternalDataUnavailable:
+      name: Problem z danymi zewnętrznymi
       level: 3
       category: D
       related_sms:
         - sm_ext_provider_unavailable
+        - sm_provider_adapter_health
     InternalSmokeDetected:
       name: Wykryto dym
       level: 1
