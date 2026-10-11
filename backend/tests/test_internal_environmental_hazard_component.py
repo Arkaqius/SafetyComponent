@@ -137,6 +137,19 @@ def _event(events: list[dict], symptom_id: str) -> dict:
     return next(event for event in reversed(events) if event["symptom_id"] == symptom_id)
 
 
+def test_device_contact_does_not_clear_a_latched_water_alarm_with_unknown_state() -> None:
+    now = datetime(2026, 9, 13, 10, 0, tzinfo=timezone.utc)
+    states = {LEAK_ENTITY: _snapshot("on", now)}
+    component, _, events = _build_component(states, now=now, include_leak=True)
+    alarm = component.safety_mechanisms["InternalEnv_water_leak_UtilityLeak"]
+    assert component.sm_iehm_water_leak(alarm)
+    states[LEAK_ENTITY] = {**_snapshot("unknown", now), "last_contact_at": now.isoformat()}
+    events.clear()
+    assert component.sm_iehm_water_leak(alarm)
+    assert component._detectors["UtilityLeak"].alarm_active
+    assert not any(event["symptom_id"] == alarm.name and event["state"] == FaultState.CLEARED for event in events)
+
+
 def test_flammable_gas_alarm_sets_independently_of_normal_co_detector() -> None:
     now = datetime(2026, 9, 13, 10, 0, tzinfo=timezone.utc)
     states = {

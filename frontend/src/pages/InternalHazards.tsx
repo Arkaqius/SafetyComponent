@@ -39,7 +39,7 @@ const detectorPresentation: Record<InternalDetectorStatus, { label: string; tone
   alarm: { label: 'Alarm', tone: 'critical' },
   healthy: { label: 'Sprawny', tone: 'safe' },
   degraded: { label: 'Ograniczone dane', tone: 'warning' },
-  unavailable: { label: 'Niedostępny', tone: 'danger' },
+  unavailable: { label: 'Brak danych alarmowych', tone: 'danger' },
 };
 
 export default function InternalHazards() {
@@ -138,6 +138,7 @@ export default function InternalHazards() {
 function DetectorCard({ detector, onSelectEntity }: { detector: InternalDetectorView; onSelectEntity: (entityId: string) => void }) {
   const presentation = detectorPresentation[detector.status];
   const healthEntityId = detector.healthEntityId;
+  const alarmKnown = ['alarm', 'clear'].includes(detector.classification);
   return (
     <article className={`internal-detector-card detector-${presentation.tone}`}>
       <header>
@@ -155,11 +156,11 @@ function DetectorCard({ detector, onSelectEntity }: { detector: InternalDetector
       <dl>
         <div>
           <dt>Alarm zagrożenia</dt>
-          <dd>{detector.alarmActive ? 'Aktywny' : 'Nieaktywny'}</dd>
+          <dd>{detector.alarmActive ? 'Aktywny' : alarmKnown ? 'Nieaktywny' : 'Nie można ocenić'}</dd>
         </div>
         <div>
           <dt>Stan techniczny</dt>
-          <dd>{detector.healthFaultActive ? 'Usterka czujnika' : 'Dostępny'}</dd>
+          <dd>{detector.healthStatus === 'healthy' ? 'Stan alarmowy dostępny' : 'Brak wiarygodnego stanu alarmowego'}</dd>
         </div>
         <div>
           <dt>Lokalizacja</dt>
@@ -170,6 +171,10 @@ function DetectorCard({ detector, onSelectEntity }: { detector: InternalDetector
           <dd>{formatRelativeTime(detector.lastObservedAt ?? detector.lastUpdated)}</dd>
         </div>
         <div>
+          <dt>Ostatni kontakt urządzenia</dt>
+          <dd>{detector.lastContactAt ? formatRelativeTime(detector.lastContactAt) : 'Brak potwierdzonych danych'}</dd>
+        </div>
+        <div>
           <dt>Stan źródłowy</dt>
           <dd>{detector.currentState}</dd>
         </div>
@@ -178,6 +183,9 @@ function DetectorCard({ detector, onSelectEntity }: { detector: InternalDetector
           <dd>{classificationName(detector.classification)}</dd>
         </div>
       </dl>
+      {detector.lastContactAt && !alarmKnown && (
+        <p>Urządzenie zgłosiło kontakt, ale nie udostępnia stanu alarmowego. Nie można potwierdzić braku zagrożenia.</p>
+      )}
       {detector.hazard === 'flammable_gas' && (
         <div className={`internal-switching-state${detector.gasSwitchingInhibited ? ' switching-inhibited' : ''}`}>
           <span>Ochrona wyjść lokalnych</span>

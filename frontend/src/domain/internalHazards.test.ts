@@ -125,3 +125,29 @@ test('known alarm survives unavailable diagnostics and lower aggregate counts', 
   assert.equal(view.activeHazards, 1);
   assert.equal(view.unavailableDetectors, 1);
 });
+
+test('device contact remains separate from unavailable alarm evidence', () => {
+  const data: EntityMap = {
+    'sensor.internal_environment_example_leak': entity('unavailable', {
+      hazard: 'water_leak',
+      source_entity_id: 'binary_sensor.example_leak',
+      classification: 'unavailable',
+      current_state: 'unknown',
+      alarm_active: false,
+      health_fault_active: true,
+    }),
+    'sensor.entity_health_internal_environment_example_leak': entity('unavailable', {
+      source_entity_id: 'binary_sensor.example_leak',
+      last_contact_at: '2024-09-14T12:00:00Z',
+    }),
+  };
+  const view = getInternalEnvironmentMonitoring(data);
+  assert.equal(view.detectors[0].lastContactAt, '2024-09-14T12:00:00Z');
+  assert.equal(view.detectors[0].status, 'unavailable');
+  assert.equal(view.detectors[0].currentState, 'unknown');
+  assert.equal(view.unavailableDetectors, 1);
+  for (const value of [null, 'unknown', 'not-a-date', '9999-12-31T23:59:59Z']) {
+    data['sensor.entity_health_internal_environment_example_leak'].attributes.last_contact_at = value;
+    assert.equal(getInternalEnvironmentMonitoring(data).detectors[0].lastContactAt, undefined);
+  }
+});

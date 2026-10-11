@@ -133,6 +133,29 @@ def test_new_cache_transition_is_seen_before_next_authoritative_poll(mocked_hass
     assert result == (True, "entity_unavailable", "unavailable")
 
 
+def test_last_contact_is_published_without_healing_an_unknown_alarm_channel(mocked_hass_app_basic):
+    app, _, component = _component(mocked_hass_app_basic)
+    now = datetime(2026, 10, 7, 7, 0, tzinfo=timezone.utc)
+    app.get_state = MagicMock(return_value=_snapshot("unknown", now))
+    component._now = lambda: now
+    symptoms, _ = component.get_symptoms_data({component.component_name: component}, _config("binary_sensor.example_water_leak"))
+    for symptom in symptoms.values():
+        component.init_safety_mechanism(symptom.sm_name, symptom.name, symptom.parameters)
+        component.enable_safety_mechanism(symptom.name, SMState.ENABLED)
+    report = {**_snapshot("unknown", now), "last_contact_at": now.isoformat(), "last_contact_source_entity": "sensor.example_last_seen"}
+    component.state_reader = SimpleNamespace(report=lambda *_: report)
+    component._report_groups["binary_sensor.example_water_leak"] = "contact"
+    component._evaluate_entity("TemperatureOffice")
+    runtime = component._entities["TemperatureOffice"]
+    attributes = component._diagnostic_attributes(runtime)
+    assert attributes["last_contact_at"] == now.isoformat()
+    assert attributes["current_state"] == "unknown"
+    assert runtime.checks["availability"].result == "pending_failure"
+    component.state_reader.report = lambda *_: None
+    component._evaluate_entity("TemperatureOffice")
+    assert component._diagnostic_attributes(runtime)["last_contact_at"] is None
+
+
 def test_future_report_timestamp_cannot_prove_freshness(mocked_hass_app_basic):
     _, _, component = _component(mocked_hass_app_basic)
     now = datetime(2026, 10, 7, 7, 0, tzinfo=timezone.utc)

@@ -47,6 +47,20 @@ w przeglądarce. Bezpośredni odnośnik do diagnostyki otwiera widok rozszerzony
 powrót do podstawowego prowadzi na pulpit. Brak połączenia i ograniczenia danych
 są widoczne w obu widokach. Zmiana widoku nie wysyła poleceń do Home Assistanta.
 
+## Kontakt czujników i dane alarmowe
+
+Karty detektorów pokazują **Ostatni kontakt urządzenia** osobno od obserwacji
+stanu alarmowego. Kontakt pochodzi z pojedynczej encji `sensor.*_last_seen`
+przypisanej w Home Assistant do tego samego urządzenia co czujnik binarny.
+Brak jednoznacznego źródła lub poprawnego czasu daje **Brak potwierdzonych danych**.
+
+Kontakt jest zapisem wcześniejszej wiadomości urządzenia. Może dotyczyć baterii
+lub innego odczytu i nie potwierdza bieżącego braku zagrożenia ani dostępności
+stanu alarmowego. Dlatego czujnik zalania może pokazywać czas kontaktu razem
+z oznaczeniem **Brak danych alarmowych**. Przy nieznanym stanie bez zapamiętanego
+aktywnego alarmu pole **Alarm zagrożenia** pokazuje **Nie można ocenić**.
+Kontakt nie usuwa aktywnego alarmu ani usterki monitoringu.
+
 ## Rozruch po restarcie
 
 Po uruchomieniu lub restarcie backend zbiera i ocenia dane od razu, ale domyślnie
