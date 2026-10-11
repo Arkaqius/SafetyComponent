@@ -32,6 +32,7 @@ def test_gas_alarm_reaches_l1_fault_without_co_consensus(tmp_path, monkeypatch, 
     for key in ("periodic_test_state_file", "detector_test_state_file"):
         raw["app_config"]["calibration"]["functional_safety"][key] = str(tmp_path / f"{key}.json")
     raw["app_config"]["validation"]["validate_entity_existence"] = False
+    raw["app_config"]["calibration"]["entity_monitor"]["startup_grace_seconds"] = 600
     raw["user_config"]["components_enabled"] = {
         "InternalEnvironmentalHazardMonitorComponent": True,
         "EntityMonitorComponent": True,
@@ -89,6 +90,15 @@ def test_gas_alarm_reaches_l1_fault_without_co_consensus(tmp_path, monkeypatch, 
     assert app.degradation.binding_errors == {}
 
     monitor = app.sm_modules["InternalEnvironmentalHazardMonitorComponent"]
+    assert app.startup_grace.snapshot()["phase"] == "settling"
+    health_symptom = next(
+        symptom_id for symptom_id, (_, kind) in monitor._symptom_bindings.items()
+        if kind == "health"
+    )
+    assert app.symptoms[health_symptom].parameters["detection_budget_seconds"] == 60
+    app.event_bus.publish("symptom", symptom_id=health_symptom, state=FaultState.SET)
+    assert app.fm.check_fault("InternalEnvironmentalDetectorUnavailable") is FaultEvaluationStatus.FAIL
+    app.event_bus.publish("symptom", symptom_id=health_symptom, state=FaultState.CLEARED)
     assert app.state_database.path == tmp_path / "safety_state.sqlite3"
     for store in (
         monitor._state_store, app.notify_man.state_store, app.reco_man.state_store,

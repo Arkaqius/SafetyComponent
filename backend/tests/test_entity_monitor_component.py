@@ -241,6 +241,31 @@ def test_entity_monitor_debounces_failure_and_recovery(mocked_hass_app_basic):
     assert runtime.last_valid_at == clock["now"]
 
 
+@pytest.mark.parametrize("failing", [False, True])
+def test_invalid_entity_evidence_withdraws_and_republishes_after_valid_sample(
+    mocked_hass_app_basic, failing,
+):
+    """Startup caching cannot retain an invalid freshness result as a pass or failure."""
+    app, bus, component = _component(mocked_hass_app_basic)
+    app.get_state = MagicMock(return_value=None)
+    component.get_symptoms_data({component.component_name: component}, _config())
+    runtime = component._entities["TemperatureOffice"]
+    now = datetime(2026, 10, 9, tzinfo=timezone.utc)
+    emitted, unavailable = [], []
+    bus.subscribe("symptom", lambda **event: emitted.append(event))
+    bus.subscribe("evaluation_unavailable", lambda **event: unavailable.append(event))
+    # Qualify the first sample using the configured debounce.
+    component._apply_result(runtime, "freshness", (failing, "initial", None), now)
+    component._apply_result(runtime, "freshness", (failing, "initial", None), now + timedelta(seconds=11))
+    assert len(emitted) == 1
+    component._apply_result(runtime, "freshness", (None, "timestamp_unavailable", None), now + timedelta(seconds=12))
+    assert len(unavailable) == 1
+    component._apply_result(runtime, "freshness", (failing, "valid_again", None), now + timedelta(seconds=13))
+    component._apply_result(runtime, "freshness", (failing, "valid_again", None), now + timedelta(seconds=24))
+    assert len(emitted) == 2
+    assert emitted[-1]["state"] == (FaultState.SET if failing else FaultState.CLEARED)
+
+
 def test_minute_evaluation_preserves_fast_dependencies(mocked_hass_app_basic):
     app, _, component = _component(mocked_hass_app_basic)
     now = datetime(2026, 10, 8, 10, 0, tzinfo=timezone.utc)

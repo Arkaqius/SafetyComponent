@@ -15,6 +15,7 @@ import {
 } from '../domain/safety';
 import { getEntityMonitorSummary, getMonitoredEntities } from '../domain/entityHealth';
 import { getInternalEnvironmentMonitoring } from '../domain/internalHazards';
+import { getStartupView } from '../domain/startup';
 
 export function useSafetyEntities() {
   const [clock, setClock] = useState(Date.now);
@@ -48,6 +49,21 @@ export function useSafetyEntities() {
     const internalEnvironment = getInternalEnvironmentMonitoring(entities);
     const healthEntity = entities[HEALTH_ENTITY_ID];
     const systemEntity = entities[SYSTEM_STATE_ENTITY_ID];
+    const startup = getStartupView(entities, clock, !cannotConnect && ready);
+    const summary = getSafetySummary(
+      healthEntity,
+      systemEntity,
+      faults,
+      recoveries,
+      cannotConnect || !ready ? 'disconnected' : 'connected'
+    );
+    if (startup && summary.activeFaultCount === 0 && summary.tone !== 'critical' && summary.effectiveLevel === null) {
+      summary.label = startup.label;
+      summary.detail = startup.available
+        ? 'Diagnostyka stabilizuje się po restarcie. Pełna ocena dostępności źródeł nie jest jeszcze gotowa.'
+        : startup.detail;
+      summary.tone = 'warning';
+    }
 
     return {
       entities,
@@ -63,7 +79,7 @@ export function useSafetyEntities() {
       monitoredEntities,
       entityMonitorSummary: getEntityMonitorSummary(entities, monitoredEntities),
       recentActivity: getRecentActivity(entities),
-      summary: getSafetySummary(healthEntity, systemEntity, faults, recoveries, cannotConnect || !ready ? 'disconnected' : 'connected'),
+      summary,
       connection: {
         cannotConnect,
         status: connectionStatus,

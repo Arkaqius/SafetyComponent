@@ -94,6 +94,51 @@ capability identity remain separate evidence dimensions. The consumer's
 redundancy policy determines capability coverage, so one failed provider does
 not imply loss of an independently supplied capability.
 
+## Startup qualification
+
+Every SafetyFunctions initialization shall begin one shared diagnostic startup
+interval. The existing `startup_grace_seconds` policy has a system default of
+600 seconds; an explicit installation override shall retain its value, including
+`0` for immediate diagnostic routing. This applies after an App restart and
+after a Home Assistant restart that reinitializes SafetyFunctions.
+
+Acquisition, check evaluation and failure/recovery qualification shall continue
+immediately. Shared routing shall defer qualified symptom transitions whose
+bound fault has category D, except `SafetyAppHealth` and contributions with an
+allocated `detection_budget_seconds`. Entity Monitor shall carry its dependencies'
+existing allocation on their symptom parameters; indoor detector-health
+contributions shall carry the SG-003 allocation of 60 seconds. Such supervision
+paths shall bypass the gate and preserve detection, degradation and notification
+timing from initialization. The startup interval shall not enlarge their budgets.
+Deferred contributions shall be unevaluable; fault aggregation shall retain
+independent eligible evidence, including an immediate failure from a contributor
+that bypasses the gate. Neither deferral nor an empty active fault list shall
+assert `PASS`, clear prior evidence, or establish full coverage.
+Each deferred symptom shall retain only its latest qualified `SET` or `CLEARED`
+observation. Invalid, unavailable or lost evidence shall cancel that cached
+observation. At expiry, routing shall release only the latest still-valid
+observations; unseen or invalid contributors shall remain unknown. Startup
+qualification is an explicit diagnostic reporting allowance, not an extension
+of a hazard's FTTI or a fabricated fresh source report.
+
+All category H paths shall remain active from initialization. In particular,
+valid gas, carbon-monoxide and water-leak assertions shall retain their immediate
+event paths and at most five-second periodic reconciliation. Application
+startup, persistence, publication, delivery and evaluator failures routed to
+`SafetyAppHealth` shall not use this gate. Required sensor/communication
+supervision shall retain its SG-003 timing even when its fault category is D.
+
+The existing `sensor.safety_evaluation_progress` shall add bounded `startup`
+attributes: phase, duration, remaining time, start/end/report timestamps and
+`deferred_symptom_count`, the number of contributors enrolled in the startup
+gate for this initialization, rather than the number of queued observations.
+SafetyHome shall display a persistent global startup notice and countdown in
+both operator modes. Reaching zero on the browser clock shall not dismiss the
+notice: completion requires a current valid backend confirmation. Supplied
+startup metadata that is malformed, stale or unavailable shall be visibly
+distinguished from completed startup. Legacy progress reports without startup
+metadata shall remain compatible and shall not establish a startup phase.
+
 ## Configuration validation
 
 Startup validation resolves bindings against installed components, configured
@@ -137,3 +182,12 @@ while the other remains failed, multiple Group B checks per room, mixed Group
 A/B membership with one owner, one shared input affecting only declared
 consumers, known but uninstalled SMs versus unknown IDs, ambiguous/missing
 bindings and shadow cycles, and removal of obsolete discovery and state.
+
+Startup acceptance tests shall verify the 600-second default, preservation of
+explicit overrides including `0`, deferral of eligible D `SET` and `CLEARED`,
+immediate H, `SafetyAppHealth` and allocated supervision handling, mixed gated
+and ungated fault contributors, latest-observation replacement, cancellation
+by invalid/lost evidence, and no artificial `PASS` at expiry. Frontend tests
+shall cover the global countdown in both modes, backend-confirmed completion,
+malformed, unavailable or stale supplied startup evidence, and legacy progress
+reports without startup metadata.

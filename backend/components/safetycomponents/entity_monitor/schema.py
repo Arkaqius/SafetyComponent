@@ -27,7 +27,7 @@ class EntityMonitorCalibration(StrictBaseModel):
 
     model_config = ConfigDict(extra="allow")
 
-    startup_grace_seconds: int = Field(default=60, ge=0)
+    startup_grace_seconds: int = Field(default=600, ge=0)
     default_failure_debounce_seconds: int = Field(default=15, ge=0)
     default_recovery_debounce_seconds: int = Field(default=60, ge=0)
     evaluation_interval_seconds: int = Field(default=5, ge=1)

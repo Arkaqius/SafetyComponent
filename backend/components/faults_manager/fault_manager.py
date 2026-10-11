@@ -327,6 +327,7 @@ class FaultManager:
         self.symptoms[symptom_id].state = FaultState.NOT_TESTED
         self._symptom_contexts.pop(symptom_id, None)
 
+        self.event_bus.publish("evaluation_unavailable", symptom_id=symptom_id)
         self.mark_evaluation_unavailable(symptom_id)
 
     def check_symptom(self, symptom_id: str) -> FaultState:
@@ -882,6 +883,7 @@ class FaultManager:
                     sm_fcn(symptom_data.module.safety_mechanisms[symptom_data.name])
                 except Exception:
                     self.event_bus.publish("evaluation_exception", symptom_id=sm_name)
+                    self.event_bus.publish("evaluation_unavailable", symptom_id=sm_name)
                     self.mark_evaluation_unavailable(sm_name)
                     recorder = getattr(symptom_data.module, "record_evaluation", None)
                     if callable(recorder):

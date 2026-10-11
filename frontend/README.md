@@ -47,6 +47,30 @@ w przeglądarce. Bezpośredni odnośnik do diagnostyki otwiera widok rozszerzony
 powrót do podstawowego prowadzi na pulpit. Brak połączenia i ograniczenia danych
 są widoczne w obu widokach. Zmiana widoku nie wysyła poleceń do Home Assistanta.
 
+## Rozruch po restarcie
+
+Po uruchomieniu lub restarcie backend zbiera i ocenia dane od razu, ale domyślnie
+przez 10 minut wstrzymuje zgłaszanie części usterek diagnostycznych encji,
+dostawców i utrzymania. Opóźnienie nie obejmuje kontroli czujników i łączności
+z przypisanym budżetem wykrycia; zachowują one swoje terminy także podczas rozruchu.
+W obu widokach na wszystkich stronach pozostaje widoczny komunikat
+rozruchu z odliczaniem. Alarmy zagrożeń, w tym gaz, tlenek węgla i zalanie, oraz
+błędy działania aplikacji są obsługiwane od razu.
+
+Rozruch nie oznacza poprawnej oceny wszystkich funkcji. Odroczone wyniki mają
+ocenę nieznaną (`UNEVALUABLE`), a niezależne poprawne wyniki nadal uczestniczą
+w ocenie usterki. Brak aktywnych usterek nie jest potwierdzeniem pełnego
+pokrycia. Po upływie czasu backend stosuje ostatnie nadal poprawne wyniki.
+Niepoprawny lub utracony odczyt pozostaje nieznany i nie usuwa aktywnej usterki.
+
+Sam upływ odliczania w przeglądarce nie kończy komunikatu: musi to potwierdzić
+backend z aktualnymi, poprawnymi danymi. Brak połączenia oraz niepoprawne,
+nieaktualne lub niedostępne przekazane dane rozruchu mają osobne oznaczenie.
+Starszy backend bez danych rozruchu pozostaje obsługiwany; panel nie przypisuje
+mu na tej podstawie fazy rozruchu.
+Czas rozruchu można zmienić w konfiguracji monitora encji; wcześniejsza jawna
+wartość jest zachowana, a `0` wyłącza to opóźnienie.
+
 ## Freeze frame
 
 Przełącz widok na **Rozszerzony**, otwórz **Fault Management**, a potem

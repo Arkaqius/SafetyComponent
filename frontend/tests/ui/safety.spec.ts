@@ -35,6 +35,51 @@ async function openMock(page: Page, route = '/', viewMode: 'basic' | 'advanced' 
   await page.waitForFunction(() => Boolean(window.__safetyHomeMock));
 }
 
+test('startup banner counts down on every page, keeps hazards visible and waits for backend completion', async ({ page }, testInfo) => {
+  await openMock(page, '/', 'basic');
+  await page.evaluate(() => {
+    const entities = window.__safetyHomeMock.snapshot();
+    entities['sensor.safety_evaluation_progress'] = {
+      state: 'observed',
+      attributes: {
+        startup: {
+          phase: 'settling',
+          duration_seconds: 600,
+          remaining_seconds: 600,
+          reported_at: new Date().toISOString(),
+        },
+      },
+    };
+    window.__safetyHomeMock.update({ entities });
+  });
+  const banner = page.getByRole('complementary', { name: 'Rozruch monitoringu' });
+  await expect(banner).toBeVisible();
+  await expect(banner).toContainText('Wykrywanie zagrożeń działa od razu');
+  await expect(page.locator('.basic-incident').first()).toBeVisible();
+  await expect(banner.locator('.startup-countdown strong')).toHaveText(/^(10:00|9:5\d)$/);
+  await page.screenshot({ path: testInfo.outputPath('startup-monitoring.png'), scale: 'css' });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width);
+  await page.goto('/#/fault-management');
+  await expect(banner).toBeVisible();
+  await page.evaluate(() => {
+    const entities = window.__safetyHomeMock.snapshot();
+    const startup = entities['sensor.safety_evaluation_progress'].attributes.startup as Record<string, unknown>;
+    startup.remaining_seconds = 0;
+    startup.reported_at = new Date().toISOString();
+    window.__safetyHomeMock.update({ entities });
+  });
+  await expect(banner).toContainText('Oczekiwanie na potwierdzenie');
+  await page.evaluate(() => window.__safetyHomeMock.update({ connectionStatus: 'disconnected' }));
+  await expect(banner).toContainText('brak aktualnych danych');
+  await expect(banner.locator('.startup-countdown strong')).toHaveText('—');
+  await page.evaluate(() => {
+    const entities = window.__safetyHomeMock.snapshot();
+    (entities['sensor.safety_evaluation_progress'].attributes.startup as Record<string, unknown>).phase = 'complete';
+    window.__safetyHomeMock.update({ entities, connectionStatus: 'connected' });
+  });
+  await expect(banner).toHaveCount(0);
+});
+
 test('basic is the default, fits a phone screen and exposes only the essential brief', async ({ page }, testInfo) => {
   await openMock(page, '/', null);
   await expect(page.getByRole('button', { name: 'Podstawowy', exact: true })).toHaveAttribute('aria-pressed', 'true');
