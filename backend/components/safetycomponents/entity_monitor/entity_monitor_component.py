@@ -827,6 +827,8 @@ class EntityMonitorComponent(SafetyComponent):
             "last_changed": snapshot.get("last_changed"),
             "last_updated": snapshot.get("last_updated"),
             "last_reported": snapshot.get("last_reported"),
+            "last_contact_at": snapshot.get("last_contact_at"),
+            "last_contact_source_entity": snapshot.get("last_contact_source_entity"),
             "report_timeout_seconds": dependency.checks.get("freshness", {}).get("max_silence_seconds"),
             "failure_debounce_seconds": dependency.failure_debounce_seconds,
             "recovery_debounce_seconds": dependency.recovery_debounce_seconds,
@@ -882,6 +884,8 @@ class EntityMonitorComponent(SafetyComponent):
             attributes["last_changed"],
             attributes["last_updated"],
             attributes["last_reported"],
+            attributes["last_contact_at"],
+            attributes["last_contact_source_entity"],
             attributes["failure_debounce_seconds"],
             attributes["recovery_debounce_seconds"],
             attributes["detection_budget_seconds"],
@@ -1109,6 +1113,9 @@ class EntityMonitorComponent(SafetyComponent):
                     and reported_at is not None
                     and cached_at > reported_at
                 ):
+                    for field in ("last_contact_at", "last_contact_source_entity"):
+                        if field in report:
+                            snapshot[field] = report[field]
                     return snapshot
                 return report
             return snapshot

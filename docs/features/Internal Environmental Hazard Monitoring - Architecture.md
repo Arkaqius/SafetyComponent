@@ -150,6 +150,13 @@ detector-specific heartbeat, last-seen sequence or genuinely supervised link
 shall otherwise establish current coverage. An online MQTT broker alone shall
 not prove that a wireless detector is online.
 
+Supplementary device `last_seen` data shall remain separate from alarm-channel
+evidence. A contact timestamp may describe another message from the same device;
+without a declared alarm-channel supervision contract it shall not establish
+current alarm availability, reset a freshness timer or qualify an authoritative
+clear. Historical contact shall not imply an online status with an inferred
+timeout. Invalid, future or ambiguous contact data shall not establish contact.
+
 IR-002..004 require alarm edges within 1 s and supervised confirmation within
 60 s. IR-007 requires PM sampling at least 0.2 Hz with age at most 120 s. Tighter
 supervision thresholds shall be selected to fit the full SG-003 budget. A
@@ -400,6 +407,13 @@ versioned and compatible with older entries without incident fields. Queuing
 without a submission shall not create a fictitious attempt. Targets shall use
 actual services; groups shall not be expanded into inferred recipient names.
 `accepted_by_home_assistant` shall not mean confirmed phone delivery.
+
+Detector cards shall show available device-contact timestamps separately from
+alarm observations. Missing alarm evidence shall be described as unavailable
+alarm data rather than proof that the device does not communicate. An unknown
+channel with no latched alarm shall display an unevaluable alarm state, even
+when contact is present. A latched alarm shall remain active until its existing
+authoritative-clear rules are satisfied; contact shall not clear it.
 
 All user-facing hazard, trouble, unevaluable, pending-clear and healed wording
 shall have EN/PL/DE parity. UTC evidence shall render local date/time/timezone.

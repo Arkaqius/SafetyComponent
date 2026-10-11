@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import math
 import os
+from datetime import datetime, timezone
 from http.client import HTTPException
 from typing import Any
 from urllib.error import URLError
@@ -20,8 +22,16 @@ REPORT_TEMPLATE = """
   {% set matches = expand(entity) %}
   {% if matches %}
     {% set s = matches[0] %}
+    {% set contact = namespace(rows=[]) %}
+    {% set device = device_id(entity) if entity.startswith('binary_sensor.') else none %}
+    {% for sibling in (device_entities(device) if device else []) %}
+      {% if sibling.startswith('sensor.') and sibling.endswith('_last_seen') %}
+        {% set contact.rows = contact.rows + [dict(entity_id=sibling, state=states(sibling))] %}
+      {% endif %}
+    {% endfor %}
     {% set ns.rows = ns.rows + [dict(entity_id=s.entity_id, state=s.state,
       attributes=s.attributes, last_reported=s.last_reported.isoformat(),
+      device_last_seen=contact.rows[0] if contact.rows | length == 1 else none,
       last_updated=s.last_updated.isoformat(), last_changed=s.last_changed.isoformat())] %}
   {% endif %}
 {% endfor %}
@@ -60,7 +70,15 @@ class HomeAssistantStateProvider:
                 return {}
             if not isinstance(row.get("last_reported"), str) or row["entity_id"] in result:
                 return {}
-            result[row["entity_id"]] = row
+            normalized = dict(row)
+            contact = normalized.pop("device_last_seen", None)
+            if isinstance(contact, dict):
+                timestamp = parse_device_contact(contact.get("state"))
+                source = contact.get("entity_id")
+                if timestamp is not None and isinstance(source, str) and source.startswith("sensor."):
+                    normalized["last_contact_at"] = timestamp.isoformat()
+                    normalized["last_contact_source_entity"] = source
+            result[row["entity_id"]] = normalized
         return result
 
     def discover_batteries(self) -> dict[str, Any]:
@@ -91,3 +109,35 @@ class HomeAssistantStateProvider:
             return json.loads(body)
         except (OSError, URLError, HTTPException, ValueError, TypeError):
             return None
+
+
+def parse_device_contact(value: Any) -> datetime | None:
+    """Normalize device last-seen data without inventing contact from HA writes."""
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        epoch = float(value)
+    except OverflowError:
+        return None
+    except (TypeError, ValueError):
+        try:
+            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            return None
+        try:
+            parsed = parsed.astimezone(timezone.utc)
+        except (OverflowError, ValueError):
+            return None
+    else:
+        if not math.isfinite(epoch) or epoch <= 0:
+            return None
+        # Zigbee2MQTT may expose Unix milliseconds rather than seconds.
+        if epoch >= 100_000_000_000:
+            epoch /= 1000
+        try:
+            parsed = datetime.fromtimestamp(epoch, timezone.utc)
+        except (OSError, OverflowError, ValueError):
+            return None
+    return parsed if parsed <= datetime.now(timezone.utc) else None

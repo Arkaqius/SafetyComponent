@@ -25,6 +25,7 @@ export interface InternalDetectorView {
   lastObservedAt?: string;
   lastAuthoritativeClearAt?: string;
   lastUpdated?: string;
+  lastContactAt?: string;
 }
 
 export interface InternalEnvironmentView {
@@ -49,6 +50,7 @@ export function getInternalEnvironmentMonitoring(entities: EntityMap): InternalE
       const classification = stringAttribute(entity.attributes.classification) || 'unknown';
       const sourceEntityId = stringAttribute(entity.attributes.source_entity_id);
       const healthEntityId = findHealthEntityId(entities, sourceEntityId);
+      const contact = healthEntityId ? entities[healthEntityId] : undefined;
       const diagnosticState = stringAttribute(entity.state).toLowerCase();
       const attributesValid =
         typeof entity.attributes.alarm_active === 'boolean' && typeof entity.attributes.health_fault_active === 'boolean';
@@ -88,6 +90,7 @@ export function getInternalEnvironmentMonitoring(entities: EntityMap): InternalE
         lastObservedAt: optionalStringAttribute(entity.attributes.last_observed_at),
         lastAuthoritativeClearAt: optionalStringAttribute(entity.attributes.last_authoritative_clear_at),
         lastUpdated: entity.last_updated,
+        lastContactAt: validContactTime(contact?.attributes.last_contact_at),
       };
     })
     .sort((left, right) => hazardPriority(left.hazard) - hazardPriority(right.hazard) || left.name.localeCompare(right.name, 'pl'));
@@ -127,6 +130,12 @@ function findHealthEntityId(entities: EntityMap, sourceEntityId: string): string
       entityId.startsWith('sensor.entity_health_internal_environment_') &&
       stringAttribute(entity.attributes.source_entity_id) === sourceEntityId
   )?.[0];
+}
+
+function validContactTime(value: unknown): string | undefined {
+  if (typeof value !== 'string' || !value.trim()) return undefined;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) && timestamp <= Date.now() ? value : undefined;
 }
 
 function internalEnvironmentStatus(

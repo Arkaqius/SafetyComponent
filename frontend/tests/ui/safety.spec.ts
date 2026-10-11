@@ -35,6 +35,50 @@ async function openMock(page: Page, route = '/', viewMode: 'basic' | 'advanced' 
   await page.waitForFunction(() => Boolean(window.__safetyHomeMock));
 }
 
+test('device contact does not turn an unknown water alarm into a clear alarm', async ({ page }, testInfo) => {
+  await openMock(page, '/internal-hazards');
+  await page.evaluate(() => {
+    const now = new Date().toISOString();
+    const entities = window.__safetyHomeMock.snapshot();
+    for (const id of Object.keys(entities)) {
+      if (id.startsWith('sensor.internal_environment_')) delete entities[id];
+    }
+    entities['sensor.internal_environment_example_leak'] = {
+      state: 'unavailable',
+      last_updated: now,
+      last_changed: now,
+      attributes: {
+        friendly_name: 'Example leak detector',
+        hazard: 'water_leak',
+        source_entity_id: 'binary_sensor.example_leak',
+        classification: 'unavailable',
+        current_state: 'unknown',
+        alarm_active: false,
+        health_fault_active: true,
+      },
+    };
+    entities['sensor.entity_health_internal_environment_example_leak'] = {
+      state: 'unavailable',
+      last_updated: now,
+      last_changed: now,
+      attributes: { source_entity_id: 'binary_sensor.example_leak', last_contact_at: now },
+    };
+    window.__safetyHomeMock.update({ entities });
+  });
+  const card = page.locator('.internal-detector-card');
+  await expect(card).toHaveCount(1);
+  await expect(card).toContainText('Brak danych alarmowych');
+  await expect(card.locator('dl > div').filter({ has: page.getByText('Alarm zagrożenia', { exact: true }) })).toContainText(
+    'Nie można ocenić'
+  );
+  await expect(card.locator('dl > div').filter({ has: page.getByText('Ostatni kontakt urządzenia', { exact: true }) })).not.toContainText(
+    'Brak potwierdzonych danych'
+  );
+  await expect(card).toContainText('Nie można potwierdzić braku zagrożenia');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('water-contact-unknown.png'), fullPage: true, scale: 'css' });
+});
+
 test('basic is the default, fits a phone screen and exposes only the essential brief', async ({ page }, testInfo) => {
   await openMock(page, '/', null);
   await expect(page.getByRole('button', { name: 'Podstawowy', exact: true })).toHaveAttribute('aria-pressed', 'true');

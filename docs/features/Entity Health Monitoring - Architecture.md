@@ -332,6 +332,18 @@ A device-level `last_seen` may represent a humidity, battery, or other message;
 it shall not serve as temperature confirmation without a declared source
 contract. No global `last_seen` fallback shall be inferred.
 
+The shared Home Assistant report provider may acquire supplementary device-contact
+metadata for a monitored `binary_sensor` when exactly one `sensor.*_last_seen`
+entity belongs to the same Home Assistant registry device. Ambiguous or absent
+matches shall not supply contact evidence. Unix seconds, Unix milliseconds and
+timezone-aware ISO timestamps shall normalize to UTC; invalid or future values
+shall be omitted. C-ENT shall expose `last_contact_at` and
+`last_contact_source_entity` as informational diagnostics, separately from
+`last_reported` and configured freshness checks. Contact is a historical
+observation, not an online status with an inferred timeout. It shall not change
+availability, assert passing alarm evidence, clear a fault or renew source-report
+freshness without the owning channel's declared contract.
+
 `last_changed` is presentation metadata and is never a freshness source. A
 change in value is not required for freshness, and an unchanged door, switch,
 valve, or temperature remains fresh while its configured source continues to

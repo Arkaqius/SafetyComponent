@@ -6,7 +6,7 @@ from io import BytesIO
 
 import pytest
 
-from components.external_apis.home_assistant_state import HomeAssistantStateProvider
+from components.external_apis.home_assistant_state import HomeAssistantStateProvider, parse_device_contact
 from tests.test_functional_safety_monitor import make_monitor, snapshot
 
 
@@ -90,3 +90,34 @@ def test_discovery_uses_fixed_template_and_reports_transport_failure(monkeypatch
     assert HomeAssistantStateProvider("test").discover_batteries()["status"] == "ready"
     monkeypatch.setattr("components.external_apis.home_assistant_state.urlopen", lambda *_args, **_kwargs: BytesIO(b"null"))
     assert HomeAssistantStateProvider("test").discover_batteries() == {"status": "error", "devices": []}
+
+
+@pytest.mark.parametrize("value", [
+    "1726315200", 1726315200, "1726315200000", 1726315200000,
+    "2024-09-14T12:00:00Z", "2024-09-14T14:00:00+02:00",
+])
+def test_contact_supports_epoch_seconds_milliseconds_and_aware_iso(value):
+    assert parse_device_contact(value) == datetime(2024, 9, 14, 12, tzinfo=timezone.utc)
+
+
+@pytest.mark.parametrize("value", [
+    None, True, False, "unknown", "unavailable", "", "NaN", "inf", -1, 0,
+    "2024-09-14T12:00:00", "9999-12-31T23:59:59+00:00", "1e100",
+    10 ** 1000, "0001-01-01T00:00:00+01:00", "9999-12-31T23:59:59-01:00",
+])
+def test_invalid_or_future_contact_is_not_observed_evidence(value):
+    assert parse_device_contact(value) is None
+
+
+def test_contact_is_additional_evidence_and_never_replaces_unknown_alarm_state(monkeypatch):
+    row = {"entity_id": "binary_sensor.example_water_leak", **snapshot("unknown")}
+    row["device_last_seen"] = {"entity_id": "sensor.example_last_seen", "state": "1726315200000"}
+    monkeypatch.setattr("components.external_apis.home_assistant_state.urlopen", lambda *_args, **_kwargs: BytesIO(json.dumps([row]).encode()))
+    report = HomeAssistantStateProvider("test").poll({row["entity_id"]})[row["entity_id"]]
+    assert report["state"] == "unknown"
+    assert report["last_contact_at"] == "2024-09-14T12:00:00+00:00"
+    assert report["last_contact_source_entity"] == "sensor.example_last_seen"
+    row["device_last_seen"]["state"] = "unknown"
+    report = HomeAssistantStateProvider("test").poll({row["entity_id"]})[row["entity_id"]]
+    assert report["state"] == "unknown"
+    assert "last_contact_at" not in report
