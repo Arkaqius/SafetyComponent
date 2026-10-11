@@ -15,6 +15,41 @@ from .fixtures.hass_fixture import (
 DEBOUNCE_LIMIT = 1
 
 
+@pytest.mark.parametrize("name, rate, expected", [
+    ("RiskyTemperatureOfficeForeCast", "0", FaultState.CLEARED),
+    ("RiskyTemperatureHighOfficeForeCast", "0", FaultState.CLEARED),
+    ("RiskyTemperatureOfficeForeCast", "-0.04", FaultState.SET),
+    ("RiskyTemperatureHighOfficeForeCast", "0.04", FaultState.SET),
+])
+def test_forecast_requalifies_on_rate_change_without_temperature_change(
+    mocked_hass_app_with_temp_component, name, rate, expected,
+):
+    """Rate availability alone must trigger a new forecast evaluation."""
+    app, _, _, _, _ = mocked_hass_app_with_temp_component
+    app.initialize()
+    component = app.sm_modules["TemperatureComponent"]
+    mechanism = component.safety_mechanisms[name]
+    mechanism.sm_args.update(cold_thr=18, hot_thr=26, debounce_limit=1)
+    component.debounce_states[name] = type(component.debounce_states[name])(0, False)
+    states = {"sensor.office_temperature": "22", "sensor.office_temperature_rate": "unknown"}
+    app.get_state.side_effect = lambda entity_id, **kwargs: states.get(entity_id)
+    mechanism.callback(mechanism)
+    assert app.fm.check_fault("RiskyTemperatureForecast") == FaultEvaluationStatus.UNEVALUABLE
+    listeners = [
+        call.args[0] for call in app.listen_state.call_args_list
+        if len(call.args) > 1 and call.args[1] == "sensor.office_temperature_rate"
+        and getattr(call.args[0], "__self__", None) is mechanism
+    ]
+    assert len(listeners) == 1
+    states["sensor.office_temperature_rate"] = rate
+    listeners[0]("sensor.office_temperature_rate", "state", "unknown", rate)
+    assert app.fm.check_symptom(name) == expected
+    states["sensor.office_temperature_rate"] = "unavailable"
+    listeners[0]("sensor.office_temperature_rate", "state", rate, "unavailable")
+    assert app.fm.check_fault("RiskyTemperatureForecast") == FaultEvaluationStatus.UNEVALUABLE
+    assert app.fm.check_symptom(name) == expected
+
+
 @pytest.mark.parametrize(
     "temperature, expected_symptom_state, expected_fault_state",
     [

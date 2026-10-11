@@ -748,7 +748,9 @@ temperature.
   from current temperature, the first derivative expressed in degrees Celsius
   per minute, and the configured forecast timespan. The projection shall be
   rejected when its rate, delta, or resulting temperature exceeds calibrated
-  plausibility bounds.
+  plausibility bounds. A state change of either the room temperature or its
+  first derivative shall trigger forecast reevaluation, including input loss
+  and recovery.
 - **SYS-SR-TEMP-004:** Missing, non-numeric, non-finite, `unknown`,
   `unavailable`, or otherwise invalid temperature or derivative input shall not
   constitute positive evidence to set or clear an active temperature symptom.

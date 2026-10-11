@@ -160,6 +160,16 @@ process or reachable web port is not positive evidence that all safety logic is
 correct. Semantic checks, dependency checks, and fault diagnostics remain
 independent and shall not be replaced by the container watchdog.
 
+### Temperature forecast readiness
+
+Safety Home shall show temperature sample collection globally across navigation,
+independently of the diagnostic startup countdown. The notice shall identify
+the number of pending room rates and their configured sampling interval. It
+shall use the backend `_rate` sampling metadata and end on current numeric
+results, not on a browser timer. Invalid source input and lost connection shall
+have distinct messages; neither shall imply a usable forecast. Direct
+temperature evaluation remains independent of forecast sample collection.
+
 ## 8. Safe migration
 
 Only one SafetyFunctions backend may own the stable MQTT entities and Home

@@ -91,7 +91,7 @@ for fault events, NotificationManager runs before RecoveryManager.
 | --- | --- | --- |
 | SWR-TEMP-001 | Each configured room shall evaluate direct low temperature (`sm_tc_1`), forecast low temperature (`sm_tc_2`), direct high temperature (`sm_tc_3`), and forecast high temperature (`sm_tc_4`). | `TemperatureComponent` |
 | SWR-TEMP-002 | Direct mechanisms shall compare the current numeric sensor value with the configured low or high threshold. | `sm_tc_1`, `sm_tc_3` |
-| SWR-TEMP-003 | Forecast mechanisms shall calculate a bounded linear forecast from current temperature, a first derivative in °C/min, and the configured forecast timespan. | `sm_tc_2`, `sm_tc_4` |
+| SWR-TEMP-003 | Forecast mechanisms shall calculate a bounded linear forecast from current temperature, a first derivative in °C/min, and the configured forecast timespan. A state change of either the temperature or its `_rate` input shall trigger reevaluation, including transitions to or from unavailable input. | `sm_tc_2`, `sm_tc_4` |
 | SWR-TEMP-004 | Missing, non-numeric, non-finite, `unknown`, `unavailable`, out-of-range temperature, or implausible derivative/forecast input shall neither create a new symptom nor constitute positive evidence to clear an active symptom. | `_get_temperature_value`, `forecast_temperature`, and mechanism callbacks |
 | SWR-TEMP-005 | Mechanism results shall use configured debounce and reevaluation timing before fault lifecycle changes are emitted. | `SafetyComponent`, temperature calibration |
 | SWR-TEMP-006 | The DerivativeMonitor shall publish only derivative measurements (`_rate` in °C/min and `_rateofrate` in °C/min²); it shall not own temperature safety limits. | `DerivativeMonitor` |
@@ -100,6 +100,14 @@ for fault events, NotificationManager runs before RecoveryManager.
 | SWR-TEMP-009 | Low-temperature mechanisms `sm_tc_1` and `sm_tc_2` shall provide `ManipulateWindow<Room>` recovery proposals when a window sensor or supported cover actuator is configured. High-temperature mechanisms `sm_tc_3` and `sm_tc_4` shall create no recovery action, and C-TEMP shall not issue HVAC/climate commands. | `RiskyTemperature_recovery`, recovery registration |
 | SWR-TEMP-010 | Direct low/high symptoms shall aggregate into level-2 `RiskyTemperature`; forecast low/high symptoms shall aggregate into level-3 `RiskyTemperatureForecast`; the direct fault shall shadow the forecast fault and each fault shall remain active until every related symptom clears. | fault catalog and `FaultManager` |
 | SWR-TEMP-011 | The derivative monitor shall seed the first source sample at registration so that a valid second sample can produce `_rate` after one configured sampling interval. The `_rate` diagnostic dependency shall allow more than one interval after startup before declaring the first missing rate a monitoring failure. Its detection budget shall derive from that interval and include scheduler margin; invalid rate data shall remain unevaluable meanwhile, not positive evidence of a safe forecast. | `TemperatureComponent.get_entity_dependencies`, `DerivativeMonitor` |
+
+The `_rate` sensor shall expose its `source_entity_id`, configured
+`sample_interval_seconds`, and `sampling_status`: `waiting_for_samples` only
+while valid source samples are being collected, `source_unavailable` for invalid
+source input, and `ready` after a numeric rate has been calculated. The operator
+notice shall remain independent of diagnostic startup grace and shall end only
+when current numeric results arrive. Connection loss shall be shown as missing
+current evidence, never as completion of sample collection.
 
 Stable Temperature runtime IDs are:
 

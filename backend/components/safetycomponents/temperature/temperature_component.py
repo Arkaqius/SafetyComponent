@@ -931,6 +931,7 @@ class TemperatureComponent(SafetyComponent):
         if sm_method in (self.sm_tc_2, self.sm_tc_4):
             sm_args.update(
                 {
+                    "temperature_rate_sensor": f"{params['temperature_sensor']}_rate",
                     "forecast_timespan": params["CAL_FORECAST_TIMESPAN"],
                     "debounce_limit": params["SM_TC_2_DEBOUNCE_LIMIT"],
                     "re_eval_delay_seconds": params["SM_TC_2_REEVAL_DELAY_SECONDS"],

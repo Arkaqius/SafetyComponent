@@ -168,3 +168,36 @@ def test_get_entity_value_invalid(setup_derivative_monitor):
     mock_hass.get_state.side_effect = None
     mock_hass.get_state.return_value = "bad"
     assert derivative_monitor._get_entity_value("sensor.temperature") is None
+
+
+def test_sampling_status_distinguishes_collection_missing_source_and_ready(
+    setup_derivative_monitor,
+):
+    """Never describe invalid input as normal startup sample collection."""
+    _, mqtt, monitor, set_state = setup_derivative_monitor
+    entity_id = "sensor.temperature"
+    monitor.register_entity(entity_id, 900, -5.0, 5.0)
+    assert mqtt.publish_sensor_attributes.call_args.args[1]["sampling_status"] == "source_unavailable"
+
+    set_state(entity_id, "20")
+    monitor._calculate_diff(entity_id=entity_id, sample_time=900)
+    attributes = mqtt.publish_sensor_attributes.call_args.args[1]
+    assert attributes["sampling_status"] == "waiting_for_samples"
+    assert attributes["sample_interval_seconds"] == 900
+    assert monitor.get_first_derivative(entity_id) is None
+
+    set_state(entity_id, "21")
+    monitor._calculate_diff(entity_id=entity_id, sample_time=900)
+    assert mqtt.publish_sensor_attributes.call_args.args[1]["sampling_status"] == "ready"
+    assert monitor.get_first_derivative(entity_id) is not None
+
+
+@pytest.mark.parametrize("value", ["nan", "inf", "-inf", "unknown", "unavailable"])
+def test_invalid_samples_never_claim_ready(setup_derivative_monitor, value):
+    """Invalid source values cannot qualify a rate or its sampling status."""
+    _, mqtt, monitor, set_state = setup_derivative_monitor
+    set_state("sensor.temperature", value)
+    monitor.register_entity("sensor.temperature", 900, -5.0, 5.0)
+    assert monitor.get_first_derivative("sensor.temperature") is None
+    assert monitor.entities["sensor.temperature"]["prev_value"] is None
+    assert mqtt.publish_sensor_attributes.call_args.args[1]["sampling_status"] == "source_unavailable"
