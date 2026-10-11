@@ -25,6 +25,18 @@ configured; an absent optional vector does not make coverage unknown. Existing
 `sensor.safety_app_health`, delivery health, and per-provider
 health entities retain detail and are not replaced by fault state.
 
+Provider, input and maintenance checks shall acquire and evaluate evidence from
+startup. Their qualified D contributions without allocated detection budgets shall
+use the shared
+[startup qualification](<Fault Routing and Aggregation - Architecture.md#startup-qualification>),
+whose system default is 600 seconds. `SafetyAppHealth` and all its startup,
+persistence, publication, delivery and evaluator contributors shall bypass this
+gate. Contributions with allocated `detection_budget_seconds`, including required
+sensor/communication supervision, shall also bypass it and retain their existing
+detection, degradation and notification timing. A healthy process during
+qualification shall not imply completed diagnostic evaluation or full safety
+coverage.
+
 ## Routing and restrictions
 
 | Contributor | Fault and priority | Restriction target | Clear evidence |

@@ -31,9 +31,13 @@ class FakeBus:
 
     def __init__(self) -> None:
         self.events: list[dict[str, Any]] = []
+        self.unavailable: list[dict[str, Any]] = []
 
-    def publish(self, _: str, **kwargs: Any) -> None:
-        self.events.append(kwargs)
+    def publish(self, event_type: str, **kwargs: Any) -> None:
+        if event_type == "evaluation_unavailable":
+            self.unavailable.append(kwargs)
+        else:
+            self.events.append(kwargs)
 
 
 class FakeEntities:
@@ -125,6 +129,23 @@ def test_missing_and_wrong_unit_sources_remain_unknown_without_faults() -> None:
     assert mqtt.states[-1][1] == "unknown"
     assert mqtt.states[-1][2]["memory"]["reason"] == "wrong_unit"
     assert mqtt.states[-1][2]["updates"]["home_assistant_core"]["status"] == "unknown"
+
+
+def test_lost_maintenance_evidence_withdraws_startup_observation_then_requalifies():
+    """A queued battery warning must not replay after its input becomes unknown."""
+    states = {"sensor.battery": snapshot("10", unit="%", kind="battery")}
+    monitor, bus, _ = make_monitor(states)
+    monitor.evaluate()
+    identity = "fsm_RemoteBatteryLowRemote"
+    assert monitor.symptom_states[identity] == FaultState.SET
+    states["sensor.battery"] = snapshot("unavailable", unit="%", kind="battery")
+    monitor.evaluate()
+    assert monitor.symptom_states[identity] == FaultState.NOT_TESTED
+    assert bus.unavailable[-1] == {"symptom_id": identity}
+    states["sensor.battery"] = snapshot("10", unit="%", kind="battery")
+    monitor.evaluate()
+    assert monitor.symptom_states[identity] == FaultState.SET
+    assert bus.events[-1] == {"symptom_id": identity, "state": FaultState.SET}
 
 
 def test_battery_summary_omits_raw_source_snapshots_when_stale() -> None:
@@ -241,6 +262,7 @@ def test_detector_maintenance_fault_does_not_control_or_clear_alarm() -> None:
 
     monitor.observe_detector_test("KitchenSmoke", "due")
     monitor.observe_detector_test("KitchenSmoke", "unknown")
+    assert bus.unavailable == [{"symptom_id": "fsm_DetectorTestDueKitchenSmoke"}]
     monitor.observe_detector_test("KitchenSmoke", "current")
 
     assert monitor.get_fault_definitions()["DetectorTestDueKitchenSmoke"]["level"] == 4
@@ -275,6 +297,31 @@ def test_cpu_pressure_needs_duration_and_valid_recovery(monkeypatch) -> None:
     clock[0] = 103.0
     monitor.evaluate()
     assert bus.events[-1]["state"] == FaultState.CLEARED
+
+
+def test_cpu_normal_evidence_returns_after_unavailable_without_clearing_a_qualifying_failure() -> None:
+    states = {"sensor.cpu": snapshot("20", unit="%")}
+    bus, mqtt = FakeBus(), FakeEntities()
+    monitor = FunctionalSafetyMonitor(
+        FakeHass(states), bus, mqtt,
+        {"host_cpu_entity": "sensor.cpu"}, POLICY, wan_entity=None,
+    )
+    symptoms, _ = monitor.get_symptoms_data({monitor.component_name: monitor}, {})
+    symptom = symptoms["fsm_HostCpuPressure"]
+    monitor.init_safety_mechanism(symptom.sm_name, symptom.name, {})
+    monitor.enable_safety_mechanism(symptom.name, SMState.ENABLED)
+
+    monitor.evaluate()
+    assert bus.events[-1]["state"] == FaultState.CLEARED
+    states["sensor.cpu"] = snapshot("unavailable", unit="%")
+    monitor.evaluate()
+    assert bus.unavailable == [{"symptom_id": "fsm_HostCpuPressure"}]
+    states["sensor.cpu"] = snapshot("95", unit="%")
+    monitor.evaluate()
+    assert len(bus.events) == 1
+    states["sensor.cpu"] = snapshot("20", unit="%")
+    monitor.evaluate()
+    assert [row["state"] for row in bus.events] == [FaultState.CLEARED] * 2
 
 
 def test_wan_requires_sustained_outage_and_recovery(monkeypatch) -> None:

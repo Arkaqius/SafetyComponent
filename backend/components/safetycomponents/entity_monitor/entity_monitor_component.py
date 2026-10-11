@@ -77,7 +77,6 @@ class EntityMonitorComponent(SafetyComponent):
         self._fault_definitions: dict[str, dict[str, Any]] = {}
         self._timer_handle: Any | None = None
         self._fast_timer_handle: Any | None = None
-        self._startup_at = self._now()
         self._policy: dict[str, Any] = {}
         self.state_reader: HomeAssistantStateReader | None = None
         self._report_groups: dict[str, str] = {}
@@ -99,7 +98,6 @@ class EntityMonitorComponent(SafetyComponent):
 
         self._policy = dict(component_cfg)
         self._fault_definitions = {}
-        self._startup_at = self._now()
         dependencies = self._merge_dependencies(
             [
                 *component_cfg.get("explicit_entities", []),
@@ -204,6 +202,7 @@ class EntityMonitorComponent(SafetyComponent):
                     parameters={
                         "entity_key": dependency.key,
                         "check_key": check_name,
+                        "detection_budget_seconds": dependency.detection_budget_seconds,
                     },
                     sm_name=mechanism_name,
                 )
@@ -584,6 +583,7 @@ class EntityMonitorComponent(SafetyComponent):
     ) -> None:
         failing, reason, observed = result
         state = runtime.checks[check_name]
+        previous_result = state.result
         state.reason = reason
         state.observed_value = observed
         state.evaluated_at = now
@@ -591,6 +591,11 @@ class EntityMonitorComponent(SafetyComponent):
             state.result = "unevaluable"
             state.pending_failure_since = None
             state.pending_recovery_since = None
+            if publish_symptom and previous_result != "unevaluable":
+                self.event_bus.publish(
+                    "evaluation_unavailable",
+                    symptom_id=self._symptom_name(runtime.dependency.key, check_name),
+                )
             return
 
         symptom_name = self._symptom_name(runtime.dependency.key, check_name)
@@ -598,6 +603,11 @@ class EntityMonitorComponent(SafetyComponent):
             state.pending_recovery_since = None
             if state.active:
                 state.result = "failed"
+                if publish_symptom and previous_result == "unevaluable":
+                    self.event_bus.publish(
+                        "symptom", symptom_id=symptom_name, state=FaultState.SET,
+                        additional_info=self._symptom_context(runtime, check_name, state),
+                    )
                 return
             if state.pending_failure_since is None:
                 state.pending_failure_since = now
@@ -623,6 +633,7 @@ class EntityMonitorComponent(SafetyComponent):
             not state.active
             and publish_symptom
             and self.symptom_states.get(symptom_name) == FaultState.CLEARED
+            and previous_result == "passed"
         ):
             state.result = "passed"
             return
@@ -657,9 +668,6 @@ class EntityMonitorComponent(SafetyComponent):
             return None, "entity_unavailable", None
         snapshot = runtime.snapshot or {}
         if check_name == "freshness":
-            startup_grace = int(self._policy.get("startup_grace_seconds", 0))
-            if (now - self._startup_at).total_seconds() < startup_grace:
-                return None, "startup_grace", None
             source = str(config["timestamp_source"])
             timestamp = self._timestamp_value(snapshot, source)
             if timestamp is None:

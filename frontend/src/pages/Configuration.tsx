@@ -715,7 +715,7 @@ export default function Configuration() {
               label='Czas ochronny po starcie (s)'
               optional
               defaultValue={String(entityMonitorSystem.default_startup_grace_seconds ?? '')}
-              help='Opóźnia zgłaszanie awarii zależności po uruchomieniu.'
+              help='Domyślnie 10 minut na rozruch diagnostyki encji, dostawców i utrzymania. Wykrywanie zagrożeń oraz błędów aplikacji działa od razu.'
               value={numberValue(entityMonitorDefaults.startup_grace_seconds)}
               onChange={value => update(['installation', 'component_settings', 'entity_monitor', 'startup_grace_seconds'], value)}
             />

@@ -79,7 +79,7 @@ let mockDocument: UserConfigurationDocument = {
     detector_profiles: ['home_assistant_binary_alarm'],
     temperature: { default_low_temperature_c: 18, default_high_temperature_c: 28 },
     safety_door: { default_timeout_seconds: 120 },
-    entity_monitor: { default_startup_grace_seconds: 60, default_evaluation_interval_seconds: 5 },
+    entity_monitor: { default_startup_grace_seconds: 600, default_evaluation_interval_seconds: 5 },
     external_hazard: {
       weather: {
         default_frost_watch_c: 2,

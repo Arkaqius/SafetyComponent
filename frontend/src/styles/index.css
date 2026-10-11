@@ -4589,3 +4589,45 @@ dialog.entity-dialog-backdrop::backdrop { background: rgba(0, 0, 0, 0.65); }
   .basic-incident { margin-top: 18px; }
   .basic-action p { font-size: 1rem; }
 }
+.startup-banner {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--warning, #b57928);
+  border-radius: 16px;
+  background: var(--surface, #fff);
+  color: var(--text);
+}
+
+.startup-banner p {
+  margin: 0.3rem 0 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.startup-countdown {
+  margin-left: auto;
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.startup-countdown small,
+.startup-countdown strong {
+  display: block;
+}
+
+.startup-countdown strong {
+  font-size: 1.5rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.startup-banner-unavailable {
+  border-color: var(--text-muted, #6e7886);
+}
+
+@media (max-width: 600px) {
+  .startup-banner { flex-wrap: wrap; }
+  .startup-banner > div:first-of-type { flex: 1; min-width: 180px; }
+}

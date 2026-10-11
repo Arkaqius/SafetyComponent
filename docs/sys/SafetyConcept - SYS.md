@@ -624,6 +624,23 @@ _We model the system as **decoupled Safety Components**, each implementing one o
   active condition and shadow owners separately. Shadowing shall withdraw
   redundant responses without clearing evidence. The existing external raw
   states and notification-history codes shall remain stable during migration.
+- **Diagnostic startup qualification:** Every SafetyFunctions initialization
+  shall start a shared qualification interval for eligible D contributions, with a
+  600-second system default and the existing `startup_grace_seconds` override
+  (`0` disables it). Acquisition and check evaluation shall start immediately.
+  `SafetyAppHealth` and contributions with allocated `detection_budget_seconds`
+  shall bypass it. Entity Monitor dependencies shall carry their existing
+  allocation; indoor detector-health contributions shall carry SG-003's 60-second
+  allocation. Detection, degradation and notification timing on these paths
+  shall include startup without enlarging the allocated budget. Deferred D
+  contributions shall remain unevaluable; the latest qualified
+  observation per symptom shall replace earlier evidence, and invalid or lost
+  evidence shall cancel it. At expiry only current eligible evidence shall be
+  routed; unseen contributors shall remain unknown. H detection, including
+  gas/CO/water-leak event paths and five-second reconciliation, and
+  `SafetyAppHealth` failures shall remain immediately actionable. The interval
+  shall not extend an applicable FTTI, clear restored activation or imply full
+  coverage. Independent eligible contributions shall retain normal fault aggregation.
 - **Fault diagnostic evidence:** On the first active transition, C-FLT shall
   retain one bounded, allowlisted freeze frame per fault independently of
   notification delivery. A later source update or quiet response refresh shall
@@ -1134,8 +1151,10 @@ entity is safety-relevant through Group A or B.
   Rate-of-change checks shall define a sample window, minimum sample count, and
   at least one permitted rise or fall bound.
 - Failure and recovery debounce govern state transitions independently for each
-  check result. C-ENT shall apply a startup grace period before evaluating
-  freshness.
+  check result. C-ENT shall evaluate availability, values and freshness from
+  initial acquisition; eligible D contributions shall use the shared startup
+  routing policy in §8.1 rather than delaying freshness evaluation. Contributions
+  with allocated detection budgets shall bypass that gate from initialization.
 - For a safety-relevant dependency, availability failure debounce shall not
   exceed the detection budget allocated from its applicable FTTI. The applicable
   acquisition delay, bounded read timeout and evaluation scheduling shall also
@@ -1402,7 +1421,7 @@ defines monitor ownership and observer placement.
 | ID | Requirement |
 | --- | --- |
 | SYS-SR-FSM-001 | The system shall present hazard/fault state, safety-function coverage, and reporting-channel health separately. `no_faults` shall not assert that all functions were evaluated or that all reporting paths work. |
-| SYS-SR-FSM-002 | SafetyFunctions shall expose startup and configuration validity, and the last completed evaluation and result for each enabled Safety Component. Periodic components shall additionally expose their deadline and missed-deadline count; event-driven components shall identify their trigger mode and rely on declared input-health supervision during idle periods. A component with no completed evaluation or an overdue periodic evaluation shall not be presented as healthy. Application and MQTT heartbeats alone shall not establish component coverage. |
+| SYS-SR-FSM-002 | SafetyFunctions shall expose startup and configuration validity, and the last completed evaluation and result for each enabled Safety Component. Periodic components shall additionally expose their deadline and missed-deadline count; event-driven components shall identify their trigger mode and rely on declared input-health supervision during idle periods. A component with no completed evaluation or an overdue periodic evaluation shall not be presented as healthy. Application and MQTT heartbeats alone shall not establish component coverage. For startup-capable progress reports, the frontend shall display the shared diagnostic startup phase and countdown globally in both operator modes until current valid backend evidence confirms completion; malformed, stale or unavailable supplied startup metadata shall be distinguished from completion. Legacy progress reports without startup metadata shall remain compatible without asserting a startup phase. |
 | SYS-SR-FSM-003 | In-process checks shall not claim to detect complete loss of SafetyFunctions, Home Assistant, or the host. Such failures require an independent observer and reporting path; when neither is installed, the system shall identify this boundary as uncovered rather than claim continued monitoring. |
 | SYS-SR-FSM-004 | The platform monitor shall use validated Home Assistant or Supervisor telemetry for available memory, memory pressure, CPU, disk, swap, host temperature, restart history, and connectivity. The observation shall identify whether it measures the HA host or only an App container; container-only memory shall not be accepted as host-memory evidence. A missing, stale, malformed, or wrong-unit metric shall produce unknown coverage, not positive host-health evidence. |
 | SYS-SR-FSM-005 | Sustained insufficient memory available to Home Assistant, confirmed by memory pressure/PSI, shall produce a level-2 platform-health fault after calibrated qualification. Both measurements are required; if either is unsupported or unavailable the rule shall be reported as uncovered, not silently reduced to one signal. Clearing shall require fresh valid recovery evidence beyond a separate hysteresis margin; an isolated high-use sample shall not assert or clear the fault. |

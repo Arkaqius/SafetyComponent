@@ -349,8 +349,14 @@ change in value is not required for freshness, and an unchanged door, switch,
 valve, or temperature remains fresh while its configured source continues to
 provide valid confirmations within `report_timeout_seconds`.
 
-The freshness timer starts after the initial snapshot and startup grace. The
-configured timeout shall reflect the source's real update behavior; C-ENT shall
+Availability, value and freshness checks shall evaluate from the initial
+snapshot; startup shall not postpone freshness calculation or reset source-report
+age. Qualified D contributions without an allocated `detection_budget_seconds`
+shall use the application-wide
+[startup gate](<Fault Routing and Aggregation - Architecture.md#startup-qualification>).
+Dependencies with an allocated detection budget shall bypass the gate and retain
+their existing detection, degradation and notification timing from startup.
+The configured timeout shall reflect the source's real update behavior; C-ENT shall
 not infer a heartbeat from entity domain or from repeated reads performed by
 C-ENT itself.
 
@@ -415,8 +421,10 @@ only when recovery debounce expires without another failure.
    records share the shortest interval for their physical entity.
 6. Subscribe to state updates as an immediate supplement. A newer state or
    attribute transition shall not wait for the next periodic report read.
-7. Apply startup grace, then schedule freshness and debounce evaluation
-   independently of network acquisition. Ordinary evaluation has a 60-second
+7. Schedule freshness and debounce evaluation immediately and independently of
+   network acquisition. Route eligible qualified D transitions through the shared
+   startup gate; H, `SafetyAppHealth` and dependencies with allocated detection
+   budgets retain immediate routing. Ordinary evaluation has a 60-second
    baseline capped by derived monitor requirements; a separate 5-second timer
    reconciles short-budget dependencies.
 8. Evaluate mandatory checks before optional checks.
@@ -594,8 +602,14 @@ a 5-second minimum; accepting a timing configuration does not by itself prove
 that the complete acquisition/evaluation/notification path meets its FTTI.
 The schema checks the freshness-plus-debounce allocation; the owning dependency
 contract must separately allocate transport and scheduling overhead.
-Reader request deadlines, startup grace, recovery
-debounce and FTTI allocations remain internal safety policy. In particular, a
+Reader request deadlines, shared D startup qualification, recovery
+debounce and FTTI allocations remain separate safety policies. The startup
+override retains its existing `startup_grace_seconds` path; its system default
+is 600 seconds and `0` disables the gate. It shall apply at each SafetyFunctions
+initialization without delaying acquisition or check evaluation. H evidence,
+`SafetyAppHealth` and dependencies with allocated detection budgets shall bypass
+the gate. Each dependency's existing `detection_budget_seconds` shall accompany
+its symptom contributions so routing preserves that allocation. In particular, a
 report-age timeout is not the network request timeout. A tighter requirement
 shall cap a legacy global evaluation interval rather than wait for that slower
 interval. Immediate life-safety alarm paths remain independent.
@@ -606,7 +620,7 @@ than an installation mapping:
 ```yaml
 calibration:
   entity_monitor:
-    default_startup_grace_seconds: 60
+    default_startup_grace_seconds: 600
     default_failure_debounce_seconds: 15
     default_recovery_debounce_seconds: 60
     default_evaluation_interval_seconds: 60
@@ -706,7 +720,9 @@ Strict validation rejects:
 - Shared physical entities with independent input/recovery/application-health
   fault families, single Group A membership and shortest-cadence acquisition.
 - Missing, `unknown`, `unavailable`, stale, and recovered states.
-- Startup grace and restart snapshots.
+- Shared startup grace, restart snapshots, immediate check evaluation, and
+  eligible D deferral without delaying H, `SafetyAppHealth` or dependencies with
+  allocated detection budgets.
 - Optional check calibration and target validation.
 - Freshness and rate-of-change edge cases.
 - Unchanged valid reports, future/malformed timestamps, expired reader evidence,

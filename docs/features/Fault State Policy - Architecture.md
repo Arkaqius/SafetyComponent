@@ -54,6 +54,16 @@ it is re-presented only after the final owner clears. A SHADOWED response event
 must refer to the shadowed fault's contributor, not the shadowing fault's
 contributor.
 
+The shared [startup qualification](<Fault Routing and Aggregation - Architecture.md#startup-qualification>)
+shall keep deferred D contributions unevaluable during the configured startup
+interval. `SafetyAppHealth` and contributors with allocated
+`detection_budget_seconds` shall bypass it. A cached passing diagnostic shall not
+become `PASS` or clear an active contributor before the gate releases current
+eligible evidence. Category H evidence and application-health failures shall bypass the
+gate. Independent eligible contributors shall retain the fault's normal
+aggregation and may assert it during startup. Missing evidence at expiry shall
+remain unknown, not silently healthy.
+
 ## Priority and responses
 
 The existing fault `level` is also its notification level; there is no second

@@ -267,6 +267,8 @@ class FunctionalSafetyMonitor:
             self._emit(f"DetectorTestDue{detector}", True)
         elif status == "current":
             self._emit(f"DetectorTestDue{detector}", False)
+        else:
+            self._invalidate(f"DetectorTestDue{detector}")
 
     def evaluate(self, _: Any = None, **__: Any) -> None:
         """Sample configured sources; unknown readings never heal active faults."""
@@ -308,6 +310,8 @@ class FunctionalSafetyMonitor:
             }
             if result.evidence_valid:
                 self._emit("HostMemoryPressure", result.fault_active)
+            else:
+                self._invalidate("HostMemoryPressure")
         else:
             diagnostics["memory"] = {"status": "unknown", "reason": "not_configured"}
 
@@ -373,6 +377,7 @@ class FunctionalSafetyMonitor:
         if percent is None or percent > 100:
             self._cpu_high_since = None
             self._cpu_recovery_since = None
+            self._invalidate("HostCpuPressure")
             return {"status": "unknown", "reason": reason or "invalid_value", "source_entity": entity}
         now = monotonic()
         if not self._cpu_fault_active:
@@ -392,6 +397,10 @@ class FunctionalSafetyMonitor:
                 self._emit("HostCpuPressure", False)
         else:
             self._cpu_recovery_since = None
+        if self._cpu_fault_active:
+            self._emit("HostCpuPressure", True)
+        elif self._cpu_high_since is None:
+            self._emit("HostCpuPressure", False)
         status = "high" if self._cpu_fault_active else "qualifying" if self._cpu_high_since is not None else "normal"
         return {"status": status, "percent": percent, "source_entity": entity, "scope": "installation_declared_host"}
 
@@ -399,6 +408,8 @@ class FunctionalSafetyMonitor:
         """Translate attestations into informational maintenance faults."""
         if status in {"due", "overdue", "failed", "current"}:
             self._emit(f"PeriodicTestDue{self._pascal(test_key)}", status != "current")
+        else:
+            self._invalidate(f"PeriodicTestDue{self._pascal(test_key)}")
 
     def _evaluate_resource(self, key: str, field: str, fault: str, reading: str, units: Mapping[str, float], device_class: str) -> dict[str, Any]:
         entity = self.bindings.get(field)
@@ -409,6 +420,8 @@ class FunctionalSafetyMonitor:
         status = rule.observe(value)
         if value is not None:
             self._emit(fault, rule.active)
+        else:
+            self._invalidate(fault)
         return {"status": status, reading: value, "source_entity": entity, "reason": reason}
 
     def _evaluate_backup(self) -> dict[str, Any]:
@@ -437,6 +450,8 @@ class FunctionalSafetyMonitor:
                 status, reason = "unknown", "failure_source_unavailable"
         if status != "unknown":
             self._emit("BackupNeedsAttention", status in {"overdue", "failed"})
+        else:
+            self._invalidate("BackupNeedsAttention")
         return {"status": status, "last_success_at": completed.isoformat() if completed else None, "age_hours": age, "source_entities": [value for value in binding.values() if value], "reason": reason}
 
     def _evaluate_wan(self) -> dict[str, Any]:
@@ -449,6 +464,7 @@ class FunctionalSafetyMonitor:
         if not valid_state or not fresh:
             self._wan_down_since = None
             self._wan_up_since = None
+            self._invalidate("WanUnavailable")
             return {"status": "unknown", "reason": "stale" if valid_state else "unavailable", "source_entity": self.wan_entity}
         now = monotonic()
         online = state in {"on", "online", "connected"}
@@ -468,6 +484,10 @@ class FunctionalSafetyMonitor:
                     self._wan_fault_active = True
                     self._emit("WanUnavailable", True)
             status = "offline" if self._wan_fault_active else "qualifying"
+        if self._wan_fault_active:
+            self._emit("WanUnavailable", True)
+        elif online:
+            self._emit("WanUnavailable", False)
         return {"status": status, "source_entity": self.wan_entity}
 
     def _evaluate_updates(self) -> dict[str, Any]:
@@ -498,6 +518,8 @@ class FunctionalSafetyMonitor:
             }
             if valid:
                 self._emit(f"UpdateAvailable{self._pascal(product)}", state == "on")
+            else:
+                self._invalidate(f"UpdateAvailable{self._pascal(product)}")
         return results
 
     def _evaluate_batteries(self) -> dict[str, Any]:
@@ -530,6 +552,8 @@ class FunctionalSafetyMonitor:
             }
             if status != "unknown":
                 self._emit(f"RemoteBatteryLow{device}", status == "low")
+            else:
+                self._invalidate(f"RemoteBatteryLow{device}")
         return results
 
     def _source_evidence(self, entity: str) -> dict[str, Any]:
@@ -746,6 +770,14 @@ class FunctionalSafetyMonitor:
             return
         self.symptom_states[symptom_id] = next_state
         self.event_bus.publish("symptom", symptom_id=symptom_id, state=next_state)
+
+    def _invalidate(self, fault: str) -> None:
+        """Withdraw lost input evidence, including a result deferred during startup."""
+        symptom_id = f"fsm_{fault}"
+        if symptom_id not in self._enabled or self.symptom_states.get(symptom_id) == FaultState.NOT_TESTED:
+            return
+        self.symptom_states[symptom_id] = FaultState.NOT_TESTED
+        self.event_bus.publish("evaluation_unavailable", symptom_id=symptom_id)
 
     def _snapshot(self, entity: str) -> dict[str, Any]:
         if self.state_reader is not None or self.state_provider is not None:

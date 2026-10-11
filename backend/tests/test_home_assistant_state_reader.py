@@ -269,7 +269,8 @@ def test_hourly_maintenance_does_not_follow_runtime_reads_or_heal_on_failure(
         monitor._maintenance_diagnostics["remote_batteries"]["Remote"]["status"]
         == "unknown"
     )
-    assert monitor.symptom_states["fsm_RemoteBatteryLowRemote"] == FaultState.SET
+    assert monitor.symptom_states["fsm_RemoteBatteryLowRemote"] == FaultState.NOT_TESTED
+    assert {"symptom_id": "fsm_RemoteBatteryLowRemote"} in bus.unavailable
     assert len(bus.events) == event_count
     clock[0] += 3600
     provider.poll.side_effect = lambda entities, **_: {
