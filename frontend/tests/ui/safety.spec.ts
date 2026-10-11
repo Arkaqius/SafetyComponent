@@ -54,6 +54,46 @@ test('basic is the default, fits a phone screen and exposes only the essential b
   await page.screenshot({ path: testInfo.outputPath('basic-dashboard.png'), scale: 'css' });
 });
 
+test('configuration searches HA entity names, selects the ID and preserves manual missing bindings', async ({
+  page,
+  isMobile,
+}, testInfo) => {
+  await openMock(page, '/configuration/rooms');
+  await page.evaluate(() => {
+    const entities = window.__safetyHomeMock.snapshot();
+    entities['sensor.office_demo_temperature'] = {
+      state: 'unavailable',
+      attributes: { friendly_name: 'Temperatura biura testowego' },
+    };
+    entities['binary_sensor.office_demo_window'] = {
+      state: 'off',
+      attributes: { friendly_name: 'Okno biura testowego' },
+    };
+    window.__safetyHomeMock.update({ entities });
+  });
+  await page.getByText('LivingRoom', { exact: true }).click();
+  const input = page.getByRole('combobox', { name: 'Czujnik temperatury', exact: true });
+  await input.fill('biura testowego');
+  await expect(page.getByRole('option', { name: /Temperatura biura testowego/ })).toBeVisible();
+  await expect(page.getByRole('option', { name: /Okno biura testowego/ })).toHaveCount(0);
+  await page.getByRole('option', { name: /Temperatura biura testowego/ }).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath('configuration-entity-picker.png'), scale: 'css' });
+  await input.press('Enter');
+  await expect(input).toHaveValue('sensor.office_demo_temperature');
+  await expect(input).toHaveAttribute('aria-expanded', 'false');
+  await input.fill('biura testowego');
+  const choice = page.getByRole('option', { name: /Temperatura biura testowego/ });
+  if (isMobile) await choice.tap();
+  else await choice.click();
+  await expect(input).toHaveValue('sensor.office_demo_temperature');
+  await expect(input).toHaveAttribute('aria-expanded', 'false');
+  await input.fill('sensor.not_yet_installed');
+  await input.press('Escape');
+  await expect(input).toHaveValue('sensor.not_yet_installed');
+  await expect(input).toHaveAttribute('aria-expanded', 'false');
+  expect(await page.evaluate(() => window.__safetyHomeMock.messages.filter(message => message.type === 'fire_event'))).toEqual([]);
+});
+
 test('view preference survives reload and diagnostic links open the expanded view', async ({ page }) => {
   await openMock(page, '/', null);
   await page.getByRole('button', { name: 'Rozszerzony', exact: true }).click();

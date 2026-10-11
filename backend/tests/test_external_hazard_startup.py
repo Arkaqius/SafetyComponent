@@ -41,6 +41,8 @@ def test_example_external_hazard_startup_is_wired_before_polling(tmp_path, monke
     raw["app_config"]["calibration"]["functional_safety"][
         "battery_fault_catalog_file"
     ] = str(tmp_path / "battery_fault_catalog.json")
+    for key in ("periodic_test_state_file", "detector_test_state_file"):
+        raw["app_config"]["calibration"]["functional_safety"][key] = str(tmp_path / f"{key}.json")
     state_file = tmp_path / "notification_state.json"
     raw["user_config"]["notification"]["persistence"]["state_file"] = str(
         state_file
@@ -54,6 +56,7 @@ def test_example_external_hazard_startup_is_wired_before_polling(tmp_path, monke
     )
     app = SafetyFunctions(args=raw)
     service_calls: list[str] = []
+    publications: list[dict[str, Any]] = []
 
     def fake_state(entity_id: str, **_: Any) -> str:
         if entity_id.endswith("_rate") or entity_id.endswith("_rateofrate"):
@@ -62,7 +65,12 @@ def test_example_external_hazard_startup_is_wired_before_polling(tmp_path, monke
 
     app.get_state = fake_state
     app.render_template = lambda *_args, **_kwargs: "Resolved area"
-    app.call_service = lambda service, **_kwargs: service_calls.append(service)
+    def capture_service(service: str, **kwargs: Any) -> None:
+        service_calls.append(service)
+        if service == "mqtt/publish":
+            publications.append(kwargs)
+
+    app.call_service = capture_service
     app._external_api_runtime_cls = StubExternalRuntime
 
     app.initialize()
@@ -77,13 +85,30 @@ def test_example_external_hazard_startup_is_wired_before_polling(tmp_path, monke
     assert "ExternalHazardComponent" in app.sm_modules
     assert "SelfDiagnosticsComponent" in app.sm_modules
     assert {
-        "ExternalProviderUnavailableOpenMeteoWeather",
-        "ExternalProviderUnavailableImgwWarnings",
-        "ExternalProviderUnavailableOpenMeteoAirQuality",
+        "ExternalDataUnavailable",
     }.issubset(app.faults)
+    retired_names = (
+        "TemperatureMonitoringUnavailable", "SafetyDoorMonitoringUnavailable",
+        "ExternalOpeningMonitoringUnavailable", "CommonInputUnavailable",
+        "ExternalHazardDataUnavailable", "ExternalProviderUnavailableOpenMeteoWeather",
+        "ExternalProviderUnavailableImgwWarnings", "ExternalProviderUnavailableOpenMeteoAirQuality",
+    )
+    assert not set(retired_names).intersection(app.faults)
+    for name in retired_names:
+        entity_id = f"sensor.fault_{name}"
+        for topic in (
+            app.mqtt_entities.discovery_topic(entity_id),
+            app.mqtt_entities.legacy_discovery_topic(entity_id),
+            app.mqtt_entities.state_topic(entity_id),
+            app.mqtt_entities.attributes_topic(entity_id),
+        ):
+            assert any(item["topic"] == topic and item["payload"] == "" for item in publications)
     assert app.external_api_runtime.started is True
     assert not any(service != "mqtt/publish" for service in service_calls)
 
     app.terminate()
     assert app.external_api_runtime.started is False
-    assert state_file.exists()
+    assert not state_file.exists()
+    assert app.state_database.path == tmp_path / "safety_state.sqlite3"
+    assert app.state_database.path.exists()
+    assert app.notify_man.state_store.load()["version"] == 1

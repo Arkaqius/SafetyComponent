@@ -52,6 +52,10 @@ HEALTH_SEVERITY = {
     EntityHealthState.STALE: 2,
     EntityHealthState.UNAVAILABLE: 3,
 }
+INPUT_FAULT_ALIASES = frozenset({
+    "TemperatureMonitoringUnavailable", "SafetyDoorMonitoringUnavailable",
+    "ExternalOpeningMonitoringUnavailable", "CommonInputUnavailable",
+})
 
 
 @register_safety_component
@@ -77,6 +81,7 @@ class EntityMonitorComponent(SafetyComponent):
         self._policy: dict[str, Any] = {}
         self.state_reader: HomeAssistantStateReader | None = None
         self._report_groups: dict[str, str] = {}
+        self._entity_listener_handles: dict[str, Any] = {}
 
     def __getattr__(self, name: str) -> Callable[[SafetyMechanism], bool]:
         """Resolve deterministic per-entity safety-mechanism callbacks."""
@@ -101,9 +106,17 @@ class EntityMonitorComponent(SafetyComponent):
                 *component_cfg.get("component_entities", []),
             ]
         )
+        if len({dependency.key for dependency in dependencies}) != len(dependencies):
+            raise ValueError("Duplicate monitor dependency keys across fault families")
+        # Installation cadence is a compatibility ceiling. Reconcile sooner
+        # when a source's freshness or qualification requires it.
+        intervals = [int(self._policy.get("evaluation_interval_seconds", 60))]
+        intervals.extend(self._evaluation_interval(dependency) for dependency in dependencies)
+        self._policy["evaluation_interval_seconds"] = min(intervals)
         symptoms: dict[str, Symptom] = {}
         if self.state_reader is not None:
             groups: dict[int, set[str]] = {}
+            entity_intervals: dict[str, int] = {}
             for dependency in dependencies:
                 # Short availability budgets keep their fast reconciliation.
                 short_budget = self._has_short_budget(dependency)
@@ -117,9 +130,15 @@ class EntityMonitorComponent(SafetyComponent):
                     interval = TEMPERATURE_POLL_SECONDS
                 else:
                     interval = STATE_POLL_SECONDS
-                key = f"{COMPONENT_NAME}:{interval}"
-                self._report_groups[dependency.entity_id] = key
-                groups.setdefault(interval, set()).add(dependency.entity_id)
+                freshness = dependency.checks.get("freshness")
+                if freshness:
+                    interval = min(interval, max(5, int(freshness["max_silence_seconds"]) // 2))
+                entity_intervals[dependency.entity_id] = min(
+                    entity_intervals.get(dependency.entity_id, interval), interval
+                )
+            for entity_id, interval in entity_intervals.items():
+                self._report_groups[entity_id] = f"{COMPONENT_NAME}:{interval}"
+                groups.setdefault(interval, set()).add(entity_id)
             for interval, entities in groups.items():
                 self.state_reader.register(
                     f"{COMPONENT_NAME}:{interval}", entities, interval
@@ -279,9 +298,12 @@ class EntityMonitorComponent(SafetyComponent):
         self.symptom_states[name] = FaultState.NOT_TESTED
 
         if runtime.listener_handle is None:
-            runtime.listener_handle = self.hass_app.listen_state(
-                self._entity_changed, runtime.dependency.entity_id
-            )
+            entity_id = runtime.dependency.entity_id
+            if entity_id not in self._entity_listener_handles:
+                self._entity_listener_handles[entity_id] = self.hass_app.listen_state(
+                    self._entity_changed, entity_id
+                )
+            runtime.listener_handle = self._entity_listener_handles[entity_id]
         if self._timer_handle is None:
             self._timer_handle = self.hass_app.run_every(
                 self._tick,
@@ -386,12 +408,12 @@ class EntityMonitorComponent(SafetyComponent):
     def stop(self) -> None:
         """Cancel listeners and the periodic evaluation timer."""
 
-        for runtime in self._entities.values():
-            if runtime.listener_handle is not None:
-                try:
-                    self.hass_app.cancel_listen_state(runtime.listener_handle)
-                except Exception:
-                    pass
+        for handle in self._entity_listener_handles.values():
+            try:
+                self.hass_app.cancel_listen_state(handle)
+            except Exception:
+                pass
+        self._entity_listener_handles.clear()
         for handle in (self._timer_handle, self._fast_timer_handle):
             if handle is None:
                 continue
@@ -417,10 +439,30 @@ class EntityMonitorComponent(SafetyComponent):
     @staticmethod
     def _has_short_budget(dependency: EntityDependency) -> bool:
         """Identify dependencies whose deadline needs faster reconciliation."""
+        freshness = dependency.checks.get("freshness")
         return (
             dependency.detection_budget_seconds is not None
             and dependency.detection_budget_seconds <= STATE_POLL_SECONDS
+        ) or (
+            freshness is not None
+            and int(freshness["max_silence_seconds"]) <= STATE_POLL_SECONDS
+        ) or (
+            0 < dependency.failure_debounce_seconds <= 5
         )
+
+    @classmethod
+    def _evaluation_interval(cls, dependency: EntityDependency) -> int:
+        """Derive an ordinary cadence; fast dependencies have their own tick."""
+
+        if cls._has_short_budget(dependency):
+            return STATE_POLL_SECONDS
+        interval = STATE_POLL_SECONDS
+        if dependency.failure_debounce_seconds > 0:
+            interval = min(interval, max(5, dependency.failure_debounce_seconds))
+        freshness = dependency.checks.get("freshness")
+        if freshness:
+            interval = min(interval, max(5, int(freshness["max_silence_seconds"]) // 2))
+        return interval
 
     def _fast_tick(self, **_: Any) -> None:
         """Reconcile short safety deadlines independently of ordinary diagnostics."""
@@ -785,6 +827,7 @@ class EntityMonitorComponent(SafetyComponent):
             "last_changed": snapshot.get("last_changed"),
             "last_updated": snapshot.get("last_updated"),
             "last_reported": snapshot.get("last_reported"),
+            "report_timeout_seconds": dependency.checks.get("freshness", {}).get("max_silence_seconds"),
             "failure_debounce_seconds": dependency.failure_debounce_seconds,
             "recovery_debounce_seconds": dependency.recovery_debounce_seconds,
             "detection_budget_seconds": dependency.detection_budget_seconds,
@@ -917,8 +960,32 @@ class EntityMonitorComponent(SafetyComponent):
         for item in raw_dependencies:
             entity_id = str(item["entity_id"])
             grouped.setdefault(entity_id, []).append(item)
-        merged: list[EntityDependency] = []
+        # One physical source can serve input evaluation and a separate recovery
+        # contract. Merge memberships within a fault family, never across them.
+        partitions: list[tuple[str, list[dict[str, Any]]]] = []
         for entity_id, items in grouped.items():
+            explicit = [item for item in items if item.get("source") == "explicit"]
+            families: dict[str, list[dict[str, Any]]] = {}
+            for item in items:
+                if item.get("source") == "explicit":
+                    continue
+                family = str(item.get("fault_name", ""))
+                if family in INPUT_FAULT_ALIASES:
+                    family = "InputMonitoringUnavailable"
+                families.setdefault(family, []).append(item)
+            if not families:
+                partitions.append((entity_id, explicit))
+                continue
+            primary_family = (
+                "InputMonitoringUnavailable"
+                if "InputMonitoringUnavailable" in families else next(iter(families))
+            )
+            for family, declarations in families.items():
+                partitions.append((entity_id, [
+                    *(explicit if family == primary_family else []), *declarations,
+                ]))
+        merged: list[EntityDependency] = []
+        for entity_id, items in partitions:
             if any(
                 item.get("source") == "component"
                 and item.get("fault_owner", "component") == "component"
@@ -955,7 +1022,11 @@ class EntityMonitorComponent(SafetyComponent):
             if external_only and degradation_targets:
                 raise ValueError(f"External-only entity has H targets: {entity_id}")
             component_faults = {
-                str(item["fault_name"])
+                (
+                    "InputMonitoringUnavailable"
+                    if item["fault_name"] in INPUT_FAULT_ALIASES
+                    else str(item["fault_name"])
+                )
                 for item in items
                 if item.get("fault_owner") == "component" and item.get("fault_name")
             }
@@ -968,11 +1039,7 @@ class EntityMonitorComponent(SafetyComponent):
                 raise ValueError(f"Conflicting fault owners for {entity_id}")
             if component_faults:
                 fault_owner = FaultOwner.COMPONENT
-                fault_name = (
-                    next(iter(component_faults))
-                    if len(component_faults) == 1
-                    else "CommonInputUnavailable"
-                )
+                fault_name = next(iter(component_faults))
             elif component_none:
                 fault_owner = FaultOwner.NONE
                 fault_name = None

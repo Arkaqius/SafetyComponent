@@ -54,7 +54,7 @@ class SafetyDoorsComponent(SafetyComponent):
                         "entity_id": data["entity_id"],
                         "owner": cls.component_name,
                         "fault_owner": "component",
-                        "fault_name": "SafetyDoorMonitoringUnavailable",
+                        "fault_name": "InputMonitoringUnavailable",
                         "purpose": f"Open-duration input for {door_name}",
                         "degradation_targets": ((
                             f"SafetyDoorOpenTimeout{door_name}",
@@ -74,7 +74,7 @@ class SafetyDoorsComponent(SafetyComponent):
                             "entity_id": condition["entity_id"],
                             "owner": cls.component_name,
                             "fault_owner": "component",
-                            "fault_name": "SafetyDoorMonitoringUnavailable",
+                            "fault_name": "InputMonitoringUnavailable",
                             "purpose": f"Monitoring condition for {door_name}",
                             "degradation_targets": ((
                                 f"SafetyDoorOpenTimeout{door_name}",

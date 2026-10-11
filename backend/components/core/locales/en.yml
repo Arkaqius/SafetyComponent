@@ -63,6 +63,8 @@ state.detector_tests.attention: Tests need attention
 state.detector_tests.unknown: Test history unavailable
 state.detector_tests.not_configured: No detectors configured
 fault.entity_health: 'Entity problem: {entity}'
+fault.input_monitoring_unavailable: Monitored input problem
+fault.external_data_unavailable: External data problem
 fault.safety_door_timeout: 'Door or gate open too long: {door}'
 fault.temperature_monitoring_unavailable: Temperature monitoring unavailable
 fault.temperature_recovery_unavailable: Temperature recovery unavailable

@@ -63,6 +63,8 @@ state.detector_tests.attention: Testy wymagają uwagi
 state.detector_tests.unknown: Historia testów niedostępna
 state.detector_tests.not_configured: Brak skonfigurowanych czujników
 fault.entity_health: 'Problem z encją: {entity}'
+fault.input_monitoring_unavailable: Problem z monitorowanymi wejściami
+fault.external_data_unavailable: Problem z danymi zewnętrznymi
 fault.safety_door_timeout: 'Zbyt długo otwarte drzwi lub brama: {door}'
 fault.temperature_monitoring_unavailable: Monitorowanie temperatury niedostępne
 fault.temperature_recovery_unavailable: Przywrócenie temperatury niedostępne

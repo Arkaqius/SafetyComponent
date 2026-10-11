@@ -70,6 +70,7 @@ from components.core.derivative_monitor import DerivativeMonitor
 from components.core.localization import LocalizationSettings
 from components.core.mqtt_entity_manager import MqttEntityManager
 from components.core.self_diagnostics import SelfDiagnosticsComponent
+from components.core.sqlite_state_store import SqliteStateDatabase, state_database_path
 from components.external_apis import (
     ExternalApiRuntime,
     HttpJsonClient,
@@ -80,17 +81,14 @@ from components.faults_manager.fault_manager import FaultManager
 from components.faults_manager.evidence import FaultEvidenceJournal
 from components.faults_manager.evidence_store import (
     InMemoryFaultEvidenceStore,
-    JsonFaultEvidenceStore,
 )
 from components.notification_manager.notification_manager import NotificationManager
 from components.notification_manager.state_store import (
     InMemoryNotificationStateStore,
-    JsonNotificationStateStore,
 )
 from components.recovery_manager.recovery_manager import RecoveryManager
 from components.recovery_manager.state_store import (
     InMemoryRecoveryStateStore,
-    JsonRecoveryStateStore,
 )
 from components.safetyhome_api import SafetyHomeApiGateway
 from components.safetycomponents.core.safety_component import (
@@ -156,6 +154,11 @@ class SafetyFunctions(hass.Hass):
             "api_components", {}
         )
         self.site_cfg: dict = self.runtime_config["user_config"].get("site", {})
+        self.state_database = SqliteStateDatabase(
+            state_database_path(
+                self.runtime_config["app_config"]["fault_evidence"]["state_file"]
+            )
+        )
 
         # Create access to installation-wide Home Assistant entities.
         self.common_entities: CommonEntities = CommonEntities(
@@ -244,6 +247,7 @@ class SafetyFunctions(hass.Hass):
         )
         if functional_policy:
             persistence_stores.add("periodic_test_state")
+            persistence_stores.add("battery_fault_catalog")
             detector_cfg = self.safety_components_cfg.get(
                 "InternalEnvironmentalHazardMonitorComponent", {}
             )
@@ -273,7 +277,19 @@ class SafetyFunctions(hass.Hass):
         self.symptoms.update(diagnostic_symptoms)
         for fault_name, fault_config in self.self_diagnostics.get_fault_definitions().items():
             if fault_name in self.fault_dict:
-                raise ValueError(f"Duplicate fault definition: {fault_name}")
+                if fault_name != "ExternalDataUnavailable":
+                    raise ValueError(f"Duplicate fault definition: {fault_name}")
+                existing = self.fault_dict[fault_name]
+                if existing.get("level") != 3 or existing.get("category") != "D":
+                    raise ValueError("ExternalDataUnavailable must remain a D/L3 fault")
+                fault_config = {
+                    **existing,
+                    **fault_config,
+                    "related_sms": list(dict.fromkeys([
+                        *existing.get("related_sms", []),
+                        *fault_config["related_sms"],
+                    ])),
+                }
             self.fault_dict[fault_name] = fault_config
 
         self.functional_safety_monitor = None
@@ -365,7 +381,12 @@ class SafetyFunctions(hass.Hass):
             try:
                 reconcile_battery_faults(
                     BatteryFaultCatalog(
-                        functional_policy["battery_fault_catalog_file"]
+                        functional_policy["battery_fault_catalog_file"],
+                        state_store=self.state_database.store(
+                            "battery_fault_catalog",
+                            functional_policy["battery_fault_catalog_file"],
+                            legacy_validator=BatteryFaultCatalog.validate_snapshot,
+                        ),
                     ),
                     self.mqtt_entities,
                     current=self.functional_safety_monitor.get_battery_fault_names(),
@@ -381,25 +402,40 @@ class SafetyFunctions(hass.Hass):
                     f"Unable to reconcile battery fault catalog: {exc}",
                     level="ERROR",
                 )
-                self._set_internal_entity(
-                    "sensor.safety_app_health",
-                    "invalid_cfg",
-                    attributes={"configuration_error": f"Battery fault catalog: {exc}"},
+                self.self_diagnostics.record_app_cause(
+                    "persistence", True, detail="battery_fault_catalog", operation="reconcile"
                 )
-                self._start_mqtt_reporting()
-                return
+            else:
+                self.self_diagnostics.record_app_cause(
+                    "persistence", False, detail="battery_fault_catalog", operation="reconcile"
+                )
 
         # The former shared door fault has no owner in the per-door contract.
         # Retire retained MQTT discovery/state without publishing a false clear.
         self.mqtt_entities.remove_sensor(
             "sensor.fault_SafetyDoorOpenTimeout", remove_legacy_topic=True
         )
+        for retired_fault in (
+            "TemperatureMonitoringUnavailable",
+            "SafetyDoorMonitoringUnavailable",
+            "ExternalOpeningMonitoringUnavailable",
+            "CommonInputUnavailable",
+            "ExternalHazardDataUnavailable",
+            "ExternalProviderUnavailableOpenMeteoWeather",
+            "ExternalProviderUnavailableImgwWarnings",
+            "ExternalProviderUnavailableOpenMeteoAirQuality",
+        ):
+            self.mqtt_entities.remove_sensor(
+                f"sensor.fault_{retired_fault}", remove_legacy_topic=True
+            )
 
         # Create the fault aggregation and lifecycle manager.
         evidence_cfg = self.runtime_config["app_config"]["fault_evidence"]
         if evidence_cfg["enabled"]:
-            evidence_store = JsonFaultEvidenceStore(
-                evidence_cfg["state_file"], max_bytes=evidence_cfg["max_total_bytes"]
+            evidence_store = self.state_database.store(
+                "fault_evidence_state",
+                evidence_cfg["state_file"],
+                max_bytes=evidence_cfg["max_total_bytes"],
             )
         else:
             evidence_store = InMemoryFaultEvidenceStore()
@@ -450,7 +486,7 @@ class SafetyFunctions(hass.Hass):
 
         persistence_cfg = self.notification_cfg["persistence"]
         notification_state_store = (
-            JsonNotificationStateStore(persistence_cfg["state_file"])
+            self.state_database.store("notification_state", persistence_cfg["state_file"])
             if persistence_cfg["enabled"]
             else InMemoryNotificationStateStore()
         )
@@ -481,7 +517,7 @@ class SafetyFunctions(hass.Hass):
             .get("persistence", {})
         )
         recovery_state_store = (
-            JsonRecoveryStateStore(recovery_persistence_cfg["state_file"])
+            self.state_database.store("recovery_state", recovery_persistence_cfg["state_file"])
             if recovery_persistence_cfg.get("enabled", False)
             else InMemoryRecoveryStateStore()
         )
@@ -550,7 +586,9 @@ class SafetyFunctions(hass.Hass):
                 self, self.mqtt_entities,
                 self.runtime_config["user_config"].get("functional_safety", {}).get("periodic_tests", {"notification_delivery": True}),
                 intervals={"notification_delivery": functional_policy["notification_test_interval_days"], "backup_restore": functional_policy["backup_restore_test_interval_days"]},
-                state_store=JsonNotificationStateStore(functional_policy["periodic_test_state_file"]),
+                state_store=self.state_database.store(
+                    "periodic_test_state", functional_policy["periodic_test_state_file"]
+                ),
                 status_observer=self.functional_safety_monitor.observe_periodic_test,
                 diagnostics_observer=self.self_diagnostics.record_app_cause,
             )
@@ -560,8 +598,8 @@ class SafetyFunctions(hass.Hass):
             )
             detectors = detector_cfg.get("detectors", {})
             if detectors:
-                test_store = JsonNotificationStateStore(
-                    functional_policy["detector_test_state_file"]
+                test_store = self.state_database.store(
+                    "detector_test_state", functional_policy["detector_test_state_file"]
                 )
                 self.detector_test_monitor = DetectorTestMonitor(
                     self,
@@ -652,7 +690,7 @@ class SafetyFunctions(hass.Hass):
                         "entity_id": entity_id,
                         "owner": "SafetyFunctions",
                         "fault_owner": "component",
-                        "fault_name": "CommonInputUnavailable",
+                        "fault_name": "InputMonitoringUnavailable",
                         "purpose": f"Shared application entity: {key}",
                         "degradation_targets": recovery_targets,
                         "external_only": not recovery_targets,
@@ -739,6 +777,36 @@ class SafetyFunctions(hass.Hass):
         ):
             if key in override:
                 calibrated[key] = override[key]
+        report_timeout = override.get("report_timeout_seconds")
+        freshness = calibrated.get("checks", {}).get("freshness")
+        if report_timeout is not None:
+            if not freshness or not freshness.get("timestamp_source"):
+                raise ValueError(
+                    f"{dependency['key']} report_timeout_seconds requires a trustworthy timestamp_source"
+                )
+            calibrated["checks"] = {
+                **calibrated.get("checks", {}),
+                "freshness": {**freshness, "max_silence_seconds": report_timeout},
+            }
+            freshness = calibrated["checks"]["freshness"]
+        # Preserve the internal acquisition/evaluation allocation when only the
+        # report age or qualification duration is changed by the installation.
+        original_freshness = dependency.get("checks", {}).get("freshness")
+        if (
+            freshness and original_freshness
+            and dependency.get("detection_budget_seconds") is not None
+            and "detection_budget_seconds" not in override
+        ):
+            overhead = (
+                int(dependency["detection_budget_seconds"])
+                - int(original_freshness["max_silence_seconds"])
+                - int(dependency.get("failure_debounce_seconds", default_failure_debounce))
+            )
+            calibrated["detection_budget_seconds"] = (
+                int(freshness["max_silence_seconds"])
+                + int(calibrated["failure_debounce_seconds"])
+                + overhead
+            )
         return calibrated
 
     def _initialize_mqtt(self) -> bool:
@@ -1003,6 +1071,15 @@ class SafetyFunctions(hass.Hass):
 
         # Register fault entities
         for name, fault in self.faults.items():
+            contributors = sorted(
+                symptom_id
+                for symptom_id, symptom in self.symptoms.items()
+                if (
+                    symptom_id in fault.related_symptom_ids
+                    if fault.related_symptom_ids
+                    else symptom.sm_name in fault.related_symptoms
+                )
+            )
             evidence = self.fault_evidence.get(name)
             evidence_attributes = {}
             if evidence is not None:
@@ -1020,6 +1097,9 @@ class SafetyFunctions(hass.Hass):
                     "active": fault.evaluation.active,
                     "shadowed_by": [],
                     "latched": fault.evaluation.latched,
+                    "category": fault.category.value,
+                    "contributors": contributors,
+                    "active_contributors": sorted(fault.evaluation.active_contributors),
                     **evidence_attributes,
                 },
                 icon="mdi:alert-outline",

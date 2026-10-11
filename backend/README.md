@@ -45,7 +45,48 @@ versions fail before AppDaemon starts. Print the machine-readable contract with
 `python backend/build_app_config.py --print-user-schema`. See
 [`Configuration Model - Architecture.md`](<../docs/features/Configuration Model - Architecture.md>).
 
+## Runtime state storage
+
+The runtime stores notification, recovery, fault evidence, internal detector,
+periodic-test, detector-test, and battery-fault retirement state in a shared
+SQLite database outside the deployed image. The default is
+`/config/appdaemon/safety_state.sqlite3`.
+Existing JSON state paths remain one-time import inputs; they are not
+dual-written after import. Store transactions and health contributors remain
+independent. See [Runtime State Storage](<../docs/features/Runtime State Storage - Architecture.md>)
+for schema ownership, migration, failure handling, and stopped-App copying.
+
 ## MQTT retained-message migration
+
+### Diagnostic fault and monitor timing migration
+
+Component input diagnostics use one `InputMonitoringUnavailable` fault. It
+replaces `TemperatureMonitoringUnavailable`, `SafetyDoorMonitoringUnavailable`,
+`ExternalOpeningMonitoringUnavailable`, and `CommonInputUnavailable`.
+`ExternalDataUnavailable` replaces per-provider `ExternalProviderUnavailable...`
+faults and `ExternalHazardDataUnavailable`. Per-source contributors, consumer
+coverage bindings and raw entity/provider health diagnostics remain separate.
+Recovery, indoor-detector, runtime and maintenance faults retain their names.
+One physical entity may participate in distinct input and recovery fault
+families. Those logical records keep separate evidence and fault ownership;
+the shared reader acquires the entity at their shortest required cadence.
+
+Dashboards and automations using retired fault entities must use the new IDs.
+Startup retires obsolete MQTT discovery and retained fault topics; it does not
+interpret removal of an old entity as positive recovery evidence. Current
+contributors determine the new fault state.
+
+New entity-monitor calibration uses `report_timeout_seconds` for the maximum
+age of a trusted source report and `failure_debounce_seconds` for failure
+confirmation. Freshness still requires a declared trustworthy timestamp source.
+The monitor derives cadence within its safety allocations; HA response deadlines
+remain internal reader policy. Legacy nested `checks.freshness.max_silence_seconds`
+is accepted as the report-age timeout alias; both forms must agree when present.
+Existing startup, evaluation, recovery and detection-budget fields remain accepted
+and validated for migration without weakening tighter dependency requirements.
+See [Entity Health Monitoring](../docs/features/Entity%20Health%20Monitoring%20-%20Architecture.md#14-configuration-contract).
+
+### Retained state and attribute audit
 
 Ordinary startup preserves active entity topics. Both `MqttSettings` and the
 packaged system configuration default `clear_retained_state_on_start` to

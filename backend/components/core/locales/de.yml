@@ -63,6 +63,8 @@ state.detector_tests.attention: Tests erfordern Prüfung
 state.detector_tests.unknown: Testverlauf nicht verfügbar
 state.detector_tests.not_configured: Keine Melder konfiguriert
 fault.entity_health: 'Entitätsproblem: {entity}'
+fault.input_monitoring_unavailable: Problem mit überwachten Eingängen
+fault.external_data_unavailable: Problem mit externen Daten
 fault.safety_door_timeout: 'Tür oder Tor zu lange geöffnet: {door}'
 fault.temperature_monitoring_unavailable: Temperaturüberwachung nicht verfügbar
 fault.temperature_recovery_unavailable: Temperatur-Wiederherstellung nicht verfügbar

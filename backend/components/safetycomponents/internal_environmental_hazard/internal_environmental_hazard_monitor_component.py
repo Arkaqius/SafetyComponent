@@ -12,6 +12,7 @@ import appdaemon.plugins.hass.hassapi as hass  # type: ignore
 from components.core.common_entities import CommonEntities
 from components.core.event_bus import EventBus
 from components.core.mqtt_entity_manager import MqttEntityManager
+from components.core.sqlite_state_store import SqliteStateDatabase, state_database_path
 from components.core.types_common import FaultState, RecoveryAction, SMState, Symptom
 from components.safetycomponents.core.safety_component import (
     SafetyComponent,
@@ -23,7 +24,6 @@ from .schema import COMPONENT_NAME
 from .state_store import (
     InMemoryInternalEnvironmentStateStore,
     InternalEnvironmentStateStore,
-    JsonInternalEnvironmentStateStore,
 )
 
 _STATE_VERSION = 1
@@ -135,8 +135,11 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
             component_cfg["health_recovery_debounce_seconds"]
         )
         persistence = component_cfg["persistence"]
+        database = getattr(self.hass_app, "state_database", None)
+        if not isinstance(database, SqliteStateDatabase):
+            database = SqliteStateDatabase(state_database_path(persistence["state_file"]))
         self._state_store = (
-            JsonInternalEnvironmentStateStore(str(persistence["state_file"]))
+            database.store("internal_environment_state", persistence["state_file"])
             if persistence["enabled"]
             else InMemoryInternalEnvironmentStateStore()
         )

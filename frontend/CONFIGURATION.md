@@ -14,8 +14,11 @@ można obejrzeć lub wczytać do formularza.
    informację o pierwszej konfiguracji. Możesz wypełnić formularz albo wybrać
    **Wczytaj user_config YAML**. Import tylko wypełnia formularz — nie zapisuje
    pliku bez Twojego potwierdzenia.
-2. W Home Assistant sprawdź rzeczywiste identyfikatory w **Narzędzia
-   deweloperskie → Stany** oraz identyfikatory obszarów w ustawieniach obszarów.
+2. W polach encji wyszukaj nazwę lub identyfikator i wybierz pozycję z listy
+   pobranej przez panel z Home Assistant. Strzałki zmieniają wybór, Enter go
+   zatwierdza, a Escape zamyka listę. Formularz zapisuje identyfikator encji.
+   Możesz też wpisać go ręcznie, także gdy encja jest chwilowo niedostępna.
+   Identyfikatory obszarów sprawdź w ustawieniach obszarów Home Assistant.
    Przykładowych identyfikatorów z dokumentacji nie kopiuj w ciemno.
 3. Uzupełnij sekcje poniżej, potem kliknij **Utwórz user_config.yml** albo
    **Zapisz konfigurację**. Panel sprawdzi pola i zgodność z ustawieniami

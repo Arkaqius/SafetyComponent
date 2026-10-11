@@ -127,6 +127,53 @@ def test_old_shared_door_fault_discovery_is_removed(
     )
 
 
+def test_fault_registration_preserves_hazard_and_diagnostic_metadata(
+    mocked_hass_app_with_temp_component,
+) -> None:
+    app_instance, mocked_hass, _, _, _ = mocked_hass_app_with_temp_component
+    app_instance.initialize()
+
+    for fault_name, category in (("RiskyTemperature", "H"), ("SafetyAppHealth", "D")):
+        attributes = mqtt_json_payloads(
+            mocked_hass,
+            mqtt_topic_for(f"sensor.fault_{fault_name.lower()}", "attributes"),
+        )[-1]
+        assert attributes["category"] == category
+        assert isinstance(attributes["contributors"], list)
+        assert isinstance(attributes["active_contributors"], list)
+        assert attributes["level"] == f"level_{app_instance.faults[fault_name].level}"
+
+
+def test_fault_metadata_and_unified_frame_survive_activation_and_clear(
+    mocked_hass_app_with_temp_component,
+) -> None:
+    app_instance, mocked_hass, _, _, _ = mocked_hass_app_with_temp_component
+    app_instance.initialize()
+    topic = mqtt_topic_for("sensor.fault_riskytemperature", "attributes")
+
+    app_instance.fm.set_symptom("RiskyTemperatureOffice", {"location": "Office"})
+    active = mqtt_json_payloads(mocked_hass, topic)[-1]
+    assert active["category"] == "H"
+    assert active["level"] == "level_2"
+    assert "RiskyTemperatureOffice" in active["contributors"]
+    assert "RiskyTemperatureForecastOffice" not in active["contributors"]
+    assert active["active_contributors"] == ["RiskyTemperatureOffice"]
+    assert active["active"] is True
+    assert active["freeze_frame"]["version"] == 2
+    assert "extended_data" not in active
+
+    app_instance.fm.clear_symptom("RiskyTemperatureOffice", {"location": "Office"})
+    cleared = mqtt_json_payloads(mocked_hass, topic)[-1]
+    assert cleared["category"] == "H"
+    assert cleared["level"] == "level_2"
+    assert cleared["contributors"] == active["contributors"]
+    assert cleared["active_contributors"] == []
+    assert cleared["active"] is False
+    assert cleared["freeze_frame"]["captured_at"] == active["freeze_frame"]["captured_at"]
+    assert cleared["freeze_frame"]["last_valid_pass_at"] is not None
+    assert "extended_data" not in cleared
+
+
 def test_reinitialize_keeps_raw_appdaemon_configuration(
     mocked_hass_app_with_temp_component,
 ) -> None:
@@ -171,7 +218,7 @@ def test_entity_monitor_is_wired_into_application_startup(
 
     assert "EntityMonitorComponent" in app_instance.sm_modules
     assert "sensor.entity_monitor_summary" in app_instance.mqtt_entities.discovered_entities
-    assert "TemperatureMonitoringUnavailable" in app_instance.faults
+    assert "InputMonitoringUnavailable" in app_instance.faults
     assert "EntityHealthTemperatureOffice" not in app_instance.faults
     assert (
         "EntityHealthFailureTemperatureOfficeAvailability" in app_instance.symptoms

@@ -171,6 +171,7 @@ the [frontend README](frontend/README.md).
 - [System safety architecture and requirements](<docs/sys/SafetyConcept - SYS.md>)
 - [Software safety requirements](<docs/sys/SafetyComponent - SSRD.md>)
 - [Home Assistant App architecture](<docs/features/Home Assistant App - Architecture.md>)
+- [Runtime state storage architecture](<docs/features/Runtime State Storage - Architecture.md>)
 - [Configuration Model architecture](<docs/features/Configuration Model - Architecture.md>)
 - [Mobile Notification Delivery architecture](<docs/features/Mobile Notification Delivery - Architecture.md>)
 - [External Hazard Monitoring architecture](<docs/features/External Hazard Monitoring - Architecture.md>)

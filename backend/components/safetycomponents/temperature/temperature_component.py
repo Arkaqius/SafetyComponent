@@ -81,7 +81,7 @@ class TemperatureComponent(SafetyComponent):
                         "entity_id": data["temperature_sensor"],
                         "owner": cls.component_name,
                         "fault_owner": "component",
-                        "fault_name": "TemperatureMonitoringUnavailable",
+                        "fault_name": "InputMonitoringUnavailable",
                         "purpose": f"Temperature input for {location}",
                         "degradation_targets": evaluation_targets,
                         "checks": {
@@ -108,7 +108,7 @@ class TemperatureComponent(SafetyComponent):
                         "entity_id": f"{data['temperature_sensor']}_rate",
                         "owner": cls.component_name,
                         "fault_owner": "component",
-                        "fault_name": "TemperatureMonitoringUnavailable",
+                        "fault_name": "InputMonitoringUnavailable",
                         "purpose": f"Forecast rate input for {location}",
                         "degradation_targets": tuple(
                             (symptom_id, "temperature_forecast", location, "evaluation")

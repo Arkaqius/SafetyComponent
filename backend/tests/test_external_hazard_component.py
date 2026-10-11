@@ -95,7 +95,7 @@ def test_confirmed_opening_declares_separate_recovery_health() -> None:
     )
 
     assert [item["fault_name"] for item in dependencies] == [
-        "ExternalOpeningMonitoringUnavailable",
+        "InputMonitoringUnavailable",
         "ExternalRecoveryUnavailable",
     ]
 

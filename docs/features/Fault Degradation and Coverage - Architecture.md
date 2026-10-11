@@ -71,9 +71,11 @@ warnings, and outdoor air quality each retain independent evidence. Loss of
 AQ data does not disable weather exposure; loss of one weather provider does
 not erase valid evidence from another. Actuator eligibility checks the current
 proposal's evidence source, so valid IMGW evidence remains eligible when the
-weather point model is unavailable. A consumer capability-loss D fault is
-distinct from each provider adapter D fault; their response deduplication is
-explicit, not inferred from priority.
+weather point model is unavailable. Consumer capability-loss and provider
+adapter failures retain distinct contributors inside `ExternalDataUnavailable`.
+The shared fault's activation shall not apply the union of every contributor's
+restriction to a single failed source; coverage follows current contributor
+evidence and consumer redundancy policy.
 
 ## Coverage and supervision
 

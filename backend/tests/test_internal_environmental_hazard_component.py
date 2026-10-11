@@ -4,8 +4,11 @@ from datetime import datetime, timedelta, timezone
 import json
 from unittest.mock import MagicMock
 
+import pytest
+
 from components.core.event_bus import EventBus
 from components.core.mqtt_entity_manager import MqttEntityManager
+from components.core.sqlite_state_store import SqliteStateDatabase
 from components.core.types_common import FaultState, SMState
 from components.safetycomponents.internal_environmental_hazard.internal_environmental_hazard_monitor_component import (
     InternalEnvironmentalHazardMonitorComponent,
@@ -332,7 +335,8 @@ def test_unavailable_detector_raises_separate_health_symptom() -> None:
     ] == FaultState.NOT_TESTED
 
 
-def test_persisted_alarm_is_reasserted_when_current_state_is_unknown() -> None:
+@pytest.mark.parametrize("durable", [False, True])
+def test_persisted_alarm_is_reasserted_when_current_state_is_unknown(tmp_path, durable) -> None:
     now = datetime(2026, 9, 13, 10, 0, tzinfo=timezone.utc)
     states = {
         GAS_ENTITY: _snapshot("unknown", now),
@@ -352,7 +356,13 @@ def test_persisted_alarm_is_reasserted_when_current_state_is_unknown() -> None:
             },
         }
     )
-    component._state_store = store
+    if durable:
+        legacy = tmp_path / "internal.json"
+        legacy.write_text(json.dumps(store.load()), encoding="utf-8")
+        sqlite_store = SqliteStateDatabase(tmp_path / "state.sqlite3").store("internal_environment_state", legacy)
+        component._state_store = sqlite_store
+    else:
+        component._state_store = store
     component._restore_state()
     mechanism = component.safety_mechanisms[
         "InternalEnv_flammable_gas_BathroomFlammableGas"
@@ -360,6 +370,7 @@ def test_persisted_alarm_is_reasserted_when_current_state_is_unknown() -> None:
 
     assert component.sm_iehm_flammable_gas(mechanism) is True
     assert _event(events, mechanism.name)["state"] == FaultState.SET
+    assert component._detectors["BathroomFlammableGas"].gas_switching_inhibited is True
 
 
 def test_group_b_dependencies_are_diagnostic_only_and_keep_stable_fault_owner() -> None:

@@ -125,13 +125,18 @@ shall never be exposed to frontend JavaScript.
 The App-specific configuration directory contains:
 
 - `user_config.yml`;
-- `appdaemon/notification_state.json`;
-- `appdaemon/recovery_state.json`;
-- `appdaemon/internal_environment_state.json` when that component is enabled.
+- `appdaemon/safety_state.sqlite3` for notification, recovery, Freeze frame,
+  internal detector, operator-test, and battery-fault retirement state;
+- any SQLite `-wal`/`-shm` sidecars and legacy JSON import files retained during
+  migration review.
 
 Cold backup mode stops the App while Supervisor captures these files. Generated
 runtime code, compiled `apps.yaml`, AppDaemon runtime configuration, and
 frontend assets are image-owned or ephemeral and are recreated after restore.
+The [Runtime State Storage architecture](<Runtime State Storage - Architecture.md>)
+defines one-time JSON import, per-store transactions, and the copy/rollback
+boundary. Existing state-file keys name import sources; runtime state is written
+to SQLite after initialization.
 
 ## 7. Functional self-monitoring boundary
 
@@ -159,8 +164,10 @@ independent and shall not be replaced by the container watchdog.
 
 Only one SafetyFunctions backend may own the stable MQTT entities and Home
 Assistant listeners at a time. Migration shall preserve the reviewed
-`user_config.yml` and, when lifecycle continuity is required, the three JSON
-state files. The separate AppDaemon-hosted SafetyFunctions instance shall be
+`user_config.yml` and, when lifecycle continuity is required, the complete
+stopped-App state directory. Legacy JSON is imported once into SQLite; a
+SQLite-aware source must preserve the database and any sidecars together.
+The separate AppDaemon-hosted SafetyFunctions instance shall be
 stopped or removed before the standalone App starts.
 
 Running both instances concurrently is prohibited because duplicate listeners
