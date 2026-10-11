@@ -3,13 +3,14 @@ from unittest.mock import Mock
 
 import pytest
 
-from components.core.types_common import FaultState
+from components.core.types_common import FaultState, SMState
 from components.core.fault_state_policy import FaultEvaluationStatus
 from components.faults_manager.cfg_parser import validate_fault_routes
 from components.recovery_manager.recovery_manager import ComponentRecoveryError
 from components.notification_manager.models import (
     DeliveryBatchResult, DeliveryDisposition, TargetDeliveryResult,
 )
+from components.core.startup_grace import StartupGrace
 
 from .fixtures.hass_fixture import (
     mqtt_json_payloads,
@@ -223,6 +224,61 @@ def test_entity_monitor_is_wired_into_application_startup(
     assert (
         "EntityHealthFailureTemperatureOfficeAvailability" in app_instance.symptoms
     )
+
+
+def test_shared_startup_grace_keeps_h_and_app_health_live_while_d_is_unknown(
+    mocked_hass_app_with_temp_component, monkeypatch,
+) -> None:
+    """Real application routing postpones diagnostics, including their recovery effects."""
+    app, mocked_hass, *_ = mocked_hass_app_with_temp_component
+    app.args = deepcopy(app.args)
+    app.args["app_config"]["calibration"] = {"entity_monitor": {"startup_grace_seconds": 600}}
+    app.args["user_config"]["components_enabled"]["EntityMonitorComponent"] = True
+    app.args["user_config"]["safety_components"]["EntityMonitorComponent"] = {
+        "explicit_entities": {"StartupExtra": {"entity_id": "sensor.startup_extra", "description": "Startup diagnostic"}}
+    }
+    now = [0.0]
+    monkeypatch.setattr("SafetyFunctions.StartupGrace", lambda bus, ids, seconds: StartupGrace(bus, ids, seconds, clock=lambda: now[0]))
+    app.initialize()
+    diagnostic = "EntityHealthFailureStartupExtraAvailability"
+    app.event_bus.publish("symptom", symptom_id=diagnostic, state=FaultState.SET)
+    assert app.fm.check_fault("EntityHealthStartupExtra") is FaultEvaluationStatus.UNEVALUABLE
+    budgeted = "EntityHealthFailureTemperatureOfficeAvailability"
+    app.event_bus.publish("symptom", symptom_id=budgeted, state=FaultState.SET)
+    assert app.fm.check_fault("InputMonitoringUnavailable") is FaultEvaluationStatus.FAIL
+    app.event_bus.publish("symptom", symptom_id="RiskyTemperatureOffice", state=FaultState.SET)
+    assert app.fm.check_fault("RiskyTemperature") is FaultEvaluationStatus.FAIL
+    app.self_diagnostics.record_app_cause("publication", True)
+    assert app.fm.check_fault("SafetyAppHealth") is FaultEvaluationStatus.FAIL
+    app.event_bus.publish("symptom", symptom_id=diagnostic, state=FaultState.CLEARED)
+    now[0] = 600
+    app._finish_startup_grace()
+    assert app.fm.check_symptom(diagnostic) is FaultState.CLEARED
+    assert app.fm.check_fault("EntityHealthStartupExtra") is not FaultEvaluationStatus.FAIL
+    progress = mqtt_json_payloads(mocked_hass, mqtt_topic_for("sensor.safety_evaluation_progress", "attributes"))[-1]
+    assert progress["startup"]["phase"] == "complete"
+
+
+def test_disabling_during_startup_discards_pending_diagnostic_activation(
+    mocked_hass_app_with_temp_component, monkeypatch,
+) -> None:
+    app, _, *_ = mocked_hass_app_with_temp_component
+    app.args = deepcopy(app.args)
+    app.args["app_config"]["calibration"] = {"entity_monitor": {"startup_grace_seconds": 600}}
+    app.args["user_config"]["components_enabled"]["EntityMonitorComponent"] = True
+    app.args["user_config"]["safety_components"]["EntityMonitorComponent"] = {
+        "explicit_entities": {"StartupExtra": {"entity_id": "sensor.startup_extra", "description": "Startup diagnostic"}}
+    }
+    now = [0.0]
+    monkeypatch.setattr("SafetyFunctions.StartupGrace", lambda bus, ids, seconds: StartupGrace(bus, ids, seconds, clock=lambda: now[0]))
+    app.initialize()
+    diagnostic = "EntityHealthFailureStartupExtraAvailability"
+    app.event_bus.publish("symptom", symptom_id=diagnostic, state=FaultState.SET)
+    app.fm.enable_sm(diagnostic, SMState.DISABLED)
+    now[0] = 600
+    app._finish_startup_grace()
+    assert app.fm.check_symptom(diagnostic) is FaultState.NOT_TESTED
+    assert app.fm.check_fault("EntityHealthStartupExtra") is not FaultEvaluationStatus.FAIL
 
 
 def test_entity_monitor_rejects_component_timing_outside_detection_budget(

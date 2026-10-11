@@ -77,12 +77,27 @@ inside the generated runtime payload and diagnostics. Editable calibration uses
 
 | Field under `calibration.entity_monitor` | Type/default | Purpose | User override |
 | --- | --- | --- | --- |
-| `default_startup_grace_seconds` | seconds `60` | Prevents startup transients from immediately becoming dependency faults. | `installation.component_settings.entity_monitor.startup_grace_seconds` |
+| `default_startup_grace_seconds` | seconds `600` | Shared startup qualification for D contributions without allocated detection budgets, except `SafetyAppHealth`; acquisition, H detection and allocated supervision retain immediate routing. | `installation.component_settings.entity_monitor.startup_grace_seconds` |
 | `default_failure_debounce_seconds` | seconds `15` | Default persistence required before a dependency becomes unhealthy. | Per explicit entity or component dependency |
 | `default_recovery_debounce_seconds` | seconds `60` | Default persistence required before recovery is accepted. | Legacy per-entity/dependency migration input |
 | `default_evaluation_interval_seconds` | seconds `60` | Baseline ordinary freshness/debounce cadence; the monitor caps it to meet derived requirements. Short-budget dependencies retain 5-second reconciliation. | Legacy `installation.component_settings.entity_monitor.evaluation_interval_seconds`, validated and capped |
 | `unhealthy_summary_limit` | integer `32` | Bounds diagnostic publication size. | No |
 | `component_overrides` | mapping, empty | Reviewed calibration for stable component-owned dependency keys. | Merged with `installation.component_settings.entity_monitor.component_overrides` |
+
+The existing startup override applies to diagnostic routing across the application,
+not only to entity freshness. Its interval starts on every SafetyFunctions
+initialization, including an App or Home Assistant restart. Explicit existing
+overrides retain their value; `0` disables this delay. The frontend shows the
+backend-confirmed startup phase and countdown throughout the interval. Deferred
+D contributions remain unevaluable rather than passing; application-health
+failures, valid H evidence and contributors with allocated
+`detection_budget_seconds` bypass the gate. The interval shall not enlarge an
+allocated supervision budget, including SG-003's 60-second path. Existing
+`deferred_symptom_count` reports the number of contributors enrolled in the gate,
+not the number of queued observations. Supplied startup metadata must be current
+and valid to confirm completion; legacy progress reports without that metadata
+remain compatible. See
+[Fault Routing and Aggregation](<../features/Fault Routing and Aggregation - Architecture.md#startup-qualification>).
 
 The shared background reader acquires temperature-owned and shared
 outside-temperature dependency reports on a 120-second baseline, other ordinary

@@ -165,10 +165,12 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
                 (hazard_symptom, _HAZARD_MECHANISMS[hazard], "alarm"),
                 (health_symptom, _HEALTH_MECHANISM, "health"),
             ):
-                parameters = {
+                parameters: dict[str, Any] = {
                     "detector_key": detector_key,
                     "kind": kind,
                 }
+                if kind == "health":
+                    parameters["detection_budget_seconds"] = 60
                 symptoms[symptom_name] = Symptom(
                     module=modules[self.component_name],
                     name=symptom_name,

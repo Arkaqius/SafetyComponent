@@ -71,6 +71,7 @@ from components.core.localization import LocalizationSettings
 from components.core.mqtt_entity_manager import MqttEntityManager
 from components.core.self_diagnostics import SelfDiagnosticsComponent
 from components.core.sqlite_state_store import SqliteStateDatabase, state_database_path
+from components.core.startup_grace import StartupGrace
 from components.external_apis import (
     ExternalApiRuntime,
     HttpJsonClient,
@@ -542,13 +543,25 @@ class SafetyFunctions(hass.Hass):
                 self.reco_man.register_policy_evaluator(component)
 
         # Wire symptom and fault events in deterministic priority order.
-        self.event_bus.subscribe("symptom", self.degradation.observe, priority=-1)
-        self.event_bus.subscribe(
-            "evaluation_unavailable", self.degradation.mark_unavailable, priority=-1
+        diagnostic_symptoms = {
+            symptom_id
+            for symptom_id, symptom in self.symptoms.items()
+            if (fault := self.fm.found_mapped_fault(symptom_id, symptom.sm_name)) is not None
+            and fault.category.value == "D"
+            and fault.name != "SafetyAppHealth"
+            and symptom.parameters.get("detection_budget_seconds") is None
+        }
+        grace_seconds = int(
+            self.runtime_config["app_config"]["calibration"]["entity_monitor"]["startup_grace_seconds"]
         )
-        self.event_bus.subscribe("symptom", self.fm.handle_symptom_event, priority=0)
+        self.startup_grace = StartupGrace(self.event_bus, diagnostic_symptoms, grace_seconds)
+        self.event_bus.subscribe("qualified_symptom", self.degradation.observe, priority=-1)
         self.event_bus.subscribe(
-            "evaluation_unavailable", self.fm.mark_evaluation_unavailable, priority=0
+            "qualified_evaluation_unavailable", self.degradation.mark_unavailable, priority=-1
+        )
+        self.event_bus.subscribe("qualified_symptom", self.fm.handle_symptom_event, priority=0)
+        self.event_bus.subscribe(
+            "qualified_evaluation_unavailable", self.fm.mark_evaluation_unavailable, priority=0
         )
         self.event_bus.subscribe(
             "fault", self.notify_man.handle_fault_event, priority=0
@@ -625,6 +638,10 @@ class SafetyFunctions(hass.Hass):
             self.external_api_runtime.start()
 
         # Announce successful startup and begin MQTT heartbeat reporting.
+        if grace_seconds:
+            self._startup_grace_handle = self.run_in(
+                self._finish_startup_grace, self.startup_grace.snapshot()["remaining_seconds"]
+            )
         self._publish_evaluation_progress()
         self.run_every(self._publish_evaluation_progress, "now", 15)
         self._set_internal_entity("sensor.safety_app_health", "running")
@@ -902,18 +919,30 @@ class SafetyFunctions(hass.Hass):
     def _publish_evaluation_progress(self, **_: Any) -> None:
         """Publish component progress without treating it as input quality."""
 
+        self.startup_grace.finish()
         snapshot = self.evaluation_progress.snapshot()
         self.mqtt_entities.publish_sensor_state(
             "sensor.safety_evaluation_progress",
             snapshot["status"],
             attributes={
                 "components": snapshot["components"],
+                "startup": self.startup_grace.snapshot(),
                 "meaning": "Completed evaluation only; input and delivery quality are separate",
             },
         )
 
+    def _finish_startup_grace(self, **_: Any) -> None:
+        """End startup qualification and refresh the frontend phase immediately."""
+        self._publish_evaluation_progress()
+
     def terminate(self) -> None:
         """Publish offline availability during a clean AppDaemon shutdown."""
+        startup_handle = getattr(self, "_startup_grace_handle", None)
+        if startup_handle is not None:
+            cancel = getattr(self, "cancel_timer", None)
+            if callable(cancel):
+                cancel(startup_handle)
+            self._startup_grace_handle = None
         state_reader = getattr(self, "ha_state_reader", None)
         if state_reader is not None:
             state_reader.stop()

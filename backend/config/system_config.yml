@@ -28,7 +28,7 @@ calibration:
     forecast_horizon_hours: 2.0
 
   entity_monitor:
-    default_startup_grace_seconds: 60
+    default_startup_grace_seconds: 600
     default_failure_debounce_seconds: 15
     default_recovery_debounce_seconds: 60
     default_evaluation_interval_seconds: 60

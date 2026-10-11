@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import Topbar from './Topbar';
+import StartupBanner from './StartupBanner';
 import Icon, { type IconName } from './Icon';
 import { VIEW_MODE_STORAGE_KEY, type ViewMode } from './ViewModeSwitch';
 
@@ -241,6 +242,7 @@ export default function Layout() {
           onViewModeChange={changeViewMode}
         />
         <main className='page-content'>
+          <StartupBanner />
           <Outlet context={{ viewMode, onViewModeChange: changeViewMode }} />
         </main>
       </div>
