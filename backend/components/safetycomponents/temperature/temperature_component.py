@@ -37,6 +37,7 @@ from components.safetycomponents.core.safety_component import (
 )
 from components.safetycomponents.core.safety_mechanism import SafetyMechanism
 from components.core.types_common import Symptom, RecoveryAction, SMState, RecoveryResult
+from components.recovery_manager.manual_actions import manual_action
 
 # CONFIG
 DEBOUNCE_INIT = 0
@@ -799,9 +800,9 @@ class TemperatureComponent(SafetyComponent):
         )
 
     def _get_sm_tc_3_recovery_action(
-        self, _: dict, __: str, ___: dict, ____: str
+        self, _: dict, location: str, data: dict, ____: str
     ) -> RecoveryAction | None:
-        return None
+        return self._inspection_recovery(location, data, high=True)
 
     def _get_sm_tc_4_pr_name(self, location: str) -> str:
         return f"RiskyTemperatureHigh{location}ForeCast"
@@ -814,9 +815,21 @@ class TemperatureComponent(SafetyComponent):
         )
 
     def _get_sm_tc_4_recovery_action(
-        self, _: dict, __: str, ___: dict, ____: str
+        self, _: dict, location: str, data: dict, ____: str
     ) -> RecoveryAction | None:
-        return None
+        return self._inspection_recovery(location, data, high=True)
+
+    def _inspection_recovery(self, location: str, data: dict[str, Any], *, high: bool) -> RecoveryAction:
+        """Offer room inspection without borrowing low-temperature window policy."""
+
+        return manual_action(
+            f"InspectTemperature{'High' if high else 'Low'}{location}",
+            subject=str(data.get("area_name", location)),
+            instruction_key="recovery.inspect_temperature_high" if high else "recovery.inspect_temperature",
+            result_key="recovery.result_room_inspection", area_id=data.get("area_id"),
+            area_name=data.get("area_name"), completion_condition="operator_report",
+            manual_report_allowed=True, purpose="hazard_mitigation",
+        )
 
     def _init_sm(
         self, name: str, parameters: dict, sm_method: Callable, required_keys: list
@@ -1016,15 +1029,25 @@ class TemperatureComponent(SafetyComponent):
         meas_room_temp: float | None = SafetyComponent.get_num_sensor_val(
             hass_app, symptom.parameters["temperature_sensor"]
         )
-        if meas_room_temp is None:
-            return None
+        if meas_room_temp is None or not math.isfinite(meas_room_temp):
+            return TemperatureComponent._temperature_fallback(hass_app, symptom, common_entities, location)
 
         # Get outside temperature
         outside_temp_raw: str | None = common_entities.get_outisde_temperature()
-        if not outside_temp_raw:
-            return RecoveryResult(changed_sensors, changed_actuators, notifications)
+        try:
+            outside_temp = float(outside_temp_raw)
+        except (TypeError, ValueError):
+            return TemperatureComponent._temperature_fallback(hass_app, symptom, common_entities, location)
+        if not math.isfinite(outside_temp) or not window_sensors:
+            return TemperatureComponent._temperature_fallback(hass_app, symptom, common_entities, location)
 
-        outside_temp = float(outside_temp_raw)
+        contacts = [window_sensors] if isinstance(window_sensors, str) else list(window_sensors)
+        valid_contact_states = {"on", "off", "open", "closed", "opening", "true", "false", "1", "0"}
+        if any(str(hass_app.get_state(contact)).lower() not in valid_contact_states for contact in contacts):
+            return TemperatureComponent._temperature_fallback(hass_app, symptom, common_entities, location)
+
+        if actuator and hass_app.get_state(actuator) in (None, "unknown", "unavailable"):
+            actuator = None
 
         if outside_temp < meas_room_temp:
             window_sensors_state = "off"
@@ -1051,4 +1074,25 @@ class TemperatureComponent(SafetyComponent):
         else:
             notifications.append(notification)
 
-        return RecoveryResult(changed_sensors, changed_actuators, notifications)
+        return RecoveryResult(
+            changed_sensors, changed_actuators, notifications,
+            instruction=notification,
+            execution_policy="automatic" if changed_actuators else "manual",
+            completion_condition="entity_state",
+            expected_result=notification,
+            purpose="hazard_mitigation",
+        )
+
+    @staticmethod
+    def _temperature_fallback(hass_app: Any, symptom: Symptom, common_entities: Any,
+                              location: str) -> RecoveryResult:
+        """Keep manual inspection available when window advice cannot be qualified."""
+
+        action = manual_action(
+            "InspectTemperature", subject=location,
+            instruction_key="recovery.inspect_temperature",
+            result_key="recovery.result_room_inspection",
+            completion_condition="operator_report", manual_report_allowed=True,
+            purpose="hazard_mitigation",
+        )
+        return action.rec_fun(hass_app, symptom, common_entities, **action.params)

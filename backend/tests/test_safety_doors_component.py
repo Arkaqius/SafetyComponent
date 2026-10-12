@@ -65,7 +65,8 @@ def _build_component(
             }
         ],
     )
-    assert recoveries == {}
+    assert set(recoveries) == set(symptoms)
+    assert recoveries["SafetyDoorOpenTimeoutGarageGate"].name == "CloseSafetyDoorGarageGate"
     symptom = symptoms["SafetyDoorOpenTimeoutGarageGate"]
     assert component.init_safety_mechanism(
         symptom.sm_name,

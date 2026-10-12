@@ -176,7 +176,7 @@ def test_entity_monitor_routes_checks_to_component_fault(
         {"EntityMonitorComponent": component}, _config()
     )
 
-    assert recoveries == {}
+    assert set(recoveries) == set(symptoms)
     assert set(symptoms) == {
         "EntityHealthFailureTemperatureOfficeAvailability",
         "EntityHealthFailureTemperatureOfficeFreshness",
@@ -647,11 +647,21 @@ def test_recovery_command_failure_routes_to_scoped_group_b_fault(
         recovery_command=True,
         degradation_targets=((target, "recovery", "Office", "recovery"),),
     )
-    symptoms, _ = component.get_symptoms_data(
+    symptoms, recoveries = component.get_symptoms_data(
         {"EntityMonitorComponent": component}, config
     )
     command_id = f"EntityHealthFailure{key}RecoveryCommand"
     assert command_id in symptoms
+    action = recoveries[command_id]
+    app.call_service.reset_mock()
+    manual = action.rec_fun(app, symptoms[command_id], None, **action.params)
+    assert manual.execution_policy == "manual"
+    assert manual.completion_condition == "owner_clear"
+    assert manual.manual_report_allowed
+    assert not manual.changed_actuators
+    assert not manual.changed_sensors
+    assert "recovery.reason_recovery_command" not in manual.reason
+    app.call_service.assert_not_called()
     assert component.get_fault_definitions()[fault_name]["related_sms"] == [
         component._mechanism_name(key)
     ]

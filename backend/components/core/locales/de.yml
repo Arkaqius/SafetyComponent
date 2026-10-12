@@ -120,6 +120,67 @@ detail.stations: Messstationen
 detail.source_entity: Öffnungssensor
 recovery.close_windows: Bitte schließen Sie die Fenster in {location}.
 recovery.open_windows: Bitte öffnen Sie die Fenster in {location}.
+recovery.manual_close: 'Schließen Sie {subject} manuell.'
+recovery.no_action: Keine aktuelle Aktion erforderlich.
+recovery.active_count: '{count} aktuelle Empfehlungen.'
+recovery.reason_availability: Der Eingang ist nicht verfügbar.
+recovery.reason_freshness: Der Eingang liefert keine aktuellen Messwerte mehr.
+recovery.reason_required_value: Ein erforderlicher Messwert fehlt.
+recovery.reason_allowed_values: Der Eingang meldet einen nicht unterstützten Wert.
+recovery.reason_finite_number: Der Messwert ist keine gültige Zahl.
+recovery.reason_numeric_range: Der Messwert liegt außerhalb des zulässigen Bereichs.
+recovery.reason_rate_of_change: Der Messwert ändert sich schneller als zulässig.
+recovery.result_closed: 'Eine aktuelle Kontaktmeldung bestätigt, dass {subject} geschlossen ist.'
+recovery.inspect_input: 'Prüfen Sie Stromversorgung, Verbindung und Meldungen von {subject} entsprechend der gemeldeten fehlgeschlagenen Prüfung.'
+recovery.result_input: 'Aktuelle gültige Meldungen bestätigen die Behebung der fehlgeschlagenen Prüfung für {subject}.'
+recovery.inspect_battery: 'Prüfen Sie die Batterieanleitung für {subject}; ersetzen oder laden Sie die Batterie gemäß der Geräteanleitung.'
+recovery.result_battery: 'Eine neue Batteriemeldung bestätigt die Erholung für {subject}.'
 recovery.close_opening: Schließen Sie {opening}.
+recovery.blocked_diagnostic_restriction: 'Der benötigte Eingang oder Befehlspfad ist nicht verfügbar; prüfen Sie das betroffene Gerät.'
+recovery.blocked_policy_rejected: 'Die aktuelle Sicherheitsrichtlinie erlaubt diese Aktion nicht.'
+recovery.blocked_conflicting_postcondition: 'Ein anderer aktiver Zustand benötigt ein anderes beobachtetes Ergebnis.'
+recovery.blocked_conflicting_action: 'Diese Aktion widerspricht einem anderen aktiven Sicherheitszustand.'
+recovery.blocked_indoor_hazard_conflict: 'Aktive oder ungeklärte Rauch-, Gas- oder Kohlenmonoxiddaten blockieren Lüftung und Reinigung.'
+recovery.blocked_unsupported_execution_policy: 'Diese Ausführungsrichtlinie wird nicht unterstützt.'
+recovery.blocked_unsupported_completion_condition: 'Diese Abschlussmethode wird nicht unterstützt.'
+recovery.blocked_manual_actuator_forbidden: 'Eine manuelle Anweisung darf keinen Gerätebefehl senden.'
+recovery.blocked_invalid_owner_completion: 'Vom zuständigen Monitor bewerteter Abschluss benötigt unabhängige Daten ohne Gerätebefehl.'
+recovery.blocked_invalid_opening_completion: 'Ein Öffnungsabschluss benötigt einen konfigurierten aktuellen Kontakt.'
+recovery.blocked_invalid_manual_completion: 'Diese manuelle Abschlussmethode darf keinen Gerätebefehl senden.'
+recovery.inspect_detector: 'Prüfen Sie Stromversorgung, Meldungen und überwachte Eingänge von {subject} nach der Geräteanleitung; beauftragen Sie bei Bedarf den Service. Schalten Sie den Melder nicht stumm und setzen Sie ihn nicht zurück, um einen Alarm zu entfernen.'
+recovery.result_detector: 'Aktuelle Überwachungsdaten bestätigen die Reparatur des betroffenen Melderpfads für {subject}; Alarme benötigen gesonderte Nachweise.'
+recovery.result_hazard: 'Die Erholung des Melders wird getrennt bewertet. Diese Hinweise bestätigen weder sicheren Wiedereintritt noch die Erlaubnis, Gas wieder zu öffnen.'
+recovery.inspect_external_data: 'Prüfen Sie Verbindung, Integration und benötigte Daten für {subject}; prüfen Sie die zuständige behördliche Quelle direkt, solange dieser Pfad nicht verfügbar ist.'
+recovery.result_external_data: 'Aktuelle gültige Daten bestätigen die Erholung des betroffenen Anbieters oder Datenpfads für {subject}.'
+recovery.inspect_temperature_high: 'Prüfen Sie die gemeldete hohe Temperatur in {subject} von einem sicheren Ort aus und beachten Sie bei Bedarf die gerätespezifischen Servicehinweise. Dieser Alarm bestätigt nicht, dass Fensteröffnen sicher ist.'
+recovery.inspect_temperature: 'Prüfen Sie die gemeldete Temperatur und verfügbaren Schutzmaßnahmen in {subject} von einem sicheren Ort aus; prüfen Sie den Eingang oder die Geräteanleitung, wenn Fensterhinweise fehlen.'
+recovery.result_room_inspection: 'Ihre Meldung dokumentiert die Prüfung von {subject}; die Temperaturerholung benötigt weiterhin qualifizierte Messwerte.'
+recovery.inspect_platform: 'Prüfen Sie das gemeldete Ressourcenproblem des Hosts für {subject}; prüfen Sie entsprechend Last, Speicher oder Kühlung und planen Sie die Anlagenwartung.'
+recovery.result_platform: 'Aktuelle Hostdaten erfüllen die Erholungsbedingungen für {subject}.'
+recovery.inspect_wan: 'Prüfen Sie Routerversorgung, Uplink und Verbindung für {subject}; kontaktieren Sie bei Bedarf den Verbindungsanbieter.'
+recovery.result_wan: 'Aktuelle Verbindungsdaten erfüllen die WAN-Erholungsbedingungen für {subject}.'
+recovery.inspect_backup: 'Prüfen Sie Sicherungsstatus und letzte erfolgreiche Sicherung für {subject}; beheben Sie das Problem in den Anlagenwerkzeugen. Eine Wiederherstellung wird nicht angefordert.'
+recovery.result_backup: 'Aktuelle Sicherungsdaten erfüllen die konfigurierten Bedingungen für {subject}.'
+recovery.inspect_update: 'Prüfen Sie das stabile Update für {subject}, Versionshinweise und Sicherungsbereitschaft; planen Sie die Installation in den Werkzeugen der zuständigen Plattform.'
+recovery.result_update: 'Aktuelle Versionsdaten bestätigen die Behebung der Updatebedingung für {subject}.'
+recovery.perform_test: 'Führen Sie den unterstützten Test für {subject} gemäß Geräteanleitung aus und dokumentieren Sie das Ergebnis im bestehenden Testbericht. Diese Aktion löst keinen Test aus.'
+recovery.result_test: 'Der Wartungsmonitor akzeptiert aktuelle Testnachweise für {subject}; eine Arbeitsmeldung allein gilt weder als bestandener Test noch als Alarmaufhebung.'
+recovery.app_path_startup: 'Anwendungsstart'
+recovery.app_path_publication: 'MQTT-Veröffentlichung'
+recovery.app_path_delivery: 'Benachrichtigungszustellung'
+recovery.app_path_local_output: 'Lokaler Sicherheitsausgang'
+recovery.app_path_persistence: 'Dauerhafter Zustandsspeicher'
+recovery.app_path_evaluation: 'Gefahrenbewertung'
+recovery.app_path_recovery: 'Recovery-Ausführung'
+recovery.inspect_app_startup: 'Prüfen Sie Startprotokolle und validierte Konfiguration für {subject}; reparieren Sie den gemeldeten Initialisierungspfad im Rahmen der Anlagenwartung.'
+recovery.inspect_app_publication: 'Prüfen Sie Brokerverbindung, Berechtigungen und Veröffentlichungsfehler für {subject}; reparieren Sie den betroffenen Meldepfad.'
+recovery.inspect_app_delivery: 'Prüfen Sie Benachrichtigungskanal und Zustellfehler für {subject}; bestätigen Sie den Empfang im unterstützten Testbericht.'
+recovery.inspect_app_local_output: 'Prüfen Sie Stromversorgung, Verbindung und gemeldeten Ausgangspfad für {subject} gemäß Anleitung; lösen Sie keinen Ausgang nur zur Aufhebung dieses Fehlers aus.'
+recovery.inspect_app_persistence: 'Prüfen Sie fehlgeschlagenen Vorgang, Speicherplatz und Berechtigungen für {subject}; erhalten Sie Nachweise und reparieren Sie ohne gespeicherte Sicherheitsdaten zu löschen.'
+recovery.inspect_app_evaluation: 'Prüfen Sie Eingang, Konfiguration und Bewertungsfehler für {subject}; beauftragen Sie die Reparatur dieses Bewertungspfads.'
+recovery.inspect_app_recovery: 'Prüfen Sie fehlgeschlagenen Recovery-Pfad und Gerät für {subject}; reparieren Sie ohne den fehlgeschlagenen Befehl zu wiederholen.'
+recovery.result_app_path: 'Aktuelle erfolgreiche Nachweise bestätigen die Erholung desselben Pfads und Vorgangs für {subject}; der Empfang wird gesondert bestätigt.'
+recovery.inspect_command: 'Prüfen Sie den fehlgeschlagenen Befehl oder fehlenden Effekt für {subject} und die Geräteanleitung; beauftragen Sie Service ohne Befehlswiederholung.'
+recovery.reason_recovery_command: 'Ein Befehl ist fehlgeschlagen oder der erforderliche Effekt wurde nicht beobachtet.'
 recovery.confirm_close_opening: Bestätigen Sie das Schließen von {opening}. SafetyComponent
   handelt erst nach Ihrer Bestätigung.

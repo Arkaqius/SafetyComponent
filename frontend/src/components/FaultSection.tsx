@@ -4,8 +4,10 @@ import {
   LEVEL_PRESENTATION,
   formatRelativeTime,
   localizedEntityState,
+  recoveriesForFault,
   type FaultStatus,
   type FaultView,
+  type RecoveryView,
   type StatusTone,
 } from '../domain/safety';
 import Icon from './Icon';
@@ -13,11 +15,13 @@ import FreezeFrame from './FreezeFrame';
 import HelpTooltip from './HelpTooltip';
 import StatusBadge from './StatusBadge';
 import { notificationAcknowledgementEvent } from '../domain/notificationHistory';
+import RecoveryActionCard from './RecoveryActionCard';
 
 type FaultFilter = 'attention' | 'active' | 'shadowed' | 'all';
 
 interface FaultSectionProps {
   faults: FaultView[];
+  recoveries?: RecoveryView[];
   acknowledgedTags?: ReadonlySet<string>;
   compact?: boolean;
   onSelectEntity?: (entityId: string) => void;
@@ -43,7 +47,13 @@ const filters: Array<{ value: FaultFilter; label: string }> = [
   { value: 'all', label: 'Wszystkie' },
 ];
 
-export default function FaultSection({ acknowledgedTags = new Set(), faults, compact = false, onSelectEntity }: FaultSectionProps) {
+export default function FaultSection({
+  acknowledgedTags = new Set(),
+  faults,
+  recoveries = [],
+  compact = false,
+  onSelectEntity,
+}: FaultSectionProps) {
   const [filter, setFilter] = useState<FaultFilter>('attention');
   const [query, setQuery] = useState('');
 
@@ -117,6 +127,7 @@ export default function FaultSection({ acknowledgedTags = new Set(), faults, com
             <FaultCard
               acknowledged={acknowledgedTags.has(fault.notificationTag)}
               fault={fault}
+              recoveries={recoveriesForFault(fault, recoveries)}
               key={fault.entityId}
               onSelectEntity={onSelectEntity}
             />
@@ -142,10 +153,12 @@ export default function FaultSection({ acknowledgedTags = new Set(), faults, com
 function FaultCard({
   acknowledged,
   fault,
+  recoveries,
   onSelectEntity,
 }: {
   acknowledged: boolean;
   fault: FaultView;
+  recoveries: RecoveryView[];
   onSelectEntity?: (entityId: string) => void;
 }) {
   const status = statusPresentation[fault.status];
@@ -266,6 +279,16 @@ function FaultCard({
           </div>
         )}
         {fault.diagnosticData.freezeFrame && <FreezeFrame record={fault.diagnosticData.freezeFrame} />}
+        {recoveries.length > 0 && (
+          <section aria-label={`Działania dla ${fault.name}`} className='fault-diagnostic-block'>
+            <strong>Zalecenia i działania</strong>
+            <div className='recovery-list'>
+              {recoveries.map(recovery => (
+                <RecoveryActionCard key={recovery.proposalId} recovery={recovery} onSelectEntity={onSelectEntity} />
+              ))}
+            </div>
+          </section>
+        )}
         {canAcknowledge && (
           <div className='fault-acknowledgement'>
             <button

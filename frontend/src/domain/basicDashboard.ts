@@ -1,4 +1,4 @@
-import { recoveryNeedsAttention, type FaultView, type RecoveryView } from './safety.js';
+import { recoveriesForFault, recoveryNeedsAttention, type FaultView, type RecoveryView } from './safety.js';
 
 /** Prioritize the brief without losing the count of other active conditions. */
 export function basicDashboardItems(faults: FaultView[], recoveries: RecoveryView[]) {
@@ -8,10 +8,11 @@ export function basicDashboardItems(faults: FaultView[], recoveries: RecoveryVie
     (left, right) => (left.level ?? 0) - (right.level ?? 0)
   )[0];
   const attentionRecoveries = recoveries.filter(recoveryNeedsAttention);
+  const primaryFaultRecoveries = primaryFault ? recoveriesForFault(primaryFault, attentionRecoveries) : [];
   return {
     primaryFault,
     activeFaultCount: activeFaults.length,
-    primaryRecovery: attentionRecoveries[0],
+    primaryRecovery: primaryFaultRecoveries[0] ?? attentionRecoveries[0],
     attentionRecoveries,
   };
 }

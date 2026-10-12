@@ -385,7 +385,7 @@ def test_app_health_storage_failure_routes_once_without_recursive_notification(
     assert app_instance.faults["SafetyAppHealth"].evaluation.active is True
 
 
-def test_recovery_store_failure_does_not_get_swallowed_or_clear_from_other_store(
+def test_recovery_store_failure_is_reported_without_aborting_detection_or_clearing_from_other_store(
     mocked_hass_app_with_temp_component,
 ) -> None:
     app_instance, _, __, ___, _ = mocked_hass_app_with_temp_component
@@ -394,14 +394,25 @@ def test_recovery_store_failure_does_not_get_swallowed_or_clear_from_other_store
     store.save.side_effect = OSError("recovery store unavailable")
     app_instance.reco_man.state_store = store
 
-    with pytest.raises(OSError, match="recovery store unavailable"):
-        app_instance.reco_man._persist_state()
+    assert app_instance.reco_man._persist_state() is False
+    assert app_instance.reco_man._storage_available is False
     app_instance.notify_man._persist_state()
     assert app_instance.fm.check_symptom("AppHealthPersistenceRecoveryState") == FaultState.SET
 
     store.save.side_effect = None
-    app_instance.reco_man._persist_state()
+    assert app_instance.reco_man._persist_state() is True
     assert app_instance.fm.check_symptom("AppHealthPersistenceRecoveryState") == FaultState.CLEARED
+
+
+def test_recovery_timing_uses_compiled_system_policy(mocked_hass_app_with_temp_component):
+    app_instance, _, __, ___, _ = mocked_hass_app_with_temp_component
+    app_instance.args["user_config"].setdefault("recovery", {})["timing"] = {
+        "consent_timeout_seconds": 30, "effect_timeout_seconds": 240,
+        "manual_task_timeout_seconds": None,
+    }
+    app_instance.initialize()
+    assert app_instance.reco_man.timing.consent_timeout_seconds == 30
+    assert app_instance.reco_man.timing.effect_timeout_seconds == 240
 
 
 def test_mqtt_outage_keeps_internal_cause_for_external_supervisor(

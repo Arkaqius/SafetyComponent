@@ -14,7 +14,8 @@ from components.core.functional_safety_diagnostics import (
 )
 from components.core.memory_pressure import MemoryPressureRule
 from components.core.maintenance_evidence import ResourceRule, aware_time
-from components.core.types_common import FaultState, SMState, Symptom
+from components.core.types_common import FaultState, RecoveryAction, SMState, Symptom
+from components.recovery_manager.manual_actions import manual_action
 from components.external_apis.battery_inventory import battery_entities, resolve_batteries
 from components.external_apis.home_assistant_state import HomeAssistantStateProvider
 from components.external_apis.home_assistant_state_reader import (
@@ -168,6 +169,7 @@ class FunctionalSafetyMonitor:
         for detector, friendly_name in self.detector_names.items():
             fault_sources.append((f"DetectorTestDue{detector}", int(self.policy["maintenance_fault_level"]), label("fault.detector_test_due", detector=friendly_name)))
         symptoms: dict[str, Symptom] = {}
+        recoveries: dict[str, RecoveryAction] = {}
         for fault, level, name in fault_sources:
             symptom_id = f"fsm_{fault}"
             mechanism = f"sm_fsm_{fault}"
@@ -184,6 +186,25 @@ class FunctionalSafetyMonitor:
                 "related_sms": [mechanism],
                 "shadows": [],
             }
+            if fault.startswith("RemoteBatteryLow"):
+                device = fault.removeprefix("RemoteBatteryLow")
+                binding = self.bindings["remote_batteries"][device]
+                recoveries[symptom_id] = manual_action(
+                    f"InspectBattery{device}",
+                    subject=binding["friendly_name"],
+                    instruction_key="recovery.inspect_battery",
+                    result_key="recovery.result_battery",
+                    manual_report_allowed=True,
+                )
+            else:
+                instruction_key, result_key = self._recovery_keys(fault)
+                recoveries[symptom_id] = manual_action(
+                    f"Inspect{fault}",
+                    subject=name,
+                    instruction_key=instruction_key,
+                    result_key=result_key,
+                    manual_report_allowed=True,
+                )
         self.mqtt_entities.register_sensor(
             self.summary_entity,
             "Functional Safety Sources",
@@ -191,7 +212,21 @@ class FunctionalSafetyMonitor:
             icon="mdi:heart-pulse",
             entity_category="diagnostic",
         )
-        return symptoms, {}
+        return symptoms, recoveries
+
+    @staticmethod
+    def _recovery_keys(fault: str) -> tuple[str, str]:
+        """Allocate maintenance guidance without invoking installation actions."""
+
+        if fault.startswith("UpdateAvailable"):
+            return "recovery.inspect_update", "recovery.result_update"
+        if fault.startswith(("PeriodicTestDue", "DetectorTestDue")):
+            return "recovery.perform_test", "recovery.result_test"
+        if fault == "WanUnavailable":
+            return "recovery.inspect_wan", "recovery.result_wan"
+        if fault == "BackupNeedsAttention":
+            return "recovery.inspect_backup", "recovery.result_backup"
+        return "recovery.inspect_platform", "recovery.result_platform"
 
     def get_fault_definitions(self) -> dict[str, dict[str, Any]]:
         """Return dynamic fault definitions for configured policy sources."""

@@ -25,7 +25,7 @@ The database separates these store namespaces:
 | Namespace | Domain ownership |
 | --- | --- |
 | `notification_state` | Active notifications, acknowledgement, queue, counters, and bounded submission history. |
-| `recovery_state` | Operator-visible recovery proposals and lifecycle state. |
+| `recovery_state` | RecoveryManager shall retain operator-visible proposals, lifecycle state, manual-work reports and bounded recent action outcomes under the recovery contract. |
 | `fault_evidence_state` | Bounded unified Freeze frame records and lifecycle metadata. |
 | `internal_environment_state` | Detector incident/symptom state and safety restrictions. |
 | `periodic_test_state` | Operator attestations for notification receipt and backup restoration. |

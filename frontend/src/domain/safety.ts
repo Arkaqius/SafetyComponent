@@ -45,6 +45,7 @@ export interface FaultDiagnosticData {
 
 export interface FaultView {
   entityId: string;
+  faultId?: string;
   name: string;
   description: string;
   locations: string[];
@@ -72,6 +73,26 @@ export interface RecoveryView {
   confirmationToken: string;
   reason: string;
   source: string;
+  expectedResult?: string;
+  faultId?: string;
+  completionCondition?: string;
+  manualReportAllowed?: boolean;
+  reportToken?: string;
+  proposalInstanceId?: string;
+  blockedReason?: string;
+  evidenceAt?: string;
+  evidenceSource?: string;
+  reportStatus?: string;
+  reportedAt?: string;
+  reportSource?: string;
+  latestOutcome?: {
+    outcome: 'completed' | 'withdrawn' | 'failed' | 'timed_out';
+    recordedAt: string;
+    evidenceAt?: string;
+    evidenceSource?: string;
+    reportedAt?: string;
+    reportSource?: string;
+  };
   validUntil?: string;
   expiresAt?: number;
   actuatorEntityId: string;
@@ -305,6 +326,7 @@ export function getFaults(entities: EntityMap): FaultView[] {
     .filter(([entityId]) => entityId.startsWith(FAULT_PREFIX))
     .map(([entityId, entity]) => ({
       entityId,
+      faultId: stringAttribute(entity, 'fault_id') || entityId.slice(FAULT_PREFIX.length),
       name: friendlyEntityName(entityId, entity),
       description: stringAttribute(entity, 'description'),
       locations: entityLocations(entity),
@@ -360,6 +382,26 @@ export function getRecoveries(entities: EntityMap): RecoveryView[] {
     .filter(([entityId]) => entityId.startsWith(RECOVERY_PREFIX))
     .flatMap(([entityId, entity]) => {
       const proposals = Array.isArray(entity.attributes.proposals) ? entity.attributes.proposals : [];
+      const outcomes = Array.isArray(entity.attributes.recent_outcomes) ? entity.attributes.recent_outcomes : [];
+      const latest = outcomes.find(raw => {
+        if (!raw || typeof raw !== 'object') return false;
+        const record = raw as Record<string, unknown>;
+        return (
+          ['completed', 'withdrawn', 'failed', 'timed_out'].includes(String(record.outcome)) &&
+          typeof record.recorded_at === 'string' &&
+          Number.isFinite(Date.parse(record.recorded_at))
+        );
+      }) as Record<string, unknown> | undefined;
+      const latestOutcome = latest
+        ? {
+            outcome: latest.outcome as 'completed' | 'withdrawn' | 'failed' | 'timed_out',
+            recordedAt: latest.recorded_at as string,
+            ...(typeof latest.evidence_at === 'string' ? { evidenceAt: latest.evidence_at } : {}),
+            ...(typeof latest.evidence_source === 'string' ? { evidenceSource: latest.evidence_source } : {}),
+            ...(typeof latest.reported_at === 'string' ? { reportedAt: latest.reported_at } : {}),
+            ...(typeof latest.report_source === 'string' ? { reportSource: latest.report_source } : {}),
+          }
+        : undefined;
       if (proposals.length === 0) {
         return [
           {
@@ -372,6 +414,7 @@ export function getRecoveries(entities: EntityMap): RecoveryView[] {
             confirmationToken: '',
             reason: '',
             source: '',
+            latestOutcome,
             actuatorEntityId: '',
             state: entity.state,
             status: getRecoveryStatus(entity.state),
@@ -396,6 +439,19 @@ export function getRecoveries(entities: EntityMap): RecoveryView[] {
             confirmationToken: String(proposal.confirmation_token ?? ''),
             reason: String(proposal.reason ?? ''),
             source: String(proposal.source ?? ''),
+            expectedResult: typeof proposal.expected_result === 'string' ? proposal.expected_result : undefined,
+            faultId: typeof proposal.fault_id === 'string' ? proposal.fault_id : undefined,
+            completionCondition: typeof proposal.completion_condition === 'string' ? proposal.completion_condition : undefined,
+            manualReportAllowed: proposal.manual_report_allowed === true,
+            reportToken: typeof proposal.report_token === 'string' ? proposal.report_token : undefined,
+            proposalInstanceId: typeof proposal.proposal_instance_id === 'string' ? proposal.proposal_instance_id : undefined,
+            blockedReason: typeof proposal.blocked_reason === 'string' ? proposal.blocked_reason : undefined,
+            evidenceAt: typeof proposal.evidence_at === 'string' ? proposal.evidence_at : undefined,
+            evidenceSource: typeof proposal.evidence_source === 'string' ? proposal.evidence_source : undefined,
+            reportStatus: typeof proposal.report_status === 'string' ? proposal.report_status : undefined,
+            reportedAt: typeof proposal.reported_at === 'string' ? proposal.reported_at : undefined,
+            reportSource: typeof proposal.report_source === 'string' ? proposal.report_source : undefined,
+            latestOutcome,
             validUntil: proposal.valid_until ? String(proposal.valid_until) : undefined,
             expiresAt: typeof proposal.expires_at === 'number' ? proposal.expires_at : undefined,
             actuatorEntityId: String(proposal.actuator_entity_id ?? ''),
@@ -409,9 +465,15 @@ export function getRecoveries(entities: EntityMap): RecoveryView[] {
     .sort((left, right) => statusPriority[left.status] - statusPriority[right.status] || left.name.localeCompare(right.name, 'pl'));
 }
 
+/** Match only the published stable fault ID; names and locations are not identity. */
+export function recoveriesForFault(fault: FaultView, recoveries: RecoveryView[]): RecoveryView[] {
+  const faultId = fault.faultId || fault.entityId.slice(FAULT_PREFIX.length);
+  return recoveries.filter(recovery => recovery.faultId === faultId);
+}
+
 /** Returns true when a recovery sensor needs an action or diagnostic attention. */
 export function recoveryNeedsAttention(recovery: RecoveryView): boolean {
-  return !['do_not_perform', 'confirmed'].includes(recovery.status);
+  return Boolean(recovery.blockedReason) || !['do_not_perform', 'confirmed'].includes(recovery.status);
 }
 
 export function getMonitoredTemperatures(entities: EntityMap): TemperatureView[] {

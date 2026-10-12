@@ -1,4 +1,4 @@
-import { type EntityMap, type EntitySnapshot } from '../domain/safety';
+import { type EntityMap, type EntitySnapshot } from '../domain/safety.js';
 
 export const MOCK_STARTED_AT = Date.now();
 const timestamp = (minutesAgo: number): string => new Date(MOCK_STARTED_AT - minutesAgo * 60_000).toISOString();
@@ -269,6 +269,7 @@ export const MOCK_ENTITIES: EntityMap = {
     'Fault: Risky temperature',
     {
       description: 'Temperatura przekroczyła bezpieczny zakres.',
+      fault_id: 'RiskyTemperature',
       level: 'level_2',
       location: 'Office',
       notification_tag: 'demo-active-temperature',
@@ -299,6 +300,7 @@ export const MOCK_ENTITIES: EntityMap = {
     'Fault: Risky temperature forecast',
     {
       description: 'Trend temperatury wskazuje na możliwe przekroczenie zakresu.',
+      fault_id: 'RiskyTemperatureForecast',
       level: 'level_3',
       location: 'Office, Livingroom',
       active: true,
@@ -315,6 +317,7 @@ export const MOCK_ENTITIES: EntityMap = {
     'Fault: Safety application health',
     {
       description: 'Kanał dostarczania powiadomień wymaga uwagi.',
+      fault_id: 'SafetyAppHealth',
       level: 'level_2',
       active: true,
       category: 'D',
@@ -337,11 +340,88 @@ export const MOCK_ENTITIES: EntityMap = {
     'TO_PERFORM',
     'Recovery ManipulateWindowOffice',
     {
-      description: 'Sprawdź źródło ciepła i przewietrz pomieszczenie.',
+      description: 'Sprawdź pomieszczenie i instrukcję urządzenia; w razie potrzeby skontaktuj się z serwisem.',
+      proposals: [
+        {
+          proposal_id: 'demo-temperature-office',
+          proposal_instance_id: 'demo-temperature-incident',
+          fault_id: 'RiskyTemperature',
+          status: 'TO_PERFORM',
+          execution_policy: 'manual',
+          completion_condition: 'operator_report',
+          manual_report_allowed: true,
+          report_token: 'DEMO-TEMPERATURE-REPORT-CAPABILITY',
+          instruction: 'Sprawdź pomieszczenie i instrukcję urządzenia; w razie potrzeby skontaktuj się z serwisem.',
+          expected_result: 'Użytkownik zgłosi wykonanie kontroli pomieszczenia. Monitoring temperatury nadal ocenia usterkę niezależnie.',
+          source: 'Przykładowy monitoring temperatury',
+        },
+      ],
     },
     5
   ),
   'sensor.recovery_manipulatewindowupperbathroom': entity('DO_NOT_PERFORM', 'Recovery ManipulateWindowUpperbathroom', {}, 29),
+  'sensor.fault_batterylowdemo': entity('FAIL', 'Niski poziom baterii — przykład', {
+    fault_id: 'BatteryLowDemo',
+    active: true,
+    category: 'D',
+    level: 'level_3',
+    description: 'Przykładowy pilot wymaga wymiany lub naładowania baterii.',
+    contributors: ['BatteryLowDemo'],
+    active_contributors: ['BatteryLowDemo'],
+    shadowed_by: [],
+    latched: false,
+  }),
+  'sensor.recovery_batteryrepairdemo': entity('TO_PERFORM', 'Bateria przykładowego pilota', {
+    proposals: [
+      {
+        proposal_id: 'demo-battery-repair',
+        proposal_instance_id: 'demo-battery-incident',
+        fault_id: 'BatteryLowDemo',
+        status: 'TO_PERFORM',
+        execution_policy: 'manual',
+        completion_condition: 'owner_clear',
+        manual_report_allowed: true,
+        report_token: 'demo-only-battery-report',
+        instruction: 'Wymień lub naładuj baterię przykładowego pilota. Zgłoś wykonanie po zakończeniu pracy.',
+        expected_result: 'Poprawny nowy odczyt urządzenia potwierdzi prawidłowy poziom baterii.',
+        source: 'Przykładowy monitoring baterii',
+      },
+    ],
+  }),
+  'sensor.recovery_deliveryinspectiondemo': entity('TO_PERFORM', 'Kontrola odbioru powiadomień — przykład', {
+    proposals: [
+      {
+        proposal_id: 'demo-delivery-inspection',
+        proposal_instance_id: 'demo-delivery-incident',
+        fault_id: 'SafetyAppHealth',
+        status: 'TO_PERFORM',
+        execution_policy: 'manual',
+        completion_condition: 'operator_report',
+        manual_report_allowed: true,
+        report_token: 'demo-only-inspection-report',
+        instruction: 'Sprawdź ustawienia telefonu i skontaktuj się z administratorem kanału powiadomień.',
+        expected_result: 'Użytkownik zgłosi wykonanie kontroli. Usterka pozostanie oceniana niezależnie.',
+        source: 'Przykładowa diagnostyka kanału powiadomień',
+      },
+    ],
+  }),
+  'sensor.recovery_forecastcheckdemo': entity('DO_NOT_PERFORM', 'Kontrola prognozy — przykład', {
+    proposals: [
+      {
+        proposal_id: 'demo-forecast-check',
+        proposal_instance_id: 'demo-forecast-incident',
+        fault_id: 'RiskyTemperatureForecast',
+        status: 'DO_NOT_PERFORM',
+        execution_policy: 'manual',
+        completion_condition: 'owner_clear',
+        manual_report_allowed: false,
+        instruction: 'Sprawdź czujnik temperatury używany przez prognozę.',
+        expected_result: 'Monitoring uzyska poprawny bieżący odczyt.',
+        blocked_reason: 'Brak aktualnego odczytu. Zalecenie jest wstrzymane do ponownej oceny.',
+        source: 'Przykładowa diagnostyka prognozy',
+      },
+    ],
+  }),
   'sensor.safety_door_garagegate': entity(
     'active',
     'Safety Door: ExampleGarageGate',

@@ -389,9 +389,12 @@ is displayed separately and is not assumed to be the latest stable release.
   suppress healthy data from another provider.
 - Do not rely on an application to report its own total failure through the same
   MQTT or Home Assistant path that has failed.
-- Keep monitoring separate from recovery execution. Restarts, failover, or
-  other corrective actions belong to an explicitly approved Supervisor or
-  installation policy.
+- Monitors shall supply cause-specific manual inspection/repair tasks through
+  the [shared recovery contract](<Recommended Actions and Recovery - Architecture.md>).
+  Their completion evidence shall retain the difference between operator reports
+  and observed restoration. Restart, failover and other automatic corrective
+  commands shall belong to an explicitly approved Supervisor or installation
+  policy.
 
 The adopted safety contract is in
 [SYS §8.8](<../sys/SafetyConcept - SYS.md#88-functional-safety-and-platform-health-monitoring-c-fsm>)

@@ -71,6 +71,17 @@ Feature architecture documents include
 [`Heating System Monitoring`](docs/features/Heating%20System%20Monitoring%20-%20Architecture.md),
 and [`Internal Environmental Hazard Monitoring`](docs/features/Internal%20Environmental%20Hazard%20Monitoring%20-%20Architecture.md).
 
+The [recovery action contract](<docs/features/Recommended Actions and Recovery - Architecture.md>)
+defines manual work, command consent, observed or operator-reported task
+completion, advisory instructions and cause-specific fault allocation. Reports
+use authenticated actor context, server-assigned time and the current incident's
+one-time report token; reporting work does not directly clear a fault. Its
+requirements are in
+[SYS §8.10](<docs/sys/SafetyConcept - SYS.md#810-recommended-actions-and-recovery>)
+and [SSRD §4.5](<docs/sys/SafetyComponent - SSRD.md#45-notifications-and-recovery>).
+The [fault-handling delivery record](docs/FAULT_HANDLING_PLAN.md#recovery-completion-evidence-and-allocation-gaps)
+separately tracks verified recovery deliveries and absent monitoring owners.
+
 ## Backend quick start
 
 Use Python 3.10 or newer with AppDaemon 4.5 or newer:
