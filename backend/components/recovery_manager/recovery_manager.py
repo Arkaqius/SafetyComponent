@@ -310,6 +310,7 @@ class RecoveryManager:
             record.setdefault("expected_result", "")
             record.setdefault("purpose", "hazard_mitigation")
             record.setdefault("source", "")
+            record.setdefault("actuator_entity_id", "")
             record.setdefault("manual_report_allowed", False)
             record["report_token"] = (
                 secrets.token_urlsafe(24)
@@ -646,11 +647,29 @@ class RecoveryManager:
         sensor_name = MqttEntityManager.canonical_entity_id(
             sensor_name, expected_domain="sensor"
         )
+        localizer = getattr(self.hass_app, "localizer", None)
+        if not isinstance(localizer, Localizer):
+            localizer = Localizer()
         proposals = [
             self._public_proposal(record)
             for record in self._proposals.values()
             if record.get("action_name") == recovery.name
         ]
+        for proposal in proposals:
+            owner = self.fm.symptoms.get(str(proposal.get("proposal_id", "")))
+            if (
+                proposal.get("execution_policy") == "manual"
+                and proposal.get("status") == RecoveryActionState.TO_PERFORM.name
+                and proposal.get("completion_condition") != "advisory"
+                and owner is not None and owner.state == FaultState.NOT_TESTED
+            ):
+                # Retain historical instructions and passive observation without claiming applicability.
+                proposal.update(status=RecoveryActionState.DO_NOT_PERFORM.name,
+                                manual_report_allowed=False,
+                                blocked_reason=localizer.text("recovery.blocked_owner_unverified"),
+                                blocked_reason_code="owner_unverified")
+                proposal.pop("report_token", None)
+                proposal.pop("confirmation_token", None)
         recent_outcomes = [
             {key: value for key, value in record.items() if key != "report_user_id"} for record in reversed(self._recent_outcomes)
             if record.get("action_name") == recovery.name

@@ -174,7 +174,7 @@ replay a command.
 Observed completion rechecks the relevant recovery restriction. Completion
 verification time remains distinct from a device's source measurement time.
 
-Combined local validation: 889 backend tests passed with 91.37% coverage; Ruff
+Pre-Dev34 combined local validation: 889 backend tests passed with 91.37% coverage; Ruff
 passed and the configured Mypy checks passed for four source files. Frontend
 validation passed 120 tests, type checking, lint and production build. Changed
 frontend formatting passed; the repository-wide format check retained 81
@@ -184,13 +184,35 @@ includes [manager/manual contracts](../backend/tests/test_recovery_manual_contra
 [application integration](../backend/tests/test_system_notification_recovery.py),
 and [shared frontend cards](../frontend/src/components/RecoveryCard.test.tsx).
 
-Deployment checkpoint: the live Dev App remained started on `0.3.1-dev33`.
-The existing private installation configuration compiled against the updated policy
-without modification, and a 375-file Dev34 package was staged for activation.
-Activation, deployed hash readback, post-grace runtime state and logs remain
-pending for this package. The earlier dev33 evidence is not reused to claim
-that the completed local work is already running. No commit or push is implied
-by this local completion checkpoint.
+Dev34 deployment checkpoint: the 375-file package was activated as
+`0.3.1-dev34` in the separate Dev App. The App was started and completed its
+600-second diagnostic grace window. Deployed file readback and the private
+configuration hash were unchanged relative to the prepared package. SQLite
+verification reported integrity `ok`, no foreign-key errors, unchanged detector
+and periodic-test records, and preserved recovery outcomes. These checks establish
+package/state continuity, not that every restored task is currently actionable.
+
+Post-grace inspection found a real restoration defect: a saved low-battery
+proposal remained `TO_PERFORM` while its owning fault was `NOT_EVALUATED`,
+inactive and awaiting valid current source evidence. Its missing report capability
+also showed that the old proposal had not yet been requalified under the new
+action contract. The stale task presentation could imply current evidence that
+the owner did not have.
+
+The local corrective change projects a restored non-advisory manual task whose
+owner is `NOT_TESTED` as `DO_NOT_PERFORM`, with the localized `owner_unverified`
+reason and no report or command-consent capability. It preserves the instruction,
+history and passive observation and does not mark the task completed. When the
+owner qualifies a current `SET`, the current task and its permitted report
+capability become available. Normalizing an empty restored actuator identity
+also preserves previously reported work across requalification rather than
+withdrawing it as an unrelated replacement.
+
+Corrective validation: 62 focused recovery/restart-report and localization tests
+passed. The corrected full-suite results and activation, deployed hash readback,
+post-grace runtime state and logs for the Dev35 package remain pending. The
+earlier dev33/dev34 evidence is not reused to claim that this correction is
+already running. No commit or push is implied by these checkpoints.
 
 Heating monitoring remains a normative C-HVAC allocation: this checkout has no
 heating-monitor component or installed heating-fault producer. Its model-specific

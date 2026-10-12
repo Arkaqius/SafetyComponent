@@ -121,6 +121,7 @@ recovery.close_windows: 'Zamknij okna w lokalizacji: {location}.'
 recovery.open_windows: 'Otwórz okna w lokalizacji: {location}.'
 recovery.manual_close: 'Zamknij ręcznie: {subject}.'
 recovery.no_action: Brak aktualnego działania do wykonania.
+recovery.blocked_owner_unverified: 'Oczekiwanie na bieżącą ocenę. To zalecenie zachowane z poprzedniej oceny.'
 recovery.active_count: '{count} aktualne zalecenia.'
 recovery.reason_availability: Czujnik jest niedostępny.
 recovery.reason_freshness: Czujnik przestał dostarczać aktualne odczyty.

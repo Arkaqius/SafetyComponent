@@ -121,6 +121,7 @@ recovery.close_windows: Please close the windows in {location}.
 recovery.open_windows: Please open the windows in {location}.
 recovery.manual_close: 'Close {subject} manually.'
 recovery.no_action: No current action is required.
+recovery.blocked_owner_unverified: 'Waiting for a current assessment. This instruction is retained from the previous assessment.'
 recovery.active_count: '{count} current actions.'
 recovery.reason_availability: The input is unavailable.
 recovery.reason_freshness: The input has stopped providing current readings.

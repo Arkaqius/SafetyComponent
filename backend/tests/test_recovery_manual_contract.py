@@ -361,6 +361,9 @@ def test_restart_rotates_unreported_capability_and_preserves_reported_work():
     manager._restore_state()
     assert manager._proposals[symptom.name]["report_token"] == ""
     assert manager._proposals[symptom.name]["report_status"] == "awaiting_evidence"
+    manager.recovery(symptom, "fault-tag")
+    assert manager._proposals[symptom.name]["report_status"] == "awaiting_evidence"
+    assert manager._proposals[symptom.name]["report_token"] == ""
     app.call_service.assert_not_called()
 
 
@@ -494,3 +497,25 @@ def test_inactive_higher_priority_fault_cannot_block_current_lower_priority_acti
     fault.evaluation.active = True
     fault.evaluation.latched = True
     assert manager._check_conflict_with_matching_actions(["Direct"], 3, symptom)
+
+
+def test_restored_manual_work_is_visible_but_blocked_until_owner_has_current_evidence():
+    manager, symptom, app, _, _ = reportable_manager("owner_clear")
+    original_instance = manager._proposals[symptom.name]["proposal_instance_id"]
+    symptom.state = FaultState.NOT_TESTED
+    manager._proposals = {}
+    manager._restore_state()
+    published = manager.mqtt_entities.register_sensor.call_args.kwargs["attributes"]["proposals"][0]
+    assert published["status"] == "DO_NOT_PERFORM"
+    assert published["blocked_reason_code"] == "owner_unverified"
+    assert published["manual_report_allowed"] is False
+    assert "report_token" not in published
+    assert not manager._recent_outcomes
+    symptom.state = FaultState.SET
+    manager.recovery(symptom, "fault-tag")
+    published = manager.mqtt_entities.register_sensor.call_args.kwargs["attributes"]["proposals"][0]
+    assert published["status"] == "TO_PERFORM"
+    assert published["manual_report_allowed"] is True
+    assert published["report_token"]
+    assert published["proposal_instance_id"] == original_instance
+    app.call_service.assert_not_called()

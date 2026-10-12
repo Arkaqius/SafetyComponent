@@ -122,6 +122,7 @@ recovery.close_windows: Bitte schließen Sie die Fenster in {location}.
 recovery.open_windows: Bitte öffnen Sie die Fenster in {location}.
 recovery.manual_close: 'Schließen Sie {subject} manuell.'
 recovery.no_action: Keine aktuelle Aktion erforderlich.
+recovery.blocked_owner_unverified: 'Warten auf eine aktuelle Bewertung. Diese Anweisung stammt aus der vorherigen Bewertung.'
 recovery.active_count: '{count} aktuelle Empfehlungen.'
 recovery.reason_availability: Der Eingang ist nicht verfügbar.
 recovery.reason_freshness: Der Eingang liefert keine aktuellen Messwerte mehr.
