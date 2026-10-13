@@ -96,7 +96,7 @@ for fault events, NotificationManager runs before RecoveryManager.
 | SWR-TEMP-005 | Mechanism results shall use configured debounce and reevaluation timing before fault lifecycle changes are emitted. | `SafetyComponent`, temperature calibration |
 | SWR-TEMP-006 | The DerivativeMonitor shall publish only derivative measurements (`_rate` in °C/min and `_rateofrate` in °C/min²); it shall not own temperature safety limits. | `DerivativeMonitor` |
 | SWR-TEMP-007 | Each room shall expose its low and high configured limits as separate diagnostic MQTT sensors named `<source>_low_threshold` and `<source>_high_threshold`. | `TemperatureComponent._register_temperature_threshold_entities` |
-| SWR-TEMP-008 | Threshold sensors shall identify the source entity, threshold type, `area_id`, and current Home Assistant area name. | threshold sensor attributes |
+| SWR-TEMP-008 | Threshold sensors shall identify the source entity, threshold type, `area_id`, and current Home Assistant area name, and expose the corresponding room/threshold's last forecast predicate observation as `forecast_evaluation`. The observation shall distinguish risk, valid input within limits, unevaluable input, and no evaluation; it shall not replace the fault's qualified alarm state. | threshold sensor attributes and forecast callbacks |
 | SWR-TEMP-009 | Low-temperature mechanisms `sm_tc_1` and `sm_tc_2` shall provide eligible `ManipulateWindow<Room>` proposals when a window sensor or supported cover actuator is configured, and manual room-inspection guidance when window recovery is unavailable. High-temperature mechanisms `sm_tc_3` and `sm_tc_4` shall provide manual room-inspection/service guidance without window actuation. C-TEMP shall not issue HVAC/climate commands. | TemperatureComponent, RecoveryManager |
 | SWR-TEMP-010 | Direct low/high symptoms shall aggregate into level-2 `RiskyTemperature`; forecast low/high symptoms shall aggregate into level-3 `RiskyTemperatureForecast`; the direct fault shall shadow the forecast fault and each fault shall remain active until every related symptom clears. | fault catalog and `FaultManager` |
 | SWR-TEMP-011 | The derivative monitor shall seed the first source sample at registration so that a valid second sample can produce `_rate` after one configured sampling interval. The `_rate` diagnostic dependency shall allow more than one interval after startup before declaring the first missing rate a monitoring failure. Its detection budget shall derive from that interval and include scheduler margin; invalid rate data shall remain unevaluable meanwhile, not positive evidence of a safe forecast. | `TemperatureComponent.get_entity_dependencies`, `DerivativeMonitor` |
@@ -108,6 +108,31 @@ source input, and `ready` after a numeric rate has been calculated. The operator
 notice shall remain independent of diagnostic startup grace and shall end only
 when current numeric results arrive. Connection loss shall be shown as missing
 current evidence, never as completion of sample collection.
+
+Each existing `<source>_low_threshold` and `<source>_high_threshold` sensor
+shall expose a `forecast_evaluation` object with the following attributes:
+
+| Attribute | Meaning |
+| --- | --- |
+| `status` | `not_evaluated` before the first observation; `risk` for a valid modeled crossing; `within_limits` for a valid non-crossing; `unevaluable` when the forecast cannot be calculated. |
+| `symptom_id` | Exact corresponding low or high forecast symptom ID from the stable patterns below. |
+| `temperature_c` | Numeric input temperature used by the predicate, or `null` when no valid numeric temperature is available. |
+| `rate_per_minute` | Finite numeric first derivative in °C/min, or `null` when no numeric rate is available. A numeric rate may still fail the forecast's plausibility bounds. |
+| `modeled_temperature_c` | Valid modeled temperature in °C, or `null` before evaluation or when the forecast is unevaluable. |
+| `threshold_c` | The configured limit for this threshold sensor. |
+| `forecast_timespan_hours` | The configured forecast horizon in hours. |
+| `evaluated_at` | UTC time of the predicate observation, or `null` before the first observation. |
+
+The object shall contain the last observed predicate result, before fault
+qualification. On invalid input it shall remove the prior modeled value,
+report `unevaluable`, and preserve independently qualified active fault
+evidence. Simulated input supplied through `entities_changes` shall not
+overwrite this live diagnostic object. Operator displays shall use the
+published observation without independently recalculating safety decisions,
+and shall present it separately from the fault's status and
+`active_contributors`. Forecast input health confirms only the allocated
+input checks; successful application-health evaluation checks or the absence
+of repair proposals shall not establish absence of a forecast hazard.
 
 Stable Temperature runtime IDs are:
 

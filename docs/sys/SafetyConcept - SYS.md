@@ -765,7 +765,15 @@ temperature.
   each room's low and high thresholds as `<source>_low_threshold` and
   `<source>_high_threshold`.
 - **SYS-SR-TEMP-008:** Threshold diagnostics shall expose source entity,
-  threshold type, `area_id`, and the resolved Home Assistant area name.
+  threshold type, `area_id`, and the resolved Home Assistant area name. Each
+  threshold sensor shall also expose the last forecast predicate observation
+  for that room and threshold: status, exact symptom identity, input temperature,
+  first derivative, modeled temperature, configured limit, forecast horizon,
+  and UTC evaluation time. Diagnostics shall distinguish an unevaluable or
+  not-yet-evaluated forecast from a valid result within limits. The last
+  observation shall remain separate from the fault's qualified alarm state;
+  healthy input diagnostics or application-health repair results shall not
+  imply a safe forecast or clear an active temperature fault.
 - **SYS-SR-TEMP-009:** Low-temperature mechanisms may create a
   `ManipulateWindow{Room}` recovery proposal using the configured window sensor
   or cover actuator and the indoor/outdoor temperature relation. High-temperature

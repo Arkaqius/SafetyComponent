@@ -373,6 +373,20 @@ Optional checks are generic channel-health diagnostics. Safety-specific
 thresholds, such as unsafe room temperature, remain in the owning Safety
 Component and are not duplicated here.
 
+In particular, `sensor.entity_health_temperature_forecast_<room>` supervises
+the room's derivative input, including availability and finite-number checks.
+A `healthy` result means those input checks pass; it does not compare the
+modeled room temperature with its safety limits. Valid available inputs may
+still predict a dangerous temperature. C-TEMP shall publish its last low/high
+forecast predicate observations in the existing threshold sensors'
+`forecast_evaluation` attributes, separately from the qualified
+`RiskyTemperatureForecast` fault and its active contributors. The last
+observation and the qualified fault may differ while debounce is in progress.
+An application-health evaluation diagnostic or a repair proposal for a failed
+evaluator concerns successful execution of that path, not whether its
+temperature predicate detects a hazard. Operator views shall retain these
+three meanings: input health, predicate observation, and qualified alarm.
+
 Rate-of-change evaluation may reuse numeric sampling utilities from
 `DerivativeMonitor`, but Entity Monitor owns its check result, calibration, and
 fault semantics. The rate is `(newest_value - oldest_value) / elapsed_time`
