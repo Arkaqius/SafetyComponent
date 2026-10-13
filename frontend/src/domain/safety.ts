@@ -92,7 +92,21 @@ export interface TemperatureView {
   acceleration: number | null;
   lowThreshold: number | null;
   highThreshold: number | null;
+  lowForecast: TemperatureForecastView;
+  highForecast: TemperatureForecastView;
   lastUpdated?: string;
+}
+
+export interface TemperatureForecastView {
+  status: 'risk' | 'within_limits' | 'unevaluable' | 'not_evaluated' | 'not_reported' | 'unknown';
+  symptomId: string;
+  temperature: number | null;
+  rate: number | null;
+  modeledTemperature: number | null;
+  threshold: number | null;
+  timespanHours: number | null;
+  evaluatedAt?: string;
+  activeFault: boolean | null;
 }
 
 export type SafetyDoorStatus = 'active' | 'blocked' | 'inactive' | 'unavailable' | 'unknown';
@@ -438,6 +452,8 @@ export function getMonitoredTemperatures(entities: EntityMap): TemperatureView[]
           acceleration: numericState(entities[accelerationEntityId]?.state),
           lowThreshold: numericState(lowThresholdEntity?.state) ?? numericAttribute(rateEntity, 'low_temperature_threshold'),
           highThreshold: numericState(highThresholdEntity?.state) ?? numericAttribute(rateEntity, 'high_temperature_threshold'),
+          lowForecast: temperatureForecast(lowThresholdEntity, entities['sensor.fault_riskytemperatureforecast']),
+          highForecast: temperatureForecast(highThresholdEntity, entities['sensor.fault_riskytemperatureforecast']),
           lastUpdated: latestTimestamp(
             sourceEntity.last_updated,
             rateEntity.last_updated,
@@ -448,6 +464,65 @@ export function getMonitoredTemperatures(entities: EntityMap): TemperatureView[]
       ];
     })
     .sort((left, right) => left.name.localeCompare(right.name, 'pl'));
+}
+
+/** Keep the backend's last predicate observation separate from qualified fault state. */
+function temperatureForecast(entity: EntitySnapshot | undefined, fault: EntitySnapshot | undefined): TemperatureForecastView {
+  const raw = entity?.attributes.forecast_evaluation;
+  const observation = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : null;
+  const symptomId = typeof observation?.symptom_id === 'string' ? observation.symptom_id : '';
+  const contributors = fault?.attributes.active_contributors;
+  const validContributors = Array.isArray(contributors) && contributors.every(item => typeof item === 'string');
+  const faultAvailable = fault && !UNAVAILABLE_STATES.has(normalizeState(fault.state));
+  const activeFault = !faultAvailable
+    ? null
+    : fault.attributes.active === false
+      ? false
+      : fault.attributes.active === true && symptomId && validContributors
+        ? (contributors as string[]).includes(symptomId)
+        : null;
+  const finite = (value: unknown): number | null => (typeof value === 'number' && Number.isFinite(value) ? value : null);
+  const threshold = finite(observation?.threshold_c);
+  const timespanHours = finite(observation?.forecast_timespan_hours);
+  const evaluatedAt =
+    typeof observation?.evaluated_at === 'string' && Number.isFinite(Date.parse(observation.evaluated_at))
+      ? observation.evaluated_at
+      : undefined;
+  const temperature = finite(observation?.temperature_c);
+  const rate = finite(observation?.rate_per_minute);
+  const modeledTemperature = finite(observation?.modeled_temperature_c);
+  const rawStatus = observation?.status;
+  let status: TemperatureForecastView['status'] =
+    !observation && raw === undefined
+      ? 'not_reported'
+      : rawStatus === 'risk' || rawStatus === 'within_limits' || rawStatus === 'unevaluable' || rawStatus === 'not_evaluated'
+        ? rawStatus
+        : 'unknown';
+  if (entity && numericState(entity.state) === null) status = 'unevaluable';
+  if (
+    (status === 'risk' || status === 'within_limits') &&
+    (!symptomId ||
+      temperature === null ||
+      rate === null ||
+      modeledTemperature === null ||
+      threshold === null ||
+      timespanHours === null ||
+      timespanHours <= 0 ||
+      !evaluatedAt)
+  )
+    status = 'unevaluable';
+  const evaluable = status === 'risk' || status === 'within_limits';
+  return {
+    status,
+    symptomId,
+    temperature: evaluable ? temperature : null,
+    rate: evaluable ? rate : null,
+    modeledTemperature: evaluable ? modeledTemperature : null,
+    threshold,
+    timespanHours,
+    evaluatedAt,
+    activeFault,
+  };
 }
 
 export function getSafetyDoors(entities: EntityMap): SafetyDoorView[] {

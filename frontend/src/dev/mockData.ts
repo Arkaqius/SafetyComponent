@@ -303,8 +303,8 @@ export const MOCK_ENTITIES: EntityMap = {
       location: 'Office, Livingroom',
       active: true,
       category: 'H',
-      contributors: ['RiskyTemperatureForecastOffice'],
-      active_contributors: ['RiskyTemperatureForecastOffice'],
+      contributors: ['RiskyTemperatureHighOfficeForeCast'],
+      active_contributors: ['RiskyTemperatureHighOfficeForeCast'],
       shadowed_by: ['RiskyTemperature'],
       latched: false,
     },
@@ -446,6 +446,23 @@ for (const [entityId, friendlyName, value, rate, acceleration, lowThreshold, hig
     threshold_type: 'high',
     unit_of_measurement: '°C',
   });
+}
+
+// Static backend observation fixtures; the operator UI never calculates forecast risk.
+for (const [direction, status, symptomId, threshold] of [
+  ['low', 'within_limits', 'RiskyTemperatureOfficeForeCast', 18],
+  ['high', 'risk', 'RiskyTemperatureHighOfficeForeCast', 28],
+] as const) {
+  MOCK_ENTITIES[`sensor.example_office_temperature_${direction}_threshold`].attributes.forecast_evaluation = {
+    status,
+    symptom_id: symptomId,
+    temperature_c: 27.4,
+    rate_per_minute: 0.086,
+    modeled_temperature_c: 48.04,
+    threshold_c: threshold,
+    forecast_timespan_hours: 4,
+    evaluated_at: timestamp(7),
+  };
 }
 
 MOCK_ENTITIES['sensor.entity_monitor_summary'] = entity('stale', 'Monitorowane encje', {

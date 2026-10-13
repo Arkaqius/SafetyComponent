@@ -21,6 +21,7 @@ This module is part of a larger system designed for enhancing safety through Hom
 """
 
 import math
+from datetime import datetime, timezone
 from typing import Dict, Any, Callable, Optional
 
 import appdaemon.plugins.hass.hassapi as hass  # type: ignore
@@ -177,6 +178,7 @@ class TemperatureComponent(SafetyComponent):
             common_entities (CommonEntities): A shared object providing access to common entities used across different safety mechanisms.
         """
         super().__init__(hass_app, common_entities, event_bus, mqtt_entities)
+        self._threshold_sensors: dict[str, dict[str, Any]] = {}
 
     def get_symptoms_data(
         self, sm_modules: dict, component_cfg: list[dict[str, Any]]
@@ -224,21 +226,98 @@ class TemperatureComponent(SafetyComponent):
             ("low", "CAL_LOW_TEMP_THRESHOLD"),
             ("high", "CAL_HIGH_TEMP_THRESHOLD"),
         ):
-            self.mqtt_entities.register_sensor(
-                f"{source_entity}_{threshold_type}_threshold",
-                localizer.text(
+            sensor_id = f"{source_entity}_{threshold_type}_threshold"
+            self._threshold_sensors[sensor_id] = {
+                "name": localizer.text(
                     f"entity.temperature_{threshold_type}_threshold",
                     location=display_location,
                 ),
-                state=data[config_key],
-                attributes={
+                "threshold": data[config_key],
+                "attributes": {
                     **common_attributes,
                     "threshold_type": threshold_type,
+                    "forecast_evaluation": {
+                        "status": "not_evaluated",
+                        "symptom_id": (
+                            f"RiskyTemperature{location}ForeCast"
+                            if threshold_type == "low"
+                            else f"RiskyTemperatureHigh{location}ForeCast"
+                        ),
+                        "temperature_c": None,
+                        "rate_per_minute": None,
+                        "modeled_temperature_c": None,
+                        "threshold_c": data[config_key],
+                        "forecast_timespan_hours": data["CAL_FORECAST_TIMESPAN"],
+                        "evaluated_at": None,
+                    },
                 },
-                icon="mdi:thermometer-alert",
-                unit_of_measurement="°C",
-                state_class="measurement",
-                entity_category="diagnostic",
+            }
+            self._publish_temperature_threshold(sensor_id)
+
+    def _publish_temperature_threshold(self, sensor_id: str) -> None:
+        """Publish a configured limit and its latest owning predicate evidence."""
+        record = self._threshold_sensors[sensor_id]
+        self.mqtt_entities.register_sensor(
+            sensor_id,
+            record["name"],
+            state=record["threshold"],
+            attributes=record["attributes"],
+            icon="mdi:thermometer-alert",
+            unit_of_measurement="°C",
+            state_class="measurement",
+            entity_category="diagnostic",
+        )
+
+    def _publish_forecast_evaluation(
+        self,
+        sm: SafetyMechanism,
+        threshold_type: str,
+        temperature: float | None,
+        rate: float | None,
+        modeled_temperature: float | None,
+        entities_changes: dict[str, str] | None,
+    ) -> None:
+        """Expose the last real forecast predicate without claiming fault qualification.
+
+        Simulated inputs cannot replace live diagnostic evidence. Invalid input
+        removes the previous modeled value instead of presenting it as current.
+        """
+        if entities_changes is not None:
+            return
+        sensor_id = f"{sm.sm_args['temperature_sensor']}_{threshold_type}_threshold"
+        record = self._threshold_sensors.get(sensor_id)
+        if record is None:
+            return
+        threshold_key = "cold_thr" if threshold_type == "low" else "hot_thr"
+        threshold = sm.sm_args[threshold_key]
+        valid = modeled_temperature is not None
+        risk = valid and (
+            modeled_temperature < threshold if threshold_type == "low"
+            else modeled_temperature > threshold
+        )
+        record["attributes"]["forecast_evaluation"] = {
+            "status": "risk" if risk else "within_limits" if valid else "unevaluable",
+            "symptom_id": sm.name,
+            "temperature_c": (
+                temperature
+                if temperature is not None and math.isfinite(temperature) else None
+            ),
+            "rate_per_minute": (
+                rate if rate is not None and math.isfinite(rate) else None
+            ),
+            "modeled_temperature_c": modeled_temperature,
+            "threshold_c": threshold,
+            "forecast_timespan_hours": sm.sm_args["forecast_timespan"],
+            "evaluated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        try:
+            self._publish_temperature_threshold(sensor_id)
+        except Exception as exc:
+            # Diagnostic publication must not prevent the safety predicate or
+            # fault qualification from running with the available evidence.
+            self.hass_app.log(
+                f"Could not publish forecast evidence for {sm.name}: {exc}",
+                level="WARNING",
             )
 
     def init_safety_mechanism(self, sm_name: str, name: str, parameters: dict) -> bool:
@@ -418,8 +497,14 @@ class TemperatureComponent(SafetyComponent):
         )
 
         if temperature is None or temperature_rate is None:
+            self._publish_forecast_evaluation(
+                sm, "low", temperature, temperature_rate, None, entities_changes
+            )
             return SafetyMechanismResult(False, None, is_evaluable=False)
         if not self._is_valid_temperature(temperature, sm):
+            self._publish_forecast_evaluation(
+                sm, "low", temperature, temperature_rate, None, entities_changes
+            )
             return SafetyMechanismResult(False, None, is_evaluable=False)
 
         forecasted_temperature = self.forecast_temperature(
@@ -433,9 +518,16 @@ class TemperatureComponent(SafetyComponent):
             maximum_temperature_c=sm.sm_args["maximum_temperature_c"],
         )
         if forecasted_temperature is None:
+            self._publish_forecast_evaluation(
+                sm, "low", temperature, temperature_rate, None, entities_changes
+            )
             return SafetyMechanismResult(False, None, is_evaluable=False)
 
         sm_result: bool = forecasted_temperature < cold_threshold
+        self._publish_forecast_evaluation(
+            sm, "low", temperature, temperature_rate, forecasted_temperature,
+            entities_changes,
+        )
         additional_info: dict[str, str] = {"location": location}
 
         return SafetyMechanismResult(
@@ -501,8 +593,14 @@ class TemperatureComponent(SafetyComponent):
         )
 
         if temperature is None or temperature_rate is None:
+            self._publish_forecast_evaluation(
+                sm, "high", temperature, temperature_rate, None, entities_changes
+            )
             return SafetyMechanismResult(False, None, is_evaluable=False)
         if not self._is_valid_temperature(temperature, sm):
+            self._publish_forecast_evaluation(
+                sm, "high", temperature, temperature_rate, None, entities_changes
+            )
             return SafetyMechanismResult(False, None, is_evaluable=False)
 
         forecasted_temperature = self.forecast_temperature(
@@ -516,9 +614,16 @@ class TemperatureComponent(SafetyComponent):
             maximum_temperature_c=sm.sm_args["maximum_temperature_c"],
         )
         if forecasted_temperature is None:
+            self._publish_forecast_evaluation(
+                sm, "high", temperature, temperature_rate, None, entities_changes
+            )
             return SafetyMechanismResult(False, None, is_evaluable=False)
 
         sm_result: bool = forecasted_temperature > hot_threshold
+        self._publish_forecast_evaluation(
+            sm, "high", temperature, temperature_rate, forecasted_temperature,
+            entities_changes,
+        )
         additional_info: dict[str, str] = {"location": location}
 
         return SafetyMechanismResult(

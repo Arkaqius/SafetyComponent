@@ -80,6 +80,12 @@ def test_safety_functions_initialization(mocked_hass_app_with_temp_component) ->
         mocked_hass,
         mqtt_topic_for("sensor.office_temperature_low_threshold", "attributes"),
     )[-1]
+    forecast_evaluation = threshold_attributes.pop("forecast_evaluation")
+    assert forecast_evaluation["symptom_id"] == "RiskyTemperatureOfficeForeCast"
+    assert forecast_evaluation["status"] == "risk"
+    assert forecast_evaluation["modeled_temperature_c"] == 7.0
+    assert forecast_evaluation["threshold_c"] == 18.0
+    assert forecast_evaluation["evaluated_at"] is not None
     assert threshold_attributes == {
         "area_id": "office",
         "area_name": "Office",

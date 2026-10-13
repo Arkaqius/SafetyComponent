@@ -61,6 +61,27 @@ z oznaczeniem **Brak danych alarmowych**. Przy nieznanym stanie bez zapamiętane
 aktywnego alarmu pole **Alarm zagrożenia** pokazuje **Nie można ocenić**.
 Kontakt nie usuwa aktywnego alarmu ani usterki monitoringu.
 
+## Prognoza temperatury i kondycja jej danych
+
+W widoku **Temperatura** sprawdź ostatnią prognozę pomieszczenia razem z
+horyzontem, dolnym i górnym progiem oraz czasem oceny. Te dane pochodzą z
+backendu, z atrybutu `forecast_evaluation` istniejących encji
+`<source>_low_threshold` i `<source>_high_threshold`. Panel nie wylicza
+samodzielnie alarmu z temperatury i tempa zmian.
+
+Wynik ostatniej prognozy jest oddzielony od zakwalifikowanego alarmu
+`RiskyTemperatureForecast`. Wyniki mogą się różnić podczas potwierdzania
+przekroczenia albo ustąpienia. Nieznany wynik lub brak danych do obliczenia
+prognozy nie usuwa aktywnego alarmu; brak poprawnej prognozy oznacza brak
+prognozowanej wartości, a nie zachowanie poprzedniej jako aktualnej.
+
+Stan `healthy` encji `sensor.entity_health_temperature_forecast_<room>`
+potwierdza kondycję wejścia, w tym dostępność i poprawność liczbową tempa zmian.
+Nie oznacza, że prognozowana temperatura mieści się w granicach bezpieczeństwa.
+Sprawne dane mogą wskazywać rzeczywiste ryzyko. Zadania naprawcze lub oceny
+wykonania ścieżki **AppHealth** dotyczą działania aplikacji; ich brak nie
+potwierdza braku zagrożenia temperaturą.
+
 ## Rozruch po restarcie
 
 Po uruchomieniu lub restarcie backend zbiera i ocenia dane od razu, ale domyślnie
