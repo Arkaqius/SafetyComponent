@@ -274,8 +274,8 @@ configuration does not set recovery timing.
 | `effect_timeout_seconds` | `120` seconds | Observation deadline after an executed command; service acceptance is not completion. |
 | `manual_task_timeout_seconds` | `null` | Optional manual-task deadline. Null leaves manual work without a command-consent deadline. |
 
-Consent and effect durations shall be positive integer seconds; a manual-task
-duration shall be null or positive integer seconds. Optional per-action fields
+Consent and effect durations shall be integer seconds from 15 through 86400;
+a manual-task duration shall be null or an integer in the same range. Optional per-action fields
 with the same names shall refine system-owned action policy, not installation
 entity bindings. A non-default legacy
 `RecoveryResult.confirmation_timeout_seconds` value remains a compatibility

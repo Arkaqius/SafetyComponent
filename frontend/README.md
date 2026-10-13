@@ -235,8 +235,22 @@ bieżących encji Home Assistanta.
 ## Działania rekomendowane
 
 Karta działania pokazuje instrukcję, powód, źródło, ważność i bieżący etap
-wykonania. Zamknięcie zwykłego okna lub drzwi jest czynnością ręczną.
-Przycisk potwierdzenia pojawia się wyłącznie dla skonfigurowanej bramy
+wykonania, a także oczekiwany wynik i przyczynę ewentualnej blokady. Te same
+działania są widoczne przy powiązanej usterce i na liście działań.
+
+Zamknięcie zwykłego okna lub drzwi jest czynnością ręczną. Dla zadań, które
+dopuszczają zgłoszenie pracy, przycisk **Zgłoś wykonanie** wysyła informację
+o zakończeniu czynności. Przy naprawie wymagającej obserwacji system czeka
+na poprawny odczyt właściwego monitora. Przy zadaniu proceduralnym zgłoszenie
+kończy tylko tę czynność; nie oznacza potwierdzenia usunięcia zagrożenia.
+Zgłoszenie pracy nie kasuje usterki. Instrukcje doradcze nie mają przycisku
+zgłoszenia ani potwierdzenia wykonania przez system.
+
+Działanie zablokowane, w tym odtworzone po restarcie bez aktualnej oceny
+monitora, zachowuje instrukcję i historię, ale nie udostępnia zgłoszenia pracy
+ani zgody na komendę do czasu ponownej kwalifikacji.
+
+Osobny przycisk zgody na komendę pojawia się dla skonfigurowanej bramy
 garażowej i zewnętrznej. Frontend wysyła potwierdzenie do SafetyComponent przez
 uwierzytelnione połączenie Home Assistanta; nie wywołuje usługi bramy
 bezpośrednio. Nie potwierdzaj akcji, jeżeli nie masz pewności, że ruch bramy jest
