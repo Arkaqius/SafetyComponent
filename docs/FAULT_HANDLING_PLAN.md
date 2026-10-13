@@ -209,10 +209,42 @@ also preserves previously reported work across requalification rather than
 withdrawing it as an unrelated replacement.
 
 Corrective validation: 62 focused recovery/restart-report and localization tests
-passed. The corrected full-suite results and activation, deployed hash readback,
-post-grace runtime state and logs for the Dev35 package remain pending. The
-earlier dev33/dev34 evidence is not reused to claim that this correction is
-already running. No commit or push is implied by these checkpoints.
+passed. The corrected combined Dev35 package passed 890 backend tests with
+91.37% coverage, Ruff and the configured Mypy checks. Its unchanged frontend
+passed 120 tests, type checking, lint and a production build using Node 20.20.2.
+Documentation review validated 150 local links/anchors and 97 tables across
+13 documents; runtime translation keys have EN/PL/DE parity. Recovery source
+is recorded in commits `30bcca7` and `76f2b35` on
+`feature/recovery-refactor`; these are local commits, with no push implied.
+
+Dev35 deployment checkpoint (2026-10-13): Supervisor confirmed
+`0.3.1-dev35` installed and started in the separate Dev App. All 375 deployed
+files matched the prepared package; private configuration was unchanged. The
+previous Dev34 source and stopped private state were retained for rollback.
+Post-start SQLite checks returned integrity `ok`, no foreign-key errors,
+five unchanged detector-test records, one unchanged periodic-test record and preserved
+recovery outcomes. The backend confirmed completion of its 600-second startup
+grace at 00:04 local time. All seven components reported observed evaluations
+with zero execution failures and missed deadlines; the health endpoint returned
+HTTP 200 and the current boot log contained no errors or warnings.
+
+The active `BackupNeedsAttention` fault had an available manual `owner_clear`
+task with authenticated reporting capability. The restored battery fault remained
+`NOT_EVALUATED` and inactive; its retained task was `DO_NOT_PERFORM` with
+`owner_unverified`, reporting disabled and no public report capability. This
+confirms the restoration correction against the real case that exposed it.
+At the first post-grace checkpoint, coverage remained `UNKNOWN`, with eight
+unavailable inputs; successful deployment did not establish full monitoring
+coverage. A follow-up read at 06:52 local time confirmed Dev35 still running,
+another completed startup, zero component execution failures or missed deadlines,
+coverage `FULL`, no unavailable Entity Monitor inputs and a `degraded` summary
+(17 healthy and 28 degraded sources). `FULL` coverage does not clear the active
+backup fault or imply that every source is healthy. The deployed source hashes
+and unchanged private configuration were reverified at that follow-up.
+
+UI inspection used the local mock application; live Ingress UI verification was
+not available through the inspection tool. No live manual-work reports or
+actuator tests were performed, and production was not deployed by this workflow.
 
 Heating monitoring remains a normative C-HVAC allocation: this checkout has no
 heating-monitor component or installed heating-fault producer. Its model-specific
