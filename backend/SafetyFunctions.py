@@ -321,10 +321,11 @@ class SafetyFunctions(hass.Hass):
             self.sm_modules[self.functional_safety_monitor.component_name] = (
                 self.functional_safety_monitor
             )
-            symptoms, _ = self.functional_safety_monitor.get_symptoms_data(
+            symptoms, recoveries = self.functional_safety_monitor.get_symptoms_data(
                 self.sm_modules, {}
             )
             self.symptoms.update(symptoms)
+            self.recovery_actions.update(recoveries)
             self.fault_dict.update(self.functional_safety_monitor.get_fault_definitions())
 
         hazard_targets = {
@@ -343,6 +344,7 @@ class SafetyFunctions(hass.Hass):
         self.symptoms.update(self.self_diagnostics.add_targeted_causes(
             hazard_targets, hazard_targets.intersection(self.recovery_actions)
         ))
+        self.recovery_actions.update(self.self_diagnostics.get_recovery_actions())
 
         for fault_name in inactive_fault_names:
             if self.fault_dict.pop(fault_name, None) is not None:
@@ -537,6 +539,7 @@ class SafetyFunctions(hass.Hass):
                 entity_monitor.record_recovery_command
                 if entity_monitor is not None else None
             ),
+            timing=self.runtime_config["user_config"].get("recovery", {}).get("timing", {}),
         )
         for component in self.sm_modules.values():
             if callable(getattr(component, "evaluate_recovery_policy", None)):

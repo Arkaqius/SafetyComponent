@@ -249,10 +249,10 @@ test('basic recommendations use the same expiry guard and modal keyboard boundar
     window.__safetyHomeMock.update({ entities });
   });
   await expect(page.locator('.basic-action')).toContainText('Zalecenie wygasło');
-  const opener = page.getByRole('button', { name: 'Sprawdź i potwierdź działanie', exact: true });
+  const opener = page.getByRole('button', { name: 'Wszystkie zalecenia', exact: true });
   await opener.click();
   await expect(page.getByRole('dialog')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Potwierdź zamknięcie', exact: true })).toBeDisabled();
+  await expect(page.getByRole('dialog').getByRole('button', { name: 'Zezwól na wykonanie', exact: true })).toBeDisabled();
   for (let index = 0; index < 8; index++) {
     await page.keyboard.press('Tab');
     expect(await page.evaluate(() => !!document.activeElement?.closest('dialog'))).toBe(true);
@@ -301,8 +301,17 @@ test('help supports tap, light dismissal and viewport boundaries', async ({ page
   await openMock(page, '/temperature');
   const trigger = page.getByRole('button', { name: 'Wyjaśnienie: Tempo zmiany temperatury', exact: true }).first();
   await trigger.scrollIntoViewIfNeeded();
-  if (isMobile) await trigger.tap();
-  else await trigger.click();
+  const toggleAtCurrentPosition = async () => {
+    const position = await trigger.boundingBox();
+    expect(position).not.toBeNull();
+    const x = position!.x + position!.width / 2;
+    const y = position!.y + position!.height / 2;
+    // Locator auto-scrolling can dismiss the popover before a second tap.
+    // Exercise the same visible target without moving the viewport.
+    if (isMobile) await page.touchscreen.tap(x, y);
+    else await page.mouse.click(x, y);
+  };
+  await toggleAtCurrentPosition();
   await expect(page.getByRole('tooltip')).toContainText('°C/min');
   const bounds = await page.getByRole('tooltip').boundingBox();
   const viewport = page.viewportSize()!;
@@ -315,15 +324,16 @@ test('help supports tap, light dismissal and viewport boundaries', async ({ page
     expect(target!.width).toBeGreaterThanOrEqual(44);
     expect(target!.height).toBeGreaterThanOrEqual(44);
   }
-  await page.screenshot({ path: testInfo.outputPath('tooltip.png'), scale: 'css' });
-  if (isMobile) await trigger.tap();
-  else await trigger.click();
+  await toggleAtCurrentPosition();
   await expect(page.getByRole('tooltip')).toHaveCount(0);
-  if (isMobile) await trigger.tap();
-  else await trigger.click();
+  await toggleAtCurrentPosition();
   await expect(page.getByRole('tooltip')).toBeVisible();
   await page.locator('.temperature-reading').first().click();
   await expect(page.getByRole('tooltip')).toHaveCount(0);
+  await toggleAtCurrentPosition();
+  await expect(page.getByRole('tooltip')).toBeVisible();
+  // Keep artifact capture after the interaction assertions.
+  await page.screenshot({ path: testInfo.outputPath('tooltip.png'), scale: 'css' });
 });
 
 test('source observations use the same accessible help and scrolling dismisses it', async ({ page, isMobile }) => {
@@ -510,6 +520,7 @@ test('gate confirmation sends only current proposal ID and token after explicit 
         proposals: [
           {
             proposal_id: 'test-current-proposal',
+            proposal_instance_id: 'test-current-incident',
             status: 'AWAITING_CONFIRMATION',
             instruction: 'Zamknij bramę testową',
             execution_policy: 'user_confirmed',
@@ -521,7 +532,7 @@ test('gate confirmation sends only current proposal ID and token after explicit 
     };
     window.__safetyHomeMock.update({ entities });
   });
-  const confirm = page.getByRole('button', { name: 'Potwierdź zamknięcie', exact: true });
+  const confirm = page.getByRole('button', { name: 'Zezwól na wykonanie', exact: true });
   page.once('dialog', dialog => dialog.dismiss());
   await confirm.click();
   expect(
@@ -538,7 +549,11 @@ test('gate confirmation sends only current proposal ID and token after explicit 
   expect(message).toEqual({
     type: 'fire_event',
     event_type: 'safety_recovery_confirm',
-    event_data: { proposal_id: 'test-current-proposal', confirmation_token: 'test-onetime-token' },
+    event_data: {
+      proposal_id: 'test-current-proposal',
+      proposal_instance_id: 'test-current-incident',
+      confirmation_token: 'test-onetime-token',
+    },
   });
   expect(await page.evaluate(() => window.__safetyHomeMock.messages.some(item => item.type === 'call_service'))).toBe(false);
 });

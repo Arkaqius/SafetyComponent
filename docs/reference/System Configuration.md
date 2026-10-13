@@ -263,9 +263,27 @@ retry, delivery deadlines, level-one repetition, and persistence. Private
 configuration owns only destinations, the default UI URL, optional local
 annunciators, and WAN evidence.
 
-`runtime_cfg.recovery` owns persistence for proposed and confirmed recovery
-actions. Installation assets and actuation eligibility remain in the private
-opening/room registry.
+`runtime_cfg.recovery` owns persistence for proposals, manual-work reports and
+bounded action outcomes, and separate recovery timing. Installation assets and
+actuation eligibility remain in the private opening/room registry; installation
+configuration does not set recovery timing.
+
+| `runtime_cfg.recovery.timing` field | Packaged default | Meaning |
+| --- | --- | --- |
+| `consent_timeout_seconds` | `120` seconds | Validity of a pending command-consent request. Expiry authorizes no command. |
+| `effect_timeout_seconds` | `120` seconds | Observation deadline after an executed command; service acceptance is not completion. |
+| `manual_task_timeout_seconds` | `null` | Optional manual-task deadline. Null leaves manual work without a command-consent deadline. |
+
+Consent and effect durations shall be integer seconds from 15 through 86400;
+a manual-task duration shall be null or an integer in the same range. Optional per-action fields
+with the same names shall refine system-owned action policy, not installation
+entity bindings. A non-default legacy
+`RecoveryResult.confirmation_timeout_seconds` value remains a compatibility
+fallback for consent/effect when the corresponding per-action field is absent;
+otherwise the separate system defaults apply. Persistence settings remain
+unchanged. These optional timing fields introduce no independent version in
+generated runtime configuration and do not change the source-model version
+contract between `system_config.version` and `user_config.model_version`.
 
 Enabled runtime persistence uses the shared SQLite database described in
 [Runtime State Storage](<../features/Runtime State Storage - Architecture.md>).

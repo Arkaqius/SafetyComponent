@@ -373,6 +373,20 @@ Optional checks are generic channel-health diagnostics. Safety-specific
 thresholds, such as unsafe room temperature, remain in the owning Safety
 Component and are not duplicated here.
 
+In particular, `sensor.entity_health_temperature_forecast_<room>` supervises
+the room's derivative input, including availability and finite-number checks.
+A `healthy` result means those input checks pass; it does not compare the
+modeled room temperature with its safety limits. Valid available inputs may
+still predict a dangerous temperature. C-TEMP shall publish its last low/high
+forecast predicate observations in the existing threshold sensors'
+`forecast_evaluation` attributes, separately from the qualified
+`RiskyTemperatureForecast` fault and its active contributors. The last
+observation and the qualified fault may differ while debounce is in progress.
+An application-health evaluation diagnostic or a repair proposal for a failed
+evaluator concerns successful execution of that path, not whether its
+temperature predicate detects a hazard. Operator views shall retain these
+three meanings: input health, predicate observation, and qualified alarm.
+
 Rate-of-change evaluation may reuse numeric sampling utilities from
 `DerivativeMonitor`, but Entity Monitor owns its check result, calibration, and
 fault semantics. The rate is `(newest_value - oldest_value) / elapsed_time`
@@ -484,7 +498,15 @@ C-ENT uses the following stable contract when it owns a failure:
 | Symptom | `EntityHealthFailure{EntityKey}{CheckKey}` |
 | Fault | `EntityHealth{EntityKey}` |
 | Level | 3 |
-| Recovery action | None |
+| Recovery action | Cause-specific manual repair; no actuator command |
+
+The owner shall supply repair proposals under the
+[shared recovery contract](<Recommended Actions and Recovery - Architecture.md>),
+naming the affected entity and failed availability, freshness or value path.
+Positive recovery of that cause shall complete its observed repair action;
+operator-reported inspection shall not establish that the source is healthy.
+Group B repair actions shall follow their declared fault owner, preserving one
+action for a shared failed path. Passive Group C inventory shall create none.
 
 Each C-ENT-owned Group A entity has its own fault. All active check symptoms
 for that entity aggregate into the same fault; symptoms belonging to another
@@ -738,7 +760,8 @@ Strict validation rejects:
 - Two-field monitor calibration, legacy alias normalization/conflict rejection,
   derived scheduling and preservation of allocated detection budgets.
 - Stable MQTT IDs and bounded attributes.
-- No RecoveryManager registration or actuator service calls.
+- Cause-specific manual recovery registration and valid recovery evidence;
+  no actuator service calls or recovery creation from passive Group C inventory.
 
 ### 17.2 Backend integration tests
 

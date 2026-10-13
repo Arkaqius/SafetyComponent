@@ -8,7 +8,8 @@ contract changes are implemented by this document.
 Baseline inspected: `a2b5c17`, branch
 `feature/public-repository-sanitization`. Local installation configuration
 `backend/config/user_config.yml` and generated `backend/app_cfg.yaml` were absent;
-the public example was inspected. No live installation claims are made.
+the public example was inspected. That initial analysis made no live installation
+claims; the dated recovery delivery evidence below has a separate scope.
 
 Branch preparation base (2026-09-30): public `Arkaqius/SafetyComponent` main at
 `ff8f4d3bdfdedb64aa13c29e6f130f62327fcbc4`. This is newer than the analysis
@@ -20,6 +21,241 @@ does not constitute a fresh runtime audit or implementation of its proposals.
 Terminology: [Glossary](#0-glossary). Definitions describe this plan's target
 architecture unless explicitly marked as legacy. They do not change current
 runtime contracts or resolve the open policy choices listed at the glossary's end.
+
+### Recovery documentation update (2026-10-12)
+
+The recovery requirements now cover manual work as well as supported automatic
+or user-confirmed commands. The normative contract is
+[SYS §8.10](<sys/SafetyConcept - SYS.md#810-recommended-actions-and-recovery>),
+[SSRD §4.5](<sys/SafetyComponent - SSRD.md#45-notifications-and-recovery>) and
+[Recommended Actions and Recovery](<features/Recommended Actions and Recovery - Architecture.md>).
+The recovery allocation there supersedes older no-action defaults in this plan.
+HARA hazards, classifications and safety goals are unchanged: manual response is
+not credited as a guaranteed response within an FTTI. Runtime identifiers,
+configuration schemas and installation examples are unchanged by this update.
+
+Implementation evidence was reviewed at `860c84b`, branch
+`feature/temperature-forecast-sampling`, including the existing uncommitted
+backend work. Local `backend/config/user_config.yml` and `backend/app_cfg.yaml`
+were absent. Low-temperature window actions and external-opening manual/confirmed
+actions exist; indoor hazard advice is delivered through notification context.
+Door, entity-health, high-temperature and functional-safety manual proposals,
+general manual-work reporting, durable recent action outcomes and unified fault
+card presentation remain implementation work. Central manual-policy command
+rejection and withdrawal after empty/rejected replacements also require fixes.
+Passing existing tests shall not be treated as evidence of those new contracts.
+
+Delivery sequence:
+
+1. Enforce execution-policy validation, stale-proposal withdrawal, completion
+   methods, visible block reasons and bounded outcome persistence in RecoveryManager.
+2. Add manual close, device-specific battery work and cause-specific unavailable
+   input repair, including fresh result evidence and independent contributors.
+3. Add authenticated reports for useful manual/procedural tasks, and show the
+   same actions at their faults and in the shared list. Keep completion reports,
+   command consent and fault acknowledgement distinct.
+4. Extend the remaining diagnostic, indoor-hazard, temperature and heating
+   allocations using their owner contracts and EN/PL/DE runtime translations.
+
+Each delivery step requires its own regression evidence. Detailed target cases
+are specified by SWR-REC-018 and the recovery architecture's verification section.
+
+Documentation validation on 2026-10-12: the full backend suite passed 825 tests
+with 91.18% coverage; Ruff and Mypy passed. Frontend tests passed 106 cases;
+type checking, lint and build passed. Tests/build required execution outside
+the subprocess restriction after initial `spawn EPERM` failures. Frontend
+format checking reported existing issues in 64 untouched files. Technical
+documentation remains English; runtime translations are unchanged and their
+EN/PL/DE key-parity test passed. These results validate the existing baseline,
+not completion of the implementation items above.
+
+### Recovery refactor implementation slice (2026-10-12)
+
+The implementation is isolated on `feature/recovery-refactor`, based on
+`860c84b`. The unrelated uncommitted backend changes from the source checkout
+are not included in this branch. The slice was subsequently deployed to the
+separate Dev App as `0.3.1-dev33`; that historical deployment is recorded below.
+No household actuator was commanded as a verification step.
+
+This slice delivers manual close proposals for configured Safety Doors,
+device-specific battery instructions and input-health repair guidance for
+fault-owned Entity Monitor checks. Passive inventory and command-effect checks
+do not gain generic input-repair actions. Input repair completion belongs to
+the individual contributor's qualified clear; door completion requires current
+closed contact evidence, including the owner's closed-state aliases. A door
+clear caused by its monitoring condition becomes a withdrawal rather than a
+claim that the door was closed. Recovery never directly changes fault state.
+
+RecoveryManager rejects manual actuator commands and unsupported policies at
+the shared boundary. Empty/rejected replacements withdraw stale proposals,
+guidance and observation/timer handles. Repeated matching proposals preserve
+identity and deadlines and do not repeat commands. Consent is revalidated
+against both command targets and observed postconditions; restart rotates
+tokens without extending a saved consent deadline or replaying a command.
+Manual work has no command-consent deadline. Recent outcomes retain at most
+100 allowlisted records, without confirmation tokens or arbitrary payloads;
+the recovery entity exposes the latest three results for its action.
+
+SafetyHome's shared list displays the executor, expected result and last action
+outcome separately from the current proposal state. Existing low-temperature
+window recovery now declares manual versus automatic execution explicitly.
+New backend text has matching EN/PL/DE keys; the frontend remains Polish.
+
+Regression evidence is in
+[manual recovery contracts](../backend/tests/test_recovery_manual_contract.py),
+[existing recovery contracts](../backend/tests/test_recovery_man.py), the
+component tests listed below and `frontend/src/domain/safety.test.ts`.
+This covers SWR-REC-010 and parts of SWR-REC-009/012/013/015/016/017/018;
+it does not establish full implementation of the expanded recovery allocation.
+At the dev33 delivery checkpoint, authenticated manual-work reports
+(SWR-REC-011), fault-card integration,
+operator-visible block reasons, evidence-time attribution, distinct configurable
+consent/postcondition deadlines and the remaining component families still
+required implementation. An unavailable input cannot be reported repaired by
+pressing a completion button.
+
+Initial slice validation: 820 backend tests passed with 91.30% coverage; Ruff
+and the configured Mypy checks passed. Frontend tests passed 107 cases; type
+checking, lint and production build passed. The three changed frontend files
+passed Prettier. Repository-wide formatting retained baseline debt, including
+checkout line-ending differences; no unrelated formatting changes were applied.
+Changed documentation links, anchors, tables and paths and `git diff --check`
+were checked locally. Later checkpoints below supersede these historical counts.
+
+### Dev33 deployment evidence (2026-10-12)
+
+The local deployment report records `0.3.1-dev33` running in
+`local_safety_component_dev`, with 369 deployed files verified and private
+installation configuration unchanged. The post-startup snapshot at
+2026-10-12 18:08:31 Europe/Warsaw records completion of the 600-second diagnostic
+grace window, zero component-execution failures and no warnings or errors in
+the inspected current-boot logs. A naturally observed garage-door closure
+produced a durable `CONFIRMED` action outcome; a low-battery manual proposal
+remained pending fresh battery evidence. This observation does not establish
+an actuator test or complete the general manual-report contract.
+
+State verification found SQLite integrity `ok`, no foreign-key errors and
+unchanged detector/periodic-test records. Deployment validation recorded 845
+backend tests, 91.17% coverage and 107 frontend tests. Frontend health returned
+HTTP 200; visual browser verification remained limited by the local-address
+and Ingress access paths. These are dated historical results, not evidence for
+changes made after dev33.
+
+### Recovery completion evidence and allocation gaps
+
+Local completion checkpoint (2026-10-12): the combined validation package based
+on Dev32 includes its coverage corrections and the completed recovery work for
+current monitor owners. It implements authenticated manual-work reports with
+server-derived actor/time, a current proposal/incident instance and a separate
+one-time report token; observed, procedural and advisory semantics; visible
+blocked reasons; shared fault-card/action-list presentation; and distinct
+system-owned consent/effect/optional manual deadlines. Reports for observed
+repairs remain pending owner-qualified evidence. Procedural reports complete
+their named task without directly clearing a fault; urgent advisory guidance
+has no report control or manual-task completion deadline.
+
+Current allocations cover Safety Doors, Entity Monitor input/recovery/detector
+checks, low-temperature window work and manual fallback, high-temperature room
+inspection, external exposure and missing data capabilities, binary indoor
+smoke/gas/CO/leak guidance and detector repair, provider/App Health paths, and
+Functional Safety Monitor platform/maintenance/battery work. Provider paths,
+delivery targets, persistence operations and independent fault contributors
+retain their own repair evidence. These allocations preserve existing actuator
+permissions; the new diagnostic and procedural work sends no actuator commands.
+Approved operational-test attestations continue to follow their owning monitor's
+existing policy rather than treating a general work report as a passed test.
+
+The final manager review corrected two reproduced defects: a cleared
+higher-priority fault no longer blocks matching recovery unless its active/latch
+policy still applies, and failed durable report saves retain the pending task's
+guidance and deadline. Failed configured persistence blocks report acceptance
+and command dispatch; storage failures cannot manufacture a completed task or
+replay a command.
+Observed completion rechecks the relevant recovery restriction. Completion
+verification time remains distinct from a device's source measurement time.
+
+Pre-Dev34 combined local validation: 889 backend tests passed with 91.37% coverage; Ruff
+passed and the configured Mypy checks passed for four source files. Frontend
+validation passed 120 tests, type checking, lint and production build. Changed
+frontend formatting passed; the repository-wide format check retained 81
+baseline issues, with no unrelated formatting rewrite. The recovery evidence
+includes [manager/manual contracts](../backend/tests/test_recovery_manual_contract.py),
+[current-owner allocations](../backend/tests/test_recovery_allocations.py),
+[application integration](../backend/tests/test_system_notification_recovery.py),
+and [shared frontend cards](../frontend/src/components/RecoveryCard.test.tsx).
+
+Dev34 deployment checkpoint: the 375-file package was activated as
+`0.3.1-dev34` in the separate Dev App. The App was started and completed its
+600-second diagnostic grace window. Deployed file readback and the private
+configuration hash were unchanged relative to the prepared package. SQLite
+verification reported integrity `ok`, no foreign-key errors, unchanged detector
+and periodic-test records, and preserved recovery outcomes. These checks establish
+package/state continuity, not that every restored task is currently actionable.
+
+Post-grace inspection found a real restoration defect: a saved low-battery
+proposal remained `TO_PERFORM` while its owning fault was `NOT_EVALUATED`,
+inactive and awaiting valid current source evidence. Its missing report capability
+also showed that the old proposal had not yet been requalified under the new
+action contract. The stale task presentation could imply current evidence that
+the owner did not have.
+
+The local corrective change projects a restored non-advisory manual task whose
+owner is `NOT_TESTED` as `DO_NOT_PERFORM`, with the localized `owner_unverified`
+reason and no report or command-consent capability. It preserves the instruction,
+history and passive observation and does not mark the task completed. When the
+owner qualifies a current `SET`, the current task and its permitted report
+capability become available. Normalizing an empty restored actuator identity
+also preserves previously reported work across requalification rather than
+withdrawing it as an unrelated replacement.
+
+Corrective validation: 62 focused recovery/restart-report and localization tests
+passed. The corrected combined Dev35 package passed 890 backend tests with
+91.37% coverage, Ruff and the configured Mypy checks. Its unchanged frontend
+passed 120 tests, type checking, lint and a production build using Node 20.20.2.
+Documentation review validated 150 local links/anchors and 97 tables across
+13 documents; runtime translation keys have EN/PL/DE parity. Recovery source
+is recorded in commits `30bcca7` and `76f2b35` on
+`feature/recovery-refactor`; these are local commits, with no push implied.
+
+Dev35 deployment checkpoint (2026-10-13): Supervisor confirmed
+`0.3.1-dev35` installed and started in the separate Dev App. All 375 deployed
+files matched the prepared package; private configuration was unchanged. The
+previous Dev34 source and stopped private state were retained for rollback.
+Post-start SQLite checks returned integrity `ok`, no foreign-key errors,
+five unchanged detector-test records, one unchanged periodic-test record and preserved
+recovery outcomes. The backend confirmed completion of its 600-second startup
+grace at 00:04 local time. All seven components reported observed evaluations
+with zero execution failures and missed deadlines; the health endpoint returned
+HTTP 200 and the current boot log contained no errors or warnings.
+
+The active `BackupNeedsAttention` fault had an available manual `owner_clear`
+task with authenticated reporting capability. The restored battery fault remained
+`NOT_EVALUATED` and inactive; its retained task was `DO_NOT_PERFORM` with
+`owner_unverified`, reporting disabled and no public report capability. This
+confirms the restoration correction against the real case that exposed it.
+At the first post-grace checkpoint, coverage remained `UNKNOWN`, with eight
+unavailable inputs; successful deployment did not establish full monitoring
+coverage. A follow-up read at 06:52 local time confirmed Dev35 still running,
+another completed startup, zero component execution failures or missed deadlines,
+coverage `FULL`, no unavailable Entity Monitor inputs and a `degraded` summary
+(17 healthy and 28 degraded sources). `FULL` coverage does not clear the active
+backup fault or imply that every source is healthy. The deployed source hashes
+and unchanged private configuration were reverified at that follow-up.
+
+UI inspection used the local mock application; live Ingress UI verification was
+not available through the inspection tool. No live manual-work reports or
+actuator tests were performed, and production was not deployed by this workflow.
+
+Heating monitoring remains a normative C-HVAC allocation: this checkout has no
+heating-monitor component or installed heating-fault producer. Its model-specific
+recovery cannot be implemented by inventing generic heating faults in
+RecoveryManager. The remaining heating monitor and its rule/equipment evidence
+are a separate implementation gap. Recovery coverage for an absent owner shall
+not be claimed from generic guidance or from passing shared-manager tests.
+The indoor PM2.5 allocation likewise requires its own concentration/window
+monitoring evidence; the existing binary smoke/gas/CO/leak paths do not implement
+that monitor. Indoor PM recovery shall not be claimed merely by adding a text
+instruction to the binary detector component.
 
 ## 0. Glossary
 
@@ -337,8 +573,9 @@ For example, proposed `TemperatureRecoveryUnavailable` has class D, level 3,
 notification profile 3, no latch, and no automatic repair. Its explicit
 `degrades` list targets `RiskyTemperature` and `RiskyTemperatureForecast`, only
 their affected room's recovery capability. It does not disable temperature
-detection. `SafetyDoorOpenTimeout{DoorKey}` instead uses level 2, no recovery
-action by default, and explicitly permits temporary/permanent operator control.
+detection. `SafetyDoorOpenTimeout{DoorKey}` uses level 2 and a manual close
+action with contact-based completion under the shared recovery contract; its
+separate temporary/permanent operator-control proposal does not complete that action.
 
 Resolution order: validate configuration and bindings; apply evaluation/input
 eligibility; aggregate Boolean evidence and advance fault state; capture evidence
@@ -412,7 +649,7 @@ is narrowed by the failed contributor, never applied wholesale by class/priority
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | M01 / I | Temperature | `sm_tc_1`, `sm_tc_3`; direct low/high by room | `RiskyTemperature` retained | H / L2 | Existing low-temperature recovery only when eligible; shadows M02 | Not D | Hazard itself does not disable monitoring. |
 | M02 / I | Temperature | `sm_tc_2`, `sm_tc_4`; forecast low/high by room | `RiskyTemperatureForecast` retained | H / L3 | Configured low-temperature guidance/recovery; shadowed by M01 | Not D | Keep forecast evidence while its response is shadowed. |
-| M03 / R | Safety Doors | `sm_safety_door_open_timeout`; one door/gate | Shared `SafetyDoorOpenTimeout` -> `SafetyDoorOpenTimeout{DoorKey}` | H / L2 | None by default; per-door temporary/permanent override allowed | Not D | One subject, no effect on other doors or contact health. |
+| M03 / R | Safety Doors | `sm_safety_door_open_timeout`; one door/gate | Shared `SafetyDoorOpenTimeout` -> `SafetyDoorOpenTimeout{DoorKey}` | H / L2 | Manual close with valid closed-contact evidence; no actuator command; operator override remains separate | Not D | One subject, no effect on other doors or contact health. |
 | M04 / I | External Hazard | `sm_ext_weather_exposure`; hazard x opening | `ExternalWeatherExposure` retained | H / L2 | Manual closure or eligible user-confirmed directional cover closure | Not D | Explicit postcondition and conflict checks. |
 | M05 / I | External Hazard | `sm_ext_outdoor_air_quality_exposure`; opening | `OutdoorAirQualityExposure` retained | H / L3 | Manual closure / explicitly supported confirmed closure | Not D | Constrain conflicting ventilation advice, not all monitoring. |
 | M06 / I | External Hazard | `sm_ext_provider_unavailable`; required weather/AQ capability | `ExternalDataUnavailable`, capability contributor | D / L3 | Repair required data path; no actuation | H-EXT | Evaluation/advice/recovery requiring the missing capability only; retain independent valid weather/AQ evidence. |
@@ -778,4 +1015,5 @@ Before each implementation PR, synchronize its affected normative documents,
 configuration/compiler/schema, tests and public contract consumers. Keep HARA at
 hazards and safety goals. Technical docs remain English; new runtime/operator
 text requires EN/PL/DE parity. This planning-only change introduces no runtime
-translations or evidence of deployment.
+translations by itself. The dated delivery sections above separately record
+implementation and deployment evidence and their remaining limits.

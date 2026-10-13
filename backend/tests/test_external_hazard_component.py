@@ -159,11 +159,7 @@ def _component() -> tuple[ExternalHazardComponent, FakeHass, FakeMqtt, list[dict
     symptoms, recovery = component.get_symptoms_data(
         {component.component_name: component}, config
     )
-    assert set(recovery) == {
-        name
-        for name in symptoms
-        if not name.startswith("ExternalHazardDataUnavailable")
-    }
+    assert set(recovery) == set(symptoms)
     for symptom in symptoms.values():
         assert component.init_safety_mechanism(
             symptom.sm_name, symptom.name, symptom.parameters

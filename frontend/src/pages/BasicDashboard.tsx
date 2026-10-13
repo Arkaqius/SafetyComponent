@@ -5,7 +5,7 @@ import Icon from '../components/Icon';
 import ModalDialog from '../components/ModalDialog';
 import { basicDashboardItems } from '../domain/basicDashboard';
 import { getCoverageView } from '../domain/coverage';
-import { recoveryConfirmationBlock } from '../domain/recoveryConfirmation';
+import RecoveryActionCard from '../components/RecoveryActionCard';
 import { formatRelativeTime } from '../domain/safety';
 import { useSafetyEntities } from '../hooks/useSafetyEntities';
 
@@ -19,16 +19,6 @@ export default function BasicDashboard({ onExpand }: { onExpand: () => void }) {
     coverage.state !== 'FULL' ||
     entityMonitorSummary.total === 0 ||
     entityMonitorSummary.unavailable + entityMonitorSummary.degraded + entityMonitorSummary.stale > 0;
-  const confirmationBlock =
-    primaryRecovery?.status === 'awaiting_confirmation' ? recoveryConfirmationBlock(primaryRecovery, connected) : null;
-  const expired = Boolean(
-    primaryRecovery &&
-      ((primaryRecovery.expiresAt !== undefined &&
-        (!Number.isFinite(primaryRecovery.expiresAt) || primaryRecovery.expiresAt * 1000 <= Date.now())) ||
-        (primaryRecovery.validUntil !== undefined &&
-          (!Number.isFinite(Date.parse(primaryRecovery.validUntil)) || Date.parse(primaryRecovery.validUntil) <= Date.now())))
-  );
-  const uncertainRecovery = primaryRecovery && ['unknown', 'unavailable'].includes(primaryRecovery.status);
   const [actionsOpen, setActionsOpen] = useState(false);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const closeActions = useCallback(() => setActionsOpen(false), []);
@@ -76,25 +66,9 @@ export default function BasicDashboard({ onExpand }: { onExpand: () => void }) {
         <h3 id='basic-action-title'>{!connected && primaryRecovery ? 'Ostatnie znane zalecenie' : 'Co zrobić teraz'}</h3>
         {primaryRecovery ? (
           <>
-            <strong>{primaryRecovery.name}</strong>
-            <p>
-              {expired
-                ? 'Zalecenie wygasło. Poczekaj na aktualną propozycję.'
-                : uncertainRecovery
-                  ? 'Nie można potwierdzić aktualnego zalecenia. Sprawdź jego szczegóły.'
-                  : primaryRecovery.instruction ||
-                    primaryRecovery.description ||
-                    'System nie przekazał instrukcji. Sprawdź szczegóły zalecenia.'}
-            </p>
-            {confirmationBlock && <p className='basic-action-note'>{confirmationBlock}</p>}
-            {(primaryRecovery.status === 'failed' || primaryRecovery.status === 'timed_out') && (
-              <p className='basic-action-note'>Działanie nie zakończyło się poprawnie. Sprawdź szczegóły.</p>
-            )}
-            {primaryRecovery.status === 'executing' && (
-              <p className='basic-action-note'>Działanie w trakcie — wynik nie jest jeszcze potwierdzony.</p>
-            )}
+            <RecoveryActionCard compact recovery={primaryRecovery} />
             <button className='basic-action-button' onClick={() => setActionsOpen(true)} type='button'>
-              {primaryRecovery.status === 'awaiting_confirmation' ? 'Sprawdź i potwierdź działanie' : 'Zobacz zalecenia'}
+              Wszystkie zalecenia
               {attentionRecoveries.length > 1 ? ` (${attentionRecoveries.length})` : ''}
             </button>
           </>

@@ -1731,7 +1731,10 @@ details summary:focus-visible {
 
 .recovery-card-copy small {
   color: var(--text-muted);
+  display: block;
   font-size: 0.68rem;
+  line-height: 1.5;
+  margin-top: 3px;
 }
 
 .recovery-card-copy code {
@@ -2839,6 +2842,30 @@ details summary:focus-visible {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   margin: 0;
   padding-top: 13px;
+}
+
+.temperature-forecast-explanation,
+.temperature-forecast p {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.temperature-forecast {
+  border-top: 1px solid var(--border);
+  margin-top: 15px;
+  padding-top: 13px;
+}
+
+.temperature-forecast h4 {
+  font-size: 0.82rem;
+  margin: 0 0 8px;
+}
+
+.temperature-forecast .temperature-details {
+  border-top: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding-top: 0;
 }
 
 .temperature-details dt {
@@ -4570,6 +4597,8 @@ dialog.entity-dialog-backdrop::backdrop { background: rgba(0, 0, 0, 0.65); }
 .basic-action strong { font-size: 1rem; }
 .basic-action p { margin: 8px 0 16px; color: var(--text-soft); font-size: 1.125rem; line-height: 1.55; overflow-wrap: anywhere; }
 .basic-action .basic-action-note { color: var(--warning); font-size: 1rem; }
+.basic-action .recovery-card { display: block; padding: 0 0 8px; }
+.basic-action .recovery-card-icon { display: none; }
 .configuration-entity-picker { position: relative; min-width: 0; }
 .configuration-entity-picker > input { width: 100%; }
 .configuration-entity-suggestions { position: absolute; z-index: 20; top: 100%; left: 0; right: 0; padding: 4px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface); box-shadow: 0 8px 24px rgb(0 0 0 / 18%); }

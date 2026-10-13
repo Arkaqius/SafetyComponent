@@ -15,6 +15,7 @@ from components.notification_manager.schema import (
     PersistenceConfig,
     RetryPolicy,
 )
+from components.recovery_manager.schema import RecoveryTiming
 from components.safetycomponents.entity_monitor.schema import ComponentEntityOverride
 from components.safetycomponents.internal_environmental_hazard.schema import (
     BinaryDetectorProfile,
@@ -233,6 +234,7 @@ class RecoveryRuntimeSource(SystemSourceModel):
     """Recovery runtime persistence policy."""
 
     persistence: PersistenceConfig
+    timing: RecoveryTiming = Field(default_factory=RecoveryTiming)
 
 
 class RuntimeSource(SystemSourceModel):

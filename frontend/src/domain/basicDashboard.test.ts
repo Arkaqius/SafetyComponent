@@ -46,3 +46,24 @@ test('brief keeps failed and uncertain recommendations visible, excluding comple
   assert.deepEqual(brief.attentionRecoveries.map(recovery => recovery.status).sort(), ['failed', 'unavailable']);
   assert.ok(brief.primaryRecovery);
 });
+
+test('basic operator flow selects the exact primary fault action ahead of unrelated proposals', () => {
+  const entities: EntityMap = {
+    'sensor.fault_emergency': { state: 'FAIL', attributes: { fault_id: 'Emergency', active: true, level: 1 } },
+    'sensor.recovery_unrelated': {
+      state: 'FAILED',
+      attributes: { proposals: [{ proposal_id: 'unrelated', fault_id: 'BatteryLow', status: 'FAILED' }] },
+    },
+    'sensor.recovery_emergency': {
+      state: 'TO_PERFORM',
+      attributes: {
+        proposals: [
+          { proposal_id: 'related', fault_id: 'Emergency', status: 'TO_PERFORM', execution_policy: 'manual', manual_report_allowed: true },
+        ],
+      },
+    },
+  };
+  const brief = basicDashboardItems(getFaults(entities), getRecoveries(entities));
+  assert.equal(brief.primaryRecovery?.proposalId, 'related');
+  assert.equal(brief.attentionRecoveries.length, 2);
+});

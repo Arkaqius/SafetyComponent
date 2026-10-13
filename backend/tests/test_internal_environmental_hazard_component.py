@@ -116,7 +116,7 @@ def _build_component(
         {component.component_name: component},
         _configuration(health_failure_seconds=health_failure_seconds, include_leak=include_leak),
     )
-    assert recovery == {}
+    assert set(recovery) == set(symptoms)
     for symptom in symptoms.values():
         assert component.init_safety_mechanism(
             symptom.sm_name, symptom.name, symptom.parameters

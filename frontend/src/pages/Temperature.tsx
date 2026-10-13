@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import Icon from '../components/Icon';
 import HelpTooltip from '../components/HelpTooltip';
-import { formatNumeric, formatRelativeTime, trendPresentation, type TemperatureView } from '../domain/safety';
+import { formatNumeric, formatRelativeTime, trendPresentation, type TemperatureForecastView, type TemperatureView } from '../domain/safety';
+import StatusBadge from '../components/StatusBadge';
 import { useEntityHistory } from '../hooks/useEntityHistory';
 import { useSafetyEntities } from '../hooks/useSafetyEntities';
 import { chartSegments, numericHistory } from '../domain/history';
@@ -38,13 +39,18 @@ export default function Temperature() {
         <div>
           <span className='section-kicker'>Temperatury</span>
           <h2>Odczyty monitorowane przez system</h2>
-          <p>Aktualne pomiary, tempo zmian i skonfigurowane granice temperatury.</p>
+          <p>Aktualne pomiary, tempo zmian, granice temperatury i ostatnie oceny prognozy.</p>
         </div>
         <div className='page-introduction-stat'>
           <strong>{temperatures.length}</strong>
           <span>aktywnych źródeł</span>
         </div>
       </section>
+
+      <p className='temperature-forecast-explanation'>
+        Kondycja „healthy” oznacza dostępne dane wejściowe, a nie bezpieczną prognozę. Ostatnia ocena modelu i potwierdzony alarm są
+        pokazane oddzielnie. Zadania naprawy monitorowania nie są oceną ryzyka temperatury.
+      </p>
 
       <section aria-label='Statystyki temperatury' className='metric-strip'>
         <Metric label='Średnia' value={average} />
@@ -208,8 +214,64 @@ function TemperatureCard({ temperature }: { temperature: TemperatureView }) {
         </div>
       </dl>
 
+      <ForecastDetails forecast={temperature.lowForecast} label='Prognoza dolnej granicy' />
+      <ForecastDetails forecast={temperature.highForecast} label='Prognoza górnej granicy' />
+
       <span className='card-updated'>Aktualizacja {formatRelativeTime(temperature.lastUpdated)}</span>
     </article>
+  );
+}
+
+function ForecastDetails({ forecast, label }: { forecast: TemperatureForecastView; label: string }) {
+  const labels: Record<TemperatureForecastView['status'], string> = {
+    risk: 'Model wskazał ryzyko',
+    within_limits: 'Model w granicach',
+    unevaluable: 'Nie można ocenić prognozy',
+    not_evaluated: 'Oczekiwanie na ocenę',
+    not_reported: 'Brak szczegółów oceny w tej wersji systemu',
+    unknown: 'Nieznany wynik oceny',
+  };
+  const assessmentTime = forecast.evaluatedAt
+    ? new Date(forecast.evaluatedAt).toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'medium' })
+    : '—';
+  return (
+    <section aria-label={label} className='temperature-forecast'>
+      <h4>{label}</h4>
+      <StatusBadge tone={forecast.status === 'risk' ? 'warning' : 'muted'}>{labels[forecast.status]}</StatusBadge>
+      <p>
+        {forecast.activeFault === true
+          ? 'Potwierdzony alarm dla tej prognozy pozostaje aktywny.'
+          : forecast.activeFault === false
+            ? 'Brak potwierdzonego aktywnego alarmu dla tej prognozy. To nie potwierdza bezpiecznej temperatury.'
+            : 'Nie można ustalić, czy ta prognoza ma aktywny alarm. Sprawdź zdarzenia systemu.'}
+      </p>
+      <dl className='temperature-details'>
+        <div>
+          <dt>Ostatnia temperatura modelu</dt>
+          <dd>{formatForecastTemperature(forecast.modeledTemperature)}</dd>
+        </div>
+        <div>
+          <dt>Horyzont prognozy</dt>
+          <dd>{forecast.timespanHours === null ? '—' : `${formatNumeric(forecast.timespanHours, 2)} h`}</dd>
+        </div>
+        <div>
+          <dt>Granica prognozy</dt>
+          <dd>{formatForecastTemperature(forecast.threshold)}</dd>
+        </div>
+        <div>
+          <dt>Pomiar użyty w ocenie</dt>
+          <dd>{formatForecastTemperature(forecast.temperature)}</dd>
+        </div>
+        <div>
+          <dt>Tempo użyte w ocenie</dt>
+          <dd>{forecast.rate === null ? '—' : `${formatNumeric(forecast.rate, 3)} °C/min`}</dd>
+        </div>
+        <div>
+          <dt>Czas ostatniej oceny</dt>
+          <dd>{assessmentTime}</dd>
+        </div>
+      </dl>
+    </section>
   );
 }
 
@@ -293,4 +355,8 @@ function ThresholdLine({ label, tone, width, y }: { label: string; tone: 'low' |
 
 function formatThreshold(value: number | null): string {
   return value === null ? '—' : `${formatNumeric(value, 1)} °C`;
+}
+
+function formatForecastTemperature(value: number | null): string {
+  return value === null ? '—' : `${formatNumeric(value, 2)} °C`;
 }

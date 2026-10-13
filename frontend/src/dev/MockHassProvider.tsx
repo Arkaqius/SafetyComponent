@@ -42,6 +42,35 @@ const connection = {
       if (health) health.attributes.acknowledged_tags = [message.event_data?.tag];
       useHass.setState({ entities });
     }
+    if (message.event_type === 'safety_recovery_report') {
+      const entities = structuredClone(useHass.getState().entities);
+      for (const [entityId, entity] of Object.entries(entities)) {
+        if (!entityId.startsWith('sensor.recovery_') || !Array.isArray(entity.attributes.proposals)) continue;
+        for (const raw of entity.attributes.proposals) {
+          const proposal = raw as Record<string, unknown>;
+          if (
+            !proposal.report_token ||
+            proposal.reported_at ||
+            proposal.status !== 'TO_PERFORM' ||
+            proposal.proposal_id !== message.event_data?.proposal_id ||
+            proposal.proposal_instance_id !== message.event_data?.proposal_instance_id ||
+            proposal.report_token !== message.event_data?.report_token ||
+            proposal.manual_report_allowed !== true
+          )
+            continue;
+          // Demo receipt only: observed repairs deliberately remain pending and faults stay active.
+          proposal.reported_at = new Date().toISOString();
+          proposal.report_source = 'operator';
+          proposal.report_status = proposal.completion_condition === 'operator_report' ? 'completed' : 'awaiting_evidence';
+          proposal.report_token = '';
+          if (proposal.completion_condition === 'operator_report') {
+            proposal.status = 'CONFIRMED';
+            entity.state = 'CONFIRMED';
+          }
+        }
+      }
+      useHass.setState({ entities });
+    }
     return {};
   },
   async subscribeEvents(callback: (event: { data: unknown }) => void, eventType: string) {

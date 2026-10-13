@@ -139,8 +139,14 @@ function AdvancedDashboard() {
       </section>
 
       <div className='dashboard-columns dashboard-events'>
-        <FaultSection acknowledgedTags={acknowledgedNotificationTags} compact faults={faults} onSelectEntity={setSelectedEntityId} />
         <ActionsList onSelectEntity={setSelectedEntityId} recoveries={recoveries} />
+        <FaultSection
+          acknowledgedTags={acknowledgedNotificationTags}
+          compact
+          faults={faults}
+          recoveries={recoveries}
+          onSelectEntity={setSelectedEntityId}
+        />
       </div>
 
       <section className='entity-monitor-overview'>

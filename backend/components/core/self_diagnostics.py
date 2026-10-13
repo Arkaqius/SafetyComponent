@@ -9,7 +9,8 @@ from __future__ import annotations
 from typing import Any, Mapping
 
 from components.core.event_bus import EventBus
-from components.core.types_common import FaultState, SMState, Symptom
+from components.core.types_common import FaultState, RecoveryAction, RecoveryResult, SMState, Symptom
+from components.recovery_manager.manual_actions import manual_action
 from components.external_apis.core.models import ApiResult, ProviderHealthState
 from components.safetycomponents.core.safety_component import SafetyComponent
 from components.safetycomponents.core.safety_mechanism import SafetyMechanism
@@ -63,6 +64,7 @@ class SelfDiagnosticsComponent(SafetyComponent):
             if cause != "local_output" or local_outputs_enabled
         )
         self._fault_definitions: dict[str, dict[str, Any]] = {}
+        self._recovery_actions: dict[str, RecoveryAction] = {}
         self._observed: dict[str, bool | None] = {
             self._symptom_id(provider): None for provider in self.providers
         }
@@ -113,6 +115,12 @@ class SelfDiagnosticsComponent(SafetyComponent):
                 self,
                 {"provider": provider},
             )
+            self._recovery_actions[symptom_id] = manual_action(
+                f"Inspect{symptom_id}", subject=provider.removesuffix("ApiComponent"),
+                instruction_key="recovery.inspect_external_data",
+                result_key="recovery.result_external_data",
+                manual_report_allowed=True,
+            )
             self._fault_definitions[fault_name] = {
                 "name": (
                     localizer.text("fault.external_data_unavailable")
@@ -135,6 +143,7 @@ class SelfDiagnosticsComponent(SafetyComponent):
                 {"cause": cause},
             )
             app_ids.append(symptom_id)
+            self._allocate_app_recovery(symptom_id, cause)
         for store in sorted(self.persistence_stores):
             symptom_id = self._persistence_symptom_id(store)
             symptoms[symptom_id] = Symptom(
@@ -142,6 +151,7 @@ class SelfDiagnosticsComponent(SafetyComponent):
                 {"cause": "persistence", "store": store},
             )
             app_ids.append(symptom_id)
+            self._allocate_app_recovery(symptom_id, "persistence", store)
         self._fault_definitions["SafetyAppHealth"] = {
             "name": (
                 localizer.text("fault.safety_app_health")
@@ -153,7 +163,47 @@ class SelfDiagnosticsComponent(SafetyComponent):
             "level": 2,
             "category": "D",
         }
-        return symptoms, {}
+        return symptoms, self.get_recovery_actions()
+
+    def _allocate_app_recovery(self, symptom_id: str, cause: str, detail: str = "") -> None:
+        """Offer path-specific repair while keeping technical success owner-qualified."""
+
+        localizer = getattr(self.hass_app, "localizer", None)
+        subject = localizer.text(f"recovery.app_path_{cause}") if localizer else cause
+        if detail:
+            subject = f"{subject}: {detail}"
+        action = manual_action(
+            f"Inspect{symptom_id}", subject=subject,
+            instruction_key=f"recovery.inspect_app_{cause}",
+            result_key="recovery.result_app_path", manual_report_allowed=True,
+        )
+        action.params.update(cause=cause, detail=detail)
+        action.rec_fun = self._app_recovery
+        self._recovery_actions[symptom_id] = action
+
+    def _app_recovery(self, app: Any, symptom: Symptom, common: Any, **params: Any) -> RecoveryResult:
+        """Name current failed subpaths without copying private diagnostic payloads."""
+
+        cause, detail = params["cause"], params["detail"]
+        contributions = (
+            self._persistence_operations.get(detail, {}) if cause == "persistence"
+            else self._app_contributions.get(cause, {})
+        )
+        affected = sorted(key for key, failed in contributions.items() if failed is True)
+        values = dict(params)
+        if affected:
+            values["subject"] = f"{params['subject']}: {', '.join(affected)}"
+        action = manual_action(
+            "InspectAppPath", subject=values["subject"],
+            instruction_key=params["instruction_key"], result_key=params["result_key"],
+            manual_report_allowed=True,
+        )
+        return action.rec_fun(app, symptom, common, **action.params)
+
+    def get_recovery_actions(self) -> dict[str, RecoveryAction]:
+        """Return static and dynamically allocated App Health repair proposals."""
+
+        return dict(self._recovery_actions)
 
     def get_fault_definitions(self) -> dict[str, dict[str, Any]]:
         """Expose the exact installed provider fault catalog."""
@@ -178,6 +228,7 @@ class SelfDiagnosticsComponent(SafetyComponent):
                 )
                 self._observed[symptom_id] = None
                 app_fault["related_symptom_ids"].append(symptom_id)
+                self._allocate_app_recovery(symptom_id, cause, target_id)
         return created
 
     def observe_evaluation_exception(self, *, symptom_id: str, **_: Any) -> None:

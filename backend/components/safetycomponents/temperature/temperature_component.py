@@ -21,6 +21,7 @@ This module is part of a larger system designed for enhancing safety through Hom
 """
 
 import math
+from datetime import datetime, timezone
 from typing import Dict, Any, Callable, Optional
 
 import appdaemon.plugins.hass.hassapi as hass  # type: ignore
@@ -37,6 +38,7 @@ from components.safetycomponents.core.safety_component import (
 )
 from components.safetycomponents.core.safety_mechanism import SafetyMechanism
 from components.core.types_common import Symptom, RecoveryAction, SMState, RecoveryResult
+from components.recovery_manager.manual_actions import manual_action
 
 # CONFIG
 DEBOUNCE_INIT = 0
@@ -177,6 +179,7 @@ class TemperatureComponent(SafetyComponent):
             common_entities (CommonEntities): A shared object providing access to common entities used across different safety mechanisms.
         """
         super().__init__(hass_app, common_entities, event_bus, mqtt_entities)
+        self._threshold_sensors: dict[str, dict[str, Any]] = {}
 
     def get_symptoms_data(
         self, sm_modules: dict, component_cfg: list[dict[str, Any]]
@@ -224,21 +227,98 @@ class TemperatureComponent(SafetyComponent):
             ("low", "CAL_LOW_TEMP_THRESHOLD"),
             ("high", "CAL_HIGH_TEMP_THRESHOLD"),
         ):
-            self.mqtt_entities.register_sensor(
-                f"{source_entity}_{threshold_type}_threshold",
-                localizer.text(
+            sensor_id = f"{source_entity}_{threshold_type}_threshold"
+            self._threshold_sensors[sensor_id] = {
+                "name": localizer.text(
                     f"entity.temperature_{threshold_type}_threshold",
                     location=display_location,
                 ),
-                state=data[config_key],
-                attributes={
+                "threshold": data[config_key],
+                "attributes": {
                     **common_attributes,
                     "threshold_type": threshold_type,
+                    "forecast_evaluation": {
+                        "status": "not_evaluated",
+                        "symptom_id": (
+                            f"RiskyTemperature{location}ForeCast"
+                            if threshold_type == "low"
+                            else f"RiskyTemperatureHigh{location}ForeCast"
+                        ),
+                        "temperature_c": None,
+                        "rate_per_minute": None,
+                        "modeled_temperature_c": None,
+                        "threshold_c": data[config_key],
+                        "forecast_timespan_hours": data["CAL_FORECAST_TIMESPAN"],
+                        "evaluated_at": None,
+                    },
                 },
-                icon="mdi:thermometer-alert",
-                unit_of_measurement="°C",
-                state_class="measurement",
-                entity_category="diagnostic",
+            }
+            self._publish_temperature_threshold(sensor_id)
+
+    def _publish_temperature_threshold(self, sensor_id: str) -> None:
+        """Publish a configured limit and its latest owning predicate evidence."""
+        record = self._threshold_sensors[sensor_id]
+        self.mqtt_entities.register_sensor(
+            sensor_id,
+            record["name"],
+            state=record["threshold"],
+            attributes=record["attributes"],
+            icon="mdi:thermometer-alert",
+            unit_of_measurement="°C",
+            state_class="measurement",
+            entity_category="diagnostic",
+        )
+
+    def _publish_forecast_evaluation(
+        self,
+        sm: SafetyMechanism,
+        threshold_type: str,
+        temperature: float | None,
+        rate: float | None,
+        modeled_temperature: float | None,
+        entities_changes: dict[str, str] | None,
+    ) -> None:
+        """Expose the last real forecast predicate without claiming fault qualification.
+
+        Simulated inputs cannot replace live diagnostic evidence. Invalid input
+        removes the previous modeled value instead of presenting it as current.
+        """
+        if entities_changes is not None:
+            return
+        sensor_id = f"{sm.sm_args['temperature_sensor']}_{threshold_type}_threshold"
+        record = self._threshold_sensors.get(sensor_id)
+        if record is None:
+            return
+        threshold_key = "cold_thr" if threshold_type == "low" else "hot_thr"
+        threshold = sm.sm_args[threshold_key]
+        valid = modeled_temperature is not None
+        risk = valid and (
+            modeled_temperature < threshold if threshold_type == "low"
+            else modeled_temperature > threshold
+        )
+        record["attributes"]["forecast_evaluation"] = {
+            "status": "risk" if risk else "within_limits" if valid else "unevaluable",
+            "symptom_id": sm.name,
+            "temperature_c": (
+                temperature
+                if temperature is not None and math.isfinite(temperature) else None
+            ),
+            "rate_per_minute": (
+                rate if rate is not None and math.isfinite(rate) else None
+            ),
+            "modeled_temperature_c": modeled_temperature,
+            "threshold_c": threshold,
+            "forecast_timespan_hours": sm.sm_args["forecast_timespan"],
+            "evaluated_at": datetime.now(timezone.utc).isoformat(),
+        }
+        try:
+            self._publish_temperature_threshold(sensor_id)
+        except Exception as exc:
+            # Diagnostic publication must not prevent the safety predicate or
+            # fault qualification from running with the available evidence.
+            self.hass_app.log(
+                f"Could not publish forecast evidence for {sm.name}: {exc}",
+                level="WARNING",
             )
 
     def init_safety_mechanism(self, sm_name: str, name: str, parameters: dict) -> bool:
@@ -418,8 +498,14 @@ class TemperatureComponent(SafetyComponent):
         )
 
         if temperature is None or temperature_rate is None:
+            self._publish_forecast_evaluation(
+                sm, "low", temperature, temperature_rate, None, entities_changes
+            )
             return SafetyMechanismResult(False, None, is_evaluable=False)
         if not self._is_valid_temperature(temperature, sm):
+            self._publish_forecast_evaluation(
+                sm, "low", temperature, temperature_rate, None, entities_changes
+            )
             return SafetyMechanismResult(False, None, is_evaluable=False)
 
         forecasted_temperature = self.forecast_temperature(
@@ -433,9 +519,16 @@ class TemperatureComponent(SafetyComponent):
             maximum_temperature_c=sm.sm_args["maximum_temperature_c"],
         )
         if forecasted_temperature is None:
+            self._publish_forecast_evaluation(
+                sm, "low", temperature, temperature_rate, None, entities_changes
+            )
             return SafetyMechanismResult(False, None, is_evaluable=False)
 
         sm_result: bool = forecasted_temperature < cold_threshold
+        self._publish_forecast_evaluation(
+            sm, "low", temperature, temperature_rate, forecasted_temperature,
+            entities_changes,
+        )
         additional_info: dict[str, str] = {"location": location}
 
         return SafetyMechanismResult(
@@ -501,8 +594,14 @@ class TemperatureComponent(SafetyComponent):
         )
 
         if temperature is None or temperature_rate is None:
+            self._publish_forecast_evaluation(
+                sm, "high", temperature, temperature_rate, None, entities_changes
+            )
             return SafetyMechanismResult(False, None, is_evaluable=False)
         if not self._is_valid_temperature(temperature, sm):
+            self._publish_forecast_evaluation(
+                sm, "high", temperature, temperature_rate, None, entities_changes
+            )
             return SafetyMechanismResult(False, None, is_evaluable=False)
 
         forecasted_temperature = self.forecast_temperature(
@@ -516,9 +615,16 @@ class TemperatureComponent(SafetyComponent):
             maximum_temperature_c=sm.sm_args["maximum_temperature_c"],
         )
         if forecasted_temperature is None:
+            self._publish_forecast_evaluation(
+                sm, "high", temperature, temperature_rate, None, entities_changes
+            )
             return SafetyMechanismResult(False, None, is_evaluable=False)
 
         sm_result: bool = forecasted_temperature > hot_threshold
+        self._publish_forecast_evaluation(
+            sm, "high", temperature, temperature_rate, forecasted_temperature,
+            entities_changes,
+        )
         additional_info: dict[str, str] = {"location": location}
 
         return SafetyMechanismResult(
@@ -799,9 +905,9 @@ class TemperatureComponent(SafetyComponent):
         )
 
     def _get_sm_tc_3_recovery_action(
-        self, _: dict, __: str, ___: dict, ____: str
+        self, _: dict, location: str, data: dict, ____: str
     ) -> RecoveryAction | None:
-        return None
+        return self._inspection_recovery(location, data, high=True)
 
     def _get_sm_tc_4_pr_name(self, location: str) -> str:
         return f"RiskyTemperatureHigh{location}ForeCast"
@@ -814,9 +920,21 @@ class TemperatureComponent(SafetyComponent):
         )
 
     def _get_sm_tc_4_recovery_action(
-        self, _: dict, __: str, ___: dict, ____: str
+        self, _: dict, location: str, data: dict, ____: str
     ) -> RecoveryAction | None:
-        return None
+        return self._inspection_recovery(location, data, high=True)
+
+    def _inspection_recovery(self, location: str, data: dict[str, Any], *, high: bool) -> RecoveryAction:
+        """Offer room inspection without borrowing low-temperature window policy."""
+
+        return manual_action(
+            f"InspectTemperature{'High' if high else 'Low'}{location}",
+            subject=str(data.get("area_name", location)),
+            instruction_key="recovery.inspect_temperature_high" if high else "recovery.inspect_temperature",
+            result_key="recovery.result_room_inspection", area_id=data.get("area_id"),
+            area_name=data.get("area_name"), completion_condition="operator_report",
+            manual_report_allowed=True, purpose="hazard_mitigation",
+        )
 
     def _init_sm(
         self, name: str, parameters: dict, sm_method: Callable, required_keys: list
@@ -931,6 +1049,7 @@ class TemperatureComponent(SafetyComponent):
         if sm_method in (self.sm_tc_2, self.sm_tc_4):
             sm_args.update(
                 {
+                    "temperature_rate_sensor": f"{params['temperature_sensor']}_rate",
                     "forecast_timespan": params["CAL_FORECAST_TIMESPAN"],
                     "debounce_limit": params["SM_TC_2_DEBOUNCE_LIMIT"],
                     "re_eval_delay_seconds": params["SM_TC_2_REEVAL_DELAY_SECONDS"],
@@ -1015,15 +1134,25 @@ class TemperatureComponent(SafetyComponent):
         meas_room_temp: float | None = SafetyComponent.get_num_sensor_val(
             hass_app, symptom.parameters["temperature_sensor"]
         )
-        if meas_room_temp is None:
-            return None
+        if meas_room_temp is None or not math.isfinite(meas_room_temp):
+            return TemperatureComponent._temperature_fallback(hass_app, symptom, common_entities, location)
 
         # Get outside temperature
         outside_temp_raw: str | None = common_entities.get_outisde_temperature()
-        if not outside_temp_raw:
-            return RecoveryResult(changed_sensors, changed_actuators, notifications)
+        try:
+            outside_temp = float(outside_temp_raw)
+        except (TypeError, ValueError):
+            return TemperatureComponent._temperature_fallback(hass_app, symptom, common_entities, location)
+        if not math.isfinite(outside_temp) or not window_sensors:
+            return TemperatureComponent._temperature_fallback(hass_app, symptom, common_entities, location)
 
-        outside_temp = float(outside_temp_raw)
+        contacts = [window_sensors] if isinstance(window_sensors, str) else list(window_sensors)
+        valid_contact_states = {"on", "off", "open", "closed", "opening", "true", "false", "1", "0"}
+        if any(str(hass_app.get_state(contact)).lower() not in valid_contact_states for contact in contacts):
+            return TemperatureComponent._temperature_fallback(hass_app, symptom, common_entities, location)
+
+        if actuator and hass_app.get_state(actuator) in (None, "unknown", "unavailable"):
+            actuator = None
 
         if outside_temp < meas_room_temp:
             window_sensors_state = "off"
@@ -1050,4 +1179,25 @@ class TemperatureComponent(SafetyComponent):
         else:
             notifications.append(notification)
 
-        return RecoveryResult(changed_sensors, changed_actuators, notifications)
+        return RecoveryResult(
+            changed_sensors, changed_actuators, notifications,
+            instruction=notification,
+            execution_policy="automatic" if changed_actuators else "manual",
+            completion_condition="entity_state",
+            expected_result=notification,
+            purpose="hazard_mitigation",
+        )
+
+    @staticmethod
+    def _temperature_fallback(hass_app: Any, symptom: Symptom, common_entities: Any,
+                              location: str) -> RecoveryResult:
+        """Keep manual inspection available when window advice cannot be qualified."""
+
+        action = manual_action(
+            "InspectTemperature", subject=location,
+            instruction_key="recovery.inspect_temperature",
+            result_key="recovery.result_room_inspection",
+            completion_condition="operator_report", manual_report_allowed=True,
+            purpose="hazard_mitigation",
+        )
+        return action.rec_fun(hass_app, symptom, common_entities, **action.params)

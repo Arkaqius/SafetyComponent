@@ -4,11 +4,14 @@ import copy
 from typing import Any
 from unittest.mock import MagicMock
 
+import pytest
+
 from components.core.types_common import FaultState, RecoveryActionState
 from components.core.fault_state_policy import FaultEvaluationStatus
 
 from .fixtures.hass_fixture import (
     MockBehavior,
+    default_mock_behaviors,
     mock_get_state,
     mqtt_payloads,
     mqtt_topic_for,
@@ -193,7 +196,8 @@ def test_recovery_manager_sets_recovery_state_and_actuator_entities(
             ),
         ],
     )
-    _install_stateful_hass(app_instance, mock_behaviors)
+    state_store = _install_stateful_hass(app_instance, mock_behaviors)
+    state_store.set_state("cover.office_window", state="open")
 
     app_instance.initialize()
     for diagnostic_id, binding in app_instance.degradation._bindings.items():
@@ -239,3 +243,61 @@ def test_recovery_manager_sets_recovery_state_and_actuator_entities(
         confirmation_entity="binary_sensor.example_office_window",
         expected_state="off",
     )
+
+
+@pytest.mark.parametrize(
+    "actuator_state, contact_state, outside_state, completion",
+    [
+        ("unavailable", "on", "1", "entity_state"),
+        ("unknown", "on", "1", "entity_state"),
+        ("open", "unavailable", "1", "operator_report"),
+        ("open", "on", "unavailable", "operator_report"),
+    ],
+)
+def test_temperature_recovery_falls_back_to_manual_work_without_actuator_commands(
+    mocked_hass_app_basic,
+    actuator_state,
+    contact_state,
+    outside_state,
+    completion,
+):
+    """Keep useful manual work visible when command or window evidence is missing."""
+
+    app_instance, _, __ = mocked_hass_app_basic
+    behaviors = default_mock_behaviors()
+    app_instance.args = copy.deepcopy(app_instance.args)
+    app_instance.args["user_config"]["safety_components"]["TemperatureComponent"]["rooms"]["Office"][
+        "actuator"
+    ] = "cover.office_window"
+    state_store = _install_stateful_hass(app_instance, behaviors)
+    for entity_id, state in (
+        ("sensor.office_temperature", "5"),
+        ("sensor.example_outdoor_temperature", outside_state),
+        ("binary_sensor.example_office_window", contact_state),
+        ("cover.office_window", actuator_state),
+    ):
+        state_store.set_state(entity_id, state=state)
+    app_instance.initialize()
+    app_instance.reco_man._is_dry_test_failed = MagicMock(return_value=False)
+    app_instance.reco_man._isRecoveryConflict = MagicMock(return_value=False)
+    app_instance.call_service.reset_mock()
+
+    app_instance.fm.set_symptom("RiskyTemperatureOffice", {"location": "Office"})
+
+    proposal = app_instance.reco_man._proposals["RiskyTemperatureOffice"]
+    assert proposal["execution_policy"] == "manual"
+    assert proposal["status"] == "TO_PERFORM"
+    assert proposal["completion_condition"] == completion
+    assert not proposal["actuator_targets"]
+    assert proposal["instruction"]
+    if completion == "operator_report":
+        assert proposal["manual_report_allowed"]
+        assert not proposal["expected_postconditions"]
+    else:
+        assert proposal["expected_postconditions"] == {"binary_sensor.example_office_window": "off"}
+    assert app_instance.symptoms["RiskyTemperatureOffice"].state == FaultState.SET
+    assert not [
+        call for call in app_instance.call_service.call_args_list
+        if call.kwargs.get("entity_id") == "cover.office_window"
+        or (call.args and call.args[0].startswith(("cover/", "switch/", "climate/", "fan/")))
+    ]

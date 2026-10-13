@@ -69,7 +69,9 @@ EventBus and explicit read contracts shall carry results. Provider I/O shall
 have bounded timeouts and independent schedules. Cached data shall retain its
 original observation time and shall not become fresh because it was read again.
 
-C-HVAC shall register no recovery action and shall not issue boiler reset,
+C-HVAC shall supply model-specific manual inspection and service recovery under
+the [shared action contract](<Recommended Actions and Recovery - Architecture.md>).
+It shall not issue boiler reset,
 climate/setpoint, pump, relay or gas-valve commands. Adapters shall not expose
 a write path to the policy engine. Notification transport calls shall remain
 owned by NotificationManager. Separate backup/failover authorization shall not
@@ -445,7 +447,7 @@ verify documentation or backend unit behavior.
 | HSM-V07 Deadlines | Sampling/evaluation/debounce boundaries, total 60 s and 1800 s paths, prolonged/repeated inhibition, fresh-start budget and notification deadline miss | SWR-HSM-007/018/026 |
 | HSM-V08 Restart and time | Restart in each pending/active/recovering state, repeated restart, corrupt/missing/version-mismatched snapshot, calibration change, unavailable store, clock rollback/forward jump and downtime without positive recovery | SWR-HSM-019/020/026 |
 | HSM-V09 Evidence and UI | SET/context/HEAL incident correlation, per-target retries, accepted-versus-delivered semantics, legacy journal compatibility, bounded data, local timestamp and EN/PL/DE rendering | SWR-HSM-021/022/023 |
-| HSM-V10 Boundaries | Invalid configuration, absent thermal allocation or masking plausibility limits, excluded/shadow coverage, removed installation, bounded buffers and slow adapters, zero boiler/pump/climate/reset or recovery calls even on reload | SWR-HSM-024/025/026 |
+| HSM-V10 Boundaries | Invalid configuration, absent thermal allocation or masking plausibility limits, excluded/shadow coverage, removed installation, bounded buffers and slow adapters, model-specific manual recovery with zero boiler/pump/climate/reset commands even on reload | SWR-HSM-024/025/026, SWR-REC-009/010/018 |
 
 | SYS requirement | Refinement in SSRD |
 | --- | --- |

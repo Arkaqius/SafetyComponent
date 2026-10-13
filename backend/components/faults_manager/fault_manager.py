@@ -108,6 +108,7 @@ class FaultManager:
         payload = dict(current_attributes) if isinstance(current_attributes, dict) else {}
         payload.pop("extended_data", None)
         payload.update(
+            fault_id=fault.name,
             active=fault.evaluation.active,
             shadowed_by=sorted(fault.evaluation.shadowed_by),
             latched=fault.evaluation.latched,

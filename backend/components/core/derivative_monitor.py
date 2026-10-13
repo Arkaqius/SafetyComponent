@@ -8,6 +8,7 @@ Classes:
 """
 
 import collections
+import math
 from threading import Lock
 from typing import Any, Dict, Optional
 
@@ -206,6 +207,7 @@ class DerivativeMonitor:
         entity_config: Dict[str, Any] = self.entities[entity_id]
         current_value: float | None = self._get_entity_value(entity_id)
         if current_value is None:
+            self._publish_sampling_status(entity_id, "source_unavailable")
             self.hass_app.log(
                 f"No value available for {entity_id}. Skipping calculation.",
                 level="DEBUG",
@@ -266,6 +268,10 @@ class DerivativeMonitor:
         self._publish_derivative_state(
             f"{entity_id}_rateOfRate", entity_config["second_derivative"]
         )
+        self._publish_sampling_status(
+            entity_id,
+            "waiting_for_samples" if entity_config["first_derivative"] is None else "ready",
+        )
         self.hass_app.log(
             f"Updated Home Assistant states for {entity_id}.", level="DEBUG"
         )
@@ -282,6 +288,8 @@ class DerivativeMonitor:
         """
         try:
             value = float(self.hass_app.get_state(entity_id))
+            if not math.isfinite(value):
+                raise ValueError("Non-finite derivative source")
             self.hass_app.log(
                 f"Retrieved value for {entity_id}: {value}.", level="DEBUG"
             )
@@ -291,6 +299,22 @@ class DerivativeMonitor:
                 f"Unable to retrieve or convert state for {entity_id}.", level="ERROR"
             )
             return None
+
+    def _publish_sampling_status(self, entity_id: str, status: str) -> None:
+        """Distinguish sample collection from missing input without claiming readiness."""
+        self.mqtt_entities.publish_sensor_attributes(
+            f"{entity_id}_rate",
+            {
+                "friendly_name": f"{entity_id} Rate",
+                "state_class": "measurement",
+                "unit_of_measurement": "°C/min",
+                "attribution": "Data provided by SafetyFunction",
+                "icon": "mdi:chart-timeline-variant",
+                "source_entity_id": entity_id,
+                "sample_interval_seconds": self.entities[entity_id]["sample_time"],
+                "sampling_status": status,
+            },
+        )
 
     def _register_derivative_entity(
         self,

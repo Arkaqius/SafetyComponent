@@ -14,6 +14,7 @@ from components.core.mqtt_entity_manager import MqttEntityManager
 from components.core.types_common import FaultState, RecoveryAction, RecoveryResult, SMState, Symptom
 from components.external_apis.core.models import ApiResult, ExternalObservation, HazardType, ProviderHealthState
 from components.recovery_manager.policy import RecoveryPolicyDecision
+from components.recovery_manager.manual_actions import manual_action
 from components.safetycomponents.core.safety_component import SafetyComponent, register_safety_component
 from components.safetycomponents.core.safety_mechanism import SafetyMechanism
 
@@ -223,6 +224,13 @@ class ExternalHazardComponent(SafetyComponent):
                 SM_PROVIDER_UNAVAILABLE,
                 capability=capability,
             )
+            recoveries[symptom_id] = manual_action(
+                f"InspectExternalData{capability}",
+                subject=f"{capability}: {', '.join(sorted(self.enabled_providers.intersection(providers)))}",
+                instruction_key="recovery.inspect_external_data",
+                result_key="recovery.result_external_data",
+                manual_report_allowed=True,
+            )
         return symptoms, recoveries
 
     def _opening_recovery(
@@ -301,6 +309,10 @@ class ExternalHazardComponent(SafetyComponent):
             confirmation_timeout_seconds=int(
                 opening.get("confirmation_timeout_seconds", 120)
             ),
+            completion_condition="opening_closed" if execution_policy == "manual" else "entity_state",
+            expected_result=(localizer.text("recovery.result_closed", subject=friendly_name)
+                             if localizer is not None else f"Current contact confirms {friendly_name} is closed."),
+            purpose="hazard_mitigation",
         )
 
     def _symptom(

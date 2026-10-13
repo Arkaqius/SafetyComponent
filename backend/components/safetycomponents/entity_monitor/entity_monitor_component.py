@@ -14,6 +14,7 @@ from components.core.degradation import DiagnosticBinding, DegradationTarget, Re
 from components.core.event_bus import EventBus
 from components.core.mqtt_entity_manager import MqttEntityManager
 from components.core.types_common import FaultState, RecoveryAction, SMState, Symptom
+from components.recovery_manager.manual_actions import manual_action
 from components.external_apis.home_assistant_state_reader import (
     HomeAssistantStateReader,
     STATE_POLL_SECONDS,
@@ -112,6 +113,7 @@ class EntityMonitorComponent(SafetyComponent):
         intervals.extend(self._evaluation_interval(dependency) for dependency in dependencies)
         self._policy["evaluation_interval_seconds"] = min(intervals)
         symptoms: dict[str, Symptom] = {}
+        recoveries: dict[str, RecoveryAction] = {}
         if self.state_reader is not None:
             groups: dict[int, set[str]] = {}
             entity_intervals: dict[str, int] = {}
@@ -206,6 +208,17 @@ class EntityMonitorComponent(SafetyComponent):
                     },
                     sm_name=mechanism_name,
                 )
+                recoveries[symptom_name] = manual_action(
+                    f"InspectInput{dependency.key}",
+                    subject=self._friendly_name(runtime.snapshot, dependency),
+                    instruction_key=("recovery.inspect_command" if check_name == "recovery_command"
+                                     else "recovery.inspect_input"),
+                    result_key="recovery.result_input",
+                    area_id=dependency.area_id,
+                    area_name=dependency.area_name,
+                    entity_id=dependency.entity_id,
+                    manual_report_allowed=True,
+                )
 
             if dependency.fault_owner != FaultOwner.NONE:
                 fault_name = dependency.fault_name
@@ -235,7 +248,7 @@ class EntityMonitorComponent(SafetyComponent):
                 )
 
         self._publish_summary()
-        return symptoms, {}
+        return symptoms, recoveries
 
     def get_fault_definitions(self) -> dict[str, dict[str, Any]]:
         """Return deterministic dynamic fault definitions for FaultManager."""

@@ -45,7 +45,7 @@ The complete field-level rationale and override map is maintained in the
 | `runtime_cfg.faults` | Stable fault catalog, levels, shadowing, and Safety Mechanism mappings. |
 | `runtime_cfg.providers` | Supported provider enablement, endpoints, polling, timeouts, retries, and staleness. |
 | `runtime_cfg.notification` | Delivery profiles, retries, deadlines, repeat behavior, diagnostics, and persistence. |
-| `runtime_cfg.recovery` | Recovery persistence and execution defaults. |
+| `runtime_cfg.recovery` | Recovery persistence and distinct system-owned consent, command-effect and optional manual-task timing defaults. |
 | `runtime_cfg.mqtt` | Discovery, topics, availability, retain/QoS, heartbeat, expiry, and the empty cleanup baseline. |
 
 Packaged text is loaded from `backend/components/core/locales/<language>.yml`,
