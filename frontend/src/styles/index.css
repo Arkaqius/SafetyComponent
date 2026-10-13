@@ -4275,7 +4275,10 @@ details summary:focus-visible {
 .safety-hero-copy p { font-size: 1rem; line-height: 1.5; }
 .safety-hero-meta { min-width: 0; max-width: 160px; }
 .safety-hero-meta small, .entity-monitor-overview small { font-size: 0.875rem; }
-.dashboard-events { align-items: start; }
+.dashboard-events { align-items: start; grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr); }
+@media (max-width: 1250px) {
+  .dashboard-events { grid-template-columns: 1fr; }
+}
 .dashboard-events .panel-header { padding: 0; }
 .dashboard-events .panel-header h2 { font-size: 1.25rem; }
 .dashboard-events .panel-toolbar:empty { display: none; }

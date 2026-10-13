@@ -479,13 +479,19 @@ test('coverage remains unknown until retained entities are ready', async ({ page
 
 test('dashboard puts readable incident and instructions before temperature statistics', async ({ page }, testInfo) => {
   await openMock(page);
-  const instruction = page.locator('.recovery-card-copy p').first();
+  const instruction = page.locator('.dashboard-events > .recovery-panel .recovery-card-copy p').first();
   await expect(page.locator('.hero-incident')).toBeVisible();
   await expect(instruction).toBeVisible();
   const instructionBox = await instruction.boundingBox();
   const statisticsBox = await page.locator('.summary-grid').boundingBox();
   expect(instructionBox!.y).toBeLessThan(statisticsBox!.y);
   expect(await instruction.evaluate(element => Number.parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(16);
+  if (!testInfo.project.name.startsWith('mobile')) {
+    const eventsBox = await page.locator('.dashboard-events > .fault-panel').boundingBox();
+    const actionsBox = await page.locator('.dashboard-events > .recovery-panel').boundingBox();
+    expect(eventsBox!.x).toBeLessThan(actionsBox!.x);
+    expect(eventsBox!.width).toBeGreaterThan(actionsBox!.width);
+  }
   if (testInfo.project.name.startsWith('mobile')) expect(instructionBox!.y + instructionBox!.height).toBeLessThan(844);
   await page.screenshot({ path: testInfo.outputPath('dashboard.png'), scale: 'css' });
 });
