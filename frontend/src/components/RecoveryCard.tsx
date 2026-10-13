@@ -13,6 +13,7 @@ interface RecoveryCardProps {
   error?: string;
   onRequest: (request: RecoveryRequest) => void;
   onSelectEntity?: (entityId: string) => void;
+  compact?: boolean;
 }
 
 const statuses: Record<RecoveryStatus, { label: string; tone: StatusTone }> = {
@@ -45,6 +46,7 @@ export default function RecoveryCard({
   error,
   onRequest,
   onSelectEntity,
+  compact = false,
 }: RecoveryCardProps) {
   const expired =
     ['to_perform', 'awaiting_confirmation', 'executing'].includes(recovery.status) &&
@@ -88,14 +90,16 @@ export default function RecoveryCard({
                 ? 'Wykonuje: system'
                 : 'Wykonawca nieznany'}
         </small>
-        {recovery.expectedResult && <small>Oczekiwany rezultat: {recovery.expectedResult}</small>}
-        {recovery.completionCondition === 'advisory' && <small>Instrukcja postępowania. System nie potwierdza jej wykonania.</small>}
-        {recovery.completionCondition === 'operator_report' && (
+        {!compact && recovery.expectedResult && <small>Oczekiwany rezultat: {recovery.expectedResult}</small>}
+        {!compact && recovery.completionCondition === 'advisory' && (
+          <small>Instrukcja postępowania. System nie potwierdza jej wykonania.</small>
+        )}
+        {!compact && recovery.completionCondition === 'operator_report' && (
           <small>Wykonanie tej czynności potwierdza użytkownik. System nie sprawdza jej samodzielnie; zgłoszenie nie usuwa usterki.</small>
         )}
-        {recovery.reason && <small>Powód: {recovery.reason}</small>}
-        {recovery.source && <small>Źródło zalecenia: {recovery.source}</small>}
-        {recovery.validUntil && <small>Ważne do {evidenceTime(recovery.validUntil)}</small>}
+        {!compact && recovery.reason && <small>Powód: {recovery.reason}</small>}
+        {!compact && recovery.source && <small>Źródło zalecenia: {recovery.source}</small>}
+        {!compact && recovery.validUntil && <small>Ważne do {evidenceTime(recovery.validUntil)}</small>}
         {error && <small className='recovery-error'>{error}</small>}
         {block && <small className='recovery-error'>Działanie wstrzymane: {block}</small>}
         {submitted && (
@@ -106,20 +110,20 @@ export default function RecoveryCard({
           </small>
         )}
         {reported && recovery.status !== 'confirmed' && <small>Zgłoszono wykonanie. System nadal czeka na potwierdzenie rezultatu.</small>}
-        {recovery.reportedAt && (
+        {!compact && recovery.reportedAt && (
           <small>
             Zgłoszenie użytkownika: {evidenceTime(recovery.reportedAt)}
             {recovery.reportSource ? ` · ${reportSourceLabel(recovery.reportSource)}` : ''}
           </small>
         )}
-        {recovery.evidenceAt && (
+        {!compact && recovery.evidenceAt && (
           <small>
             Dowód rezultatu: {evidenceTime(recovery.evidenceAt)}
             {recovery.evidenceSource ? ` · ${recovery.evidenceSource}` : ''}
           </small>
         )}
-        <small>Zmiana {formatRelativeTime(recovery.lastChanged)}</small>
-        {recovery.latestOutcome && (
+        {!compact && <small>Zmiana {formatRelativeTime(recovery.lastChanged)}</small>}
+        {!compact && recovery.latestOutcome && (
           <small>
             Ostatni wynik:{' '}
             {
@@ -130,13 +134,13 @@ export default function RecoveryCard({
             . {formatRelativeTime(recovery.latestOutcome.recordedAt)}
           </small>
         )}
-        {recovery.latestOutcome?.reportedAt && (
+        {!compact && recovery.latestOutcome?.reportedAt && (
           <small>
             Zgłoszenie dla ostatniego wyniku: {evidenceTime(recovery.latestOutcome.reportedAt)}
             {recovery.latestOutcome.reportSource ? ` · ${reportSourceLabel(recovery.latestOutcome.reportSource)}` : ''}
           </small>
         )}
-        {recovery.latestOutcome?.evidenceAt && (
+        {!compact && recovery.latestOutcome?.evidenceAt && (
           <small>
             Dowód ostatniego wyniku: {evidenceTime(recovery.latestOutcome.evidenceAt)}
             {recovery.latestOutcome.evidenceSource ? ` · ${recovery.latestOutcome.evidenceSource}` : ''}
@@ -144,7 +148,7 @@ export default function RecoveryCard({
         )}
       </div>
       <StatusBadge tone={presentation.tone}>{presentation.label}</StatusBadge>
-      {recovery.status === 'awaiting_confirmation' && (
+      {!compact && recovery.status === 'awaiting_confirmation' && (
         <button
           className='recovery-confirm-button'
           disabled={submitting || submitted === 'consent' || Boolean(consentBlock)}
@@ -154,7 +158,7 @@ export default function RecoveryCard({
           {submitting ? 'Wysyłanie…' : 'Zezwól na wykonanie'}
         </button>
       )}
-      {showReport && ['to_perform', 'executing'].includes(recovery.status) && (
+      {!compact && showReport && ['to_perform', 'executing'].includes(recovery.status) && (
         <button
           className='recovery-confirm-button'
           disabled={submitting || submitted === 'report' || Boolean(reportBlock)}

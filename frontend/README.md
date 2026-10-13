@@ -237,6 +237,9 @@ bieżących encji Home Assistanta.
 Karta działania pokazuje instrukcję, powód, źródło, ważność i bieżący etap
 wykonania, a także oczekiwany wynik i przyczynę ewentualnej blokady. Te same
 działania są widoczne przy powiązanej usterce i na liście działań.
+Widok podstawowy pokazuje skrót instrukcji i jej bieżący status. Przycisk
+**Wszystkie zalecenia** otwiera pełne karty z rezultatami, historią oraz
+dostępnymi przyciskami zgłoszenia pracy i zgody na komendę.
 
 Zamknięcie zwykłego okna lub drzwi jest czynnością ręczną. Dla zadań, które
 dopuszczają zgłoszenie pracy, przycisk **Zgłoś wykonanie** wysyła informację

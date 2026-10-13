@@ -66,7 +66,7 @@ export default function BasicDashboard({ onExpand }: { onExpand: () => void }) {
         <h3 id='basic-action-title'>{!connected && primaryRecovery ? 'Ostatnie znane zalecenie' : 'Co zrobić teraz'}</h3>
         {primaryRecovery ? (
           <>
-            <RecoveryActionCard recovery={primaryRecovery} />
+            <RecoveryActionCard compact recovery={primaryRecovery} />
             <button className='basic-action-button' onClick={() => setActionsOpen(true)} type='button'>
               Wszystkie zalecenia
               {attentionRecoveries.length > 1 ? ` (${attentionRecoveries.length})` : ''}

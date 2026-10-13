@@ -8,9 +8,11 @@ import RecoveryCard, { type RecoveryRequest } from './RecoveryCard';
 export default function RecoveryActionCard({
   recovery,
   onSelectEntity,
+  compact = false,
 }: {
   recovery: RecoveryView;
   onSelectEntity?: (entityId: string) => void;
+  compact?: boolean;
 }) {
   const connection = useHass(store => store.connection);
   const connected = useHass(store => store.connectionStatus === 'connected' && store.ready);
@@ -63,6 +65,7 @@ export default function RecoveryActionCard({
 
   return (
     <RecoveryCard
+      compact={compact}
       connected={connected}
       error={error}
       onRequest={kind => void request(kind)}

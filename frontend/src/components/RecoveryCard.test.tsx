@@ -125,3 +125,15 @@ test('expired or uncertain advice in the basic shared card is not presented as c
   assert.match(completed, />Potwierdzone</);
   assert.doesNotMatch(completed, /Zalecenie wygasło/);
 });
+
+test('compact brief keeps blocked and pending evidence states visible and requires full details before a report', () => {
+  const brief = (value: RecoveryView) =>
+    renderToStaticMarkup(<RecoveryCard compact recovery={value} connected onRequest={() => undefined} />);
+  assert.match(brief(recovery()), /Wymień baterię/);
+  assert.doesNotMatch(brief(recovery()), /Zgłoś wykonanie|Zezwól na wykonanie|secret-capability/);
+  assert.match(brief(recovery({ blocked_reason: 'Brak aktualnego odczytu' })), /Wstrzymane|Brak aktualnego odczytu/);
+  assert.match(brief(recovery({ report_status: 'awaiting_evidence' })), /nadal czeka na potwierdzenie rezultatu/);
+  const expired = brief(recovery({ expires_at: 1 }));
+  assert.match(expired, /Zalecenie wygasło/);
+  assert.doesNotMatch(expired, /Wymień baterię/);
+});
