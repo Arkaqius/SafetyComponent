@@ -120,6 +120,12 @@ A delayed or stalled request cannot extend previously acquired evidence.
 The reader preserves source `last_reported` and `last_updated`
 timestamps. A successful read is not itself a new measurement, and an
 integration write is only as trustworthy as its declared input contract.
+For monitored sensor and binary-sensor entities, the provider also normalizes
+the unique same-device `sensor.*_last_seen` as `last_contact_at`. Temperature
+dependencies use device contact to trust their last valid value by default;
+this does not assert a new measurement or replace availability and value checks.
+Other dependencies select this contract explicitly rather than inherit a global
+fallback.
 
 Entity Monitor reads temperature-owned and shared outside-temperature
 dependencies every 120 seconds, other ordinary dependencies every 60 seconds,

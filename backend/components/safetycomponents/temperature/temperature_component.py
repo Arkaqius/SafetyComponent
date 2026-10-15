@@ -88,7 +88,7 @@ class TemperatureComponent(SafetyComponent):
                         "degradation_targets": evaluation_targets,
                         "checks": {
                             "freshness": {
-                                "timestamp_source": "last_reported",
+                                "timestamp_source": "last_contact_at",
                                 "max_silence_seconds": 3600,
                             },
                             "finite_number": {"target": "state"},

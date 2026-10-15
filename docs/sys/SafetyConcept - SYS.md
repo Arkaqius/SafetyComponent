@@ -1223,7 +1223,15 @@ entity is safety-relevant through Group A or B.
   Assistant `last_reported` may confirm an
   unchanged report only under the integration's declared input contract;
   successful polling and unrelated device traffic shall not invent a fresh
-  measurement. For a safety-relevant dependency, acquisition, bounded read
+  measurement. Room-temperature inputs shall default to trusting the last valid
+  temperature while the unique same-device `last_seen`, normalized as
+  `last_contact_at`, remains within 3600 seconds. A temperature change or new
+  temperature report shall not be required. Availability and numeric validity
+  shall remain independent requirements. Missing or invalid contact shall not
+  establish freshness; explicitly configured integration-specific sources may
+  override this default. Other channels shall use device-contact freshness only
+  under their declared dependency contract. For a safety-relevant dependency,
+  acquisition, bounded read
   timeout, evaluation scheduling, failure debounce and any freshness timeout
   shall fit its allocated detection path and applicable FTTI. Immediate alarm
   paths shall remain independent of periodic diagnostic reconciliation.

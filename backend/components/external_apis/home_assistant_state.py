@@ -23,7 +23,8 @@ REPORT_TEMPLATE = """
   {% if matches %}
     {% set s = matches[0] %}
     {% set contact = namespace(rows=[]) %}
-    {% set device = device_id(entity) if entity.startswith('binary_sensor.') else none %}
+    {% set is_sensor = entity.startswith('sensor.') or entity.startswith('binary_sensor.') %}
+    {% set device = device_id(entity) if is_sensor else none %}
     {% for sibling in (device_entities(device) if device else []) %}
       {% if sibling.startswith('sensor.') and sibling.endswith('_last_seen') %}
         {% set contact.rows = contact.rows + [dict(entity_id=sibling, state=states(sibling))] %}

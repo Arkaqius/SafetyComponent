@@ -1162,7 +1162,10 @@ class EntityMonitorComponent(SafetyComponent):
 
     @classmethod
     def _timestamp_value(cls, snapshot: dict[str, Any], source: str) -> datetime | None:
-        value = snapshot.get(source) if source in {"last_changed", "last_updated", "last_reported"} else (snapshot.get("attributes") or {}).get(source)
+        if source in {"last_changed", "last_updated", "last_reported", "last_contact_at"}:
+            value = snapshot.get(source)
+        else:
+            value = (snapshot.get("attributes") or {}).get(source)
         if isinstance(value, datetime):
             parsed = value
         elif isinstance(value, str):

@@ -317,6 +317,9 @@ dependent numeric check or clear an active symptom.
 
 Freshness uses only the configured trustworthy source:
 
+- `last_contact_at`, normalized from the unique `sensor.*_last_seen` on the
+  same Home Assistant registry device, when device contact is the declared
+  basis for trusting the channel's last valid value;
 - `last_reported` from a live Home Assistant read when the integration's entity
   reports are a trustworthy confirmation of the monitored input;
 - `last_updated` only when the owning integration guarantees a real periodic
@@ -328,21 +331,31 @@ unchanged value. It is not independently proof of a new physical measurement.
 MQTT may suppress an unchanged entity write unless `force_update` is enabled;
 receiving another MQTT message therefore does not necessarily advance
 `last_reported`.
-A device-level `last_seen` may represent a humidity, battery, or other message;
-it shall not serve as temperature confirmation without a declared source
-contract. No global `last_seen` fallback shall be inferred.
+A device-level `last_seen` may represent a humidity, battery, or other message.
+Temperature inputs shall use this device-contact contract by default: the last
+valid temperature remains usable while `last_contact_at` is within 3600 seconds,
+even if the temperature value and its Home Assistant report timestamps do not
+advance. Availability, finite-number and configured numeric-range checks remain
+required. Contact does not claim a new temperature measurement. Missing,
+ambiguous, invalid or future contact evidence shall leave freshness unevaluable;
+neither a successful read nor `last_reported` shall replace it automatically.
+Explicit dependency overrides may select another trustworthy timestamp for
+sources such as a thermostat integration without device `last_seen`.
+Other physical sensor channels may declare the same contact contract. Derived
+rates, weather/provider products and application-health outputs shall retain
+their own evidence contracts. No global `last_seen` fallback shall be inferred.
 
-The shared Home Assistant report provider may acquire supplementary device-contact
-metadata for a monitored `binary_sensor` when exactly one `sensor.*_last_seen`
+The shared Home Assistant report provider shall acquire device-contact
+metadata for a monitored `sensor` or `binary_sensor` when exactly one `sensor.*_last_seen`
 entity belongs to the same Home Assistant registry device. Ambiguous or absent
 matches shall not supply contact evidence. Unix seconds, Unix milliseconds and
 timezone-aware ISO timestamps shall normalize to UTC; invalid or future values
 shall be omitted. C-ENT shall expose `last_contact_at` and
-`last_contact_source_entity` as informational diagnostics, separately from
-`last_reported` and configured freshness checks. Contact is a historical
-observation, not an online status with an inferred timeout. It shall not change
-availability, assert passing alarm evidence, clear a fault or renew source-report
-freshness without the owning channel's declared contract.
+`last_contact_source_entity` separately from `last_reported`. Contact shall affect
+freshness only when the owning dependency selects
+`timestamp_source: last_contact_at`; otherwise it remains informational, with no inferred timeout.
+It shall not replace availability or value checks, assert passing alarm evidence,
+or clear an active fault without the owning channel's valid recovery evidence.
 
 `last_changed` is presentation metadata and is never a freshness source. A
 change in value is not required for freshness, and an unchanged door, switch,
@@ -653,7 +666,7 @@ calibration:
         failure_debounce_seconds: 60
         checks:
           freshness:
-            timestamp_source: "last_reported"
+            timestamp_source: "last_contact_at"
 
 user_config:
   model_version: 2
@@ -678,7 +691,7 @@ user_config:
             failure_debounce_seconds: 60
             checks:
               freshness:
-                timestamp_source: "last_reported"
+                timestamp_source: "last_contact_at"
 ```
 
 Group B declarations are created from already validated component bindings and
