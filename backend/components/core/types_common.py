@@ -212,3 +212,10 @@ class RecoveryResult(NamedTuple):
     source: str = ""
     valid_until: str = ""
     confirmation_timeout_seconds: int = 120
+    completion_condition: str = "entity_state"
+    expected_result: str = ""
+    purpose: str = "hazard_mitigation"
+    manual_report_allowed: bool = False
+    consent_timeout_seconds: int | None = None
+    effect_timeout_seconds: int | None = None
+    manual_task_timeout_seconds: int | None = None

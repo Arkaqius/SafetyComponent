@@ -28,9 +28,11 @@ or manufacturer-defined concentration/time behavior. PM2.5 shall not be used
 as a smoke, CO, CO2 or combustible-gas detector. Outdoor pollution monitoring
 shall remain with ExternalHazardComponent.
 
-The component shall observe and notify. Water/gas cutoff, ventilation, purification,
-opening/lock control, detector hush/reset and safe re-entry authorization shall
-not be its recovery actions. Any emergency actuator allocation shall be
+The component shall observe, notify and supply hazard-specific manual response.
+It shall issue no water/gas-cutoff, ventilation, purification, opening/lock or
+detector hush/reset command and shall not authorize safe re-entry. Manual
+guidance shall follow section 7 and the separately allocated leak contract.
+Any emergency actuator allocation shall be
 separately justified for the hazard and installation. Shared notification
 outputs shall be constrained by section 7, not treated as an exemption.
 

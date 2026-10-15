@@ -394,6 +394,12 @@ class SafetyComponent:
 
         return DebounceResult(action=action, counter=new_counter)
 
+    def _invalidate_evaluation(self, symptom_id: str) -> None:
+        """Require fresh debounce evidence without clearing an active fault."""
+        self.symptom_states[symptom_id] = FaultState.NOT_TESTED
+        self.debounce_states[symptom_id] = DebounceState(0, False)
+        self.event_bus.publish("evaluation_unavailable", symptom_id=symptom_id)
+
     def process_symptom(
         self,
         symptom_id: str,
@@ -564,17 +570,15 @@ def safety_mechanism_decorator(func: Callable) -> Callable:
                 result = func(self, sm, entities_changes)
                 if not isinstance(result.result, bool):
                     raise TypeError("Safety mechanism result must be bool")
-                if not result.is_evaluable:
-                    self.event_bus.publish(
-                        "evaluation_unavailable", symptom_id=sm.name
-                    )
-                self.event_bus.publish("evaluation_succeeded", symptom_id=sm.name)
+                if entities_changes is None:
+                    if not result.is_evaluable:
+                        self._invalidate_evaluation(sm.name)
+                    self.event_bus.publish("evaluation_succeeded", symptom_id=sm.name)
                 return result
             except Exception:
-                self.event_bus.publish("evaluation_exception", symptom_id=sm.name)
-                self.event_bus.publish(
-                    "evaluation_unavailable", symptom_id=sm.name
-                )
+                if entities_changes is None:
+                    self.event_bus.publish("evaluation_exception", symptom_id=sm.name)
+                    self._invalidate_evaluation(sm.name)
                 raise
 
         if not sm.isEnabled:
@@ -583,7 +587,7 @@ def safety_mechanism_decorator(func: Callable) -> Callable:
             )
             return False
 
-        if not entities_changes:
+        if entities_changes is None:
             # Retrieve the current debounce state for this mechanism
             current_state: DebounceState = self.debounce_states[sm.name]
 
@@ -591,8 +595,7 @@ def safety_mechanism_decorator(func: Callable) -> Callable:
             sm_return = evaluate_predicate()
 
             if not sm_return.is_evaluable:
-                if entities_changes is None:
-                    self.record_evaluation()
+                self.record_evaluation()
                 return False
 
             # Perform SM logic

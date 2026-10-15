@@ -165,3 +165,26 @@ This migration addresses SafetyComponent empty attribute messages. Investigate
 unrelated `value_json` failures by identifying their topic and publisher before
 changing Zigbee2MQTT or other application templates. Persistent scanner sessions
 and Mosquitto ACL cleanup are separate broker administration work.
+
+### Retiring selected obsolete discovery entities
+
+Use [the discovery retirement tool](retire_mqtt_discovery.py) for explicitly
+reviewed obsolete sensor entity IDs. It validates ownership and subscribes
+only to each selected entity's exact primary and legacy discovery topics.
+State, attributes, availability, fault evidence and Recorder history remain
+outside its deletion scope.
+
+Install the MQTT tool dependencies and set `MQTT_USERNAME` and `MQTT_PASSWORD`
+as described above. With broker access authorized, audit the selected IDs:
+
+```powershell
+python backend/retire_mqtt_discovery.py --host <broker> --entity-id sensor.obsolete_sensor
+```
+
+Review the topic list before repeating the command with `--apply`. Select
+the installation's actual `--base-topic`, `--discovery-prefix` and
+`--device-identifier` when they differ from the defaults; pass `--tls` and
+the broker's TLS port when required. Stop the authorized publisher before
+applying retirement, then restart it and verify that obsolete discovery
+does not return. The tool does not change configuration or stop publishers.
+Exit codes and bounded scan limitations match the retained-message tool above.

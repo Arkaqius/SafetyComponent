@@ -765,7 +765,15 @@ temperature.
   each room's low and high thresholds as `<source>_low_threshold` and
   `<source>_high_threshold`.
 - **SYS-SR-TEMP-008:** Threshold diagnostics shall expose source entity,
-  threshold type, `area_id`, and the resolved Home Assistant area name.
+  threshold type, `area_id`, and the resolved Home Assistant area name. Each
+  threshold sensor shall also expose the last forecast predicate observation
+  for that room and threshold: status, exact symptom identity, input temperature,
+  first derivative, modeled temperature, configured limit, forecast horizon,
+  and UTC evaluation time. Diagnostics shall distinguish an unevaluable or
+  not-yet-evaluated forecast from a valid result within limits. The last
+  observation shall remain separate from the fault's qualified alarm state;
+  healthy input diagnostics or application-health repair results shall not
+  imply a safe forecast or clear an active temperature fault.
 - **SYS-SR-TEMP-009:** Low-temperature mechanisms may create a
   `ManipulateWindow{Room}` recovery proposal using the configured window sensor
   or cover actuator and the indoor/outdoor temperature relation. High-temperature
@@ -1215,12 +1223,27 @@ entity is safety-relevant through Group A or B.
   Assistant `last_reported` may confirm an
   unchanged report only under the integration's declared input contract;
   successful polling and unrelated device traffic shall not invent a fresh
-  measurement. For a safety-relevant dependency, acquisition, bounded read
+  measurement. Room-temperature inputs shall default to trusting the last valid
+  temperature while the unique same-device `last_seen`, normalized as
+  `last_contact_at`, remains within 3600 seconds. A temperature change or new
+  temperature report shall not be required. Availability and numeric validity
+  shall remain independent requirements. Missing or invalid contact shall not
+  establish freshness; explicitly configured integration-specific sources may
+  override this default. Other channels shall use device-contact freshness only
+  under their declared dependency contract. For a safety-relevant dependency,
+  acquisition, bounded read
   timeout, evaluation scheduling, failure debounce and any freshness timeout
   shall fit its allocated detection path and applicable FTTI. Immediate alarm
   paths shall remain independent of periodic diagnostic reconciliation.
   Short-budget diagnostic acquisition and evaluation shall remain independent
   of ordinary read timeouts and slower ordinary evaluation schedules.
+  Acquisition shall use a dedicated monotonic scheduler independently of pinned
+  application callbacks and MQTT publication. Short-budget acquisition shall
+  have a four-second response deadline and a ten-second evidence-validity bound
+  from acquisition start, including its five-second cadence and one-second
+  scheduling allowance. Failed attempts and expired evidence shall not qualify
+  recovery. With five-second evaluation and fifteen-second failure debounce,
+  the default thirty-second detection allocation shall be retained.
 - **SYS-SR-ENT-005:** Optional required-value, allowed-values, finite-number,
   numeric-range, and rate-of-change checks shall run only when their complete
   calibration is present and the current input is valid for that check.
@@ -1487,11 +1510,11 @@ See [Recommended Actions and Recovery architecture](<../features/Recommended Act
 | SYS-SR-REC-001 | Each installed fault family shall have a cause-specific recovery allocation or an explicit rationale for no applicable action. Actions shall identify the fault/incident, cause, affected subject, purpose, instruction, executor, eligibility and completion method. Multiple causes shall retain independent actions without duplicate advice for the same failed path. |
 | SYS-SR-REC-002 | Recovery shall support manual work, explicitly supported automatic commands and commands after user consent. Absence of an actuator or postcondition entity shall not prevent a manual action. A manual action shall issue no actuator command; fault urgency shall not authorize a command. |
 | SYS-SR-REC-003 | Action completion shall be separate from fault healing, notification acknowledgement and command consent. Only the owning fault's qualified evidence and reset policy shall release its activation or restriction. Repairing one cause shall not clear another cause. |
-| SYS-SR-REC-004 | Each completable task shall declare observed completion or an operator report for a procedural task; advisory instructions shall have no task-completion control. Reports shall retain authenticated identity and server-assigned time, be validated against the current proposal/incident, issue no actuator command and not substitute for required device evidence. Approved maintenance-test reports may supply evidence only under the owning test's attestation policy. Reports of battery replacement shall await fresh recovered battery evidence; contacting service may complete the contact task while its fault remains active. |
+| SYS-SR-REC-004 | Each completable task shall declare observed completion or an operator report for a procedural task; advisory instructions shall have no task-completion control. Reports shall retain identity derived from authenticated server context and server-assigned time, be bound to the current proposal/incident instance with a separate one-time report token, issue no actuator command and not substitute for required device evidence. Unknown actor context, replayed tokens and expired, cleared, shadowed or superseded instances shall be rejected; restart shall invalidate old report tokens. Approved maintenance-test reports may supply evidence only under the owning test's attestation policy. Reports of battery replacement shall await fresh recovered battery evidence; contacting service may complete the contact task while its fault remains active. |
 | SYS-SR-REC-005 | Observed completion shall require all declared postconditions on current valid evidence. Missing, stale, unavailable or failed evidence shall remain unknown. Home Assistant command acceptance shall not establish physical effect, recipient receipt or thermal recovery. |
 | SYS-SR-REC-006 | Proposals shall be reevaluated when relevant evidence, causes, policy or dependencies change. Superseded, expired, cleared, shadowed or ineligible executable proposals shall lose their authorization and stale guidance. Empty or rejected replacements shall not leave an old executable proposal active. Valid repair instructions shall remain available with visible reasons for blocked execution or unknown effect. |
 | SYS-SR-REC-007 | Command authorization shall be revalidated immediately before execution using current evidence, dependencies, conflicts, configured actuator, expiry and replay protection. Unsupported commands and any actuator changes under manual policy shall be rejected centrally. Restart shall not replay a command. |
-| SYS-SR-REC-008 | Task deadlines shall follow the action's declared policy and distinguish consent expiry from missing effect of an executed command. Manual service/battery work shall not inherit a short command-consent deadline. Active work, operator reports and bounded action outcomes shall survive restart, retaining their evidence source without treating saved reports as fresh physical evidence. |
+| SYS-SR-REC-008 | Distinct system-owned policies shall govern command-consent expiry, executed-command effect observation and optional action-specific manual-task deadlines. Installation bindings shall not set these deadlines, and manual service/battery work shall not inherit a short command-consent deadline. Active work, operator reports and bounded action outcomes shall survive restart, retaining their evidence source without treating saved reports or downtime as fresh physical evidence. |
 | SYS-SR-REC-009 | The fault card, shared action list and notifications shall use consistent localized instructions and subject names. They shall distinguish user-reported work, observed completion, blocked execution, unknown effect, failure, withdrawal and no applicable action. EN/PL/DE text shall preserve equivalent meaning; stable identifiers and existing raw lifecycle codes shall remain unchanged. |
 | SYS-SR-REC-010 | Manual hazard-response and equipment-repair actions shall obey the owning hazard/equipment guidance. Observation-only components shall offer useful manual actions without extending actuator permissions. Emergency guidance shall not require task acknowledgement, and detector clear or operator reports shall not authorize re-entry, gas reopening or safety-interlock bypass. |
 

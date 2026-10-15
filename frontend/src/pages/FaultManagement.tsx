@@ -18,7 +18,7 @@ import { useSafetyEntities } from '../hooks/useSafetyEntities';
 export default function FaultManagement() {
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const closeEntityDetails = useCallback(() => setSelectedEntityId(null), []);
-  const { connection, entities, faults } = useSafetyEntities();
+  const { connection, entities, faults, recoveries } = useSafetyEntities();
   const coverage = getCoverageView(connection.cannotConnect || !connection.ready ? {} : entities);
   const hazardFaults = faults.filter(fault => fault.category === 'H');
   const diagnosticFaults = faults.filter(fault => fault.category === 'D');
@@ -85,7 +85,7 @@ export default function FaultManagement() {
 
       <CoverageDetails coverage={coverage} faults={faults} onSelectEntity={setSelectedEntityId} />
 
-      <FaultSection acknowledgedTags={acknowledgedTags} faults={faults} onSelectEntity={setSelectedEntityId} />
+      <FaultSection acknowledgedTags={acknowledgedTags} faults={faults} recoveries={recoveries} onSelectEntity={setSelectedEntityId} />
 
       <EntityDetailsDialog entities={entities} entityId={selectedEntityId} onClose={closeEntityDetails} />
     </div>

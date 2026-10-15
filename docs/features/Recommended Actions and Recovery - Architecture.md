@@ -21,6 +21,8 @@ reports through the authenticated Home Assistant connection. Command
 authorization shall carry a proposal ID and one-time token. RecoveryManager
 shall remain the only recovery element that resolves and calls an actuator
 service; reporting manual work shall issue no actuator command.
+Adding a manual action shall not enable automatic actuation or extend an
+existing component's command permissions.
 
 ## 2. Proposal contract
 
@@ -42,12 +44,17 @@ actions for one cause shall have distinct proposal identities.
 
 The existing allowlisted frontend fields shall retain their names:
 
-- stable `proposal_id` and current lifecycle `status`;
+- stable `proposal_id`, current `proposal_instance_id` and lifecycle `status`;
 - localized instruction and execution policy;
 - reason, source, validity, area, and deadline;
 - postcondition entity when observable evidence is available;
 - actuator entity only when execution is supported;
 - one-time confirmation token only while confirmation is allowed.
+
+Manual-work report controls shall use a separate one-time `report_token`,
+available only for the current eligible instance of a reportable task. Command
+consent and work reporting shall not share tokens. A stable proposal ID reused
+for a later incident shall not make an earlier report valid.
 
 The raw lifecycle states are `DO_NOT_PERFORM`, `TO_PERFORM`,
 `AWAITING_CONFIRMATION`, `EXECUTING`, `CONFIRMED`, `FAILED`, and `TIMED_OUT`.
@@ -69,13 +76,24 @@ into proposals. Missing evidence shall be presented as unknown.
 
 A completable task shall declare either observed evidence or an operator report.
 Advisory instructions shall declare that they have no task-completion control;
-their applicability and withdrawal shall still be reevaluated.
+their applicability and withdrawal shall still be reevaluated. They shall not
+inherit a manual-task completion deadline; loss of advice validity shall withdraw
+the instruction without alleging that untracked work failed or timed out.
 For example, closing a door uses its current contact state; replacing a battery
 requires a fresh recovered battery indication; contacting a service technician
 may be completed by an operator report. A report shall retain authenticated
 operator identity, server-assigned time and the reported task. It shall be bound
-to the current proposal and incident and revalidated before acceptance; unknown,
-expired or superseded reports shall be rejected. It shall not substitute for
+to the current proposal instance and incident and revalidated before acceptance.
+The request shall carry `proposal_id`, `proposal_instance_id` and the current
+one-time `report_token`. The backend shall derive actor identity from authenticated Home Assistant
+context injected by the Hass plugin as `data.metadata.context.user_id`, and shall
+reject client-supplied actor/time fields or other unexpected client payload keys.
+The trusted plugin metadata is not an operator-supplied attribution field.
+Missing or unknown
+authenticated actor context, wrong or replayed tokens, expired tasks, and cleared,
+shadowed or superseded instances shall be rejected. Accepted reports shall consume
+the token; restart shall invalidate old report tokens before making unresolved
+reportable work available again. Reports shall not substitute for
 required device evidence or establish hazard clearance. Reports for approved
 maintenance-test tasks may provide evidence only under that test's existing
 attestation policy; the owning monitor shall evaluate the result.
@@ -149,6 +167,14 @@ or service work. Instructions without observable postconditions shall use a
 declared operator-report method or remain advisory, rather than wait indefinitely
 for a nonexistent sensor.
 
+Consent expiry, command-effect observation and optional manual-task deadlines
+shall be distinct system-owned policies. Installation entity bindings shall not
+set these deadlines. A pending manual report or delayed battery update shall not
+renew an expired command authorization; restart shall retain a deadline's meaning
+without replaying a command or counting downtime as fresh physical evidence.
+Their packaged configuration is `runtime_cfg.recovery.timing`, defined in the
+[System Configuration reference](<../reference/System Configuration.md#53-notification-and-recovery>).
+
 ## 4. External-hazard openings
 
 Windows and ordinary doors publish a manual close instruction and use their
@@ -169,6 +195,13 @@ shall not be promoted to an inferred physical cause. Several checks sharing one
 failed path shall share its repair action. Separate failed paths shall retain
 independent actions. Existing fault, mechanism and entity identities shall remain
 stable.
+
+Only an installed owning monitor shall supply actions for its declared faults.
+RecoveryManager shall not create diagnostic symptoms, infer a missing monitoring
+domain, or register heating faults merely to supply a generic repair instruction.
+Heating guidance belongs to C-HVAC and its reviewed equipment profile; external
+provider guidance belongs to the existing provider-health or consuming-capability
+owner, with the failed contributor retained.
 
 | Fault family / cause | Required action | Completion / effect evidence | Command boundary |
 | --- | --- | --- | --- |
@@ -208,6 +241,15 @@ time/source and reason for failure or withdrawal. A transient publication of
 `CONFIRMED` followed by removal shall not be the only record of completion.
 Restart shall reconcile unresolved work with current evidence without repeating
 a command or treating a saved operator report as fresh device evidence.
+Persisted outcomes shall retain actor/source provenance and server-assigned
+report/evidence times through an explicit allowlist. Authorization tokens shall
+not appear in outcome history. Actor identity shall remain in private durable
+report records; ordinary MQTT/frontend outcome payloads shall expose completion
+source and time without publishing that identity. Advisory withdrawal shall not become a completed
+task, and a blocked action shall retain its visible current reason.
+The server's completion-verification time shall remain distinguishable from a
+device's source measurement/report time. Recording a current verification time
+shall not make cached or stale device evidence fresh.
 
 Notification guidance is keyed by proposal ID. An updated proposal replaces its
 own text, while clear or shadow removes that proposal's guidance. This prevents
@@ -233,8 +275,11 @@ Contract tests shall also cover central rejection of actuator changes under
 postcondition entities, delayed/missing/invalid completion evidence, independent
 causes, withdrawal on an empty or rejected replacement, visible block reasons,
 task-specific deadlines, durable outcomes and report-source localization. Tests
-for observation-only components shall assert useful manual proposals alongside
-zero actuator calls. System and software traceability is defined in
+shall reject unexpected client actor/time fields, missing authenticated context,
+replayed reports, old incident-instance reports
+and stale report tokens after restart. Tests for observation-only components
+shall assert useful manual proposals alongside zero actuator calls.
+System and software traceability is defined in
 [SYS section 8.10](<../sys/SafetyConcept - SYS.md#810-recommended-actions-and-recovery>)
 and [SSRD section 4.5](<../sys/SafetyComponent - SSRD.md#45-notifications-and-recovery>).
 

@@ -2,6 +2,8 @@
 # mypy: ignore-errors
 
 from typing import Iterator, List
+from copy import deepcopy
+from datetime import datetime
 import pytest
 from components.core.fault_state_policy import FaultEvaluationStatus
 from components.core.types_common import FaultState, SMState
@@ -13,6 +15,96 @@ from .fixtures.hass_fixture import (
 
 
 DEBOUNCE_LIMIT = 1
+
+
+@pytest.mark.parametrize(
+    "name, kind, temperature, rate, threshold, modeled",
+    [
+        ("RiskyTemperatureOfficeForeCast", "low", "20.26", "-0.019", 18, 17.98),
+        ("RiskyTemperatureHighOfficeForeCast", "high", "25.74", "0.019", 28, 28.02),
+    ],
+)
+def test_forecast_evidence_explains_risk_with_available_inputs_and_retains_fault_on_loss(
+    mocked_hass_app_with_temp_component,
+    name, kind, temperature, rate, threshold, modeled,
+):
+    """Available numeric rate inputs can predict risk; later loss cannot heal it."""
+    app, *_ = mocked_hass_app_with_temp_component
+    app.initialize()
+    component = app.sm_modules["TemperatureComponent"]
+    mechanism = component.safety_mechanisms[name]
+    mechanism.sm_args.update(cold_thr=18, hot_thr=28, forecast_timespan=2, debounce_limit=1)
+    component.debounce_states[name] = type(component.debounce_states[name])(0, False)
+    states = {"sensor.office_temperature": temperature, "sensor.office_temperature_rate": rate}
+    app.get_state.side_effect = lambda entity_id, **kwargs: states.get(entity_id)
+    sensor_id = f"sensor.office_temperature_{kind}_threshold"
+
+    for _ in range(2):
+        mechanism.callback(mechanism)
+    evidence = component.mqtt_entities.entity_attributes[sensor_id]["forecast_evaluation"]
+    assert evidence["status"] == "risk"
+    assert evidence["symptom_id"] == name
+    assert evidence["modeled_temperature_c"] == pytest.approx(modeled)
+    assert evidence["temperature_c"] == float(temperature)
+    assert evidence["rate_per_minute"] == float(rate)
+    assert evidence["threshold_c"] == threshold
+    assert evidence["forecast_timespan_hours"] == 2
+    assert datetime.fromisoformat(evidence["evaluated_at"]).utcoffset().total_seconds() == 0
+    assert app.fm.check_fault("RiskyTemperatureForecast") is FaultEvaluationStatus.FAIL
+
+    states["sensor.office_temperature_rate"] = "unavailable"
+    mechanism.callback(mechanism)
+    evidence = component.mqtt_entities.entity_attributes[sensor_id]["forecast_evaluation"]
+    assert evidence["status"] == "unevaluable"
+    assert evidence["modeled_temperature_c"] is None
+    assert evidence["rate_per_minute"] is None
+    assert app.fm.check_symptom(name) is FaultState.SET
+    assert app.fm.check_fault("RiskyTemperatureForecast") is FaultEvaluationStatus.UNEVALUABLE
+
+
+def test_simulated_forecast_cannot_replace_last_live_assessment(
+    mocked_hass_app_with_temp_component,
+):
+    """A synthetic safe predicate cannot overwrite live risk evidence or fault state."""
+    app, *_ = mocked_hass_app_with_temp_component
+    app.initialize()
+    component = app.sm_modules["TemperatureComponent"]
+    mechanism = component.safety_mechanisms["RiskyTemperatureOfficeForeCast"]
+    mechanism.sm_args.update(cold_thr=18, forecast_timespan=2, debounce_limit=1)
+    component.debounce_states[mechanism.name] = type(component.debounce_states[mechanism.name])(0, False)
+    states = {"sensor.office_temperature": "20.26", "sensor.office_temperature_rate": "-0.019"}
+    app.get_state.side_effect = lambda entity_id, **kwargs: states.get(entity_id)
+    for _ in range(2):
+        mechanism.callback(mechanism)
+    sensor_id = "sensor.office_temperature_low_threshold"
+    original = deepcopy(component.mqtt_entities.entity_attributes[sensor_id])
+    mechanism.callback(mechanism, entities_changes={
+        "sensor.office_temperature": "22", "sensor.office_temperature_rate": "0",
+    })
+    assert component.mqtt_entities.entity_attributes[sensor_id] == original
+    assert app.fm.check_symptom(mechanism.name) is FaultState.SET
+
+
+def test_forecast_publication_failure_cannot_block_hazard_qualification(
+    mocked_hass_app_with_temp_component, monkeypatch,
+):
+    """Extra diagnostic output must not stop a valid safety predicate from qualifying."""
+    app, *_ = mocked_hass_app_with_temp_component
+    app.initialize()
+    component = app.sm_modules["TemperatureComponent"]
+    mechanism = component.safety_mechanisms["RiskyTemperatureOfficeForeCast"]
+    mechanism.sm_args.update(cold_thr=18, forecast_timespan=2, debounce_limit=1)
+    component.debounce_states[mechanism.name] = type(component.debounce_states[mechanism.name])(0, False)
+    states = {"sensor.office_temperature": "20.26", "sensor.office_temperature_rate": "-0.019"}
+    app.get_state.side_effect = lambda entity_id, **kwargs: states.get(entity_id)
+
+    def fail_publication(sensor_id):
+        raise OSError("diagnostic transport failed")
+
+    monkeypatch.setattr(component, "_publish_temperature_threshold", fail_publication)
+    for _ in range(2):
+        mechanism.callback(mechanism)
+    assert app.fm.check_fault("RiskyTemperatureForecast") is FaultEvaluationStatus.FAIL
 
 
 @pytest.mark.parametrize("name, rate, expected", [

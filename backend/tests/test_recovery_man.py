@@ -119,7 +119,7 @@ def test_recovery_validation_fails(mocked_hass_app_with_temp_component):
     recovery_manager = app_instance.reco_man
     recovery_action = Mock()
     recovery_action.name = symptom.name
-    recovery_result = Mock()
+    recovery_result = RecoveryResult({"binary_sensor.contact": "off"}, {}, ["Close the door"])
     recovery_action.rec_fun.return_value = recovery_result
     recovery_action.params = {}  # Ensure that params attribute is a valid dictionary
     recovery_manager.recovery_actions = {symptom.name: recovery_action}
@@ -152,7 +152,7 @@ def test_successful_recovery_execution_basic(mocked_hass_app_with_temp_component
     recovery_manager = _isolated_recovery_manager(app_instance)
     recovery_action = Mock()
     recovery_action.name = symptom.name
-    recovery_result = Mock()
+    recovery_result = RecoveryResult({"binary_sensor.contact": "off"}, {}, ["Close the door"])
     recovery_action.rec_fun.return_value = recovery_result
     recovery_action.params = {}  # Ensure that params attribute is a valid dictionary
     recovery_manager.recovery_actions = {symptom.name: recovery_action}
@@ -187,7 +187,7 @@ def test_dry_test_failure_aborts_recovery(mocked_hass_app_with_temp_component):
     recovery_manager = _isolated_recovery_manager(app_instance)
     recovery_action = Mock()
     recovery_action.name = symptom.name
-    recovery_result = Mock()
+    recovery_result = RecoveryResult({"binary_sensor.contact": "off"}, {}, ["Close the door"])
     recovery_action.rec_fun.return_value = recovery_result
     recovery_action.params = {}
     recovery_manager.recovery_actions = {symptom.name: recovery_action}
@@ -229,7 +229,7 @@ def test_recovery_conflict_aborts_recovery(mocked_hass_app_with_temp_component):
     recovery_manager = _isolated_recovery_manager(app_instance)
     recovery_action = Mock()
     recovery_action.name = symptom.name
-    recovery_result = Mock()
+    recovery_result = RecoveryResult({"binary_sensor.contact": "off"}, {}, ["Close the door"])
     recovery_action.rec_fun.return_value = recovery_result
     recovery_action.params = {}
     recovery_manager.recovery_actions = {symptom.name: recovery_action}
@@ -272,7 +272,7 @@ def test_successful_recovery_execution(mocked_hass_app_with_temp_component):
     recovery_manager = _isolated_recovery_manager(app_instance)
     recovery_action = Mock()
     recovery_action.name = symptom.name
-    recovery_result = Mock()
+    recovery_result = RecoveryResult({"binary_sensor.contact": "off"}, {}, ["Close the door"])
     recovery_action.rec_fun.return_value = recovery_result
     recovery_action.params = {}
     recovery_manager.recovery_actions = {symptom.name: recovery_action}
@@ -463,6 +463,7 @@ def test_check_conflict_with_higher_priority(mocked_hass_app_with_temp_component
     # Mock FaultManager to include a matching fault with higher priority
     found_symptom = Mock()
     found_symptom.name = "MatchingSymptom"
+    found_symptom.state = FaultState.SET
     
     higher_priority_fault = Mock()
     higher_priority_fault.level = 1  # Lower numeric level is higher priority
@@ -529,6 +530,7 @@ def test_recovery_conflict_with_higher_priority(mocked_hass_app_with_temp_compon
     # Mock FaultManager to include a matching fault with higher priority
     found_symptom = Mock()
     found_symptom.name = "MatchingSymptom"
+    found_symptom.state = FaultState.SET
     found_symptom.sm_name = "sm_test"
     found_fault = Mock()
     found_fault.level = 1  # Lower numeric level is higher priority
@@ -685,6 +687,7 @@ def test_command_failure_clears_only_after_observed_postcondition(
     app_instance, _, __, ___, _ = mocked_hass_app_with_temp_component
     app_instance.initialize()
     manager = app_instance.reco_man
+    manager.degradation = None  # Isolate raw postcondition handling; coverage has separate contracts.
     manager.command_observer = Mock()
     manager.state_store = InMemoryRecoveryStateStore()
     symptom_id = "ExternalWeatherExposureWindGate"
@@ -994,6 +997,7 @@ def test_confirmation_fail_closed_paths_and_deadline_state(
     )
     assert proposal["status"] == RecoveryActionState.TIMED_OUT.name
 
+    manager._recovery_clear_by_name(symptom.name)
     manager.recovery(symptom, "fault-tag")
     proposal = manager._proposals[symptom.name]
     symptom.state = FaultState.CLEARED
@@ -1017,7 +1021,7 @@ def test_confirmation_fail_closed_paths_and_deadline_state(
             "confirmation_token": proposal["confirmation_token"],
         },
     )
-    assert proposal["status"] == RecoveryActionState.AWAITING_CONFIRMATION.name
+    assert symptom.name not in manager._proposals
 
     action.rec_fun.return_value = valid_result
     manager.recovery(symptom, "fault-tag")
@@ -1033,7 +1037,7 @@ def test_confirmation_fail_closed_paths_and_deadline_state(
             "confirmation_token": proposal["confirmation_token"],
         },
     )
-    assert proposal["status"] == RecoveryActionState.AWAITING_CONFIRMATION.name
+    assert symptom.name not in manager._proposals
 
     action.rec_fun.return_value = valid_result
     manager.recovery(symptom, "fault-tag")
@@ -1183,6 +1187,7 @@ def test_recovery_performed_callback(mocked_hass_app_with_temp_component):
 
     # Set up the recovery manager
     recovery_manager = app_instance.reco_man
+    recovery_manager.degradation = None
 
     # Mock the `_recovery_clear` method to track if it is called
     recovery_manager._recovery_clear = Mock()
@@ -1264,6 +1269,7 @@ def test_recovery_waits_for_all_postconditions(
     app_instance, _, __, ___, _ = mocked_hass_app_with_temp_component
     app_instance.initialize()
     recovery_manager = app_instance.reco_man
+    recovery_manager.degradation = None
     recovery_manager._recovery_clear = Mock()
 
     symptom = Mock()
@@ -1394,6 +1400,7 @@ def test_recovery_listeners_remain_active_until_all_postconditions_match(
     app_instance, _, __, ___, _ = mocked_hass_app_with_temp_component
     app_instance.initialize()
     recovery_manager = app_instance.reco_man
+    recovery_manager.degradation = None
     recovery_manager._recovery_clear = Mock()
     current_states = {
         "binary_sensor.window_a": "off",

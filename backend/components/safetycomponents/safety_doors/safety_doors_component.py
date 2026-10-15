@@ -12,6 +12,7 @@ from components.core.common_entities import CommonEntities
 from components.core.event_bus import EventBus
 from components.core.mqtt_entity_manager import MqttEntityManager
 from components.core.types_common import FaultState, RecoveryAction, SMState, Symptom
+from components.recovery_manager.manual_actions import manual_action
 from components.safetycomponents.core.safety_component import (
     SafetyComponent,
     register_safety_component,
@@ -107,6 +108,7 @@ class SafetyDoorsComponent(SafetyComponent):
     ) -> tuple[dict[str, Symptom], dict[str, RecoveryAction]]:
         """Create one timeout symptom for every configured safety door."""
         symptoms: dict[str, Symptom] = {}
+        recoveries: dict[str, RecoveryAction] = {}
         self._fault_definitions = {}
 
         for entry in component_cfg:
@@ -114,6 +116,19 @@ class SafetyDoorsComponent(SafetyComponent):
                 symptom_name = self._symptom_name(door_name)
                 runtime_parameters = dict(parameters)
                 runtime_parameters["door_name"] = door_name
+                snapshot = self.hass_app.get_state(parameters["entity_id"], attribute="all")
+                attributes = snapshot.get("attributes", {}) if isinstance(snapshot, dict) else {}
+                subject = str(parameters.get("friendly_name") or attributes.get("friendly_name") or door_name)
+                recoveries[symptom_name] = manual_action(
+                    f"CloseSafetyDoor{door_name}",
+                    subject=subject,
+                    instruction_key="recovery.manual_close",
+                    result_key="recovery.result_closed",
+                    area_id=parameters.get("area_id"),
+                    area_name=parameters.get("area_name"),
+                    entity_id=parameters["entity_id"],
+                    closed_contact=True,
+                )
                 symptoms[symptom_name] = Symptom(
                     module=modules[self.component_name],
                     name=symptom_name,
@@ -134,7 +149,7 @@ class SafetyDoorsComponent(SafetyComponent):
                     "shadows": [],
                 }
 
-        return symptoms, {}
+        return symptoms, recoveries
 
     def get_fault_definitions(self) -> dict[str, dict[str, Any]]:
         """Return one fault definition for each configured door."""

@@ -317,6 +317,9 @@ dependent numeric check or clear an active symptom.
 
 Freshness uses only the configured trustworthy source:
 
+- `last_contact_at`, normalized from the unique `sensor.*_last_seen` on the
+  same Home Assistant registry device, when device contact is the declared
+  basis for trusting the channel's last valid value;
 - `last_reported` from a live Home Assistant read when the integration's entity
   reports are a trustworthy confirmation of the monitored input;
 - `last_updated` only when the owning integration guarantees a real periodic
@@ -328,21 +331,31 @@ unchanged value. It is not independently proof of a new physical measurement.
 MQTT may suppress an unchanged entity write unless `force_update` is enabled;
 receiving another MQTT message therefore does not necessarily advance
 `last_reported`.
-A device-level `last_seen` may represent a humidity, battery, or other message;
-it shall not serve as temperature confirmation without a declared source
-contract. No global `last_seen` fallback shall be inferred.
+A device-level `last_seen` may represent a humidity, battery, or other message.
+Temperature inputs shall use this device-contact contract by default: the last
+valid temperature remains usable while `last_contact_at` is within 3600 seconds,
+even if the temperature value and its Home Assistant report timestamps do not
+advance. Availability, finite-number and configured numeric-range checks remain
+required. Contact does not claim a new temperature measurement. Missing,
+ambiguous, invalid or future contact evidence shall leave freshness unevaluable;
+neither a successful read nor `last_reported` shall replace it automatically.
+Explicit dependency overrides may select another trustworthy timestamp for
+sources such as a thermostat integration without device `last_seen`.
+Other physical sensor channels may declare the same contact contract. Derived
+rates, weather/provider products and application-health outputs shall retain
+their own evidence contracts. No global `last_seen` fallback shall be inferred.
 
-The shared Home Assistant report provider may acquire supplementary device-contact
-metadata for a monitored `binary_sensor` when exactly one `sensor.*_last_seen`
+The shared Home Assistant report provider shall acquire device-contact
+metadata for a monitored `sensor` or `binary_sensor` when exactly one `sensor.*_last_seen`
 entity belongs to the same Home Assistant registry device. Ambiguous or absent
 matches shall not supply contact evidence. Unix seconds, Unix milliseconds and
 timezone-aware ISO timestamps shall normalize to UTC; invalid or future values
 shall be omitted. C-ENT shall expose `last_contact_at` and
-`last_contact_source_entity` as informational diagnostics, separately from
-`last_reported` and configured freshness checks. Contact is a historical
-observation, not an online status with an inferred timeout. It shall not change
-availability, assert passing alarm evidence, clear a fault or renew source-report
-freshness without the owning channel's declared contract.
+`last_contact_source_entity` separately from `last_reported`. Contact shall affect
+freshness only when the owning dependency selects
+`timestamp_source: last_contact_at`; otherwise it remains informational, with no inferred timeout.
+It shall not replace availability or value checks, assert passing alarm evidence,
+or clear an active fault without the owning channel's valid recovery evidence.
 
 `last_changed` is presentation metadata and is never a freshness source. A
 change in value is not required for freshness, and an unchanged door, switch,
@@ -372,6 +385,20 @@ safety channel for that requirement.
 Optional checks are generic channel-health diagnostics. Safety-specific
 thresholds, such as unsafe room temperature, remain in the owning Safety
 Component and are not duplicated here.
+
+In particular, `sensor.entity_health_temperature_forecast_<room>` supervises
+the room's derivative input, including availability and finite-number checks.
+A `healthy` result means those input checks pass; it does not compare the
+modeled room temperature with its safety limits. Valid available inputs may
+still predict a dangerous temperature. C-TEMP shall publish its last low/high
+forecast predicate observations in the existing threshold sensors'
+`forecast_evaluation` attributes, separately from the qualified
+`RiskyTemperatureForecast` fault and its active contributors. The last
+observation and the qualified fault may differ while debounce is in progress.
+An application-health evaluation diagnostic or a repair proposal for a failed
+evaluator concerns successful execution of that path, not whether its
+temperature predicate detects a hazard. Operator views shall retain these
+three meanings: input health, predicate observation, and qualified alarm.
 
 Rate-of-change evaluation may reuse numeric sampling utilities from
 `DerivativeMonitor`, but Entity Monitor owns its check result, calibration, and
@@ -434,13 +461,22 @@ only when recovery debounce expires without another failure.
     offline.
 
 The shared reader performs authenticated batch reads in background workers.
+Its dedicated scheduler shall use monotonic five-second deadlines independently
+of AppDaemon's pinned application callbacks, including MQTT publication. Missed
+ticks shall not cause a catch-up burst. Shutdown shall wake the scheduler and
+reject late responses without depending on cancellation of an AppDaemon timer.
 Ordinary reads have a 120-second response deadline. Short-budget reads use an
-independent worker and a 3-second deadline so an ordinary timeout cannot block
+independent worker and a 4-second deadline so an ordinary timeout cannot block
 their next acquisition. Each worker admits at most one request in flight;
 responses after its deadline are discarded. Ordinary reader evidence expires
 at acquisition start plus the group's polling interval, the 120-second deadline
 and a 5-second scheduling allowance. Short-budget evidence expires at acquisition
-start plus its interval plus 3 seconds. Response delivery time cannot extend
+start plus its interval, the 4-second deadline and a 1-second scheduling
+allowance: ten seconds for the five-second group. A nine-second scheduling gap
+shall not invalidate an otherwise valid report or restart recovery qualification.
+After expiry, missing evidence shall remain unevaluable. The ten-second validity
+window, five-second evaluation cadence and fifteen-second failure debounce fit
+the existing thirty-second detection allocation. Response delivery time cannot extend
 either expiry. Repeated reads retain the original source timestamps; they do
 not invent heartbeats. A failed attempt invalidates the affected group's
 previous reports, and a stalled request cannot renew them. Missing or expired
@@ -639,7 +675,7 @@ calibration:
         failure_debounce_seconds: 60
         checks:
           freshness:
-            timestamp_source: "last_reported"
+            timestamp_source: "last_contact_at"
 
 user_config:
   model_version: 2
@@ -664,7 +700,7 @@ user_config:
             failure_debounce_seconds: 60
             checks:
               freshness:
-                timestamp_source: "last_reported"
+                timestamp_source: "last_contact_at"
 ```
 
 Group B declarations are created from already validated component bindings and
@@ -739,6 +775,10 @@ Strict validation rejects:
 - A stalled read with no state-change event and an unchanged cache shall cause
   the 5-second dependency group to assert unavailability within its 30-second
   detection budget, with reason `source_report_unavailable`.
+- Nine-second scheduling gaps shall preserve qualified application-health
+  checks; ten-second evidence expiry and failed or late requests shall still
+  invalidate them. Independent scheduler startup, monotonic scheduling,
+  skipped ticks, duplicate-start rejection and bounded shutdown shall be tested.
 - Independent failure and recovery debounce.
 - Fault ownership and duplicate-fault prevention.
 - Same-entity check aggregation, shared input aggregation with independent

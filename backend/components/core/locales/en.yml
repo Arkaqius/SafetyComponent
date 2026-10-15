@@ -119,6 +119,68 @@ detail.stations: Stations
 detail.source_entity: Opening sensor
 recovery.close_windows: Please close the windows in {location}.
 recovery.open_windows: Please open the windows in {location}.
+recovery.manual_close: 'Close {subject} manually.'
+recovery.no_action: No current action is required.
+recovery.blocked_owner_unverified: 'Waiting for a current assessment. This instruction is retained from the previous assessment.'
+recovery.active_count: '{count} current actions.'
+recovery.reason_availability: The input is unavailable.
+recovery.reason_freshness: The input has stopped providing current readings.
+recovery.reason_required_value: A required reading is missing.
+recovery.reason_allowed_values: The input reports an unsupported value.
+recovery.reason_finite_number: The input does not report a valid number.
+recovery.reason_numeric_range: The reading is outside the permitted range.
+recovery.reason_rate_of_change: The reading changes faster than permitted.
+recovery.result_closed: 'A current contact reading confirms that {subject} is closed.'
+recovery.inspect_input: 'Check the power, connection and reporting path of {subject}, according to the reported failed check.'
+recovery.result_input: 'Current valid reports confirm recovery of the failed check for {subject}.'
+recovery.inspect_battery: 'Check the battery instructions for {subject}; replace or charge it as specified for this device.'
+recovery.result_battery: 'A fresh battery report confirms recovery for {subject}.'
 recovery.close_opening: Close {opening}.
+recovery.blocked_diagnostic_restriction: 'The required input or command path is unavailable; inspect the affected equipment.'
+recovery.blocked_policy_rejected: 'Current safety policy does not allow this action.'
+recovery.blocked_conflicting_postcondition: 'Another active condition requires a different observed result.'
+recovery.blocked_conflicting_action: 'This action conflicts with another active safety condition.'
+recovery.blocked_indoor_hazard_conflict: 'Active or unresolved smoke, gas or carbon monoxide evidence blocks ventilation or purification.'
+recovery.blocked_unsupported_execution_policy: 'This execution policy is unsupported.'
+recovery.blocked_unsupported_completion_condition: 'This completion method is unsupported.'
+recovery.blocked_manual_actuator_forbidden: 'A manual instruction cannot issue a device command.'
+recovery.blocked_invalid_owner_completion: 'Owner-qualified completion requires independent evidence without a device command.'
+recovery.blocked_invalid_opening_completion: 'Opening completion requires a configured current contact.'
+recovery.blocked_invalid_manual_completion: 'This manual completion method cannot issue a device command.'
+recovery.inspect_detector: 'Inspect power, reporting and supervised inputs of {subject} according to its equipment instructions; arrange service if needed. Do not hush or reset a detector to dismiss an alarm.'
+recovery.result_detector: 'Fresh supervision evidence confirms repair of the failed detector path for {subject}; alarms require separate evidence.'
+recovery.result_hazard: 'Detector recovery is assessed separately. This advice does not establish safe re-entry or permission to reopen gas.'
+recovery.inspect_external_data: 'Check the connection, integration and required data capability for {subject}; verify the relevant authoritative source directly while this path is unavailable.'
+recovery.result_external_data: 'Fresh valid evidence confirms recovery of the affected provider or capability for {subject}.'
+recovery.inspect_temperature_high: 'Inspect the reported high temperature in {subject} from a safe place and seek equipment-specific service guidance if needed. This alert does not establish that opening a window is safe.'
+recovery.inspect_temperature: 'Inspect the reported temperature and available protection in {subject} from a safe place; check the affected input or equipment instructions when window advice is unavailable.'
+recovery.result_room_inspection: 'Your report records inspection of {subject}; temperature recovery still requires qualified readings.'
+recovery.inspect_platform: 'Inspect the reported host resource issue for {subject}; check load, storage or cooling as appropriate and arrange installation maintenance.'
+recovery.result_platform: 'Fresh host evidence satisfies the recovery policy for {subject}.'
+recovery.inspect_wan: 'Check router power, uplink and connectivity for {subject}; contact the connection provider if needed.'
+recovery.result_wan: 'Fresh connectivity evidence satisfies the WAN recovery policy for {subject}.'
+recovery.inspect_backup: 'Inspect the backup status and latest successful backup for {subject}; resolve the reported issue through the installation tools. A restore is not requested.'
+recovery.result_backup: 'Current backup evidence satisfies the configured policy for {subject}.'
+recovery.inspect_update: 'Review the stable update for {subject}, release notes and backup readiness; schedule installation through the owning platform tools.'
+recovery.result_update: 'Current version evidence confirms the update condition is resolved for {subject}.'
+recovery.perform_test: 'Carry out the supported test for {subject} according to equipment instructions and record its result through the existing test-report workflow. This action does not trigger a test.'
+recovery.result_test: 'The maintenance monitor accepts current test evidence for {subject}; a work report alone is not a passed test or an alarm clear.'
+recovery.app_path_startup: 'Application startup'
+recovery.app_path_publication: 'MQTT publication'
+recovery.app_path_delivery: 'Notification delivery'
+recovery.app_path_local_output: 'Local safety output'
+recovery.app_path_persistence: 'Persistent state store'
+recovery.app_path_evaluation: 'Hazard evaluation'
+recovery.app_path_recovery: 'Recovery execution'
+recovery.inspect_app_startup: 'Inspect startup logs and validated configuration for {subject}; repair the reported initialization path through installation maintenance.'
+recovery.inspect_app_publication: 'Inspect the broker connection, permissions and publication error for {subject}; repair the affected reporting path.'
+recovery.inspect_app_delivery: 'Inspect the notification channel and delivery errors for {subject}; check receipt through the supported test-report workflow.'
+recovery.inspect_app_local_output: 'Inspect power, connectivity and the reported output path for {subject} using its instructions; do not trigger an output merely to dismiss this fault.'
+recovery.inspect_app_persistence: 'Inspect the failed operation, storage capacity and permissions for {subject}; preserve evidence and arrange repair without deleting stored safety data.'
+recovery.inspect_app_evaluation: 'Inspect the affected input, configuration and evaluation error for {subject}; arrange repair of that evaluation path.'
+recovery.inspect_app_recovery: 'Inspect the failed recovery path and equipment for {subject}; arrange repair without replaying a failed command.'
+recovery.result_app_path: 'Successful current evidence confirms recovery of the same path and operation for {subject}; recipient receipt remains separately attested.'
+recovery.inspect_command: 'Inspect the failed command or missing effect for {subject} and its equipment instructions; arrange service without replaying the failed command.'
+recovery.reason_recovery_command: 'A command failed or its required effect was not observed.'
 recovery.confirm_close_opening: Confirm closing {opening}. SafetyComponent will act
   only after your confirmation.

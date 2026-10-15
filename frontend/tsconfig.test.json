@@ -13,6 +13,7 @@
     "src/domain/**/*.ts",
     "src/components/NotificationHistory.test.tsx",
     "src/components/ConfigurationObjectEditor.test.tsx",
-    "src/components/FreezeFrame.test.tsx"
+    "src/components/FreezeFrame.test.tsx",
+    "src/components/RecoveryCard.test.tsx"
   ]
 }

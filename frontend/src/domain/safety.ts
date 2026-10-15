@@ -45,6 +45,7 @@ export interface FaultDiagnosticData {
 
 export interface FaultView {
   entityId: string;
+  faultId?: string;
   name: string;
   description: string;
   locations: string[];
@@ -72,6 +73,26 @@ export interface RecoveryView {
   confirmationToken: string;
   reason: string;
   source: string;
+  expectedResult?: string;
+  faultId?: string;
+  completionCondition?: string;
+  manualReportAllowed?: boolean;
+  reportToken?: string;
+  proposalInstanceId?: string;
+  blockedReason?: string;
+  evidenceAt?: string;
+  evidenceSource?: string;
+  reportStatus?: string;
+  reportedAt?: string;
+  reportSource?: string;
+  latestOutcome?: {
+    outcome: 'completed' | 'withdrawn' | 'failed' | 'timed_out';
+    recordedAt: string;
+    evidenceAt?: string;
+    evidenceSource?: string;
+    reportedAt?: string;
+    reportSource?: string;
+  };
   validUntil?: string;
   expiresAt?: number;
   actuatorEntityId: string;
@@ -92,7 +113,21 @@ export interface TemperatureView {
   acceleration: number | null;
   lowThreshold: number | null;
   highThreshold: number | null;
+  lowForecast: TemperatureForecastView;
+  highForecast: TemperatureForecastView;
   lastUpdated?: string;
+}
+
+export interface TemperatureForecastView {
+  status: 'risk' | 'within_limits' | 'unevaluable' | 'not_evaluated' | 'not_reported' | 'unknown';
+  symptomId: string;
+  temperature: number | null;
+  rate: number | null;
+  modeledTemperature: number | null;
+  threshold: number | null;
+  timespanHours: number | null;
+  evaluatedAt?: string;
+  activeFault: boolean | null;
 }
 
 export type SafetyDoorStatus = 'active' | 'blocked' | 'inactive' | 'unavailable' | 'unknown';
@@ -305,6 +340,7 @@ export function getFaults(entities: EntityMap): FaultView[] {
     .filter(([entityId]) => entityId.startsWith(FAULT_PREFIX))
     .map(([entityId, entity]) => ({
       entityId,
+      faultId: stringAttribute(entity, 'fault_id') || entityId.slice(FAULT_PREFIX.length),
       name: friendlyEntityName(entityId, entity),
       description: stringAttribute(entity, 'description'),
       locations: entityLocations(entity),
@@ -360,6 +396,26 @@ export function getRecoveries(entities: EntityMap): RecoveryView[] {
     .filter(([entityId]) => entityId.startsWith(RECOVERY_PREFIX))
     .flatMap(([entityId, entity]) => {
       const proposals = Array.isArray(entity.attributes.proposals) ? entity.attributes.proposals : [];
+      const outcomes = Array.isArray(entity.attributes.recent_outcomes) ? entity.attributes.recent_outcomes : [];
+      const latest = outcomes.find(raw => {
+        if (!raw || typeof raw !== 'object') return false;
+        const record = raw as Record<string, unknown>;
+        return (
+          ['completed', 'withdrawn', 'failed', 'timed_out'].includes(String(record.outcome)) &&
+          typeof record.recorded_at === 'string' &&
+          Number.isFinite(Date.parse(record.recorded_at))
+        );
+      }) as Record<string, unknown> | undefined;
+      const latestOutcome = latest
+        ? {
+            outcome: latest.outcome as 'completed' | 'withdrawn' | 'failed' | 'timed_out',
+            recordedAt: latest.recorded_at as string,
+            ...(typeof latest.evidence_at === 'string' ? { evidenceAt: latest.evidence_at } : {}),
+            ...(typeof latest.evidence_source === 'string' ? { evidenceSource: latest.evidence_source } : {}),
+            ...(typeof latest.reported_at === 'string' ? { reportedAt: latest.reported_at } : {}),
+            ...(typeof latest.report_source === 'string' ? { reportSource: latest.report_source } : {}),
+          }
+        : undefined;
       if (proposals.length === 0) {
         return [
           {
@@ -372,6 +428,7 @@ export function getRecoveries(entities: EntityMap): RecoveryView[] {
             confirmationToken: '',
             reason: '',
             source: '',
+            latestOutcome,
             actuatorEntityId: '',
             state: entity.state,
             status: getRecoveryStatus(entity.state),
@@ -396,6 +453,19 @@ export function getRecoveries(entities: EntityMap): RecoveryView[] {
             confirmationToken: String(proposal.confirmation_token ?? ''),
             reason: String(proposal.reason ?? ''),
             source: String(proposal.source ?? ''),
+            expectedResult: typeof proposal.expected_result === 'string' ? proposal.expected_result : undefined,
+            faultId: typeof proposal.fault_id === 'string' ? proposal.fault_id : undefined,
+            completionCondition: typeof proposal.completion_condition === 'string' ? proposal.completion_condition : undefined,
+            manualReportAllowed: proposal.manual_report_allowed === true,
+            reportToken: typeof proposal.report_token === 'string' ? proposal.report_token : undefined,
+            proposalInstanceId: typeof proposal.proposal_instance_id === 'string' ? proposal.proposal_instance_id : undefined,
+            blockedReason: typeof proposal.blocked_reason === 'string' ? proposal.blocked_reason : undefined,
+            evidenceAt: typeof proposal.evidence_at === 'string' ? proposal.evidence_at : undefined,
+            evidenceSource: typeof proposal.evidence_source === 'string' ? proposal.evidence_source : undefined,
+            reportStatus: typeof proposal.report_status === 'string' ? proposal.report_status : undefined,
+            reportedAt: typeof proposal.reported_at === 'string' ? proposal.reported_at : undefined,
+            reportSource: typeof proposal.report_source === 'string' ? proposal.report_source : undefined,
+            latestOutcome,
             validUntil: proposal.valid_until ? String(proposal.valid_until) : undefined,
             expiresAt: typeof proposal.expires_at === 'number' ? proposal.expires_at : undefined,
             actuatorEntityId: String(proposal.actuator_entity_id ?? ''),
@@ -409,9 +479,15 @@ export function getRecoveries(entities: EntityMap): RecoveryView[] {
     .sort((left, right) => statusPriority[left.status] - statusPriority[right.status] || left.name.localeCompare(right.name, 'pl'));
 }
 
+/** Match only the published stable fault ID; names and locations are not identity. */
+export function recoveriesForFault(fault: FaultView, recoveries: RecoveryView[]): RecoveryView[] {
+  const faultId = fault.faultId || fault.entityId.slice(FAULT_PREFIX.length);
+  return recoveries.filter(recovery => recovery.faultId === faultId);
+}
+
 /** Returns true when a recovery sensor needs an action or diagnostic attention. */
 export function recoveryNeedsAttention(recovery: RecoveryView): boolean {
-  return !['do_not_perform', 'confirmed'].includes(recovery.status);
+  return Boolean(recovery.blockedReason) || !['do_not_perform', 'confirmed'].includes(recovery.status);
 }
 
 export function getMonitoredTemperatures(entities: EntityMap): TemperatureView[] {
@@ -438,6 +514,8 @@ export function getMonitoredTemperatures(entities: EntityMap): TemperatureView[]
           acceleration: numericState(entities[accelerationEntityId]?.state),
           lowThreshold: numericState(lowThresholdEntity?.state) ?? numericAttribute(rateEntity, 'low_temperature_threshold'),
           highThreshold: numericState(highThresholdEntity?.state) ?? numericAttribute(rateEntity, 'high_temperature_threshold'),
+          lowForecast: temperatureForecast(lowThresholdEntity, entities['sensor.fault_riskytemperatureforecast']),
+          highForecast: temperatureForecast(highThresholdEntity, entities['sensor.fault_riskytemperatureforecast']),
           lastUpdated: latestTimestamp(
             sourceEntity.last_updated,
             rateEntity.last_updated,
@@ -448,6 +526,65 @@ export function getMonitoredTemperatures(entities: EntityMap): TemperatureView[]
       ];
     })
     .sort((left, right) => left.name.localeCompare(right.name, 'pl'));
+}
+
+/** Keep the backend's last predicate observation separate from qualified fault state. */
+function temperatureForecast(entity: EntitySnapshot | undefined, fault: EntitySnapshot | undefined): TemperatureForecastView {
+  const raw = entity?.attributes.forecast_evaluation;
+  const observation = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : null;
+  const symptomId = typeof observation?.symptom_id === 'string' ? observation.symptom_id : '';
+  const contributors = fault?.attributes.active_contributors;
+  const validContributors = Array.isArray(contributors) && contributors.every(item => typeof item === 'string');
+  const faultAvailable = fault && !UNAVAILABLE_STATES.has(normalizeState(fault.state));
+  const activeFault = !faultAvailable
+    ? null
+    : fault.attributes.active === false
+      ? false
+      : fault.attributes.active === true && symptomId && validContributors
+        ? (contributors as string[]).includes(symptomId)
+        : null;
+  const finite = (value: unknown): number | null => (typeof value === 'number' && Number.isFinite(value) ? value : null);
+  const threshold = finite(observation?.threshold_c);
+  const timespanHours = finite(observation?.forecast_timespan_hours);
+  const evaluatedAt =
+    typeof observation?.evaluated_at === 'string' && Number.isFinite(Date.parse(observation.evaluated_at))
+      ? observation.evaluated_at
+      : undefined;
+  const temperature = finite(observation?.temperature_c);
+  const rate = finite(observation?.rate_per_minute);
+  const modeledTemperature = finite(observation?.modeled_temperature_c);
+  const rawStatus = observation?.status;
+  let status: TemperatureForecastView['status'] =
+    !observation && raw === undefined
+      ? 'not_reported'
+      : rawStatus === 'risk' || rawStatus === 'within_limits' || rawStatus === 'unevaluable' || rawStatus === 'not_evaluated'
+        ? rawStatus
+        : 'unknown';
+  if (entity && numericState(entity.state) === null) status = 'unevaluable';
+  if (
+    (status === 'risk' || status === 'within_limits') &&
+    (!symptomId ||
+      temperature === null ||
+      rate === null ||
+      modeledTemperature === null ||
+      threshold === null ||
+      timespanHours === null ||
+      timespanHours <= 0 ||
+      !evaluatedAt)
+  )
+    status = 'unevaluable';
+  const evaluable = status === 'risk' || status === 'within_limits';
+  return {
+    status,
+    symptomId,
+    temperature: evaluable ? temperature : null,
+    rate: evaluable ? rate : null,
+    modeledTemperature: evaluable ? modeledTemperature : null,
+    threshold,
+    timespanHours,
+    evaluatedAt,
+    activeFault,
+  };
 }
 
 export function getSafetyDoors(entities: EntityMap): SafetyDoorView[] {

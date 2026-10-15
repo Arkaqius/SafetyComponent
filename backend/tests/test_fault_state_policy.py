@@ -15,6 +15,7 @@ from components.core.fault_state_policy import (
 from components.core.types_common import Fault, FaultState, Symptom
 from components.core.event_bus import EventBus
 from components.safetycomponents.core.safety_component import (
+    DebounceState,
     SafetyMechanismResult,
     safety_mechanism_decorator,
 )
@@ -22,6 +23,7 @@ from components.faults_manager.fault_manager import FaultManager
 from components.faults_manager.schema import validate_faults_config
 from components.faults_manager.cfg_parser import get_faults
 from components.recovery_manager.recovery_manager import RecoveryManager
+from test_safety_component_core import _make_component
 
 
 def test_boolean_boundary_rejects_invalid_predicate_results() -> None:
@@ -127,9 +129,10 @@ def test_category_round_trips_through_fault_config() -> None:
 @pytest.mark.parametrize("failure", ["invalid_result", "exception"])
 def test_invocation_failure_is_reported_separately_from_false(failure: str) -> None:
     events: list[str] = []
-    bus = EventBus()
+    component = _make_component()
+    bus = component.event_bus
     bus.subscribe("evaluation_unavailable", lambda *, symptom_id: events.append(symptom_id))
-    component = Mock(event_bus=bus)
+    component.debounce_states["room"] = DebounceState(0, False)
     sm = Mock(name="room")
     sm.name = "room"
     sm.isEnabled = True
@@ -140,8 +143,9 @@ def test_invocation_failure_is_reported_separately_from_false(failure: str) -> N
         return SafetyMechanismResult(1, None)
 
     with pytest.raises((RuntimeError, TypeError)):
-        safety_mechanism_decorator(predicate)(component, sm, {"entity": "changed"})
+        safety_mechanism_decorator(predicate)(component, sm)
     assert events == ["room"]
+    assert component.symptom_states["room"] is FaultState.NOT_TESTED
 
 
 def test_disabling_active_contributor_publishes_unevaluable_without_clearing() -> None:
@@ -159,6 +163,7 @@ def test_disabling_active_contributor_publishes_unevaluable_without_clearing() -
         attributes={
             "active": True, "shadowed_by": [], "latched": False,
             "level": "level_2", "category": "H",
+            "fault_id": "Hazard",
             "contributors": ["room"], "active_contributors": ["room"],
         },
     )
@@ -188,6 +193,7 @@ def test_shadowing_with_two_owners_withdraws_and_restores_correct_fault() -> Non
         "FAIL",
         attributes={
             "active": True, "shadowed_by": ["Direct"], "latched": False,
+            "fault_id": "Forecast",
             "level": "level_3", "category": "H",
             "contributors": ["forecast"], "active_contributors": ["forecast"],
         },
@@ -202,6 +208,7 @@ def test_shadowing_with_two_owners_withdraws_and_restores_correct_fault() -> Non
         "FAIL",
         attributes={
             "active": True, "shadowed_by": ["Another", "Direct"], "latched": False,
+            "fault_id": "Forecast",
             "level": "level_3", "category": "H",
             "contributors": ["forecast"], "active_contributors": ["forecast"],
         },

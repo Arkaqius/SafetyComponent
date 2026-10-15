@@ -257,6 +257,10 @@ runtime_cfg:
       state_file: /config/appdaemon/notification_state.json
 
   recovery:
+    timing:
+      consent_timeout_seconds: 120
+      effect_timeout_seconds: 120
+      manual_task_timeout_seconds: null
     persistence:
       enabled: true
       state_file: /config/appdaemon/recovery_state.json

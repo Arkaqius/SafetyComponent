@@ -254,6 +254,37 @@ test('only TO_PERFORM recovery states are actionable', () => {
   assert.equal(recoveries[1].status, 'do_not_perform');
 });
 
+test('manual recovery exposes expected results and keeps history separate from current state', () => {
+  const [recovery] = getRecoveries({
+    'sensor.recovery_closedoor': entity('DO_NOT_PERFORM', {
+      recent_outcomes: [
+        { outcome: 'completed', recorded_at: 'invalid' },
+        { outcome: 'completed', recorded_at: timestamp },
+      ],
+    }),
+  });
+  assert.equal(recovery.status, 'do_not_perform');
+  assert.equal(recoveryNeedsAttention(recovery), false);
+  assert.deepEqual(recovery.latestOutcome, { outcome: 'completed', recordedAt: timestamp });
+  const [active] = getRecoveries({
+    'sensor.recovery_closedoor': entity('TO_PERFORM', {
+      proposals: [
+        {
+          proposal_id: 'DoorOpen',
+          status: 'TO_PERFORM',
+          execution_policy: 'manual',
+          expected_result: 'Kontaktron potwierdza zamknięcie.',
+          fault_id: 'DoorFault',
+        },
+      ],
+    }),
+  });
+  assert.equal(active.executionPolicy, 'manual');
+  assert.equal(active.expectedResult, 'Kontaktron potwierdza zamknięcie.');
+  assert.equal(active.faultId, 'DoorFault');
+  assert.equal(active.latestOutcome, undefined);
+});
+
 test('treats unavailable and unknown recovery states as requiring attention', () => {
   const recoveries = getRecoveries({
     'sensor.recovery_manipulatewindowoffice': entity('unavailable'),

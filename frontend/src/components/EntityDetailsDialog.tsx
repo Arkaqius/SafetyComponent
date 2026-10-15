@@ -4,9 +4,12 @@ import {
   RECOVERY_PREFIX,
   friendlyEntityName,
   getFaultStatus,
+  getFaults,
+  getRecoveries,
   getRecoveryStatus,
   localizedEntityState,
   normalizeState,
+  recoveriesForFault,
   type EntityMap,
   type EntitySnapshot,
   type StatusTone,
@@ -16,6 +19,8 @@ import Icon from './Icon';
 import StatusBadge from './StatusBadge';
 import ModalDialog from './ModalDialog';
 import { historySegments, type HistoryPoint } from '../domain/history';
+import { publicRecoveryAttributes } from '../domain/recoveryConfirmation';
+import RecoveryActionCard from './RecoveryActionCard';
 
 type HistoryHours = 6 | 24 | 72 | 168;
 
@@ -57,7 +62,12 @@ export default function EntityDetailsDialog({ entities, entityId, onClose }: Ent
   const exactName = fullEntityName(entityId, entity);
   const shortName = friendlyEntityName(entityId, entity);
   const presentation = entityPresentation(entityId, entity);
-  const attributes = Object.entries(entity?.attributes ?? {}).filter(([key]) => key !== 'friendly_name');
+  const attributes = Object.entries(publicRecoveryAttributes(entity?.attributes ?? {}) as Record<string, unknown>).filter(
+    ([key]) => key !== 'friendly_name'
+  );
+  const recoveries = getRecoveries(entities);
+  const fault = entity && entityId.startsWith(FAULT_PREFIX) ? getFaults({ [entityId]: entity })[0] : undefined;
+  const relatedRecoveries = fault ? recoveriesForFault(fault, recoveries) : recoveries.filter(recovery => recovery.entityId === entityId);
 
   return (
     <ModalDialog initialFocus={closeButtonRef} labelledBy='entity-dialog-title' onClose={onClose} open={Boolean(entityId)}>
@@ -81,6 +91,13 @@ export default function EntityDetailsDialog({ entities, entityId, onClose }: Ent
       </header>
 
       <div className='entity-dialog-scroll'>
+        {relatedRecoveries.length > 0 && (
+          <section aria-label='Zalecenia i działania dla tej encji' className='recovery-list'>
+            {relatedRecoveries.map(recovery => (
+              <RecoveryActionCard key={recovery.proposalId} recovery={recovery} />
+            ))}
+          </section>
+        )}
         <dl className='entity-dialog-facts'>
           <div>
             <dt>Aktualny stan</dt>

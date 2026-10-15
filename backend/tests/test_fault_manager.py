@@ -219,6 +219,7 @@ def test_set_fault(fault_manager, mocked_hass_app, fault):
         "FAIL",
         attributes={
             "Location": "Kitchen, Office",
+            "fault_id": "RiskyTemperature",
             "notification_tag": "mocked_fault_tag",
             "level": "level_2",
             "category": "H",
@@ -262,6 +263,7 @@ def test_clear_fault(fault_manager, mocked_hass_app, fault):
         "PASS",
         attributes={
             "Location": "", "active": False, "shadowed_by": [], "latched": False,
+            "fault_id": "RiskyTemperature",
             "level": "level_2", "category": "H",
             "contributors": ["RiskyTemperatureOffice"], "active_contributors": [],
         }
@@ -342,6 +344,7 @@ def test_fault_manager_multiple_symptoms(fault_manager, mocked_hass_app, fault):
         "FAIL",
         attributes={
             "Location": "Living Room, Office",
+            "fault_id": "RiskyTemperature",
             "notification_tag": "mocked_fault_tag",
             "level": "level_2",
             "category": "H",
@@ -374,6 +377,7 @@ def test_fault_manager_multiple_symptoms(fault_manager, mocked_hass_app, fault):
         "FAIL",
         attributes={
             "Location": "Living Room, Kitchen",
+            "fault_id": "RiskyTemperature",
             "notification_tag": "mocked_fault_tag",
             "level": "level_2",
             "category": "H",
@@ -413,6 +417,7 @@ def test_fault_manager_multiple_symptoms(fault_manager, mocked_hass_app, fault):
             "Location": "", "active": False, "shadowed_by": [], "latched": False,
             "level": "level_2", "category": "H",
             "contributors": ["RiskyTemperatureKitchen", "RiskyTemperatureOffice"],
+            "fault_id": "RiskyTemperature",
             "active_contributors": [],
         },
     )

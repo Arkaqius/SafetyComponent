@@ -14,6 +14,7 @@ from components.core.event_bus import EventBus
 from components.core.mqtt_entity_manager import MqttEntityManager
 from components.core.sqlite_state_store import SqliteStateDatabase, state_database_path
 from components.core.types_common import FaultState, RecoveryAction, SMState, Symptom
+from components.recovery_manager.manual_actions import manual_action
 from components.safetycomponents.core.safety_component import (
     SafetyComponent,
     register_safety_component,
@@ -146,6 +147,7 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
 
         profiles = component_cfg["profiles"]
         symptoms: dict[str, Symptom] = {}
+        recoveries: dict[str, RecoveryAction] = {}
         for detector_key, detector in component_cfg["detectors"].items():
             profile = dict(profiles[detector["profile"]])
             runtime = DetectorRuntime(
@@ -178,6 +180,20 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
                     sm_name=mechanism_name,
                 )
                 self._symptom_bindings[symptom_name] = (detector_key, kind)
+                recoveries[symptom_name] = manual_action(
+                    f"{'RespondTo' if kind == 'alarm' else 'Inspect'}{symptom_name}",
+                    subject=str(detector["friendly_name"]),
+                    instruction_key=(f"hazard.guidance.{hazard}" if kind == "alarm"
+                                     else "recovery.inspect_detector"),
+                    result_key=("recovery.result_hazard" if kind == "alarm"
+                                else "recovery.result_detector"),
+                    area_id=detector.get("area_id"),
+                    area_name=detector.get("area_name"),
+                    entity_id=str(detector["entity_id"]),
+                    completion_condition="advisory" if kind == "alarm" else "owner_clear",
+                    manual_report_allowed=kind == "health",
+                    purpose="hazard_mitigation" if kind == "alarm" else "capability_repair",
+                )
 
         self._restore_state()
         self.mqtt_entities.register_sensor(
@@ -188,7 +204,7 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
             icon="mdi:home-alert",
             entity_category="diagnostic",
         )
-        return symptoms, {}
+        return symptoms, recoveries
 
     def get_output_inhibitions(self) -> tuple[str, ...]:
         """Return persisted restrictions that must precede local output use."""
