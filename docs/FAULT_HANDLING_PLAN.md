@@ -21,6 +21,53 @@ Terminology: [Glossary](#0-glossary). Definitions describe this plan's target
 architecture unless explicitly marked as legacy. They do not change current
 runtime contracts or resolve the open policy choices listed at the glossary's end.
 
+### Recovery documentation update (2026-10-12)
+
+The recovery requirements now cover manual work as well as supported automatic
+or user-confirmed commands. The normative contract is
+[SYS §8.10](<sys/SafetyConcept - SYS.md#810-recommended-actions-and-recovery>),
+[SSRD §4.5](<sys/SafetyComponent - SSRD.md#45-notifications-and-recovery>) and
+[Recommended Actions and Recovery](<features/Recommended Actions and Recovery - Architecture.md>).
+The recovery allocation there supersedes older no-action defaults in this plan.
+HARA hazards, classifications and safety goals are unchanged: manual response is
+not credited as a guaranteed response within an FTTI. Runtime identifiers,
+configuration schemas and installation examples are unchanged by this update.
+
+Implementation evidence was reviewed at `860c84b`, branch
+`feature/temperature-forecast-sampling`, including the existing uncommitted
+backend work. Local `backend/config/user_config.yml` and `backend/app_cfg.yaml`
+were absent. Low-temperature window actions and external-opening manual/confirmed
+actions exist; indoor hazard advice is delivered through notification context.
+Door, entity-health, high-temperature and functional-safety manual proposals,
+general manual-work reporting, durable recent action outcomes and unified fault
+card presentation remain implementation work. Central manual-policy command
+rejection and withdrawal after empty/rejected replacements also require fixes.
+Passing existing tests shall not be treated as evidence of those new contracts.
+
+Delivery sequence:
+
+1. Enforce execution-policy validation, stale-proposal withdrawal, completion
+   methods, visible block reasons and bounded outcome persistence in RecoveryManager.
+2. Add manual close, device-specific battery work and cause-specific unavailable
+   input repair, including fresh result evidence and independent contributors.
+3. Add authenticated reports for useful manual/procedural tasks, and show the
+   same actions at their faults and in the shared list. Keep completion reports,
+   command consent and fault acknowledgement distinct.
+4. Extend the remaining diagnostic, indoor-hazard, temperature and heating
+   allocations using their owner contracts and EN/PL/DE runtime translations.
+
+Each delivery step requires its own regression evidence. Detailed target cases
+are specified by SWR-REC-018 and the recovery architecture's verification section.
+
+Documentation validation on 2026-10-12: the full backend suite passed 825 tests
+with 91.18% coverage; Ruff and Mypy passed. Frontend tests passed 106 cases;
+type checking, lint and build passed. Tests/build required execution outside
+the subprocess restriction after initial `spawn EPERM` failures. Frontend
+format checking reported existing issues in 64 untouched files. Technical
+documentation remains English; runtime translations are unchanged and their
+EN/PL/DE key-parity test passed. These results validate the existing baseline,
+not completion of the implementation items above.
+
 ## 0. Glossary
 
 ### Core concepts and identity
@@ -337,8 +384,9 @@ For example, proposed `TemperatureRecoveryUnavailable` has class D, level 3,
 notification profile 3, no latch, and no automatic repair. Its explicit
 `degrades` list targets `RiskyTemperature` and `RiskyTemperatureForecast`, only
 their affected room's recovery capability. It does not disable temperature
-detection. `SafetyDoorOpenTimeout{DoorKey}` instead uses level 2, no recovery
-action by default, and explicitly permits temporary/permanent operator control.
+detection. `SafetyDoorOpenTimeout{DoorKey}` uses level 2 and a manual close
+action with contact-based completion under the shared recovery contract; its
+separate temporary/permanent operator-control proposal does not complete that action.
 
 Resolution order: validate configuration and bindings; apply evaluation/input
 eligibility; aggregate Boolean evidence and advance fault state; capture evidence
@@ -412,7 +460,7 @@ is narrowed by the failed contributor, never applied wholesale by class/priority
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | M01 / I | Temperature | `sm_tc_1`, `sm_tc_3`; direct low/high by room | `RiskyTemperature` retained | H / L2 | Existing low-temperature recovery only when eligible; shadows M02 | Not D | Hazard itself does not disable monitoring. |
 | M02 / I | Temperature | `sm_tc_2`, `sm_tc_4`; forecast low/high by room | `RiskyTemperatureForecast` retained | H / L3 | Configured low-temperature guidance/recovery; shadowed by M01 | Not D | Keep forecast evidence while its response is shadowed. |
-| M03 / R | Safety Doors | `sm_safety_door_open_timeout`; one door/gate | Shared `SafetyDoorOpenTimeout` -> `SafetyDoorOpenTimeout{DoorKey}` | H / L2 | None by default; per-door temporary/permanent override allowed | Not D | One subject, no effect on other doors or contact health. |
+| M03 / R | Safety Doors | `sm_safety_door_open_timeout`; one door/gate | Shared `SafetyDoorOpenTimeout` -> `SafetyDoorOpenTimeout{DoorKey}` | H / L2 | Manual close with valid closed-contact evidence; no actuator command; operator override remains separate | Not D | One subject, no effect on other doors or contact health. |
 | M04 / I | External Hazard | `sm_ext_weather_exposure`; hazard x opening | `ExternalWeatherExposure` retained | H / L2 | Manual closure or eligible user-confirmed directional cover closure | Not D | Explicit postcondition and conflict checks. |
 | M05 / I | External Hazard | `sm_ext_outdoor_air_quality_exposure`; opening | `OutdoorAirQualityExposure` retained | H / L3 | Manual closure / explicitly supported confirmed closure | Not D | Constrain conflicting ventilation advice, not all monitoring. |
 | M06 / I | External Hazard | `sm_ext_provider_unavailable`; required weather/AQ capability | `ExternalDataUnavailable`, capability contributor | D / L3 | Repair required data path; no actuation | H-EXT | Evaluation/advice/recovery requiring the missing capability only; retain independent valid weather/AQ evidence. |

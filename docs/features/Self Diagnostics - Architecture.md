@@ -25,6 +25,16 @@ configured; an absent optional vector does not make coverage unknown. Existing
 `sensor.safety_app_health`, delivery health, and per-provider
 health entities retain detail and are not replaced by fault state.
 
+The diagnostic owner shall supply cause-specific manual repair proposals under
+the [shared recovery contract](<Recommended Actions and Recovery - Architecture.md>).
+Provider guidance shall name the failing adapter or required capability; App
+Health guidance shall name the failed channel, output, store operation or
+evaluation/recovery subject. Repair of one path shall not confirm another path.
+Actuator-command failures shall remain owned by the requesting component's
+recovery fault. Manual proposals shall issue no automatic restart, output test,
+reconfiguration or evidence-deletion command. An unavailable provider or failed
+dispatcher shall not prevent presentation of valid repair instructions.
+
 Provider, input and maintenance checks shall acquire and evaluate evidence from
 startup. Their qualified D contributions without allocated detection budgets shall
 use the shared

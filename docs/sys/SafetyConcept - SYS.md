@@ -699,7 +699,8 @@ temperature.
 - Symptom events for FaultManager aggregation.
 - **OR‑020/021** fault notifications and dashboard state.
 - Optional `ManipulateWindow<Room>` recovery proposals routed through
-  RecoveryManager. C‑TEMP does not command HVAC or climate services.
+  RecoveryManager, plus cause-specific manual room-inspection guidance.
+  C‑TEMP does not command HVAC or climate services.
 - Diagnostic MQTT sensors for each room's low/high thresholds and derivative
   measurements.
 
@@ -768,8 +769,9 @@ temperature.
 - **SYS-SR-TEMP-009:** Low-temperature mechanisms may create a
   `ManipulateWindow{Room}` recovery proposal using the configured window sensor
   or cover actuator and the indoor/outdoor temperature relation. High-temperature
-  mechanisms shall create no recovery action. C‑TEMP shall not issue HVAC or
-  climate commands.
+  mechanisms shall provide manual room-inspection/service guidance without
+  window actuation. Both paths shall follow the shared recovery contract in
+  §8.10. C‑TEMP shall not issue HVAC or climate commands.
 - **SYS-SR-TEMP-010:** Direct low/high symptoms shall aggregate into
   `RiskyTemperature`; forecast low/high symptoms shall aggregate into
   `RiskyTemperatureForecast`; the direct fault shall shadow the forecast fault
@@ -788,7 +790,7 @@ temperature.
 - **Integration:** per-room state playback, derivative publication, threshold
   MQTT diagnostics, fault aggregation/shadowing, and low-temperature recovery
   proposals.
-- **Negative control tests:** high-temperature paths create no recovery action,
+- **Negative control tests:** high-temperature paths provide manual guidance only
   and C‑TEMP makes no HVAC or climate service call.
 
 ---
@@ -1024,7 +1026,7 @@ C-SEC. Diagnostic handling of unavailable inputs supports SG-003.
   states gate monitoring independently for one door.
 - Symptom events for FaultManager aggregation and **OR-020/021** notification
   and dashboard output.
-- One diagnostic MQTT sensor per door. C-DOOR registers no recovery action and
+- One diagnostic MQTT sensor per door. C-DOOR supplies manual closure recovery and
   uses no lock, cover, gate, or other actuator output.
 
 #### 8.4.2 Parameters
@@ -1046,7 +1048,7 @@ C-SEC. Diagnostic handling of unavailable inputs supports SG-003.
 | Per-door fault | `SafetyDoorOpenTimeout{DoorKey}` |
 | Fault level | 2 |
 | Diagnostic entity | `sensor.safety_door_<door_name>` |
-| Recovery actions | None |
+| Recovery actions | Manual close action; no actuator command |
 
 #### 8.4.4 Requirements (C-DOOR → SYS-SR-DOOR-xxx)
 
@@ -1078,8 +1080,10 @@ C-SEC. Diagnostic handling of unavailable inputs supports SG-003.
 - **SYS-SR-DOOR-009:** Each configured door or gate shall have an independent
   level-2 `SafetyDoorOpenTimeout{DoorKey}` fault. Its active contributors shall
   aggregate only for that door, and another door's recovery shall not clear it.
-- **SYS-SR-DOOR-010:** C-DOOR shall register no recovery action and shall not
-  close, lock, unlock, or otherwise actuate a door or gate.
+- **SYS-SR-DOOR-010:** C-DOOR shall supply a manual action to close the named
+  door or gate for its active open-timeout cause, using a current valid closed
+  contact as completion evidence under §8.10. It shall not close, lock, unlock,
+  or otherwise actuate a door or gate.
 - **SYS-SR-DOOR-011:** C-DOOR shall not infer unauthorized entry, lock
   integrity, or intrusion state; those responsibilities belong to C-SEC.
 
@@ -1102,7 +1106,7 @@ installation.
   and stable runtime IDs.
 - **Integration tests:** FaultManager aggregation, same-tag notification
   refresh, resolved Home Assistant area names, MQTT diagnostic attributes, and
-  zero recovery/actuator calls.
+  manual closure proposals with contact-based completion, and zero actuator calls.
 
 ---
 
@@ -1186,7 +1190,7 @@ entity is safety-relevant through Group A or B.
 | Fault level | 3 |
 | Per-entity diagnostic | `sensor.entity_health_<entity_key>` |
 | Aggregate diagnostic | `sensor.entity_monitor_summary` |
-| Recovery actions | None |
+| Recovery actions | Cause-specific manual Group A/B repair; none for passive Group C |
 
 #### 8.5.5 Requirements (C-ENT → SYS-SR-ENT-xxx)
 
@@ -1248,8 +1252,10 @@ entity is safety-relevant through Group A or B.
 - **SYS-SR-ENT-013:** C-ENT shall use Home Assistant friendly names, device
   names, and area names for operator presentation while retaining entity IDs and
   raw state codes as diagnostic data.
-- **SYS-SR-ENT-014:** C-ENT shall register no recovery action and shall not call
-  a Home Assistant actuator service.
+- **SYS-SR-ENT-014:** C-ENT shall supply cause-specific manual repair actions
+  for owned Group A/B faults under §8.10, retaining the affected entity and
+  failed-path identity. Completion shall require that cause's valid recovery
+  evidence. It shall not call a Home Assistant actuator service.
 - **SYS-SR-ENT-015:** Each installed Boolean mechanism result shall have one
   validated fault binding by mechanism, subject, and contributor, or an
   explicit diagnostic-only exemption. Missing or ambiguous ownership, unknown
@@ -1274,7 +1280,7 @@ entity is safety-relevant through Group A or B.
   and recovery debounce, fault ownership, stable IDs, and no false clear.
 - **Integration tests:** component dependency registration, common-entity
   inclusion, FaultManager aggregation, bounded MQTT diagnostics, frontend
-  inventory filtering, and zero recovery/actuator calls.
+  inventory filtering, cause-specific manual repair actions, and zero actuator calls.
 
 ---
 
@@ -1300,7 +1306,8 @@ room-temperature mechanisms and faults.
 C-HVAC shall publish per-installation phase, supervision coverage, rule
 results, heating faults and bounded diagnostic evidence through the existing
 fault/MQTT/notification interfaces. It shall not perform boiler, pump, climate,
-gas-valve or other heating actuator calls or register recovery actions.
+gas-valve or other heating actuator calls. It shall supply manual inspection
+and service actions under §8.10 using the reported equipment-specific evidence.
 
 #### 8.6.2 Functional requirements
 
@@ -1323,7 +1330,7 @@ gas-valve or other heating actuator calls or register recovery actions.
 | SYS-SR-HSM-015 | SET and HEAL shall include dated evidence, installation/room identity, phase, demand, relevant measurements, thresholds, elapsed duration, code interpretation and recovery evidence. Notification attempts shall preserve configured target/result semantics, quiet updates and bounded history; acceptance by HA shall not be represented as confirmed phone delivery. |
 | SYS-SR-HSM-016 | SafetyHome shall display phase, coverage, active faults, failed and unevaluable checks, evidence ages and reason-specific inhibition. History shall correlate SET/HEAL evidence with actual notification attempts. EN/PL/DE presentation shall preserve language-independent raw codes and IDs. |
 | SYS-SR-HSM-017 | Software calibration shall own thresholds, timings, code profiles, severities and rule enablement; installation configuration shall own entity/area bindings and equipment identity. Validation shall reject incomplete enabled rules, ambiguous hydraulics/code profiles, invalid recovery bands and timing combinations outside allocated budgets. |
-| SYS-SR-HSM-018 | C-HVAC shall be observation-only, with deterministic bounded evaluation and no boiler reset, heating setpoint writes, pump forcing, safety interlock bypass or recovery actions. Any backup/failover function shall require its own allocation and authorization. |
+| SYS-SR-HSM-018 | C-HVAC shall provide deterministic bounded observation and manual inspection/service recovery under §8.10, with no boiler reset, heating setpoint writes, pump forcing or safety interlock bypass. Any backup/failover function shall require its own allocation and authorization. |
 
 #### 8.6.3 Severity, timing and safe-state contribution
 
@@ -1367,9 +1374,9 @@ outdoor exposure policy shall retain separate scope.
 
 The component shall consume IR-002/003/004/007 and C-ENT dependency quality,
 emit symptoms to FaultManager, and supply notification/diagnostic evidence.
-It shall observe and notify without registering recovery actions or controlling
-detectors, fans, purifiers, valves, openings, locks or HVAC. Shared notification
-outputs shall obey the same hazard-specific eligibility boundary.
+It shall observe, notify and supply hazard-specific manual recovery under §8.10
+without controlling detectors, fans, purifiers, valves, openings, locks or HVAC.
+Shared notification outputs shall obey the same hazard-specific eligibility boundary.
 See the [Internal Environmental Hazard Monitoring architecture](<../features/Internal Environmental Hazard Monitoring - Architecture.md>).
 
 | ID | Requirement |
@@ -1393,7 +1400,7 @@ See the [Internal Environmental Hazard Monitoring architecture](<../features/Int
 | SYS-SR-IEHM-017 | Neither the component nor shared notification adapters shall switch unapproved electrical outputs during a flammable-gas incident, including light restoration after another fault clears. A separately persisted switching-inhibition latch shall survive detector HEAL and require explicit authorized clearance under a reviewed installation policy. Native alarms shall remain independent; approved local annunciation shall remain independent of mobile delivery. |
 | SYS-SR-IEHM-018 | System policy shall own alarm profiles, calibration, severity, timers, evidence limits and output eligibility; installation configuration shall own detector/entity/area bindings and equipment profile selection. Incomplete or timing-incompatible enabled contracts shall be rejected. |
 | SYS-SR-IEHM-019 | User-facing text shall have EN/PL/DE parity, preserving machine IDs and raw states. Simulated fixtures and explicit test reports shall remain distinguishable from live alarms; maintenance mode shall not suppress an unambiguously live alarm. |
-| SYS-SR-IEHM-020 | Provider I/O, averaging, storage and delivery shall be isolated from the immediate alarm path, bounded and deterministic; the component shall register no recovery actions or actuator/reset calls. |
+| SYS-SR-IEHM-020 | Provider I/O, averaging, storage and delivery shall be isolated from the immediate alarm path, bounded and deterministic. Manual hazard-response and detector-repair recovery shall follow §8.10 and the hazard-specific guidance boundary; the component shall issue no actuator/reset calls. |
 
 The component shall map smoke/gas/CO to L1, short-window PM2.5 hazard to L2,
 optional long-term PM exposure to L3 and detector supervision loss to L3.
@@ -1433,7 +1440,7 @@ defines monitor ownership and observer placement.
 | SYS-SR-FSM-009 | A low battery in a still-functioning remote device shall be a level-4 informational maintenance condition, associated with one device identity even when several battery entities represent it. The system shall discover eligible device-associated battery entities from Home Assistant and allow the operator to exclude devices by stable device identity without manually enumerating all battery entities. When a device is excluded or removed, its obsolete maintenance-fault entity shall be retired without emitting a false clear; retirement shall persist across restarts. Failed discovery shall remain unknown coverage, not positive battery-health evidence or proof that devices were removed. An unavailable safety input shall retain the severity and owner of its separate coverage fault; battery status shall neither suppress nor clear that fault. |
 | SYS-SR-FSM-010 | Each underlying failure shall have one fault owner. C-ENT shall retain entity-quality diagnostics and its existing per-entity faults; C-FSM shall own qualified platform and maintenance policy without duplicating a component-owned symptom. |
 | SYS-SR-FSM-011 | System configuration shall provide threshold and qualification/recovery defaults; installation configuration may refine an explicit validated whitelist through component settings. The complete effective policy shall preserve recovery margins. Severity, freshness, technical scheduling and persistence shall remain system-owned. Installation configuration shall own source bindings and exclusions. Invalid configuration shall be rejected before enabling the affected contract. Missing or incompatible runtime sources shall be marked as uncovered, never silently reported healthy or used to disable unrelated safety mechanisms. |
-| SYS-SR-FSM-012 | Platform and maintenance monitors shall be observation-only: no restart, update installation, device control, or other recovery action shall be registered without a separately assessed policy. Diagnostics and user-facing text shall preserve stable machine codes and equivalent EN/PL/DE meaning. |
+| SYS-SR-FSM-012 | Platform and maintenance monitors shall provide observation and cause-specific manual inspection, repair or test-report tasks under §8.10. They shall issue no restart, update-installation or device-control commands without a separately assessed policy. Diagnostics and user-facing text shall preserve stable machine codes and equivalent EN/PL/DE meaning. |
 | SYS-SR-FSM-013 | The system shall present notification-route health and recovery-effect evidence separately from safety decisions. Home Assistant service acceptance shall not be described as delivery to a physical recipient, and an issued actuator command shall not be described as an achieved effect without the owning component's postcondition evidence. C-FSM shall aggregate these results without duplicating the notification or recovery owner's fault. |
 | SYS-SR-FSM-014 | The system shall track due dates and recorded outcomes of periodic tests for smoke, flammable-gas, and carbon-monoxide detectors. A test shall count as completed only after a device-reported result or an explicit operator attestation; absence of an alarm is not test evidence. An overdue or failed test shall be visible as a maintenance condition without suppressing a live detector alarm. Test intervals shall have system defaults and validated installation overrides of at most 180 days. Maintenance severity shall remain system-owned; detector binding and operator attestation are installation data. |
 | SYS-SR-FSM-015 | Sustained low host free-disk-space and high host temperature shall create separate level-4 maintenance conditions after calibrated qualification. Each rule shall validate scope, units, plausibility, and freshness and require fresh recovery evidence beyond a distinct margin. Missing or invalid evidence shall not positively clear an active condition, and resource pressure alone shall not prove that a safety evaluation was missed. |
@@ -1466,6 +1473,36 @@ signal. See the [Internal Environmental Hazard Monitoring architecture](<../feat
 **Other component allocations:** C-AQ retains
 indoor-air-quality responsibilities beyond the PM2.5 allocation above;
 intrusion/lock security by C-SEC, and Privacy by C-PRIV.
+
+### 8.10 Recommended Actions and Recovery
+
+Recovery shall cover both hazard mitigation and restoration of failed monitoring
+or supporting capabilities. The owning component shall specify the action and
+its evidence; RecoveryManager shall own proposal lifecycle and command dispatch.
+SafetyHome shall present the same action at its fault and in the shared list.
+See [Recommended Actions and Recovery architecture](<../features/Recommended Actions and Recovery - Architecture.md>).
+
+| ID | Requirement |
+| --- | --- |
+| SYS-SR-REC-001 | Each installed fault family shall have a cause-specific recovery allocation or an explicit rationale for no applicable action. Actions shall identify the fault/incident, cause, affected subject, purpose, instruction, executor, eligibility and completion method. Multiple causes shall retain independent actions without duplicate advice for the same failed path. |
+| SYS-SR-REC-002 | Recovery shall support manual work, explicitly supported automatic commands and commands after user consent. Absence of an actuator or postcondition entity shall not prevent a manual action. A manual action shall issue no actuator command; fault urgency shall not authorize a command. |
+| SYS-SR-REC-003 | Action completion shall be separate from fault healing, notification acknowledgement and command consent. Only the owning fault's qualified evidence and reset policy shall release its activation or restriction. Repairing one cause shall not clear another cause. |
+| SYS-SR-REC-004 | Each completable task shall declare observed completion or an operator report for a procedural task; advisory instructions shall have no task-completion control. Reports shall retain authenticated identity and server-assigned time, be validated against the current proposal/incident, issue no actuator command and not substitute for required device evidence. Approved maintenance-test reports may supply evidence only under the owning test's attestation policy. Reports of battery replacement shall await fresh recovered battery evidence; contacting service may complete the contact task while its fault remains active. |
+| SYS-SR-REC-005 | Observed completion shall require all declared postconditions on current valid evidence. Missing, stale, unavailable or failed evidence shall remain unknown. Home Assistant command acceptance shall not establish physical effect, recipient receipt or thermal recovery. |
+| SYS-SR-REC-006 | Proposals shall be reevaluated when relevant evidence, causes, policy or dependencies change. Superseded, expired, cleared, shadowed or ineligible executable proposals shall lose their authorization and stale guidance. Empty or rejected replacements shall not leave an old executable proposal active. Valid repair instructions shall remain available with visible reasons for blocked execution or unknown effect. |
+| SYS-SR-REC-007 | Command authorization shall be revalidated immediately before execution using current evidence, dependencies, conflicts, configured actuator, expiry and replay protection. Unsupported commands and any actuator changes under manual policy shall be rejected centrally. Restart shall not replay a command. |
+| SYS-SR-REC-008 | Task deadlines shall follow the action's declared policy and distinguish consent expiry from missing effect of an executed command. Manual service/battery work shall not inherit a short command-consent deadline. Active work, operator reports and bounded action outcomes shall survive restart, retaining their evidence source without treating saved reports as fresh physical evidence. |
+| SYS-SR-REC-009 | The fault card, shared action list and notifications shall use consistent localized instructions and subject names. They shall distinguish user-reported work, observed completion, blocked execution, unknown effect, failure, withdrawal and no applicable action. EN/PL/DE text shall preserve equivalent meaning; stable identifiers and existing raw lifecycle codes shall remain unchanged. |
+| SYS-SR-REC-010 | Manual hazard-response and equipment-repair actions shall obey the owning hazard/equipment guidance. Observation-only components shall offer useful manual actions without extending actuator permissions. Emergency guidance shall not require task acknowledgement, and detector clear or operator reports shall not authorize re-entry, gas reopening or safety-interlock bypass. |
+
+Verification shall cover manual closure, battery replacement with delayed
+telemetry, unavailable-input repair, independent fault contributors, procedural
+reports without sensors, command-policy enforcement, proposal withdrawal,
+blocked-result presentation and restart without replay. HARA hazards and safety
+goals shall retain their component allocation; offering manual actions shall not
+claim that user response is guaranteed within a fault-tolerant time interval.
+
+---
 
 ## 9 Non‑Functional Requirements (NFR)
 

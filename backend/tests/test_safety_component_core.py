@@ -111,3 +111,18 @@ def test_sm_recalled_raises_not_implemented():
     component = _make_component()
     with pytest.raises(NotImplementedError):
         component.sm_recalled()
+
+
+def test_unchanged_qualified_result_is_observed_without_lifecycle_transition():
+    component = _make_component()
+    transitions, observations = [], []
+    component.event_bus.subscribe("symptom", lambda **data: transitions.append(data))
+    component.event_bus.subscribe("symptom_observed", lambda **data: observations.append(data))
+    component.process_symptom("hazard", 0, False, {}, debounce_limit=1)
+    component.process_symptom("hazard", -1, False, {}, debounce_limit=1)
+    assert len(transitions) == 1
+    assert observations == [{
+        "symptom_id": "hazard", "state": FaultState.CLEARED, "additional_info": {},
+    }]
+    component.process_symptom("hazard", -1, True, {}, debounce_limit=2)
+    assert len(observations) == 1

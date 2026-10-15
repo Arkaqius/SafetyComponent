@@ -484,7 +484,15 @@ C-ENT uses the following stable contract when it owns a failure:
 | Symptom | `EntityHealthFailure{EntityKey}{CheckKey}` |
 | Fault | `EntityHealth{EntityKey}` |
 | Level | 3 |
-| Recovery action | None |
+| Recovery action | Cause-specific manual repair; no actuator command |
+
+The owner shall supply repair proposals under the
+[shared recovery contract](<Recommended Actions and Recovery - Architecture.md>),
+naming the affected entity and failed availability, freshness or value path.
+Positive recovery of that cause shall complete its observed repair action;
+operator-reported inspection shall not establish that the source is healthy.
+Group B repair actions shall follow their declared fault owner, preserving one
+action for a shared failed path. Passive Group C inventory shall create none.
 
 Each C-ENT-owned Group A entity has its own fault. All active check symptoms
 for that entity aggregate into the same fault; symptoms belonging to another
@@ -738,7 +746,8 @@ Strict validation rejects:
 - Two-field monitor calibration, legacy alias normalization/conflict rejection,
   derived scheduling and preservation of allocated detection budgets.
 - Stable MQTT IDs and bounded attributes.
-- No RecoveryManager registration or actuator service calls.
+- Cause-specific manual recovery registration and valid recovery evidence;
+  no actuator service calls or recovery creation from passive Group C inventory.
 
 ### 17.2 Backend integration tests
 
