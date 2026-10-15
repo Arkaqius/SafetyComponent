@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass, field
-from threading import Lock, Thread
+from threading import Event, Lock, Thread, current_thread
 from time import monotonic
 from typing import Any
 
@@ -18,6 +18,7 @@ STATE_POLL_SECONDS = 60
 TEMPERATURE_POLL_SECONDS = 120
 MAINTENANCE_POLL_SECONDS = 3600
 SCHEDULE_SECONDS = 5
+FAST_SCHEDULING_MARGIN_SECONDS = 1
 
 
 @dataclass
@@ -44,8 +45,8 @@ class HomeAssistantStateReader:
         self._lock = Lock()
         self._refreshing: set[int] = set()
         self._closed = False
-        self._timer: Any = None
-        self._app: Any = None
+        self._stop_event = Event()
+        self._scheduler_thread: Thread | None = None
 
     def register(self, key: str, entities: set[str], interval: int) -> None:
         """Register a fixed group before starting network activity."""
@@ -59,22 +60,47 @@ class HomeAssistantStateReader:
                 set(entities),
                 interval,
                 FAST_REPORT_TIMEOUT_SECONDS if fast else REPORT_TIMEOUT_SECONDS,
-                0 if fast else SCHEDULE_SECONDS,
+                FAST_SCHEDULING_MARGIN_SECONDS if fast else SCHEDULE_SECONDS,
             )
 
     def start(self, app: Any) -> None:
-        """Start reads after application initialization; callbacks never wait."""
-        self._app = app
-        self._timer = app.run_every(self.tick, "now", SCHEDULE_SECONDS)
+        """Schedule reads independently of AppDaemon's pinned callbacks."""
+        with self._lock:
+            if self._closed or self._scheduler_thread is not None:
+                raise RuntimeError("HA report reader cannot be started twice or after shutdown")
+            scheduler = Thread(
+                target=self._run_schedule, name="ha-source-report-scheduler", daemon=True,
+            )
+            self._scheduler_thread = scheduler
+        try:
+            scheduler.start()
+        except RuntimeError:
+            with self._lock:
+                self._scheduler_thread = None
+            raise
+
+    def _run_schedule(self) -> None:
+        """Use monotonic deadlines and skip missed ticks without a catch-up burst."""
+        next_tick = monotonic()
+        while not self._stop_event.is_set():
+            self.tick()
+            next_tick += SCHEDULE_SECONDS
+            now = monotonic()
+            if next_tick < now:
+                next_tick = now + SCHEDULE_SECONDS
+            if self._stop_event.wait(next_tick - now):
+                return
 
     def stop(self) -> None:
-        """Prevent late responses and cancel the schedule on shutdown."""
+        """Wake the scheduler and reject all evidence after shutdown."""
         with self._lock:
             self._closed = True
             for group in self._groups.values():
                 group.reports = {}
-        if self._timer is not None:
-            self._app.cancel_timer(self._timer)
+        self._stop_event.set()
+        scheduler = self._scheduler_thread
+        if scheduler is not None and scheduler is not current_thread() and scheduler.is_alive():
+            scheduler.join(timeout=1)
 
     def tick(self, *_: Any, **__: Any) -> None:
         """Keep fast and ordinary requests independent, with one worker each."""

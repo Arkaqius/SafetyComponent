@@ -109,13 +109,21 @@ Severities, source freshness and technical scheduling remain system-owned.
 ### Input acquisition and evaluation cadence
 
 A shared Home Assistant report reader performs authenticated batch reads in
-independent ordinary and short-budget background workers. Each worker admits
+independent ordinary and short-budget background workers. A dedicated scheduler
+shall use monotonic five-second deadlines independently of AppDaemon's pinned
+application callbacks and MQTT publication. It shall skip missed ticks without
+catch-up bursts and wake on shutdown. Each worker admits
 at most one network request in flight; bounded timeouts and transport/schema
 failures invalidate the affected batch rather than refreshing old evidence.
 Ordinary responses later than 120 seconds and short-budget responses later
-than 3 seconds are discarded. Ordinary reader evidence expires at acquisition
+than 4 seconds are discarded. Ordinary reader evidence expires at acquisition
 start plus its group interval, the 120-second deadline and a 5-second scheduling
-allowance; short-budget evidence uses its interval plus 3 seconds.
+allowance; short-budget evidence uses its interval plus a four-second deadline
+and one-second scheduling allowance, giving ten seconds for the fast group.
+Together with five-second evaluation and fifteen-second failure debounce this
+retains the thirty-second detection allocation. A valid report shall tolerate
+a nine-second scheduling gap; failed requests and expired evidence shall not
+qualify recovery. Default recovery debounce remains sixty seconds.
 A delayed or stalled request cannot extend previously acquired evidence.
 The reader preserves source `last_reported` and `last_updated`
 timestamps. A successful read is not itself a new measurement, and an

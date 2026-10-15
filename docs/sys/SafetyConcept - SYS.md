@@ -1237,6 +1237,13 @@ entity is safety-relevant through Group A or B.
   paths shall remain independent of periodic diagnostic reconciliation.
   Short-budget diagnostic acquisition and evaluation shall remain independent
   of ordinary read timeouts and slower ordinary evaluation schedules.
+  Acquisition shall use a dedicated monotonic scheduler independently of pinned
+  application callbacks and MQTT publication. Short-budget acquisition shall
+  have a four-second response deadline and a ten-second evidence-validity bound
+  from acquisition start, including its five-second cadence and one-second
+  scheduling allowance. Failed attempts and expired evidence shall not qualify
+  recovery. With five-second evaluation and fifteen-second failure debounce,
+  the default thirty-second detection allocation shall be retained.
 - **SYS-SR-ENT-005:** Optional required-value, allowed-values, finite-number,
   numeric-range, and rate-of-change checks shall run only when their complete
   calibration is present and the current input is valid for that check.

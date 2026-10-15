@@ -461,13 +461,22 @@ only when recovery debounce expires without another failure.
     offline.
 
 The shared reader performs authenticated batch reads in background workers.
+Its dedicated scheduler shall use monotonic five-second deadlines independently
+of AppDaemon's pinned application callbacks, including MQTT publication. Missed
+ticks shall not cause a catch-up burst. Shutdown shall wake the scheduler and
+reject late responses without depending on cancellation of an AppDaemon timer.
 Ordinary reads have a 120-second response deadline. Short-budget reads use an
-independent worker and a 3-second deadline so an ordinary timeout cannot block
+independent worker and a 4-second deadline so an ordinary timeout cannot block
 their next acquisition. Each worker admits at most one request in flight;
 responses after its deadline are discarded. Ordinary reader evidence expires
 at acquisition start plus the group's polling interval, the 120-second deadline
 and a 5-second scheduling allowance. Short-budget evidence expires at acquisition
-start plus its interval plus 3 seconds. Response delivery time cannot extend
+start plus its interval, the 4-second deadline and a 1-second scheduling
+allowance: ten seconds for the five-second group. A nine-second scheduling gap
+shall not invalidate an otherwise valid report or restart recovery qualification.
+After expiry, missing evidence shall remain unevaluable. The ten-second validity
+window, five-second evaluation cadence and fifteen-second failure debounce fit
+the existing thirty-second detection allocation. Response delivery time cannot extend
 either expiry. Repeated reads retain the original source timestamps; they do
 not invent heartbeats. A failed attempt invalidates the affected group's
 previous reports, and a stalled request cannot renew them. Missing or expired
@@ -766,6 +775,10 @@ Strict validation rejects:
 - A stalled read with no state-change event and an unchanged cache shall cause
   the 5-second dependency group to assert unavailability within its 30-second
   detection budget, with reason `source_report_unavailable`.
+- Nine-second scheduling gaps shall preserve qualified application-health
+  checks; ten-second evidence expiry and failed or late requests shall still
+  invalidate them. Independent scheduler startup, monotonic scheduling,
+  skipped ticks, duplicate-start rejection and bounded shutdown shall be tested.
 - Independent failure and recovery debounce.
 - Fault ownership and duplicate-fault prevention.
 - Same-entity check aggregation, shared input aggregation with independent

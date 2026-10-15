@@ -321,13 +321,20 @@ debounce does not establish that transport and scheduling overhead fit an
 arbitrary supplied budget. The dependency contract retains that allocation.
 The baseline ordinary evaluation interval is 60 seconds. Dependencies with
 detection budgets of at most 60 seconds retain a separate 5-second evaluation
-timer and an independent read worker with a 3-second deadline; ordinary reads
+timer and an independent read worker with a 4-second deadline; ordinary reads
 have a 120-second deadline. Temperature-owned and shared outside-temperature
 dependencies have a 120-second baseline read cadence, while other ordinary
 dependencies have a 60-second baseline. Report-age and confirmation requirements
 may shorten those intervals within system-owned limits. Distinct logical fault
 families may share one physical entity; acquisition uses the shortest required
 interval without merging their fault ownership or check state.
+Acquisition shall use a dedicated monotonic five-second scheduler independently
+of pinned AppDaemon callbacks and MQTT publication. The short-budget group shall
+retain evidence for ten seconds from acquisition start: five seconds of cadence,
+four seconds of response deadline and one second of scheduling allowance.
+Response delivery shall not extend expiry. Failed attempts shall invalidate
+prior evidence immediately; recovery qualification remains sixty seconds by
+default and shall not proceed on invalid evidence.
 `last_reported` is a live integration-report timestamp, including unchanged
 writes, and may be used only under a trustworthy input contract. A named
 timestamp attribute remains supported; device-level `last_seen` is not an
