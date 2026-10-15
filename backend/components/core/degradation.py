@@ -185,9 +185,11 @@ class DegradationRegistry:
             raise ValueError(f"Unknown symptom {symptom_id}")
         if state not in (FaultState.SET, FaultState.CLEARED):
             return
+        previous = self._evidence[symptom_id]
+        pending_before = set(self._requires_reevaluation)
         self._evidence[symptom_id] = state == FaultState.SET
         binding = self._bindings.get(symptom_id)
-        if binding is not None:
+        if binding is not None and previous != self._evidence[symptom_id]:
             self._requires_reevaluation.update(
                 (target.symptom_id, target.capability)
                 for target in binding.targets
@@ -210,8 +212,31 @@ class DegradationRegistry:
                 ):
                     continue
                 self._requires_reevaluation.discard((target_id, capability))
-        if self._on_change is not None:
+        if self._on_change is not None and (
+            previous != self._evidence[symptom_id]
+            or pending_before != self._requires_reevaluation
+        ):
             self._on_change()
+
+    def observe_hazard(
+        self, *, symptom_id: str, state: FaultState,
+        additional_info: Mapping[str, object] | None = None, **_: object,
+    ) -> None:
+        """Accept fresh H evidence independently of fault lifecycle transitions."""
+
+        if symptom_id in self._baseline:
+            self.observe(
+                symptom_id=symptom_id, state=state, additional_info=additional_info
+            )
+
+    def pending_reevaluations(self) -> tuple[str, ...]:
+        """Return H subjects whose evaluation dependencies are ready again."""
+
+        return tuple(sorted({
+            symptom_id for symptom_id, _ in tuple(self._requires_reevaluation)
+            if symptom_id not in self._exclusions
+            and not self.causes_for(symptom_id, RestrictionEffect.EVALUATION)
+        }))
 
     def mark_unavailable(self, *, symptom_id: str, **_: object) -> None:
         """Invalidate evidence without interpreting loss as a clear."""
@@ -279,7 +304,7 @@ class DegradationRegistry:
         ) and not any(
             target_id == symptom_id
             and self._source_depends_on(capability, evidence_source)
-            for target_id, capability in self._requires_reevaluation
+            for target_id, capability in tuple(self._requires_reevaluation)
         )
 
     def set_exclusion(self, symptom_id: str, reason: str | None) -> None:
@@ -304,10 +329,11 @@ class DegradationRegistry:
 
         affected: list[dict[str, str]] = []
         unresolved: list[str] = []
+        pending = tuple(self._requires_reevaluation)
         for symptom_id in sorted(self._baseline):
             if (
                 self._evidence[symptom_id] is None
-                or any(target_id == symptom_id for target_id, _ in self._requires_reevaluation)
+                or any(target_id == symptom_id for target_id, _ in pending)
             ) and symptom_id not in self._exclusions:
                 unresolved.append(symptom_id)
         for source, binding in sorted(self._bindings.items()):

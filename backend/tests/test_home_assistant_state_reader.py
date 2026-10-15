@@ -1,6 +1,7 @@
 """Verify shared polling cadence, nonblocking reads, and failed evidence."""
 
 from datetime import datetime, timedelta, timezone
+from threading import Event, Thread
 from unittest.mock import MagicMock
 
 import pytest
@@ -24,6 +25,9 @@ def scheduled_reader(monkeypatch):
 
         def start(self):
             jobs.append(self.job)
+
+        def is_alive(self):
+            return False
 
     monkeypatch.setattr(
         "components.external_apis.home_assistant_state_reader.Thread", QueuedThread
@@ -63,7 +67,7 @@ def test_fast_reads_follow_scheduler_ticks_despite_submillisecond_jitter(
     assert provider.poll.call_count == 4
     for call in provider.poll.call_args_list:
         assert call.args == ({"binary_sensor.window"},)
-        assert call.kwargs == {"timeout_seconds": 3}
+        assert call.kwargs == {"timeout_seconds": 4}
 
 
 def test_fast_read_failure_and_late_response_still_discard_evidence(
@@ -84,10 +88,134 @@ def test_fast_read_failure_and_late_response_still_discard_evidence(
     clock[0] = 109.999
     provider.poll.side_effect = None
     reader.tick()
-    clock[0] += 3.001
+    clock[0] += 4.001
     jobs.pop()()
     assert reader.report("fast", "binary_sensor.window") is None
     assert reader.revision("fast") == 3
+
+
+@pytest.mark.parametrize("elapsed", [3.5, 4])
+def test_fast_read_accepts_a_response_within_four_seconds(scheduled_reader, elapsed):
+    reader, provider, clock, jobs = scheduled_reader
+    row = snapshot("on")
+    provider.poll.return_value = {"binary_sensor.window": row}
+    reader.register("fast", {"binary_sensor.window"}, 5)
+    reader.tick()
+    clock[0] += elapsed
+    jobs.pop()()
+    assert reader.report("fast", "binary_sensor.window") == row
+    provider.poll.assert_called_once_with({"binary_sensor.window"}, timeout_seconds=4)
+
+
+def test_nine_second_gap_does_not_restart_application_qualification(
+    scheduled_reader, mocked_hass_app_basic,
+):
+    reader, provider, clock, jobs = scheduled_reader
+    app, bus, component = _component(mocked_hass_app_basic)
+    base = datetime(2026, 10, 15, 12, tzinfo=timezone.utc)
+    row = _snapshot("running", base)
+    row["last_reported"] = base.isoformat()
+    app.get_state = MagicMock(return_value=row)
+    provider.poll.return_value = {"sensor.sh_health": row}
+    component.state_reader = reader
+    component._now = lambda: base + timedelta(seconds=clock[0] - 100)
+    config = _config("sensor.sh_health")
+    config["component_entities"][0].update(
+        detection_budget_seconds=30, failure_debounce_seconds=15,
+        recovery_debounce_seconds=60,
+        checks={"allowed_values": {"target": "state", "values": ["running"]}},
+    )
+    symptoms, _ = component.get_symptoms_data({component.component_name: component}, config)
+    for symptom in symptoms.values():
+        component.init_safety_mechanism(symptom.sm_name, symptom.name, symptom.parameters)
+        component.enable_safety_mechanism(symptom.name, SMState.ENABLED)
+    for at in (100, 160):
+        clock[0] = at
+        reader.tick()
+        jobs.pop()()
+        component._evaluate_entity("TemperatureOffice")
+    runtime = component._entities["TemperatureOffice"]
+    assert component._health(runtime).value == "healthy"
+    unavailable = []
+    bus.subscribe("evaluation_unavailable", lambda **event: unavailable.append(event))
+
+    clock[0] = 169
+    component._evaluate_entity("TemperatureOffice")
+    assert component._health(runtime).value == "healthy"
+    assert runtime.checks["allowed_values"].result == "passed"
+    assert unavailable == []
+
+    # The scheduling allowance does not extend evidence beyond ten seconds.
+    clock[0] = 170.001
+    component._evaluate_entity("TemperatureOffice")
+    assert runtime.checks["availability"].reason == "source_report_unavailable"
+    assert runtime.checks["allowed_values"].result == "unevaluable"
+    assert len(unavailable) == 1
+
+
+def test_report_scheduler_does_not_depend_on_appdaemon_callbacks(scheduled_reader, monkeypatch):
+    reader, provider, _, _ = scheduled_reader
+    monkeypatch.setattr("components.external_apis.home_assistant_state_reader.Thread", Thread)
+    row = snapshot("on")
+    provider.poll.return_value = {"binary_sensor.window": row}
+    reader.register("fast", {"binary_sensor.window"}, 5)
+    completed = Event()
+    original_complete = reader._complete
+
+    def complete(*args):
+        original_complete(*args)
+        completed.set()
+
+    reader._complete = complete
+    app = MagicMock()
+    app.run_every.side_effect = AssertionError("Pinned application callbacks are blocked")
+    try:
+        reader.start(app)
+        assert completed.wait(2), "Independent report request did not complete"
+        assert reader.report("fast", "binary_sensor.window") == row
+        app.run_every.assert_not_called()
+        with pytest.raises(RuntimeError, match="started twice"):
+            reader.start(app)
+    finally:
+        reader.stop()
+    assert not reader._scheduler_thread.is_alive()
+    assert reader.report("fast", "binary_sensor.window") is None
+    reader.stop()  # Shutdown is idempotent.
+    with pytest.raises(RuntimeError, match="after shutdown"):
+        reader.start(app)
+
+
+def test_schedule_keeps_monotonic_deadlines_and_skips_missed_ticks(scheduled_reader):
+    reader, _, clock, _ = scheduled_reader
+    ticks, waits = [], []
+
+    def tick():
+        ticks.append(clock[0])
+        clock[0] += 2 if len(ticks) == 1 else 7
+
+    def wait(seconds):
+        waits.append(seconds)
+        clock[0] += seconds
+        return len(waits) == 2
+
+    reader.tick = tick
+    reader._stop_event = MagicMock()
+    reader._stop_event.is_set.return_value = False
+    reader._stop_event.wait.side_effect = wait
+    reader._run_schedule()
+    assert ticks == [100, 105]
+    assert waits == [3, 5]
+
+
+def test_failed_scheduler_start_can_be_stopped_safely(scheduled_reader, monkeypatch):
+    reader, _, _, _ = scheduled_reader
+    thread = MagicMock()
+    thread.start.side_effect = RuntimeError("No thread resources")
+    monkeypatch.setattr("components.external_apis.home_assistant_state_reader.Thread", lambda **_: thread)
+    with pytest.raises(RuntimeError, match="No thread resources"):
+        reader.start(MagicMock())
+    reader.stop()
+    thread.join.assert_not_called()
 
 
 def test_batches_due_groups_and_keeps_maintenance_hourly(scheduled_reader):
@@ -155,12 +283,11 @@ def test_stalled_schedule_expires_and_shutdown_rejects_late_response(scheduled_r
     assert reader.revision("runtime") == -1
     reader.tick()
     app = MagicMock()
-    reader.start(app)
     reader.stop()
     jobs.pop()()
     assert reader.reports("runtime") == {}
     assert reader._groups["runtime"].revision == 1
-    app.cancel_timer.assert_called_once()
+    app.cancel_timer.assert_not_called()
 
 
 def test_late_response_is_not_accepted_as_recovery_evidence(scheduled_reader):

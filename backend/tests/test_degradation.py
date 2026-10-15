@@ -14,6 +14,8 @@ from components.core.degradation import (
     compile_runtime_bindings,
 )
 from components.core.fault_state_policy import FaultCategory
+from components.core.event_bus import EventBus
+from components.core.startup_grace import StartupGrace
 from components.core.types_common import Fault, FaultState, RecoveryResult
 from components.recovery_manager.recovery_manager import RecoveryManager
 
@@ -148,6 +150,40 @@ def test_restart_starts_unknown_and_never_infers_a_clear() -> None:
     registry.observe(symptom_id="provider_a", state=FaultState.CLEARED)
     registry.observe(symptom_id="external_only", state=FaultState.CLEARED)
     assert registry.snapshot()["state"] == CoverageState.UNKNOWN.value
+
+
+def test_startup_needs_fresh_unchanged_hazard_without_repeating_fault_events() -> None:
+    registry = _registry()
+    bus = EventBus()
+    clock = [0.0]
+    grace = StartupGrace(bus, {"input_a", "provider_a"}, 600, clock=lambda: clock[0])
+    bus.subscribe("qualified_symptom", registry.observe)
+    bus.subscribe("qualified_evaluation_unavailable", registry.mark_unavailable)
+    bus.subscribe("symptom_observed", registry.observe_hazard)
+    transitions = []
+    bus.subscribe("qualified_symptom", lambda **event: transitions.append(event))
+    for name in ("room_a", "room_b", "input_a", "provider_a"):
+        bus.publish("symptom", symptom_id=name, state=FaultState.CLEARED)
+    clock[0] = 600
+    grace.finish()
+    assert registry.snapshot()["state"] == "UNKNOWN"
+    assert registry.pending_reevaluations() == ("room_a",)
+    count = len(transitions)
+    bus.publish("symptom_observed", symptom_id="room_a", state=FaultState.CLEARED)
+    assert registry.snapshot()["state"] == "FULL"
+    assert len(transitions) == count
+    registry.observe(symptom_id="input_a", state=FaultState.CLEARED)
+    assert registry.snapshot()["state"] == "FULL"
+    registry.mark_unavailable(symptom_id="input_a")
+    registry.observe_hazard(symptom_id="room_a", state=FaultState.CLEARED)
+    assert registry.snapshot()["state"] == "UNKNOWN"
+    registry.observe(symptom_id="input_a", state=FaultState.CLEARED)
+    registry.observe_hazard(symptom_id="input_a", state=FaultState.CLEARED)
+    assert registry.snapshot()["state"] == "UNKNOWN"
+    registry.observe_hazard(symptom_id="room_b", state=FaultState.CLEARED)
+    assert registry.snapshot()["state"] == "UNKNOWN"
+    registry.observe_hazard(symptom_id="room_a", state=FaultState.CLEARED)
+    assert registry.snapshot()["state"] == "FULL"
 
 
 def test_recovery_only_loss_is_degraded_but_not_global() -> None:

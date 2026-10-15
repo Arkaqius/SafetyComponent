@@ -544,6 +544,12 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
             hazard if kind == "alarm" else "detector_health", runtime.key
         )
         if self.symptom_states.get(symptom_name) == state:
+            if (
+                runtime.last_classification == "alarm" and state == FaultState.SET
+            ) or (
+                runtime.last_classification == "clear" and state == FaultState.CLEARED
+            ):
+                self.record_symptom_observation(symptom_name, state)
             return
         self.symptom_states[symptom_name] = state
         info = {

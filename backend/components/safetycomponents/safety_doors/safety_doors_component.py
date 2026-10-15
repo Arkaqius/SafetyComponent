@@ -440,6 +440,7 @@ class SafetyDoorsComponent(SafetyComponent):
         condition_state: str | None,
     ) -> None:
         if self.symptom_states.get(mechanism.name) == state:
+            self.record_symptom_observation(mechanism.name, state)
             return
         self.symptom_states[mechanism.name] = state
         additional_info = {

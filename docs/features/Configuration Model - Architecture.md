@@ -321,17 +321,33 @@ debounce does not establish that transport and scheduling overhead fit an
 arbitrary supplied budget. The dependency contract retains that allocation.
 The baseline ordinary evaluation interval is 60 seconds. Dependencies with
 detection budgets of at most 60 seconds retain a separate 5-second evaluation
-timer and an independent read worker with a 3-second deadline; ordinary reads
+timer and an independent read worker with a 4-second deadline; ordinary reads
 have a 120-second deadline. Temperature-owned and shared outside-temperature
 dependencies have a 120-second baseline read cadence, while other ordinary
 dependencies have a 60-second baseline. Report-age and confirmation requirements
 may shorten those intervals within system-owned limits. Distinct logical fault
 families may share one physical entity; acquisition uses the shortest required
 interval without merging their fault ownership or check state.
+Acquisition shall use a dedicated monotonic five-second scheduler independently
+of pinned AppDaemon callbacks and MQTT publication. The short-budget group shall
+retain evidence for ten seconds from acquisition start: five seconds of cadence,
+four seconds of response deadline and one second of scheduling allowance.
+Response delivery shall not extend expiry. Failed attempts shall invalidate
+prior evidence immediately; recovery qualification remains sixty seconds by
+default and shall not proceed on invalid evidence.
 `last_reported` is a live integration-report timestamp, including unchanged
 writes, and may be used only under a trustworthy input contract. A named
 timestamp attribute remains supported; device-level `last_seen` is not an
 automatic fallback for every measurement.
+Physical room-temperature dependencies select `last_contact_at` by default:
+the report provider normalizes the unique same-device `sensor.*_last_seen`,
+and the last valid temperature remains usable while device contact stays within
+3600 seconds. Unchanged temperature values need no new entity write. Missing or
+invalid contact remains unevaluable. Availability and numeric checks still
+apply. Sources without that contact channel may use an explicit dependency
+override selecting their integration's trustworthy timestamp; such overrides
+retain precedence over the component default. Other sensors use device-contact
+freshness only when their dependency explicitly selects `last_contact_at`.
 For MQTT entities, unchanged messages may not write the entity unless
 `force_update` is enabled; repeated message reception alone therefore does not
 establish a current `last_reported` timestamp.

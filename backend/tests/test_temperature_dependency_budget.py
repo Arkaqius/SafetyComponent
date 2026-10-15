@@ -31,6 +31,7 @@ def test_rate_failure_budget_exceeds_first_sample_interval(sample_minutes: int) 
 
     temperature = next(item for item in dependencies if item["key"] == "TemperatureOffice")
     assert temperature["failure_debounce_seconds"] == 60
+    assert temperature["checks"]["freshness"]["timestamp_source"] == "last_contact_at"
     assert temperature["checks"]["freshness"]["max_silence_seconds"] == 3600
     assert temperature["detection_budget_seconds"] >= 3600 + 120 + 120 + 5 + 60 + 60
 

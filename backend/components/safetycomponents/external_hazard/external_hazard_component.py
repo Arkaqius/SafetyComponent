@@ -546,6 +546,8 @@ class ExternalHazardComponent(SafetyComponent):
         current = self.symptom_states.get(symptom_id, FaultState.NOT_TESTED)
         if status == "active":
             self._cancel_clear(symptom_id)
+            if current == FaultState.SET:
+                self.record_symptom_observation(symptom_id, FaultState.SET, context)
             if current != FaultState.SET or self._last_context.get(symptom_id) != context:
                 self.symptom_states[symptom_id] = FaultState.SET
                 self._last_context[symptom_id] = context
@@ -585,6 +587,7 @@ class ExternalHazardComponent(SafetyComponent):
 
     def _publish_clear(self, symptom_id: str, context: dict[str, str]) -> None:
         if self.symptom_states.get(symptom_id) == FaultState.CLEARED:
+            self.record_symptom_observation(symptom_id, FaultState.CLEARED, context)
             return
         self.symptom_states[symptom_id] = FaultState.CLEARED
         clear_context = self._last_context.pop(symptom_id, context)

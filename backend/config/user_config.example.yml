@@ -56,6 +56,8 @@ user_config:
     rooms:
       LivingRoom:
         area_id: living_room
+        # The same HA device must expose one sensor.*_last_seen. A source
+        # without it needs an explicit Entity Monitor freshness-source override.
         temperature_sensor: sensor.living_room_temperature
         window: LivingRoomWindow
         temperature: {}

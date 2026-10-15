@@ -57,6 +57,14 @@ the dependent H path is reevaluated. Unavailable evidence changes a cause to
 unresolved; it never produces a clear. Existing active H evidence remains
 active while evaluation is unavailable.
 
+A fresh, qualified H result also restores evidence when its SET/CLEAR value
+has not changed. Such an observation shall update coverage without replaying
+fault transitions, notifications or recovery actions. When evaluation
+dependencies recover, the application schedules a bounded recheck through
+the owning mechanism after initialization is complete. Unavailable input,
+an exception, a pending debounce result and a simulated evaluation shall
+not qualify as that fresh H evidence.
+
 Restriction changes are applied before notification/recovery handling of the
 same event. A pending recovery proposal is invalidated if a newly active or
 unresolved restriction makes it ineligible. When the dependency recovers,

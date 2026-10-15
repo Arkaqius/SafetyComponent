@@ -115,6 +115,7 @@ class SafetyFunctions(hass.Hass):
         """
         # Disable all the no-member violations in this function
         # pylint: disable=attribute-defined-outside-init
+        self._coverage_reevaluation_enabled = False
         if not self._initialize_mqtt():
             self.stop_app(self.name)
             return
@@ -559,6 +560,7 @@ class SafetyFunctions(hass.Hass):
         )
         self.startup_grace = StartupGrace(self.event_bus, diagnostic_symptoms, grace_seconds)
         self.event_bus.subscribe("qualified_symptom", self.degradation.observe, priority=-1)
+        self.event_bus.subscribe("symptom_observed", self.degradation.observe_hazard)
         self.event_bus.subscribe(
             "qualified_evaluation_unavailable", self.degradation.mark_unavailable, priority=-1
         )
@@ -649,6 +651,8 @@ class SafetyFunctions(hass.Hass):
         self.run_every(self._publish_evaluation_progress, "now", 15)
         self._set_internal_entity("sensor.safety_app_health", "running")
         self._start_mqtt_reporting()
+        self._coverage_reevaluation_enabled = True
+        self._on_coverage_changed()
         self.log("Safety app started successfully", level="DEBUG")
 
     def _attach_entity_monitor_dependencies(self) -> None:
@@ -1058,6 +1062,59 @@ class SafetyFunctions(hass.Hass):
             )
         except Exception as exc:
             self.log(f"Unable to publish safety coverage: {exc}", level="ERROR")
+
+        if (
+            getattr(self, "_coverage_reevaluation_enabled", False)
+            and not getattr(self, "_coverage_reevaluating", False)
+            and getattr(self, "_coverage_reevaluation_handle", None) is None
+            and self.degradation.pending_reevaluations()
+        ):
+            self._coverage_reevaluation_handle = self.run_in(
+                self._reevaluate_coverage, 0
+            )
+
+    def _reevaluate_coverage(self, **_: Any) -> None:
+        """Recheck restored H inputs once, using the normal qualified evaluator."""
+
+        self._coverage_reevaluation_handle = None
+        self._coverage_reevaluating = True
+        try:
+            for symptom_id in self.degradation.pending_reevaluations():
+                symptom = self.symptoms[symptom_id]
+                if symptom.sm_state != SMState.ENABLED:
+                    continue
+                try:
+                    evaluator = getattr(symptom.module, symptom.sm_name)
+                    evaluator(symptom.module.safety_mechanisms[symptom_id])
+                    pending_before_success = self.degradation.pending_reevaluations()
+                    self.event_bus.publish(
+                        "evaluation_succeeded", symptom_id=symptom_id
+                    )
+                    # A custom evaluator can clear its technical dependency
+                    # after publishing H. Recheck once after that clear; never
+                    # spin on unavailable input or a pending debounce result.
+                    if (
+                        symptom_id not in pending_before_success
+                        and symptom_id in self.degradation.pending_reevaluations()
+                    ):
+                        evaluator(symptom.module.safety_mechanisms[symptom_id])
+                        self.event_bus.publish(
+                            "evaluation_succeeded", symptom_id=symptom_id
+                        )
+                except Exception as exc:
+                    self.event_bus.publish(
+                        "evaluation_unavailable", symptom_id=symptom_id
+                    )
+                    self.event_bus.publish(
+                        "evaluation_exception", symptom_id=symptom_id
+                    )
+                    symptom.module.record_evaluation(success=False)
+                    self.log(
+                        f"Coverage reevaluation failed for {symptom_id}: {exc}",
+                        level="ERROR",
+                    )
+        finally:
+            self._coverage_reevaluating = False
 
 
     def register_entities(self) -> None:

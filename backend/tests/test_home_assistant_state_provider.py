@@ -3,10 +3,16 @@
 import json
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
+from types import SimpleNamespace
 
 import pytest
+from jinja2.sandbox import ImmutableSandboxedEnvironment
 
-from components.external_apis.home_assistant_state import HomeAssistantStateProvider, parse_device_contact
+from components.external_apis.home_assistant_state import (
+    REPORT_TEMPLATE,
+    HomeAssistantStateProvider,
+    parse_device_contact,
+)
 from tests.test_functional_safety_monitor import make_monitor, snapshot
 
 
@@ -120,4 +126,65 @@ def test_contact_is_additional_evidence_and_never_replaces_unknown_alarm_state(m
     row["device_last_seen"]["state"] = "unknown"
     report = HomeAssistantStateProvider("test").poll({row["entity_id"]})[row["entity_id"]]
     assert report["state"] == "unknown"
+    assert "last_contact_at" not in report
+
+
+@pytest.mark.parametrize("entity_id", [
+    "sensor.example_temperature", "sensor.example_humidity",
+    "sensor.example_battery", "binary_sensor.example_contact",
+])
+@pytest.mark.parametrize("siblings", [
+    [], ["sensor.example_last_seen"],
+    ["sensor.example_last_seen", "sensor.duplicate_last_seen"],
+])
+def test_report_template_uses_only_one_contact_from_the_same_sensor_device(
+    monkeypatch, entity_id, siblings,
+):
+    timestamp = datetime(2024, 9, 14, 12, tzinfo=timezone.utc)
+    state = SimpleNamespace(
+        entity_id=entity_id, state="21.5", attributes={},
+        last_changed=timestamp, last_updated=timestamp, last_reported=timestamp,
+    )
+    environment = ImmutableSandboxedEnvironment()
+    environment.filters["to_json"] = json.dumps
+    environment.globals.update(
+        expand=lambda entity: [state] if entity == entity_id else [],
+        device_id=lambda entity: "example-device" if entity == entity_id else "other-device",
+        device_entities=lambda device: siblings if device == "example-device" else ["sensor.other_last_seen"],
+        states=lambda _: "1726315200000",
+    )
+
+    def render_report(request, timeout):
+        payload = json.loads(request.data)
+        return BytesIO(environment.from_string(payload["template"]).render(
+            **payload["variables"],
+        ).encode())
+
+    monkeypatch.setattr("components.external_apis.home_assistant_state.urlopen", render_report)
+    report = HomeAssistantStateProvider("test").poll({entity_id})[entity_id]
+    assert report["state"] == "21.5"
+    if len(siblings) == 1:
+        assert report["last_contact_at"] == timestamp.isoformat()
+        assert report["last_contact_source_entity"] == siblings[0]
+    else:
+        assert "last_contact_at" not in report
+        assert "last_contact_source_entity" not in report
+
+
+def test_temperature_without_registry_device_does_not_guess_a_contact_by_name(monkeypatch):
+    environment = ImmutableSandboxedEnvironment()
+    environment.filters["to_json"] = json.dumps
+    timestamp = datetime(2024, 9, 14, 12, tzinfo=timezone.utc)
+    state = SimpleNamespace(
+        entity_id="sensor.example_temperature", state="21.5", attributes={},
+        last_changed=timestamp, last_updated=timestamp, last_reported=timestamp,
+    )
+    environment.globals.update(
+        expand=lambda _: [state], device_id=lambda _: None,
+        device_entities=lambda _: pytest.fail("No device siblings without a registry device"),
+        states=lambda _: pytest.fail("No last_seen lookup without a registry device"),
+    )
+    body = environment.from_string(REPORT_TEMPLATE).render(entities=[state.entity_id])
+    monkeypatch.setattr("components.external_apis.home_assistant_state.urlopen", lambda *_args, **_kwargs: BytesIO(body.encode()))
+    report = HomeAssistantStateProvider("test").poll({state.entity_id})[state.entity_id]
     assert "last_contact_at" not in report

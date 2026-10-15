@@ -14,7 +14,8 @@ from urllib.request import Request, urlopen
 from components.external_apis.battery_inventory import BATTERY_TEMPLATE, group_batteries
 
 REPORT_TIMEOUT_SECONDS = 120
-FAST_REPORT_TIMEOUT_SECONDS = 3
+FAST_REPORT_TIMEOUT_SECONDS = 4
+INVENTORY_TIMEOUT_SECONDS = 3
 
 REPORT_TEMPLATE = """
 {% set ns = namespace(rows=[]) %}
@@ -23,7 +24,8 @@ REPORT_TEMPLATE = """
   {% if matches %}
     {% set s = matches[0] %}
     {% set contact = namespace(rows=[]) %}
-    {% set device = device_id(entity) if entity.startswith('binary_sensor.') else none %}
+    {% set is_sensor = entity.startswith('sensor.') or entity.startswith('binary_sensor.') %}
+    {% set device = device_id(entity) if is_sensor else none %}
     {% for sibling in (device_entities(device) if device else []) %}
       {% if sibling.startswith('sensor.') and sibling.endswith('_last_seen') %}
         {% set contact.rows = contact.rows + [dict(entity_id=sibling, state=states(sibling))] %}
@@ -84,7 +86,7 @@ class HomeAssistantStateProvider:
     def discover_batteries(self) -> dict[str, Any]:
         """Read enabled HA battery states plus associated registry device IDs."""
         return group_batteries(
-            self.render(BATTERY_TEMPLATE, {}, timeout_seconds=FAST_REPORT_TIMEOUT_SECONDS)
+            self.render(BATTERY_TEMPLATE, {}, timeout_seconds=INVENTORY_TIMEOUT_SECONDS)
         )
 
     def render(

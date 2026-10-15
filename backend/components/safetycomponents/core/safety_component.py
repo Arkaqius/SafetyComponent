@@ -175,6 +175,18 @@ class SafetyComponent:
         if callable(reporter):
             reporter(self.component_name, success=success)
 
+    def record_symptom_observation(
+        self, symptom_id: str, state: FaultState,
+        additional_info: dict[str, Any] | None = None,
+    ) -> None:
+        """Report an unchanged qualified result without repeating fault actions."""
+
+        self.event_bus.publish("evaluation_succeeded", symptom_id=symptom_id)
+        self.event_bus.publish(
+            "symptom_observed", symptom_id=symptom_id, state=state,
+            additional_info=additional_info or {},
+        )
+
     def get_symptoms_data(
         self, modules: dict, component_cfg: list[dict[str, Any]]
     ) -> tuple[dict[str, Symptom], dict[str, RecoveryAction]]:
@@ -485,7 +497,9 @@ class SafetyComponent:
         else:
             # Debouncing not necessary at all (Test failed and symptom already raised or
             #  test passed and fault already cleared)
-            pass
+            self.record_symptom_observation(
+                symptom_id, symptom_cur_state, additional_info
+            )
 
         self.hass_app.log(
             f"Leaving  process_symptom for {symptom_id} with counter:{debounce_result.counter} and force_sm {force_sm}",
