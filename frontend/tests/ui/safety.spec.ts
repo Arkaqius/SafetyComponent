@@ -371,7 +371,78 @@ test('help is reachable from navigation and explains confirmations without sendi
   await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
   await page.screenshot({ path: testInfo.outputPath('help.png'), scale: 'css', fullPage: true });
   await page.getByRole('link', { name: 'Sprawdź źródła danych' }).click();
-  await expect(page.getByRole('heading', { name: 'Encje i urządzenia', exact: true, level: 1 })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Zdrowie systemu', exact: true, level: 1 })).toBeVisible();
+});
+
+test('system health contains monitored entities and batteries without a general HA inventory', async ({ page, isMobile }, testInfo) => {
+  await openMock(page, '/entities');
+  await expect(page).toHaveURL(/#\/functional-safety$/);
+  await page.evaluate(() => {
+    const entities = window.__safetyHomeMock.snapshot();
+    const template = entities['sensor.entity_health_common_outside_temp'];
+    for (let index = 3; index < 45; index++) {
+      entities[`sensor.entity_health_extra_${index}`] = {
+        ...template,
+        attributes: {
+          ...template.attributes,
+          entity_key: `extra_${index}`,
+          entity_id: index === 3 ? 'sensor.example_outdoor_temperature' : `sensor.extra_${index}`,
+          friendly_name: `Źródło testowe ${index}`,
+        },
+      };
+    }
+    entities['sensor.unrelated_unavailable'] = { state: 'unavailable', attributes: { friendly_name: 'Poza monitoringiem' } };
+    entities['sensor.entity_monitor_summary'].attributes = { total: 45, healthy: 44, degraded: 0, stale: 1, unavailable: 0 };
+    window.__safetyHomeMock.update({ entities });
+  });
+  await expect(page.getByRole('heading', { name: 'Monitorowane encje (45)', exact: true })).toBeVisible();
+  await expect(page.getByRole('tab', { name: 'Wszystkie encje' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: /^Encje i urządzenia/ })).toHaveCount(0);
+  const monitored = page.getByRole('region', { name: 'Monitorowane encje', exact: true });
+  if (isMobile)
+    expect(await monitored.locator('.search-field').evaluate(element => element.getBoundingClientRect().height)).toBeLessThan(100);
+  await expect(monitored.locator('tbody tr')).toHaveCount(45);
+  await expect(monitored).not.toContainText('Poza monitoringiem');
+  await monitored.getByRole('button', { name: 'Źródło testowe 3 sensor.example_outdoor_temperature', exact: true }).click();
+  await expect(monitored.getByRole('heading', { name: 'Źródło testowe 3', exact: true })).toBeVisible();
+  await monitored.getByLabel('Wyszukaj', { exact: true }).fill('biura');
+  await expect(monitored.locator('tbody tr')).toHaveCount(1);
+  await monitored.getByRole('button', { name: /Temperatura biura/ }).click();
+  await expect(monitored.getByText('Szczegóły monitoringu')).toBeVisible();
+  const batteries = page.locator('details').filter({ has: page.locator('summary', { hasText: /^Baterie urządzeń/ }) });
+  await batteries.locator('summary').click();
+  await expect(batteries.getByText('Bateria: Przykładowy pilot', { exact: true })).toBeVisible();
+  await expect(batteries).toContainText('12%');
+  await expect(batteries).toContainText('Niska bateria');
+  await expect(batteries).toContainText('last_seen');
+  expect(await page.evaluate(() => window.__safetyHomeMock.messages.filter(message => message.type === 'fire_event'))).toEqual([]);
+  await page.screenshot({ path: testInfo.outputPath('system-health-batteries.png'), scale: 'css' });
+  await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
+  await page.screenshot({ path: testInfo.outputPath('system-health.png'), scale: 'css', fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath('system-health-monitored.png'), scale: 'css' });
+  await page.evaluate(() => window.__safetyHomeMock.update({ connectionStatus: 'disconnected', ready: false }));
+  await expect(page.getByText(/Poniżej ostatnie znane wyniki/)).toBeVisible();
+  await expect(monitored.locator('tbody tr')).toHaveCount(1);
+});
+
+test('not evaluated faults remain visible in the attention view', async ({ page }) => {
+  await openMock(page);
+  await page.evaluate(() => {
+    const entities = window.__safetyHomeMock.snapshot();
+    entities['sensor.fault_pendingbattery'] = {
+      state: 'NOT_EVALUATED',
+      attributes: {
+        friendly_name: 'Nieoceniona bateria testowa',
+        active: false,
+        fault_category: 'D',
+      },
+    };
+    window.__safetyHomeMock.update({ entities });
+  });
+  await expect(page.locator('.fault-list').getByText('Nieoceniona bateria testowa', { exact: true })).toBeVisible();
+  const card = page.locator('.fault-card').filter({ has: page.getByText('Nieoceniona bateria testowa', { exact: true }) });
+  await card.locator(':scope > summary').click();
+  await expect(card.locator('dd').getByText('Nieoceniona', { exact: true })).toBeVisible();
 });
 
 test('entity modal traps keyboard focus and restores its trigger', async ({ page }) => {
@@ -406,7 +477,7 @@ test('all monitoring pages render without an unhandled exception', async ({ page
     '/fault-management',
   ]) {
     await openMock(page, route);
-    await expect(page.locator('.page-stack')).toBeVisible();
+    await expect(page.locator('.page-stack').first()).toBeVisible();
   }
   expect(errors).toEqual([]);
 });

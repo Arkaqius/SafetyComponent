@@ -34,6 +34,7 @@ REPORT_TEMPLATE = """
     {% set ns.rows = ns.rows + [dict(entity_id=s.entity_id, state=s.state,
       attributes=s.attributes, last_reported=s.last_reported.isoformat(),
       device_last_seen=contact.rows[0] if contact.rows | length == 1 else none,
+      device_last_seen_count=contact.rows | length,
       last_updated=s.last_updated.isoformat(), last_changed=s.last_changed.isoformat())] %}
   {% endif %}
 {% endfor %}
@@ -74,12 +75,16 @@ class HomeAssistantStateProvider:
                 return {}
             normalized = dict(row)
             contact = normalized.pop("device_last_seen", None)
+            contact_count = normalized.pop("device_last_seen_count", None)
+            if isinstance(contact_count, int) and not isinstance(contact_count, bool) and contact_count >= 0:
+                normalized["last_contact_source_count"] = contact_count
             if isinstance(contact, dict):
                 timestamp = parse_device_contact(contact.get("state"))
                 source = contact.get("entity_id")
-                if timestamp is not None and isinstance(source, str) and source.startswith("sensor."):
-                    normalized["last_contact_at"] = timestamp.isoformat()
+                if isinstance(source, str) and source.startswith("sensor."):
                     normalized["last_contact_source_entity"] = source
+                    if timestamp is not None:
+                        normalized["last_contact_at"] = timestamp.isoformat()
             result[row["entity_id"]] = normalized
         return result
 

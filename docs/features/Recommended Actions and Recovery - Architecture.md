@@ -13,7 +13,7 @@ A proposal may be `manual`, `automatic` for an explicitly supported local
 actuator, or `user_confirmed`. External-hazard openings shall use only `manual`
 and `user_confirmed`. Fault level shall select urgency, not authorize a command.
 Components whose actuator control is excluded shall still supply appropriate
-manual recovery actions. Passive Group C inventory shall create none.
+manual recovery actions. Unmonitored entities shall create none.
 
 SafetyHome shall present the same proposals at the owning fault and in the
 shared actions list. It shall submit command authorization or manual-work

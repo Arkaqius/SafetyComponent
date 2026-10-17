@@ -3,6 +3,8 @@ import test from 'node:test';
 import { requestExternalAuthToken, type ExternalAuthHost } from '../auth/externalAuth.js';
 import {
   getFaults,
+  faultNeedsAttention,
+  faultNeedsVerification,
   getExternalHazardMonitoring,
   getAirQualityPresentation,
   getMonitoredTemperatures,
@@ -18,6 +20,20 @@ import {
 } from './safety.js';
 
 const timestamp = '2026-07-29T08:00:00+02:00';
+
+test('not evaluated battery faults are counted as assessments and visible in the attention filter', () => {
+  const faults = getFaults({
+    'sensor.fault_battery': entity('NOT_EVALUATED', { active: false, fault_category: 'D' }),
+    'sensor.fault_clear': entity('PASS', { active: false }),
+  });
+  const pending = faults.find(fault => fault.entityId === 'sensor.fault_battery')!;
+  assert.equal(faultNeedsVerification(pending), true);
+  assert.deepEqual(faults.filter(faultNeedsAttention), [pending]);
+  const summary = getSafetySummary(entity('running'), entity('no_faults'), faults, []);
+  assert.match(summary.detail, /1 ocena wymaga weryfikacji/);
+  assert.match(summary.detail, /usterki bez wiarygodnej oceny: 1/);
+  assert.doesNotMatch(summary.detail, /encj/);
+});
 
 function entity(state: string, attributes: Record<string, unknown> = {}) {
   return { state, attributes, last_changed: timestamp, last_updated: timestamp };

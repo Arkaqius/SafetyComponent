@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useHass } from '@hakit/core';
+import MonitoredEntities from '../components/MonitoredEntities';
 import StatusBadge from '../components/StatusBadge';
 import {
   DETECTOR_TEST_RESULT_EVENT,
@@ -58,7 +59,7 @@ function countAttribute(attributes: Record<string, unknown>, key: string): numbe
 }
 
 export default function FunctionalSafety() {
-  const { entities } = useSafetyEntities();
+  const { entities, monitoredEntities, entityMonitorSummary, connection: safetyConnection } = useSafetyEntities();
   const connection = useHass(store => store.connection);
   const [testMessage, setTestMessage] = useState('');
   const [periodicMessage, setPeriodicMessage] = useState('');
@@ -170,7 +171,7 @@ export default function FunctionalSafety() {
     <div className='page-stack functional-safety-page'>
       <header className='panel'>
         <span className='section-kicker'>Functional safety</span>
-        <h1>Zdrowie funkcji bezpieczeństwa</h1>
+        <h2>Zdrowie systemu</h2>
         <p>
           Postęp oceny, jakość kanału powiadomień i potwierdzenie wykonania to różne rzeczy. Brak aktywnego alarmu nie dowodzi, że wszystkie
           funkcje działają.
@@ -182,6 +183,13 @@ export default function FunctionalSafety() {
           {periodicMessage}
         </p>
       )}
+
+      {(safetyConnection.cannotConnect || !safetyConnection.ready) && (
+        <p className='panel' role='status'>
+          Brak połączenia z Home Assistant. Poniżej ostatnie znane wyniki, bez potwierdzenia bieżącej sprawności.
+        </p>
+      )}
+      <MonitoredEntities monitored={monitoredEntities} summary={entityMonitorSummary} />
 
       <h2>Źródła diagnostyczne</h2>
       {diagnosticsApi.status === 'loading' ? <p role='status'>Pobieranie pełnej diagnostyki z backendu…</p> : null}
@@ -261,10 +269,16 @@ export default function FunctionalSafety() {
                   </p>
                 )}
                 {group === 'batteries' && (
-                  <p>
-                    Inwentarz urządzeń (nie monitor):{' '}
-                    {sources.find(source => source.group === 'inventory')?.evidence.join(' · ') ?? 'Brak danych o wykrywaniu'}
-                  </p>
+                  <>
+                    <p>
+                      Jeśli urządzenie udostępnia last_seen, świeżość baterii wynika z ostatniego kontaktu. Sam procent baterii może
+                      pozostawać niezmieniony. Brak wiarygodnego kontaktu lub odczytu oznacza brak oceny.
+                    </p>
+                    <p>
+                      Wykrywanie baterii urządzeń:{' '}
+                      {sources.find(source => source.group === 'inventory')?.evidence.join(' · ') ?? 'Brak danych o wykrywaniu'}
+                    </p>
+                  </>
                 )}
                 {sources
                   .filter(source => source.group === group)

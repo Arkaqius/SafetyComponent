@@ -61,12 +61,20 @@ completed cycle is not healthy. Aggregation cannot turn an unknown domain into
 healthy. A fault level is a policy decision, not a synonym for a health-state
 label.
 
-Safety Home groups the diagnostics into initially collapsed platform, WAN,
+System Health lists all C-ENT monitored records, including healthy and
+unavailable records, with installation-specific counts, search, filters and
+expandable diagnostic details. It shall not enumerate all Home Assistant
+entities or devices. Battery maintenance remains a separate section on this
+same page; it is not replaced by the monitored list.
+
+Safety Home groups the other diagnostics into initially collapsed platform, WAN,
 update, battery, and component-progress sections. Battery discovery is inventory
 metadata, not a separate battery-health monitor. Battery rows retain each raw
 source state, unit, report/update timestamp and source identity alongside the
-validated percentage and quality; an invalid or stale raw reading is not a
-passing observation. WAN rows distinguish the latest source report from the
+validated percentage and quality, and contact timestamp/source identity when
+available. Contact and battery-report times shall remain distinct. An invalid
+value or stale selected confirmation is not a passing observation. WAN rows
+distinguish the latest source report from the
 monitor's evaluation time. A Home Assistant report timestamp is only a proxy
 for the source's latest test, not proof of a new successful Internet probe.
 Update rows retain installed and source-offered latest versions, observation
@@ -197,6 +205,26 @@ input is then reported through the separate coverage fault owned by that
 input's component. See Home Assistant's [sensor](https://developers.home-assistant.io/docs/core/entity/sensor/)
 and [binary sensor](https://developers.home-assistant.io/docs/core/entity/binary-sensor/)
 device-class contracts.
+
+Battery freshness shall prefer the unique `sensor.*_last_seen` associated with
+the same Home Assistant device, normalized by the shared reader as
+`last_contact_at`. A recent contact shall allow the last valid percentage or
+low-battery state without a changed value or new battery report. The source's
+device class, units, availability, value plausibility and independent reader
+transport validity shall still be checked. Contact shall not turn an invalid
+battery value into valid evidence or clear an unrelated safety-input fault.
+
+The provider shall expose contact-source cardinality and retain the selected
+source identity when its timestamp cannot be normalized. Missing, malformed,
+future or expired selected contact, or ambiguous same-device contact sources,
+shall remain unknown; the policy shall not fall back to native report times.
+Only devices without a contact-source capability shall retain native
+`last_reported` freshness, falling back to `last_updated` when absent. Both
+paths use the system-owned `battery_stale_after_seconds` bound, defaulting to
+86400 seconds. Polling shall not renew contact or battery-report age. The
+full-diagnostics API shall preserve the raw report timestamps alongside contact
+timestamp, source identity and cardinality without copying raw snapshots into
+the bounded MQTT aggregate.
 
 Battery discovery reads the Home Assistant entity and device registries together
 with current states. Only enabled, device-associated entities matching these

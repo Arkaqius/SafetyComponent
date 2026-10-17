@@ -25,9 +25,9 @@ sidebar entry.
 - Localized Home Assistant presentation in English, Polish, and German while
   runtime IDs and raw state codes remain stable.
 - Entity Health Monitoring for explicit and component-owned safety
-  dependencies, with a read-only Home Assistant entity and device inventory.
+  dependencies, listed alongside battery maintenance in System Health.
 - SafetyHome React/Vite frontend with Dashboard, Temperature, Safety Doors,
-  Entity Health, and History views connected through `@hakit/core`.
+  System Health, and History views connected through `@hakit/core`.
 
 External Hazard Monitoring correlates weather, official IMGW warnings, and
 outdoor air quality with configured windows and external doors. It creates
@@ -35,9 +35,10 @@ manual close recommendations for the current installation. Provider code never
 actuates devices; any future configured cover action remains subject to the
 validated explicit-confirmation policy.
 
-Entity Health Monitoring covers explicitly configured safety dependencies,
-dependencies declared by Safety Components, and an information-only inventory
-of other Home Assistant entities and devices.
+Entity Health Monitoring covers explicitly configured safety dependencies and
+dependencies declared by Safety Components. System Health lists those monitored
+records, including unavailable ones, and separately presents device batteries;
+it does not display the complete Home Assistant entity/device inventory.
 
 ## Repository layout
 

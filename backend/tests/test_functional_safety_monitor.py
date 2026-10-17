@@ -6,6 +6,8 @@ import json
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+import pytest
+
 from components.core.functional_safety_diagnostics import (
     InMemoryFunctionalSafetyDiagnosticsStore,
 )
@@ -112,6 +114,76 @@ def make_monitor(states: dict[str, dict[str, Any]]) -> tuple[FunctionalSafetyMon
         assert monitor.init_safety_mechanism(symptom.sm_name, name, {})
         assert monitor.enable_safety_mechanism(name, SMState.ENABLED)
     return monitor, bus, mqtt
+
+
+@pytest.mark.parametrize("value,expected", [("94", FaultState.CLEARED), ("1", FaultState.SET)])
+def test_unchanged_battery_is_evaluated_using_current_device_contact(value, expected):
+    """A device heartbeat qualifies its existing value, including a low battery."""
+    battery = snapshot(value, unit="%", kind="battery", old=True)
+    battery.update(last_contact_source_count=1, last_contact_source_entity="sensor.remote_last_seen",
+                   last_contact_at=snapshot("on")["last_reported"])
+    monitor, _, mqtt = make_monitor({"sensor.battery": battery})
+    monitor.evaluate()
+    assert monitor.symptom_states["fsm_RemoteBatteryLowRemote"] == expected
+    assert mqtt.states[-1][2]["remote_batteries"]["Remote"]["percentage"] == float(value)
+
+
+@pytest.mark.parametrize("contact", [
+    {"last_contact_source_count": 1},
+    {"last_contact_source_count": 2},
+    {"last_contact_source_count": 1, "last_contact_at": "unavailable"},
+    {"last_contact_source_count": 1, "last_contact_at": "2020-01-01T00:00:00+00:00"},
+    {"last_contact_source_count": 1, "last_contact_at": "2999-01-01T00:00:00+00:00"},
+])
+def test_failed_device_contact_never_falls_back_to_fresh_battery_report(contact):
+    """Losing selected contact withdraws evidence instead of clearing a warning."""
+    states = {"sensor.battery": snapshot("1", unit="%", kind="battery")}
+    monitor, bus, mqtt = make_monitor(states)
+    monitor.evaluate()
+    assert monitor.symptom_states["fsm_RemoteBatteryLowRemote"] == FaultState.SET
+    count = len(bus.events)
+    states["sensor.battery"] = {**snapshot("94", unit="%", kind="battery"),
+                               "last_contact_source_entity": "sensor.remote_last_seen", **contact}
+    monitor.evaluate()
+    assert len(bus.events) == count
+    assert monitor.symptom_states["fsm_RemoteBatteryLowRemote"] == FaultState.NOT_TESTED
+    assert mqtt.states[-1][2]["remote_batteries"]["Remote"]["status"] == "unknown"
+
+
+@pytest.mark.parametrize("value,unit,kind", [
+    ("unavailable", "%", "battery"), ("nan", "%", "battery"),
+    ("101", "%", "battery"), ("-1", "%", "battery"),
+    ("80", "V", "battery"), ("80", "%", "temperature"),
+])
+def test_current_device_contact_does_not_replace_invalid_battery_data(value, unit, kind):
+    battery = snapshot(value, unit=unit, kind=kind)
+    battery.update(last_contact_source_count=1, last_contact_source_entity="sensor.remote_last_seen",
+                   last_contact_at=snapshot("on")["last_reported"])
+    monitor, bus, _ = make_monitor({"sensor.battery": battery})
+    monitor.evaluate()
+    assert not bus.events
+    assert monitor.symptom_states["fsm_RemoteBatteryLowRemote"] == FaultState.NOT_TESTED
+
+
+def test_battery_without_device_contact_uses_its_native_report():
+    battery = snapshot("90", unit="%", kind="battery")
+    battery["last_contact_source_count"] = 0
+    monitor, _, _ = make_monitor({"sensor.battery": battery})
+    monitor.evaluate()
+    assert monitor.symptom_states["fsm_RemoteBatteryLowRemote"] == FaultState.CLEARED
+
+
+@pytest.mark.parametrize("state,expected", [("on", FaultState.SET), ("off", FaultState.CLEARED)])
+def test_binary_low_battery_uses_device_contact(state, expected):
+    battery = snapshot(state, kind="battery", old=True)
+    battery.update(last_contact_source_count=1, last_contact_source_entity="sensor.remote_last_seen",
+                   last_contact_at=snapshot("on")["last_reported"])
+    monitor, _, _ = make_monitor({"binary_sensor.battery": battery})
+    monitor.bindings["remote_batteries"]["Remote"] = {
+        "friendly_name": "Remote", "low_entity": "binary_sensor.battery",
+    }
+    monitor.evaluate()
+    assert monitor.symptom_states["fsm_RemoteBatteryLowRemote"] == expected
 
 
 def test_missing_and_wrong_unit_sources_remain_unknown_without_faults() -> None:

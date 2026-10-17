@@ -45,6 +45,9 @@ test('battery raw readings and source times remain visible without implying heal
               unit: '%',
               last_reported: '2026-09-01T00:00:00Z',
               last_updated: '2026-08-01T00:00:00Z',
+              last_contact_at: '2026-09-28T20:00:00Z',
+              last_contact_source_entity: 'sensor.remote_last_seen',
+              last_contact_source_count: 1,
             },
           ],
         },
@@ -55,6 +58,8 @@ test('battery raw readings and source times remain visible without implying heal
   assert.equal(rows[0].status, 'unknown');
   assert.ok(rows[0].evidence.some(line => line.includes('73 %')));
   assert.ok(rows[0].evidence.some(line => line.includes('Ostatni raport')));
+  assert.ok(rows[0].evidence.some(line => line.includes('Ostatni kontakt urządzenia')));
+  assert.ok(rows[0].evidence.some(line => line.includes('sensor.remote_last_seen')));
 });
 
 test('functional safety API accepts only a versioned complete snapshot', () => {
