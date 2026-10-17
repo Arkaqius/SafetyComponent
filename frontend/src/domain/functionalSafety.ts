@@ -31,6 +31,8 @@ export interface SourceView {
   detail: string;
   group: 'host' | 'wan' | 'updates' | 'batteries' | 'inventory';
   evidence: string[];
+  percentage?: number | null;
+  sourceEntities?: string[];
 }
 
 export function getFunctionalSafetySources(entities: EntityMap, fullDiagnostics?: Record<string, unknown> | null): SourceView[] {
@@ -68,6 +70,21 @@ export function getFunctionalSafetySources(entities: EntityMap, fullDiagnostics?
               ? 'wan'
               : 'host',
       evidence: sourceEvidence(item),
+      ...(key.startsWith('battery-') && key !== 'battery-discovery'
+        ? {
+            percentage: batteryPercentage(item),
+            sourceEntities: [
+              ...new Set([
+                ...(Array.isArray(item.source_entities) ? item.source_entities.filter((id): id is string => typeof id === 'string') : []),
+                ...(Array.isArray(item.sources)
+                  ? item.sources.flatMap(raw =>
+                      raw && typeof raw === 'object' && typeof raw.entity_id === 'string' ? [raw.entity_id] : []
+                    )
+                  : []),
+              ]),
+            ],
+          }
+        : {}),
     });
   };
   const memory = attributes.memory as Record<string, unknown> | undefined;
@@ -132,6 +149,11 @@ export function getFunctionalSafetySources(entities: EntityMap, fullDiagnostics?
   return rows;
 }
 
+function batteryPercentage(item: Record<string, unknown>): number | null {
+  const value = numberOrNull(item.percentage);
+  return ['low', 'current'].includes(String(item.status)) && value !== null && value >= 0 && value <= 100 ? value : null;
+}
+
 function sourceEvidence(item: Record<string, unknown>): string[] {
   const lines: string[] = [];
   const time = (label: string, value: unknown) => {
@@ -165,7 +187,7 @@ function sourceEvidence(item: Record<string, unknown>): string[] {
       time('Ostatnia zmiana wartości/atrybutów', source.last_updated);
     }
   if ('checked_at' in item) time('Ostatnia ocena monitora', item.checked_at);
-  if ('percentage' in item) lines.unshift(`Wiarygodny poziom baterii: ${numberOrNull(item.percentage) ?? '—'}%`);
+  if ('percentage' in item) lines.unshift(`Wiarygodny poziom baterii: ${batteryPercentage(item) ?? '—'}%`);
   if ('device_count' in item)
     lines.push(`Urządzenia w inwentarzu: ${numberOrNull(item.device_count) ?? '—'} (wykrywanie nie jest monitorem stanu baterii)`);
   return lines;

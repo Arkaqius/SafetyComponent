@@ -54,7 +54,7 @@ export default function MonitoredEntities({ monitored, summary }: { monitored: M
       <header className='panel-header'>
         <div>
           <h2>Monitorowane encje ({summary.total})</h2>
-          <p>Źródła danych używane przez funkcje bezpieczeństwa. Baterie urządzeń znajdują się poniżej, w osobnej sekcji.</p>
+          <p>Źródła danych używane przez funkcje bezpieczeństwa. Baterie urządzeń mają osobną podzakładkę.</p>
         </div>
       </header>
       <section aria-label='Podsumowanie monitorowanych encji' className='entity-health-summary'>

@@ -268,8 +268,9 @@ lub dobrą kondycję baterii. Niedostępny odczyt nie oznacza pełnej baterii.
 Niska bateria pozostaje informacją L4; nie zastępuje ani nie kasuje diagnozy
 niedostępnego czujnika bezpieczeństwa.
 
-Bieżącą ocenę baterii znajdziesz w **Zdrowie systemu → Platforma i konserwacja
-→ Baterie urządzeń**. Na tej samej stronie sekcja **Monitorowane encje** pokazuje
+Bieżącą ocenę baterii znajdziesz w **Zdrowie systemu → Baterie**; możesz tam
+wyszukiwać urządzenia, filtrować ocenę i sortować według pilności, nazwy lub
+poprawnego procentu. Na tej samej stronie podzakładka **Monitorowane encje** pokazuje
 zależności objęte diagnostyką SafetyComponent; jej liczba jest niezależna od
 liczby monitorowanych baterii. Ogólna lista wszystkich encji HA nie jest
 wyświetlana.

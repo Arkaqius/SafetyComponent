@@ -49,8 +49,18 @@ są widoczne w obu widokach. Zmiana widoku nie wysyła poleceń do Home Assistan
 
 ## Zdrowie systemu: monitorowane encje i baterie
 
-W widoku **Rozszerzony → Zdrowie systemu** sekcja **Monitorowane encje**
-pokazuje wyłącznie źródła objęte diagnostyką SafetyComponent: wpisy użytkownika
+Widok **Rozszerzony → Zdrowie systemu** ma cztery podzakładki:
+**Monitorowane encje**, **Baterie**, **Platforma** oraz **Testy i powiadomienia**.
+Wybrana podzakładka jest zapisana w adresie strony, więc można wrócić do niej
+po odświeżeniu, użyciu Wstecz/Dalej lub udostępnić bezpośredni odnośnik.
+Fragment adresu po `#` to `/functional-safety?tab=entities` (domyślna),
+`/functional-safety?tab=batteries`, `/functional-safety?tab=platform`
+lub `/functional-safety?tab=tests`. Przełączenie podzakładki zachowuje filtry i wybór
+wiersza do czasu przeładowania strony. Gdy fokus jest na podzakładce,
+strzałki lewo/prawo zmieniają wybór, a Home/End przechodzą do pierwszej/ostatniej.
+
+Podzakładka **Monitorowane encje** pokazuje wyłącznie źródła objęte diagnostyką
+SafetyComponent: wpisy użytkownika
 i zależności komponentów. Obejmuje również źródła sprawne i niedostępne.
 Liczba zależy od konfiguracji instalacji; nie jest liczbą wszystkich encji HA
 ani urządzeń w domu. Użyj wyszukiwania i filtrów oceny, pochodzenia,
@@ -59,10 +69,24 @@ kontrole, przyczyny i czasy. Osobna pozycja **Encje i urządzenia** oraz ogólny
 spis encji HA nie są częścią nawigacji. Starszy odnośnik `/entities` prowadzi
 do **Zdrowia systemu**.
 
-Na tej samej stronie pozostaje **Platforma i konserwacja → Baterie urządzeń**.
-Ta sekcja pokazuje stan konserwacji baterii oraz odczyty i jakość źródeł;
-lista monitorowanych encji jej nie zastępuje. Wybór monitorowanych urządzeń
-bateryjnych nadal znajduje się w **Konfiguracji**.
+Podzakładka **Baterie** na tej samej stronie pokazuje stan konserwacji baterii,
+poprawne wartości procentowe oraz jakość źródeł. Wyszukuj po nazwie urządzenia,
+kluczu diagnostycznym lub identyfikatorze encji źródłowej. Filtr oceny wybiera
+baterie niskie, prawidłowe lub bez wiarygodnej oceny. Domyślna kolejność to
+najpierw niskie baterie, potem nieznane oceny, na końcu prawidłowe. Możesz też
+sortować po nazwie lub rosnąco/malejąco po procencie; nieznane wartości
+pozostają na końcu. Rozwiń wiersz, aby sprawdzić źródła, surowe odczyty oraz
+czasy raportu i kontaktu. Niepoprawny odczyt nie jest przedstawiany jako
+wiarygodny procent.
+
+Lista korzysta z pełnych danych API. Jeżeli dostępne jest tylko ograniczone
+podsumowanie encji HA, strona pokazuje to ograniczenie i liczbę pominiętych
+baterii. Brak wiersza w takim podsumowaniu nie potwierdza poprawnej baterii.
+Po błędzie API strona korzysta z ograniczonego podsumowania zamiast nadal
+przedstawiać zapamiętaną pełną odpowiedź jako aktualną. Ostrzeżenie pozostaje
+widoczne również po filtrowaniu i przy braku pasujących wyników.
+Lista monitorowanych encji pozostaje niezależna od listy baterii. Wybór
+monitorowanych urządzeń bateryjnych nadal znajduje się w **Konfiguracji**.
 
 Monitor baterii ufa pojedynczemu `sensor.*_last_seen` powiązanemu z tym samym
 urządzeniem. Świeży kontakt pozwala wykorzystać ostatni poprawny stan baterii,

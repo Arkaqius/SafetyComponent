@@ -64,11 +64,14 @@ label.
 System Health lists all C-ENT monitored records, including healthy and
 unavailable records, with installation-specific counts, search, filters and
 expandable diagnostic details. It shall not enumerate all Home Assistant
-entities or devices. Battery maintenance remains a separate section on this
-same page; it is not replaced by the monitored list.
+entities or devices. System Health provides four URL-selected subtabs for
+monitored entities, batteries, platform diagnostics, and tests/notifications.
+Battery maintenance and the monitored list remain on this same page, each in
+its own subtab.
 
-Safety Home groups the other diagnostics into initially collapsed platform, WAN,
-update, battery, and component-progress sections. Battery discovery is inventory
+Within the platform subtab, Safety Home groups diagnostics into initially
+collapsed host, WAN, update and component-progress sections. Battery discovery
+is inventory
 metadata, not a separate battery-health monitor. Battery rows retain each raw
 source state, unit, report/update timestamp and source identity alongside the
 validated percentage and quality, and contact timestamp/source identity when
@@ -80,6 +83,19 @@ for the source's latest test, not proof of a new successful Internet probe.
 Update rows retain installed and source-offered latest versions, observation
 time, and release information. Dev or beta source versions shall not be
 relabeled as the latest stable release without independent evidence.
+
+The battery subtab provides text search over device names, diagnostic keys and
+source entity IDs, and status filters for low, current and unknown evidence.
+The default attention order is low, then unknown, then current. Other sort
+choices are name and validated percentage ascending or descending; missing
+validated percentages remain last in either numeric order. Each row exposes
+source evidence on expansion. Sorting and filtering shall use evaluated
+diagnostics and shall not convert a raw or invalid percentage into valid
+battery evidence. The full API and bounded-entity fallback distinction and
+omission warning shall remain visible when the battery subtab is selected.
+Warnings shall remain visible during filtering, including when no rows match.
+If the full API fails, the view shall use the identified bounded entity
+fallback rather than present a cached full response as current API evidence.
 
 The Home Assistant entity is the bounded automation and Recorder contract. It
 contains aggregate state, allowlisted validated evidence, source identifiers,
