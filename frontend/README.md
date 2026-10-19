@@ -47,6 +47,39 @@ w przeglądarce. Bezpośredni odnośnik do diagnostyki otwiera widok rozszerzony
 powrót do podstawowego prowadzi na pulpit. Brak połączenia i ograniczenia danych
 są widoczne w obu widokach. Zmiana widoku nie wysyła poleceń do Home Assistanta.
 
+## Zdrowie systemu: monitorowane encje i baterie
+
+W widoku **Rozszerzony → Zdrowie systemu** sekcja **Monitorowane encje**
+pokazuje wyłącznie źródła objęte diagnostyką SafetyComponent: wpisy użytkownika
+i zależności komponentów. Obejmuje również źródła sprawne i niedostępne.
+Liczba zależy od konfiguracji instalacji; nie jest liczbą wszystkich encji HA
+ani urządzeń w domu. Użyj wyszukiwania i filtrów oceny, pochodzenia,
+właściciela lub pomieszczenia; rozwiń źródło, aby sprawdzić identyfikator,
+kontrole, przyczyny i czasy. Osobna pozycja **Encje i urządzenia** oraz ogólny
+spis encji HA nie są częścią nawigacji. Starszy odnośnik `/entities` prowadzi
+do **Zdrowia systemu**.
+
+Na tej samej stronie pozostaje **Platforma i konserwacja → Baterie urządzeń**.
+Ta sekcja pokazuje stan konserwacji baterii oraz odczyty i jakość źródeł;
+lista monitorowanych encji jej nie zastępuje. Wybór monitorowanych urządzeń
+bateryjnych nadal znajduje się w **Konfiguracji**.
+
+Monitor baterii ufa pojedynczemu `sensor.*_last_seen` powiązanemu z tym samym
+urządzeniem. Świeży kontakt pozwala wykorzystać ostatni poprawny stan baterii,
+nawet gdy procent ani czas raportu baterii się nie zmieniają. Domyślny limit
+kontaktu wynosi 24 godziny. Kontakt nie naprawia niedostępnej encji, błędnej
+jednostki ani niepoprawnej wartości. Brak poprawnego czasu wybranego kontaktu
+lub kilka pasujących źródeł oznacza brak wiarygodnej oceny; system nie zastępuje
+wtedy kontaktu czasem aktualizacji baterii. Dla urządzeń bez takiego źródła
+pozostaje sprawdzanie czasu raportu baterii (`last_reported`, a przy jego braku
+`last_updated`). Szczegóły rozróżniają czasy kontaktu i raportu baterii.
+
+Komunikat **oceny wymagają weryfikacji** dotyczy nieznanych ocen usterek,
+stanów działań lub poziomu systemu, a nie liczby monitorowanych encji.
+Podsumowanie pokazuje ten podział. W **Fault Management → Zdarzenia i stan
+oceny** domyślny filtr **Wymagające uwagi** obejmuje również nieocenione
+(`NOT_EVALUATED`) i niewiarygodne oceny; nie oznaczają one potwierdzonej awarii.
+
 ## Kontakt czujników i dane alarmowe
 
 Karty detektorów pokazują **Ostatni kontakt urządzenia** osobno od obserwacji

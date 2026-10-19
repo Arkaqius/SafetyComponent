@@ -41,7 +41,7 @@ export default function Help() {
             ))}
           </dl>
           <p>„Brak alarmów” opisuje wynik dla monitorowanych źródeł. Sprawdź również aktualność i pokrycie monitoringu.</p>
-          <Link className='text-link' to='/entities'>
+          <Link className='text-link' to='/functional-safety'>
             Sprawdź źródła danych <Icon name='chevron' size={16} />
           </Link>
         </section>
@@ -63,8 +63,8 @@ export default function Help() {
                 wcześniejszy poprawny stan nie potwierdza obecnego bezpieczeństwa.
               </p>
               <p>
-                Otwórz <Link to='/entities'>Encje i urządzenia</Link>, aby sprawdzić dostępne wyniki diagnostyki. Po odzyskaniu połączenia
-                sprawdź, czy problem nadal jest zgłaszany.
+                Otwórz <Link to='/functional-safety'>Zdrowie systemu</Link>, aby sprawdzić dostępne wyniki diagnostyki. Po odzyskaniu
+                połączenia sprawdź, czy problem nadal jest zgłaszany.
               </p>
             </details>
             <details className='help-question'>

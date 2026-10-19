@@ -20,10 +20,9 @@ const pageLabels: Record<string, { eyebrow: string; title: string }> = {
   '/safety-doors': { eyebrow: 'Wejścia do domu', title: 'Drzwi i bramy' },
   '/internal-hazards': { eyebrow: 'Bezpieczeństwo wewnątrz domu', title: 'Zagrożenia wewnętrzne' },
   '/external-hazards': { eyebrow: 'Otoczenie domu', title: 'Zagrożenia zewnętrzne' },
-  '/entities': { eyebrow: 'Diagnostyka danych', title: 'Encje i urządzenia' },
   '/history': { eyebrow: 'Diagnostyka', title: 'Historia powiadomień i stanów' },
   '/configuration': { eyebrow: 'Ustawienia aplikacji', title: 'Konfiguracja instalacji' },
-  '/functional-safety': { eyebrow: 'Diagnostyka bezpieczeństwa', title: 'Zdrowie funkcji bezpieczeństwa' },
+  '/functional-safety': { eyebrow: 'Diagnostyka bezpieczeństwa', title: 'Zdrowie systemu' },
   '/help': { eyebrow: 'SafetyHome', title: 'Pomoc i objaśnienia' },
   '/fault-management': { eyebrow: 'Diagnostyka bezpieczeństwa', title: 'Fault Management' },
 };

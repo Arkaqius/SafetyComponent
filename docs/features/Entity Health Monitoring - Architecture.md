@@ -8,17 +8,16 @@
 
 The following decisions define the feature boundary:
 
-1. Entity Health Monitoring has three source groups: explicit safety entities,
-   component dependencies, and the complete information-only Home Assistant
-   entity/device inventory.
+1. Entity Health Monitoring has two monitored source groups: explicit safety
+   entities and component dependencies.
 2. Group A is selected and calibrated by the installation owner because those
    entities participate in important automations or safety dependencies outside
    SafetyFunctions.
 3. Group B is self-declared by Safety Components and the application core. It
    includes all configured shared entities and does not require duplicate
    installation configuration.
-4. Group C is informational. It shall never create a symptom, fault,
-   notification, recovery action, or application-health degradation.
+4. Entities outside Groups A/B shall not be enrolled implicitly or included in
+   the monitored list, including when Home Assistant reports them unavailable.
 5. Availability is mandatory for Groups A and B. Freshness and value checks are
    opt-in and require complete, type-compatible calibration.
 6. Entity Monitor observes and diagnoses. It shall not call a Home Assistant
@@ -27,8 +26,8 @@ The following decisions define the feature boundary:
    not create a duplicate Group A fault when a Group B role owns that check.
    Distinct input, recovery, detector or application-health roles may share one
    physical entity while retaining their separate fault families.
-8. The complete Group C inventory is read through the authenticated Home
-   Assistant frontend connection. It is not copied into MQTT attributes.
+8. System Health shall present Group A/B diagnostics and the separate battery
+   maintenance section. It shall not expose a general Home Assistant inventory.
 9. C-ENT creates at most one `EntityHealth{EntityKey}` fault per unhealthy Group
    A entity that it owns. Temperature, door, external-opening and shared Group B
    inputs contribute to `InputMonitoringUnavailable`; recovery and detector
@@ -49,7 +48,8 @@ The feature shall:
 - expose one consistent view of explicit and component-owned entity health;
 - preserve independent entity/check evidence inside shared input faults, while
   retaining separate faults for external-only Group A entities;
-- provide an entity/device audit view for the complete Home Assistant instance;
+- list all configured monitored records in System Health, including healthy
+  and unavailable records, separately from battery maintenance;
 - make entity source, owner, state, availability, timestamps, device, and area
   easy to filter in SafetyHome;
 - use friendly names for operators while preserving stable entity IDs and raw
@@ -68,8 +68,8 @@ The feature shall:
 - Every configured `common_entities` binding.
 - Availability, optional freshness and value checks, failure/recovery debounce,
   and diagnostic publication for Groups A and B.
-- Information-only inventory, search, sorting, filtering, and device grouping for
-  Group C.
+- Search, health/source filtering, and diagnostic details for monitored records
+  within System Health.
 - Fault aggregation for failures owned by C-ENT.
 
 ### 3.2 Out of scope
@@ -81,7 +81,8 @@ The feature shall:
 - Duplicating provider-health or unavailable-input faults already owned by
   another component.
 - Persisting the complete Home Assistant entity registry in MQTT.
-- Treating Group C audit results as evidence that a safety condition is clear.
+- A general Home Assistant entity/device inventory or using unmonitored entities
+  as evidence that a safety condition is clear.
 
 ## 4. Monitoring groups
 
@@ -134,29 +135,18 @@ Examples of Group B dependencies include temperature inputs registered by
 and shared outside-temperature or occupancy inputs registered by the application
 core or their consuming component.
 
-### 4.3 Group C - entity and device inventory
+### 4.3 Unmonitored entities
 
-Group C contains all entities and devices visible to the authenticated
-Home Assistant frontend connection. It is an operator audit surface, not a
-Safety Component input.
+Entities outside Groups A/B shall not appear in the monitored list and shall
+not create C-ENT symptoms, faults, notifications, recovery actions, or
+application-health degradation. SafetyHome shall not offer a general Home
+Assistant entity/device inventory. Battery discovery and maintenance remain a
+separate C-FSM contract and a separate section within System Health.
 
-The frontend exposes at least:
-
-- friendly name and entity ID;
-- domain, current raw state, and availability;
-- `last_changed` and `last_updated`;
-- device and area when available;
-- disabled/hidden metadata when registry permissions expose it;
-- Group A/B badges and health when the entity also belongs to those groups.
-
-For a selected entity or device, the frontend may query Home Assistant history
-on demand to show recent `unknown`/`unavailable` periods. It shall not bulk-load
-history for the complete inventory. A device roll-up is derived from its entity
-rows and remains informational unless one of those entities independently
-belongs to Group A or B.
-
-The view supports text search, sorting, device grouping, and filters for domain,
-device, area, availability, source group, and age of the last change/update.
+The monitored list shall derive membership from backend Group A/B diagnostics,
+not from the complete Home Assistant registry or from entity availability.
+Its size shall reflect the installation's declared records, including separate
+fault-family records sharing one physical entity; no fixed count is assumed.
 
 `last_changed` means that the state value changed. `last_updated` means that the
 state or its attributes changed. Neither timestamp proves a physical heartbeat
@@ -198,12 +188,10 @@ updates.
              v
  EventBus -> FaultManager -> NotificationManager
 
- Authenticated SafetyHome connection -> HA states/registries -> Group C view
-                                                 |
-                                                 +-> joins Group A/B summaries
+ Authenticated SafetyHome connection -> Group A/B diagnostics -> System Health
 
  EntityMonitorComponent has no edge to RecoveryManager actuator execution.
- Group C has no edge to EventBus, FaultManager, or NotificationManager.
+ Unmonitored entities have no edge to C-ENT fault evaluation.
 ```
 
 ## 6. Code placement
@@ -212,18 +200,17 @@ updates.
 backend/components/safetycomponents/entity_monitor/
   __init__.py
   entity_monitor_component.py
-  checks.py
   models.py
-  registry.py
   schema.py
 
 frontend/src/
   domain/entityHealth.ts
-  hooks/useEntityHealth.ts
-  pages/EntityAuditPage.tsx
+  components/MonitoredEntities.tsx
+  pages/FunctionalSafety.tsx
 ```
 
-Tests mirror backend placement under `backend/tests/` and frontend placement
+The component module implements registry and check evaluation. Tests mirror
+backend placement under `backend/tests/` and frontend placement
 under `frontend/src/` using the repository's existing test conventions.
 
 ## 7. Core model
@@ -232,7 +219,6 @@ under `frontend/src/` using the repository's existing test conventions.
 class EntitySource(str, Enum):
     EXPLICIT = "explicit"
     COMPONENT = "component"
-    INVENTORY = "inventory"
 
 
 class EntityHealthState(str, Enum):
@@ -273,7 +259,7 @@ input-monitoring record when present. It does not create duplicate Group A
 faults for the other logical roles. The shared reader acquires one physical
 entity at the shortest derived cadence required by its records; every logical
 record retains independent checks, debounce state and coverage bindings.
-The frontend joins those diagnostics with the complete Group C inventory.
+The frontend lists those diagnostic records within System Health.
 A component-owned check cannot be disabled or relaxed by Group A configuration.
 
 Conflicting value kinds or ownership within the same logical record are
@@ -528,7 +514,7 @@ naming the affected entity and failed availability, freshness or value path.
 Positive recovery of that cause shall complete its observed repair action;
 operator-reported inspection shall not establish that the source is healthy.
 Group B repair actions shall follow their declared fault owner, preserving one
-action for a shared failed path. Passive Group C inventory shall create none.
+action for a shared failed path. Unmonitored entities shall create none.
 
 Each C-ENT-owned Group A entity has its own fault. All active check symptoms
 for that entity aggregate into the same fault; symptoms belonging to another
@@ -587,40 +573,36 @@ sensor.entity_monitor_summary
 ```
 
 It publishes bounded counts by health and source plus a bounded list of
-unhealthy Group A/B summaries. It does not contain healthy inventory rows or the
-complete Group C dataset.
+unhealthy Group A/B summaries. Individual diagnostic entities supply the full
+monitored list; the summary does not contain the complete Home Assistant inventory.
 
 MQTT discovery names and `state_label` are localized. Raw health, source, check,
 and reason codes remain language-independent.
 
 ## 13. Frontend architecture
 
-SafetyHome joins two sources:
-
-1. C-ENT MQTT diagnostics for authoritative Group A/B health and fault context.
-2. Home Assistant state, entity registry, device registry, and area registry for
-   Group C presentation.
+System Health presents C-ENT MQTT diagnostics for authoritative Group A/B
+health and fault context alongside the separate C-FSM battery section. Its
+monitored list shall not enumerate the Home Assistant entity or device registry.
 
 The frontend performs only presentation filtering. It may defensively recompute
 simple display classifications, but it shall not create or clear a safety fault.
 
-The Entity Audit view provides:
+The monitored-entities section provides:
 
 - summary cards for unhealthy Group A and B entities;
 - a default problem-first list;
-- explicit badges for A, B, and C membership;
-- entity and device modes;
-- text search and combinable filters;
-- sorting by health severity, last update, last change, friendly name, area, and
-  device;
+- explicit badges for A and B membership;
+- all monitored records, including healthy and unavailable ones;
+- text search and combinable health/source filters;
+- problem-first ordering by health severity and friendly name;
 - tooltips or details with the technical entity ID, owner, check calibration,
   reason code, and timestamps;
-- on-demand recent history for one selected entity or device, including periods
-  reported by Home Assistant as `unknown` or `unavailable`;
 - Polish operator labels with English and German runtime translation parity.
 
-The default view shall not render thousands of expanded rows at once. Filtering,
-virtualization or pagination, and collapsed device groups bound rendering cost.
+Diagnostic details shall be expandable per monitored record. The old `/entities`
+route shall redirect to `/functional-safety`; the navigation shall expose
+System Health rather than a separate entity/device inventory.
 
 ## 14. Configuration contract
 
@@ -739,9 +721,8 @@ Strict validation rejects:
   independent of ordinary reads. Freshness and debounce use a separate scheduler;
   there is no network polling loop per entity.
 - MQTT diagnostics use bounded attributes and unhealthy summaries.
-- Group C uses Home Assistant's existing frontend state/registry connection.
-- Frontend filtering uses memoized indexes and bounded rendering.
-- A Group C registry or rendering failure cannot block Group A/B evaluation.
+- Frontend filtering operates on the installed monitored records.
+- A presentation failure cannot block Group A/B backend evaluation.
 
 ## 16. Security and privacy
 
@@ -751,7 +732,8 @@ Strict validation rejects:
 - Diagnostics shall not expose secrets stored in entity attributes.
 - The backend publishes an allowlisted diagnostic attribute schema rather than
   copying arbitrary Home Assistant attributes.
-- Group C remains inside the Home Assistant/SafetyHome authenticated session.
+- Monitored diagnostic presentation remains inside the authenticated
+  Home Assistant/SafetyHome session.
 
 ## 17. Verification
 
@@ -787,7 +769,7 @@ Strict validation rejects:
   derived scheduling and preservation of allocated detection budgets.
 - Stable MQTT IDs and bounded attributes.
 - Cause-specific manual recovery registration and valid recovery evidence;
-  no actuator service calls or recovery creation from passive Group C inventory.
+  no actuator service calls or recovery creation for unmonitored entities.
 
 ### 17.2 Backend integration tests
 
@@ -799,13 +781,15 @@ Strict validation rejects:
 
 ### 17.3 Frontend tests
 
-- Joining HA inventory with Group A/B diagnostics.
-- Entity and device grouping.
+- Group A/B diagnostic membership without a general HA inventory.
+- Monitored entities and battery maintenance both remain in System Health.
 - Combined filters and search.
-- Sorting by health and timestamps.
+- Problem-first health ordering.
 - Friendly-name presentation with technical IDs in details.
 - Information-only rows never appear as active faults.
-- Large-inventory rendering remains bounded.
+- Unmonitored unavailable entities remain absent; installed monitored counts
+  are dynamic, and separate fault-family records remain visible.
+- The legacy entity route redirects to System Health.
 - English, Polish, and German state-label parity.
 
 ## 18. Traceability
@@ -816,8 +800,7 @@ Strict validation rejects:
 | SG-003 | C-ENT checks, fault ownership, no-false-clear behavior, and per-entity level-3 fault allocation |
 | IR-009 | Entity state, timestamps, source membership, device, area, and information-only boundary |
 | SYS-SR-ENT-* | Software requirements `SWR-ENT-*` |
-| NFR-030/031 | Component-owned contracts and freedom from interference by Group C |
+| NFR-030/031 | Component-owned contracts and isolation from unmonitored entities |
 | NFR-040/041 | Per-check evidence, health counts, and freshness metrics |
 
-Group C supports operator observability and maintenance but does not claim a
-safety-goal allocation.
+Unmonitored Home Assistant entities have no C-ENT safety-goal allocation.

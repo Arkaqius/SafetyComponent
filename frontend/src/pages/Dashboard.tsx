@@ -133,7 +133,7 @@ function AdvancedDashboard() {
                   ? 'Wszystkie sprawne'
                   : 'Brak danych'}
         </StatusBadge>
-        <Link className='text-link' to='/entities'>
+        <Link className='text-link' to='/functional-safety'>
           Źródła danych <Icon name='chevron' size={15} />
         </Link>
       </section>

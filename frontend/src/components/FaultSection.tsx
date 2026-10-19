@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useHass } from '@hakit/core';
 import {
   LEVEL_PRESENTATION,
+  faultNeedsAttention,
   formatRelativeTime,
   localizedEntityState,
   recoveriesForFault,
@@ -64,8 +65,7 @@ export default function FaultSection({
         filter === 'all' ||
         (filter === 'active' && fault.active) ||
         (filter === 'shadowed' && fault.shadowedBy.length > 0) ||
-        (filter === 'attention' &&
-          (fault.active !== false || ['unevaluable', 'pending_failure', 'unavailable', 'unknown'].includes(fault.status)));
+        (filter === 'attention' && faultNeedsAttention(fault));
       const matchesQuery =
         normalizedQuery.length === 0 ||
         [fault.name, fault.description, fault.entityId, ...fault.locations].join(' ').toLocaleLowerCase('pl').includes(normalizedQuery);

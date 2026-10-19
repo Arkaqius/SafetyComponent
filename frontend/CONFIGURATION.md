@@ -268,6 +268,18 @@ lub dobrą kondycję baterii. Niedostępny odczyt nie oznacza pełnej baterii.
 Niska bateria pozostaje informacją L4; nie zastępuje ani nie kasuje diagnozy
 niedostępnego czujnika bezpieczeństwa.
 
+Bieżącą ocenę baterii znajdziesz w **Zdrowie systemu → Platforma i konserwacja
+→ Baterie urządzeń**. Na tej samej stronie sekcja **Monitorowane encje** pokazuje
+zależności objęte diagnostyką SafetyComponent; jej liczba jest niezależna od
+liczby monitorowanych baterii. Ogólna lista wszystkich encji HA nie jest
+wyświetlana.
+
+Dla baterii z jednoznacznym źródłem kontaktu tego samego urządzenia monitor
+sprawdza `last_seen`, a nie wiek niezmieniającej się wartości procentowej.
+Niepoprawny, niedostępny lub niejednoznaczny kontakt pozostawia ocenę nieznaną.
+Urządzenia bez źródła kontaktu zachowują sprawdzanie wieku raportu baterii.
+Limit świeżości jest własnością konfiguracji systemowej, domyślnie 24 godziny.
+
 W sekcjach zasobów wpisz **Nowy identyfikator**, np. `LivingRoom` albo
 `EntranceDoor`, i kliknij **+ Dodaj obiekt**. Identyfikator jest techniczną,
 stałą nazwą wpisu w formacie PascalCase, a nie tłumaczoną nazwą wyświetlaną.

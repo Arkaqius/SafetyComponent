@@ -32,9 +32,8 @@
 **Out of scope (for clarity):**
 
 - General home‑automation conveniences (scenes, presence lighting, media, non‑safety automations).
-- The informational inventory may expose health metadata for entities used by
-  those conveniences, but it shall not evaluate or control their automation
-  behavior.
+- A general Home Assistant entity/device inventory. Only explicitly selected
+  or component-declared dependencies shall enter C-ENT monitoring.
 - Brand‑specific hardware design/certification and regulatory approvals (this is a best‑effort, non‑certified project).
 - Provider payload schemas and class-level software design, which are specified in the SSRD and feature architecture documents.
 
@@ -90,9 +89,8 @@ _Note: the data **providers** are external; the **interfaces** and how we use th
 **E) Processing**
 
 - Home automation instance running the Safety App (decision logic, thresholds/FTTI, evidence logging, notifications).
-- Entity-health registry and evaluation for explicit safety dependencies,
-  component-declared dependencies, and the information-only Home Assistant
-  inventory.
+- Entity-health registry and evaluation for explicit safety dependencies and
+  component-declared dependencies, presented within System Health.
 - Heating-system supervision by C-HVAC across room heat need, controller
   request, boiler response, and heat delivery, independent of normal heating
   control and of C-TEMP room-temperature hazard decisions.
@@ -431,9 +429,10 @@ _Interfaces turn §2 elements into **testable contracts**: freshness, latency, a
 - Safety-relevant entity health shall distinguish `healthy`, `degraded`,
   `stale`, and `unavailable`; a failed or unevaluable check shall never be
   treated as positive healthy evidence.
-- The information-only inventory shall expose native Home Assistant state and
-  metadata without creating a Safety System symptom, fault, notification, or
-  recovery action.
+- System Health shall list all monitored Group A/B records, including healthy
+  and unavailable records, separately from battery maintenance. Other Home
+  Assistant entities shall not be enrolled or listed merely because they exist
+  or are unavailable.
 
 ### 7.2 Input — Cloud/Data Feeds
 
@@ -1121,9 +1120,10 @@ installation.
 ### 8.5 Entity Health Monitoring Component (C-ENT)
 
 **Scope:** C-ENT supports SG-003 by detecting failures of Home Assistant
-entities whose loss could mask or prevent a safety function. It also exposes a
-separate information-only inventory of other Home Assistant entities and
-devices. C-ENT observes health and shall not command an entity or actuator.
+entities whose loss could mask or prevent a safety function. System Health
+shall list those monitored records alongside separate battery maintenance,
+without a general Home Assistant inventory. C-ENT observes health and shall
+not command an entity or actuator.
 Fault ownership and subject routing follow
 [Fault Routing and Aggregation](<../features/Fault Routing and Aggregation - Architecture.md>).
 
@@ -1133,12 +1133,11 @@ Fault ownership and subject routing follow
 | --- | --- | --- | --- | --- |
 | A — Explicit safety entities | `explicit` | Entity IDs selected by the installation because they participate in important external automations or safety dependencies | `user_config` | Failed checks may create symptoms and one C-ENT fault for that entity |
 | B — Component dependencies | `component` | Inputs, common entities, and required diagnostic outputs declared by Safety Components or the application core | Owning component or core | Failed checks use the declared fault owner and shall not create duplicate faults |
-| C — Entity/device inventory | `inventory` | All Home Assistant entities and devices visible to the frontend connection | Home Assistant metadata; frontend filters | Information only; no safety effect |
 
 An entity may belong to more than one group. Its runtime record shall preserve
 all source memberships. Group B policy shall not be weakened by Group A
-configuration, and Group C shall remain information-only even when the same
-entity is safety-relevant through Group A or B.
+configuration. Entities outside these groups shall not enter C-ENT monitoring
+or its monitored list implicitly.
 
 #### 8.5.2 Inputs and outputs
 
@@ -1150,8 +1149,8 @@ entity is safety-relevant through Group A or B.
 - Per-entity diagnostic MQTT sensors and an aggregate C-ENT summary for Groups
   A and B.
 - Symptom events for FaultManager aggregation when C-ENT owns the failure.
-- A frontend entity/device inventory obtained through the authenticated Home
-  Assistant connection rather than an unbounded MQTT attribute payload.
+- A monitored-record list in System Health obtained from the Group A/B
+  diagnostics through the authenticated Home Assistant connection.
 
 #### 8.5.3 Checks and calibration
 
@@ -1198,14 +1197,14 @@ entity is safety-relevant through Group A or B.
 | Fault level | 3 |
 | Per-entity diagnostic | `sensor.entity_health_<entity_key>` |
 | Aggregate diagnostic | `sensor.entity_monitor_summary` |
-| Recovery actions | Cause-specific manual Group A/B repair; none for passive Group C |
+| Recovery actions | Cause-specific manual Group A/B repair; none for unmonitored entities |
 
 #### 8.5.5 Requirements (C-ENT → SYS-SR-ENT-xxx)
 
-- **SYS-SR-ENT-001:** The feature shall distinguish the three monitoring groups
-  defined in §8.5.1. The backend registry shall maintain Groups A/B, and the
-  frontend shall join those records with the Group C inventory while preserving
-  every applicable source membership.
+- **SYS-SR-ENT-001:** The feature shall distinguish the two monitored groups
+  defined in §8.5.1. The backend registry shall maintain Groups A/B, and System
+  Health shall present those records while preserving every applicable source
+  membership and logical fault-family identity.
 - **SYS-SR-ENT-002:** Group A shall contain only explicitly configured entity
   IDs and shall validate every configured check and calibration before safety
   monitoring is enabled.
@@ -1264,14 +1263,17 @@ entity is safety-relevant through Group A or B.
   aggregate into that entity's level-3 `EntityHealth{EntityKey}` fault. A
   different unhealthy entity shall have a different fault. The fault shall
   retain every failed check in diagnostic context.
-- **SYS-SR-ENT-010:** Group C shall include all entities and devices visible to
-  the authenticated Home Assistant frontend connection and support filtering by
-  at least domain, device, area, availability, source group, and last-change or
-  last-update time.
-- **SYS-SR-ENT-011:** Group C data shall not create symptoms, faults,
-  notifications, recovery actions, or application-health degradation.
+- **SYS-SR-ENT-010:** System Health shall list all installed Group A/B diagnostic
+  records, including healthy and unavailable records, with search, health/source
+  filters and expandable identity, ownership, check and timestamp details.
+  Counts shall reflect the installation, not a fixed number. Battery maintenance
+  shall remain a separate section on the same page. The navigation shall not
+  offer a general Home Assistant entity/device inventory.
+- **SYS-SR-ENT-011:** Entities outside Groups A/B shall not enter C-ENT
+  monitoring implicitly or create C-ENT symptoms, faults, notifications,
+  recovery actions, or application-health degradation.
 - **SYS-SR-ENT-012:** C-ENT shall publish bounded Group A/B diagnostics and
-  shall not copy the complete Group C inventory into MQTT attributes.
+  shall not copy the complete Home Assistant inventory into MQTT attributes.
 - **SYS-SR-ENT-013:** C-ENT shall use Home Assistant friendly names, device
   names, and area names for operator presentation while retaining entity IDs and
   raw state codes as diagnostic data.
@@ -1303,7 +1305,7 @@ entity is safety-relevant through Group A or B.
   and recovery debounce, fault ownership, stable IDs, and no false clear.
 - **Integration tests:** component dependency registration, common-entity
   inclusion, FaultManager aggregation, bounded MQTT diagnostics, frontend
-  inventory filtering, cause-specific manual repair actions, and zero actuator calls.
+  monitored-record filtering, cause-specific manual repair actions, and zero actuator calls.
 
 ---
 
@@ -1469,6 +1471,17 @@ defines monitor ownership and observer placement.
 | SYS-SR-FSM-015 | Sustained low host free-disk-space and high host temperature shall create separate level-4 maintenance conditions after calibrated qualification. Each rule shall validate scope, units, plausibility, and freshness and require fresh recovery evidence beyond a distinct margin. Missing or invalid evidence shall not positively clear an active condition, and resource pressure alone shall not prove that a safety evaluation was missed. |
 | SYS-SR-FSM-016 | The system shall monitor the age of the last successful backup and an optional current backup-failure source. A valid success timestamp older than the calibrated maximum age or a valid asserted failure shall create a level-4 maintenance condition. Invalid, future, unavailable, or failed-transport evidence shall remain unknown rather than establish backup health. Backup creation evidence shall not establish restore capability, and monitoring shall neither create nor restore a backup. |
 | SYS-SR-FSM-017 | The system shall retain due dates and explicit operator-attested outcomes for notification-receipt tests and optional backup-restore tests. Home Assistant acceptance shall not complete a notification-receipt test; a backup-restore pass shall attest an actual restore on a separate installation. Due, overdue, and failed tests shall be level-4 maintenance conditions; unreadable history shall remain unknown. Recording results shall execute no notification, restore, actuator, or household routine. A separately confirmed operator action may send an identifiable mobile-only test without recording receipt; a separately confirmed full notification reset shall preserve active faults and local restrictions and reissue currently active warnings rather than suppress them. Installation configuration shall select tests and may refine interval defaults. Persistence and severity shall remain system-owned; interval changes shall not create completed tests. |
+
+For **SYS-SR-FSM-009**, battery freshness shall use the unique same-device
+`sensor.*_last_seen`, normalized as `last_contact_at`, when that capability is
+present. Recent device contact shall allow the last valid battery value without
+a new battery report. Availability, units, device class, value plausibility and
+reader transport validity shall remain required. Missing, invalid, future,
+expired or ambiguous selected contact shall remain unknown without fallback
+to native report times. Devices without contact capability shall retain native
+report freshness. Both paths shall use the system-owned battery freshness bound;
+polling shall not renew source age. System Health shall retain separate battery
+maintenance and monitored-entity sections, with dynamic monitored counts.
 
 C-NET remains the network/connectivity subdomain of C-FSM. C-ENT remains the
 quality owner for declared Home Assistant input entities, including C-FSM's

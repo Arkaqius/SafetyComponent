@@ -1,4 +1,4 @@
-import { friendlyEntityName, normalizeState, type EntityMap, type EntitySnapshot } from './safety.js';
+import { normalizeState, type EntityMap, type EntitySnapshot } from './safety.js';
 
 export const ENTITY_HEALTH_PREFIX = 'sensor.entity_health_';
 export const ENTITY_MONITOR_SUMMARY_ID = 'sensor.entity_monitor_summary';
@@ -62,60 +62,6 @@ export interface EntityMonitorSummary {
   unavailable: number;
 }
 
-export interface EntityRegistryView {
-  entity_id: string;
-  name: string | null;
-  original_name?: string;
-  device_id: string | null;
-  area_id: string | null;
-  disabled_by: string | null;
-  hidden_by: string | null;
-}
-
-export interface DeviceRegistryView {
-  id: string;
-  name: string | null;
-  name_by_user: string | null;
-  manufacturer: string | null;
-  model: string | null;
-  area_id: string | null;
-  disabled_by: string | null;
-}
-
-export interface AreaRegistryView {
-  area_id: string;
-  name: string;
-}
-
-export interface InventoryEntityView {
-  entityId: string;
-  friendlyName: string;
-  state: string;
-  domain: string;
-  available: boolean;
-  lastChanged?: string;
-  lastUpdated?: string;
-  deviceId?: string;
-  deviceName?: string;
-  areaId?: string;
-  areaName?: string;
-  disabledBy?: string;
-  hiddenBy?: string;
-  monitored?: MonitoredEntityView;
-}
-
-export interface InventoryDeviceView {
-  deviceId: string;
-  name: string;
-  manufacturer?: string;
-  model?: string;
-  areaName?: string;
-  disabledBy?: string;
-  entities: InventoryEntityView[];
-  unavailableCount: number;
-  oldestUpdate?: string;
-}
-
 const HEALTH_STATES = new Set<EntityHealth>(['healthy', 'degraded', 'stale', 'unavailable']);
 
 export function getMonitoredEntities(entities: EntityMap): MonitoredEntityView[] {
@@ -149,78 +95,6 @@ export function getEntityMonitorSummary(entities: EntityMap, monitored = getMoni
     stale: counts.stale ?? fallback.stale,
     unavailable: counts.unavailable ?? fallback.unavailable,
   };
-}
-
-export function buildEntityInventory(
-  states: EntityMap,
-  registry: EntityRegistryView[],
-  devices: DeviceRegistryView[],
-  areas: AreaRegistryView[],
-  monitored: MonitoredEntityView[]
-): InventoryEntityView[] {
-  const registryById = new Map(registry.map(entry => [entry.entity_id, entry]));
-  const deviceById = new Map(devices.map(device => [device.id, device]));
-  const areaById = new Map(areas.map(area => [area.area_id, area.name]));
-  const monitoredById = new Map(monitored.map(entity => [entity.entityId, entity]));
-  const ids = new Set([...Object.keys(states), ...registry.map(entry => entry.entity_id)]);
-
-  return [...ids]
-    .map(entityId => {
-      const state = states[entityId];
-      const registryEntry = registryById.get(entityId);
-      const monitoredEntity = monitoredById.get(entityId);
-      const device = registryEntry?.device_id ? deviceById.get(registryEntry.device_id) : undefined;
-      const areaId = registryEntry?.area_id ?? device?.area_id ?? monitoredEntity?.areaId;
-      const rawState = state?.state ?? 'unavailable';
-      return {
-        entityId,
-        friendlyName: registryEntry?.name ?? (state ? friendlyEntityName(entityId, state) : registryEntry?.original_name) ?? entityId,
-        state: rawState,
-        domain: entityId.split('.', 1)[0] ?? '',
-        available: !['unknown', 'unavailable', 'none', ''].includes(normalizeState(rawState)),
-        lastChanged: state?.last_changed,
-        lastUpdated: state?.last_updated,
-        deviceId: device?.id,
-        deviceName: device?.name_by_user ?? device?.name ?? undefined,
-        areaId: areaId ?? undefined,
-        areaName: areaId ? (areaById.get(areaId) ?? monitoredEntity?.areaName) : monitoredEntity?.areaName,
-        disabledBy: registryEntry?.disabled_by ?? undefined,
-        hiddenBy: registryEntry?.hidden_by ?? undefined,
-        monitored: monitoredEntity,
-      };
-    })
-    .sort((left, right) => left.friendlyName.localeCompare(right.friendlyName, 'pl'));
-}
-
-export function buildDeviceInventory(
-  inventory: InventoryEntityView[],
-  devices: DeviceRegistryView[],
-  areas: AreaRegistryView[]
-): InventoryDeviceView[] {
-  const areaById = new Map(areas.map(area => [area.area_id, area.name]));
-  const entitiesByDevice = new Map<string, InventoryEntityView[]>();
-  for (const entity of inventory) {
-    if (!entity.deviceId) continue;
-    const entries = entitiesByDevice.get(entity.deviceId) ?? [];
-    entries.push(entity);
-    entitiesByDevice.set(entity.deviceId, entries);
-  }
-  return devices
-    .map(device => {
-      const entities = entitiesByDevice.get(device.id) ?? [];
-      return {
-        deviceId: device.id,
-        name: device.name_by_user ?? device.name ?? device.id,
-        manufacturer: device.manufacturer ?? undefined,
-        model: device.model ?? undefined,
-        areaName: device.area_id ? areaById.get(device.area_id) : undefined,
-        disabledBy: device.disabled_by ?? undefined,
-        entities,
-        unavailableCount: entities.filter(entity => !entity.available).length,
-        oldestUpdate: oldestTimestamp(entities.map(entity => entity.lastUpdated)),
-      };
-    })
-    .sort((left, right) => left.name.localeCompare(right.name, 'pl'));
 }
 
 function monitoredEntity(diagnosticEntityId: string, entity: EntitySnapshot): MonitoredEntityView | null {
@@ -301,8 +175,4 @@ function healthRank(health: EntityHealth): number {
 
 function worstHealth(health: EntityHealth[]): EntityHealth {
   return health.sort((left, right) => healthRank(right) - healthRank(left))[0] ?? 'healthy';
-}
-
-function oldestTimestamp(values: Array<string | undefined>): string | undefined {
-  return values.filter((value): value is string => Boolean(value)).sort((left, right) => Date.parse(left) - Date.parse(right))[0];
 }

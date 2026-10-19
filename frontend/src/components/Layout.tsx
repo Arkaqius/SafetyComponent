@@ -44,16 +44,10 @@ const menuItems: Array<{ title: string; path: string; icon: IconName; descriptio
     description: 'Pogoda i jakość powietrza',
   },
   {
-    title: 'Encje i urządzenia',
-    path: '/entities',
-    icon: 'activity',
-    description: 'Monitoring i audyt źródeł danych',
-  },
-  {
     title: 'Zdrowie systemu',
     path: '/functional-safety',
     icon: 'activity',
-    description: 'Postęp ocen i kanały ostrzegania',
+    description: 'Monitorowane encje, baterie i diagnostyka',
   },
   {
     title: 'Historia',

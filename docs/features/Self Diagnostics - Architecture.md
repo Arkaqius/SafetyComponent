@@ -75,7 +75,7 @@ restriction clears. An unavailable D observation does not clear an active fault.
 
 | Signal class | Fault owner or explicit exemption |
 | --- | --- |
-| Entity Monitor Group A/B input checks | `EntityHealth{EntityKey}` for external-only Group A; component input checks share `InputMonitoringUnavailable`; recovery dependencies retain their designated D fault. Group C is passive inventory and creates no fault. |
+| Entity Monitor Group A/B input checks | `EntityHealth{EntityKey}` for external-only Group A; component input checks share `InputMonitoringUnavailable`; recovery dependencies retain their designated D fault. Unmonitored entities create no C-ENT fault. |
 | Temperature, door, external-opening, shared-input, and recovery dependencies | `InputMonitoringUnavailable` for input checks; `TemperatureRecoveryUnavailable` or `ExternalRecoveryUnavailable` for recovery checks, all with exact consumer and subject bindings. |
 | Indoor detector trouble/unavailable and persisted alarm state | `InternalEnvironmentalDetectorUnavailable` for detector input; `SafetyAppHealth` detector-store contributor for durability. |
 | External provider adapter health and consumer capability health | One `ExternalDataUnavailable` fault with independent provider and capability contributors; capability coverage follows consumer redundancy policy. |

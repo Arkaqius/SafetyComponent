@@ -157,6 +157,11 @@ function sourceEvidence(item: Record<string, unknown>): string[] {
         `${String(source.entity_id ?? 'Źródło')}: ${String(source.state ?? 'brak danych')}${typeof source.unit === 'string' ? ` ${source.unit}` : ''} (odczyt źródłowy)`
       );
       time('Ostatni raport', source.last_reported);
+      if (typeof source.last_contact_source_entity === 'string' || Number(source.last_contact_source_count) > 0) {
+        time('Ostatni kontakt urządzenia', source.last_contact_at);
+        if (typeof source.last_contact_source_entity === 'string') lines.push(`Źródło kontaktu: ${source.last_contact_source_entity}`);
+        if (Number(source.last_contact_source_count) > 1) lines.push('Niejednoznaczne źródło kontaktu urządzenia');
+      }
       time('Ostatnia zmiana wartości/atrybutów', source.last_updated);
     }
   if ('checked_at' in item) time('Ostatnia ocena monitora', item.checked_at);
@@ -248,7 +253,8 @@ export function getDetectorTests(entities: EntityMap): DetectorTestView[] {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
     const item = value as Record<string, unknown>;
     if (typeof item.detector_key !== 'string' || typeof item.friendly_name !== 'string') return [];
-    if (item.hazard !== 'smoke' && item.hazard !== 'flammable_gas' && item.hazard !== 'carbon_monoxide' && item.hazard !== 'water_leak') return [];
+    if (item.hazard !== 'smoke' && item.hazard !== 'flammable_gas' && item.hazard !== 'carbon_monoxide' && item.hazard !== 'water_leak')
+      return [];
     if (
       item.status !== 'current' &&
       item.status !== 'due' &&

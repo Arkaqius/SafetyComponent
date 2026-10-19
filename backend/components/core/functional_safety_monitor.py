@@ -575,7 +575,7 @@ class FunctionalSafetyMonitor:
                 snapshot = self._snapshot(entity)
                 attrs = snapshot.get("attributes") or {}
                 state = str(snapshot.get("state", "")).lower()
-                readings.append(state == "on" if attrs.get("device_class") == "battery" and state in {"on", "off"} and self._fresh(snapshot, "last_reported", "battery_stale_after_seconds", fallback="last_updated") else None)
+                readings.append(state == "on" if attrs.get("device_class") == "battery" and state in {"on", "off"} and self._battery_fresh(snapshot) else None)
             status = "low" if True in readings else "unknown" if not readings or None in readings else "current"
             results[device] = {
                 "status": status,
@@ -601,6 +601,9 @@ class FunctionalSafetyMonitor:
             "unit": attrs.get("unit_of_measurement") if isinstance(attrs, dict) else None,
             "last_reported": snapshot.get("last_reported"),
             "last_updated": snapshot.get("last_updated"),
+            "last_contact_at": snapshot.get("last_contact_at"),
+            "last_contact_source_entity": snapshot.get("last_contact_source_entity"),
+            "last_contact_source_count": snapshot.get("last_contact_source_count"),
         }
 
     def _bounded_summary(
@@ -857,11 +860,25 @@ class FunctionalSafetyMonitor:
             return None, "invalid_value"
         if not isfinite(value) or value < 0:
             return None, "invalid_value"
-        freshness_key = "battery_stale_after_seconds" if device_class == "battery" else "resource_stale_after_seconds"
-        if not self._fresh(snapshot, "last_reported", freshness_key, fallback="last_updated"):
+        fresh = self._battery_fresh(snapshot) if device_class == "battery" else self._fresh(
+            snapshot, "last_reported", "resource_stale_after_seconds", fallback="last_updated"
+        )
+        if not fresh:
             return None, "stale"
         converted = value * factor
         return (converted, None) if isfinite(converted) else (None, "invalid_value")
+
+    def _battery_fresh(self, snapshot: Mapping[str, Any]) -> bool:
+        """Trust device contact when present, without masking failed contact evidence."""
+        count = snapshot.get("last_contact_source_count")
+        source = snapshot.get("last_contact_source_entity")
+        if count is not None or source is not None:
+            if count == 0 and source is None:
+                return self._fresh(snapshot, "last_reported", "battery_stale_after_seconds", fallback="last_updated")
+            if count not in (None, 1) or not isinstance(source, str) or not source.startswith("sensor."):
+                return False
+            return self._fresh(snapshot, "last_contact_at", "battery_stale_after_seconds")
+        return self._fresh(snapshot, "last_reported", "battery_stale_after_seconds", fallback="last_updated")
 
     def _fresh(self, snapshot: Mapping[str, Any], field: str, policy_key: str, *, fallback: str | None = None) -> bool:
         timestamp = snapshot.get(field) or (snapshot.get(fallback) if fallback else None)

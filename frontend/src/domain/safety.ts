@@ -368,6 +368,14 @@ export function getFaults(entities: EntityMap): FaultView[] {
     );
 }
 
+export function faultNeedsVerification(fault: FaultView): boolean {
+  return fault.active === null || ['unavailable', 'unknown', 'not_evaluated', 'unevaluable'].includes(fault.status);
+}
+
+export function faultNeedsAttention(fault: FaultView): boolean {
+  return fault.active === true || faultNeedsVerification(fault) || fault.status === 'pending_failure';
+}
+
 export function getFreezeFrame(entity: EntitySnapshot): Record<string, unknown> | null {
   const frame = recordAttribute(entity, 'freeze_frame');
   if (!frame) return null;
@@ -860,9 +868,7 @@ export function getSafetySummary(
 ): SafetySummary {
   const activeFaults = faults.filter(fault => fault.active === true);
   const shadowedFaults = faults.filter(fault => fault.active === true && fault.shadowedBy.length > 0);
-  const uncertainFaults = faults.filter(
-    fault => fault.active === null || ['unavailable', 'unknown', 'not_evaluated', 'unevaluable'].includes(fault.status)
-  );
+  const uncertainFaults = faults.filter(faultNeedsVerification);
   const actionableRecoveries = recoveries.filter(recovery => recovery.status === 'to_perform');
   const uncertainRecoveries = recoveries.filter(recovery => ['unavailable', 'unknown'].includes(recovery.status));
   const base = {
@@ -920,6 +926,13 @@ export function getSafetySummary(
   const hasUnknownActiveLevel = activeFaults.some(fault => fault.level === null);
   const reportedLevel = parseSystemLevel(systemEntity?.state);
   const uncertainEntityCount = uncertainFaults.length + uncertainRecoveries.length + (reportedLevel === null ? 1 : 0);
+  const verificationDetail = [
+    uncertainFaults.length ? `usterki bez wiarygodnej oceny: ${uncertainFaults.length}` : '',
+    uncertainRecoveries.length ? `nieznany stan działań: ${uncertainRecoveries.length}` : '',
+    reportedLevel === null ? 'nieznany poziom systemu' : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
   const hasReportedFault = reportedLevel !== null && reportedLevel > 0;
 
   if (uncertainEntityCount > 0) {
@@ -934,10 +947,10 @@ export function getSafetySummary(
         label: 'Aktywna usterka · dane niepełne',
         detail: `${activeDetail} · ${uncertainEntityCount} ${polishCount(
           uncertainEntityCount,
-          'encja wymaga weryfikacji',
-          'encje wymagają weryfikacji',
-          'encji wymaga weryfikacji'
-        )}`,
+          'ocena wymaga weryfikacji',
+          'oceny wymagają weryfikacji',
+          'ocen wymaga weryfikacji'
+        )} (${verificationDetail})`,
         tone: 'critical',
         effectiveLevel: null,
       };
@@ -948,10 +961,10 @@ export function getSafetySummary(
       label: 'Dane niepełne',
       detail: `${uncertainEntityCount} ${polishCount(
         uncertainEntityCount,
-        'encja wymaga weryfikacji',
-        'encje wymagają weryfikacji',
-        'encji wymaga weryfikacji'
-      )}`,
+        'ocena wymaga weryfikacji',
+        'oceny wymagają weryfikacji',
+        'ocen wymaga weryfikacji'
+      )} (${verificationDetail})`,
       tone: 'muted',
       effectiveLevel: null,
     };

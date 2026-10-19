@@ -400,7 +400,7 @@ not approve the review's proposed solutions or silently change section 2.
 | Fault episode model | Excluded; do not add episode IDs, episode entities, or episode lifecycle storage. |
 | Operation cycles, aging, DTC byte, UDS | No automotive cycle/aging machinery or DTC protocol is included. Bounded storage retention is still necessary. |
 
-Group C inventory and measurement helpers remain data sources; any actual
+Unmonitored Home Assistant entities and measurement helpers remain data sources; any actual
 failure-detection logic within those helpers needs an owning diagnostic fault.
 
 ## 2. Semantic decisions to settle before implementation
@@ -723,7 +723,7 @@ Retain `sensor.safety_app_health` as application-health telemetry, not a
 projection of a D fault. Exact new App Health fault identity requires a
 coordinated consumer change.
 
-Passive Group C inventory and valid measurement values have no fault lifecycle.
+Unmonitored Home Assistant entities and valid measurement values have no C-ENT fault lifecycle.
 A failed required derivative contributes to `InputMonitoringUnavailable` (M12
 for temperature forecasting), or App Health for a shared execution failure.
 Provider failures are explicitly excluded from this informational category.
@@ -950,7 +950,8 @@ shadowed-by identities, coverage, restriction causes, user controls, and one
 Freeze frame section containing captured evidence and lifecycle metadata.
 Show the D-to-H capability relationship and App Health causes
 without presenting a notification outage as loss of hazard detection.
-Keep Group C inventory informational. A healthy-looking PASS label cannot hide an
+Keep the entity list limited to monitored records in System Health, alongside
+separate battery maintenance. A healthy-looking PASS label cannot hide an
 active latch; FULL coverage cannot imply absence of hazards. Complete EN/PL/DE
 runtime parity and regression tests of existing notification/recovery/history
 contracts. Integrate controls already delivered with FH-04/FH-05 rather than

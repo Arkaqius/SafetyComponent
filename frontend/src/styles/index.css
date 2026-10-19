@@ -3809,6 +3809,10 @@ details summary:focus-visible {
     flex-direction: column;
   }
 
+  .entity-filters .search-field {
+    flex: 0 0 auto;
+  }
+
   .entity-filters .select-field {
     align-items: center;
     flex-direction: row;

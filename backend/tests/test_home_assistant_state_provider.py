@@ -128,6 +128,8 @@ def test_contact_is_additional_evidence_and_never_replaces_unknown_alarm_state(m
     assert report["state"] == "unknown"
     assert "last_contact_at" not in report
 
+    assert report["last_contact_source_entity"] == "sensor.example_last_seen"
+
 
 @pytest.mark.parametrize("entity_id", [
     "sensor.example_temperature", "sensor.example_humidity",
@@ -163,6 +165,7 @@ def test_report_template_uses_only_one_contact_from_the_same_sensor_device(
     monkeypatch.setattr("components.external_apis.home_assistant_state.urlopen", render_report)
     report = HomeAssistantStateProvider("test").poll({entity_id})[entity_id]
     assert report["state"] == "21.5"
+    assert report["last_contact_source_count"] == len(siblings)
     if len(siblings) == 1:
         assert report["last_contact_at"] == timestamp.isoformat()
         assert report["last_contact_source_entity"] == siblings[0]
