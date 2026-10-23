@@ -224,6 +224,13 @@ acceptance shall remain distinct from confirmed device delivery. A temporary
 read-only fallback may consume the retired entity during migration, but no new
 backend shall publish it.
 
+History identity shall come from the recorded submission, including concrete
+alert titles and resolved-message subjects, while retaining compatibility with
+legacy generic titles and message formats. A dash in recorded text shall not
+be treated as proof of a location: it may belong to a friendly name. Missing
+historical identity or location shall remain explicitly unspecified rather
+than being filled from current Home Assistant names or current fault context.
+
 ## 3. Configuration contract
 
 The installation config owns:
@@ -383,7 +390,10 @@ distinct authoritative-clear text, unchanged diagnostic evidence, and journal
 content matching actual submissions.
 Frontend domain and component tests shall cover request and response contracts,
 lifecycle labels, filtering, date/time, target presentation, diagnostic
-details, refresh, and empty or unavailable history.
+details, refresh, and empty or unavailable history. Identity tests shall cover
+legacy generic titles, concrete localized titles, resolved subjects, names
+containing dashes, and missing historical locations without current-data
+substitution.
 
 Live verification shall not trigger a household fault, siren, warning light,
 or unsolicited phone notification. Production delivery requires a separately

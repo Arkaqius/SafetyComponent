@@ -279,6 +279,10 @@ a manual-work report only when useful for that action, and label consent buttons
 by the actual command rather than assume every command closes a gate. Runtime
 text shall maintain EN/PL/DE meaning parity; technical IDs and raw codes shall
 remain language-independent.
+Operator-facing recovery summaries shall use Polish labels for component,
+completion-evidence source and known reason codes, with a localized fallback
+for unrecognized codes. Raw values shall remain available in explicit
+diagnostics and shall not be presented as translated operator advice.
 
 ## 6. Verification
 

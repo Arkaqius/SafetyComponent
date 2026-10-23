@@ -20,6 +20,7 @@ import {
 import { fetchFunctionalSafetyDiagnostics, type FunctionalSafetyDiagnosticsPayload } from '../domain/functionalSafetyApi';
 import type { StatusTone } from '../domain/safety';
 import { useSafetyEntities } from '../hooks/useSafetyEntities';
+import { componentLabel } from '../domain/operatorLabels';
 
 const healthTabs = [
   ['entities', 'Monitorowane encje'],
@@ -55,7 +56,7 @@ const sourceLabels: Record<string, string> = {
   failed: 'Błąd',
   available: 'Aktualizacja dostępna',
   current: 'Aktualny',
-  online: 'Online',
+  online: 'Połączenie działa',
   normal: 'Prawidłowy',
   observed: 'Zaobserwowany',
   qualifying: 'Potwierdzanie',
@@ -276,7 +277,7 @@ export default function FunctionalSafety() {
         hidden={activeTab !== 'batteries'}
       >
         {sourceProvenance}
-        <BatteryHealth rows={batteryRows} total={totalBatteries} />
+        <BatteryHealth rows={batteryRows} total={totalBatteries} entities={entities} />
       </section>
       <section
         role='tabpanel'
@@ -305,7 +306,7 @@ export default function FunctionalSafety() {
               {progress.map(component => (
                 <article className='functional-safety-row' key={component.name}>
                   <div>
-                    <strong>{component.name}</strong>
+                    <strong title={component.name}>{componentLabel(component.name)}</strong>
                     <small>
                       {component.lastCompletedAt
                         ? `Ostatnia ocena: ${new Date(component.lastCompletedAt).toLocaleString('pl-PL')}`
@@ -358,9 +359,14 @@ export default function FunctionalSafety() {
                         <div>
                           <strong>{source.label}</strong>
                           {source.detail ? <small>{source.detail}</small> : null}
-                          {source.evidence.map((line, index) => (
-                            <small key={index}>{line}</small>
-                          ))}
+                          {source.evidence.length > 0 && (
+                            <details>
+                              <summary>Zaawansowana diagnostyka źródła</summary>
+                              {source.evidence.map((line, index) => (
+                                <small key={index}>{line}</small>
+                              ))}
+                            </details>
+                          )}
                         </div>
                         <StatusBadge
                           tone={
@@ -403,7 +409,7 @@ export default function FunctionalSafety() {
           {notification ? (
             <>
               <StatusBadge tone={notification.state === 'healthy' ? 'info' : notification.state === 'unknown' ? 'muted' : 'warning'}>
-                {String(notification.attributes.state_label ?? sourceLabels[notification.state] ?? 'Brak wiarygodnych danych')}
+                {sourceLabels[notification.state] ?? 'Brak wiarygodnych danych'}
               </StatusBadge>
               <div className='functional-safety-metrics'>
                 <span>

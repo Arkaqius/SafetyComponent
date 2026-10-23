@@ -411,7 +411,7 @@ test('discovers only configured Safety Doors MQTT entities', () => {
   });
 
   assert.equal(doors.length, 2);
-  assert.equal(doors[0].name, 'Garage Gate');
+  assert.equal(doors[0].name, 'Brama garażowa');
   assert.equal(doors[0].status, 'active');
   assert.equal(doors[0].doorState, 'open');
   assert.equal(doors[0].timeoutSeconds, 120);

@@ -275,13 +275,13 @@ function FaultCard({
             <dd>{fault.active === null ? 'Nieznana' : fault.active ? 'Aktywna' : 'Nieaktywna'}</dd>
           </div>
           <div>
-            <dt>Latch</dt>
+            <dt>Podtrzymanie alarmu</dt>
             <dd>{fault.latched === null ? 'Brak danych' : fault.latched ? 'Aktywny — wymaga poprawnego resetu' : 'Nieaktywny'}</dd>
           </div>
           {fault.shadowedBy.length > 0 && (
             <div>
               <dt>Przesłonięta przez</dt>
-              <dd>{fault.shadowedBy.join(', ')}</dd>
+              <dd>Inne aktywne warunki: {fault.shadowedBy.length}. Powiązania są dostępne w diagnostyce.</dd>
             </div>
           )}
           <div>
@@ -290,17 +290,20 @@ function FaultCard({
           </div>
         </dl>
         {fault.contributors.length > 0 && (
-          <div className='fault-diagnostic-block'>
-            <strong>Źródła oceny</strong>
+          <details className='fault-diagnostic-block'>
+            <summary>Zaawansowana diagnostyka źródeł oceny</summary>
             <ul className='fault-contributor-list'>
               {fault.contributors.map(contributor => (
                 <li className={fault.activeContributors.includes(contributor) ? 'fault-contributor-active' : ''} key={contributor}>
                   <code>{contributor}</code>
-                  <span>{fault.activeContributors.includes(contributor) ? 'Aktywny contributor' : 'Powiązany contributor'}</span>
+                  <span>{fault.activeContributors.includes(contributor) ? 'Aktywne źródło' : 'Powiązane źródło'}</span>
                 </li>
               ))}
             </ul>
-          </div>
+            {fault.shadowedBy.map(id => (
+              <code key={id}>{id}</code>
+            ))}
+          </details>
         )}
         {fault.diagnosticData.freezeFrame && <FreezeFrame record={fault.diagnosticData.freezeFrame} />}
         {recoveries.length > 0 && (
@@ -329,7 +332,10 @@ function FaultCard({
         {error && <small className='recovery-error'>{error}</small>}
         <details className='technical-details'>
           <summary>Diagnostyka</summary>
-          <code>{fault.entityId}</code>
+          <details>
+            <summary>Identyfikator techniczny usterki</summary>
+            <code>{fault.entityId}</code>
+          </details>
         </details>
         {onSelectEntity && (
           <button className='text-button fault-details-button' onClick={() => onSelectEntity(fault.entityId)} type='button'>

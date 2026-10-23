@@ -485,11 +485,11 @@ test('system health contains monitored entities and batteries without a general 
     expect(await monitored.locator('.search-field').evaluate(element => element.getBoundingClientRect().height)).toBeLessThan(100);
   await expect(monitored.locator('tbody tr')).toHaveCount(45);
   await expect(monitored).not.toContainText('Poza monitoringiem');
-  await monitored.getByRole('button', { name: 'Źródło testowe 3 sensor.example_outdoor_temperature', exact: true }).click();
-  await expect(monitored.getByRole('heading', { name: 'Źródło testowe 3', exact: true })).toBeVisible();
-  await monitored.getByLabel('Wyszukaj', { exact: true }).fill('biura');
+  await monitored.getByRole('button', { name: 'Temperatura zewnętrzna', exact: true }).nth(1).click();
+  await expect(monitored.getByRole('heading', { name: 'Temperatura zewnętrzna', exact: true })).toBeVisible();
+  await monitored.getByLabel('Wyszukaj', { exact: true }).fill('office');
   await expect(monitored.locator('tbody tr')).toHaveCount(1);
-  await monitored.getByRole('button', { name: /Temperatura biura/ }).click();
+  await monitored.getByRole('button', { name: 'Example office temperature', exact: true }).click();
   await expect(monitored.getByText('Szczegóły monitoringu')).toBeVisible();
   await page.getByRole('tab', { name: /^Baterie/ }).click();
   const batteries = page.getByRole('region', { name: 'Baterie urządzeń', exact: true });
@@ -497,7 +497,8 @@ test('system health contains monitored entities and batteries without a general 
   await batteries.getByRole('button', { name: /^Przykładowy pilot/ }).click();
   await expect(batteries).toContainText('12%');
   await expect(batteries).toContainText('Niska bateria');
-  await expect(batteries).toContainText('last_seen');
+  await batteries.getByText('Zaawansowana diagnostyka baterii', { exact: true }).click();
+  await expect(batteries.locator('code').filter({ hasText: 'sensor.example_remote_battery' })).toBeVisible();
   expect(await page.evaluate(() => window.__safetyHomeMock.messages.filter(message => message.type === 'fire_event'))).toEqual([]);
   await page.screenshot({ path: testInfo.outputPath('system-health-batteries.png'), scale: 'css' });
   await page.getByRole('tab', { name: /^Monitorowane encje/ }).click();
@@ -527,6 +528,47 @@ test('not evaluated faults remain visible in the attention view', async ({ page 
   const card = page.locator('.fault-card').filter({ has: page.getByText('Nieoceniona bateria testowa', { exact: true }) });
   await card.locator(':scope > summary').click();
   await expect(card.locator('dd').getByText('Nieoceniona', { exact: true })).toBeVisible();
+});
+
+test('operator monitoring uses HA names and Polish states while raw IDs stay in diagnostics', async ({ page }, testInfo) => {
+  await openMock(page, '/functional-safety');
+  await page.evaluate(() => {
+    const entities = window.__safetyHomeMock.snapshot();
+    for (const id of Object.keys(entities)) {
+      if (id.startsWith('sensor.entity_health_')) delete entities[id];
+    }
+    entities['binary_sensor.private_window_source'] = {
+      state: 'unavailable',
+      attributes: { friendly_name: 'Okno sypialni — prawe' },
+    };
+    entities['sensor.entity_health_private_window'] = {
+      state: 'unavailable',
+      attributes: {
+        entity_id: 'binary_sensor.private_window_source',
+        entity_key: 'ExternalOpeningBedroomRightWindow',
+        friendly_name: 'Stara nazwa',
+        current_state: 'unavailable',
+        owners: ['EntityMonitorComponent'],
+      },
+    };
+    window.__safetyHomeMock.update({ entities });
+  });
+  const monitored = page.getByRole('region', { name: 'Monitorowane encje', exact: true });
+  const row = monitored.locator('tbody tr');
+  await expect(row).toHaveCount(1);
+  await expect(row).toContainText('Okno sypialni — prawe');
+  await expect(row).toContainText('Niedostępna');
+  await expect(row).not.toContainText('unavailable');
+  await expect(row).not.toContainText('binary_sensor.private_window_source');
+  await monitored.getByRole('button', { name: 'Okno sypialni — prawe', exact: true }).click();
+  const details = monitored.locator('.entity-details-panel');
+  await expect(details).toContainText('Monitoring wejść');
+  const rawId = details.locator('code').filter({ hasText: 'binary_sensor.private_window_source' });
+  await expect(rawId).toBeHidden();
+  await page.screenshot({ path: testInfo.outputPath('operator-labels.png'), scale: 'css', fullPage: true });
+  await details.getByText('Identyfikator techniczny', { exact: true }).click();
+  await expect(rawId).toBeVisible();
+  expect(await page.evaluate(() => window.__safetyHomeMock.messages.filter(message => message.type === 'fire_event'))).toEqual([]);
 });
 
 test('entity modal traps keyboard focus and restores its trigger', async ({ page }) => {

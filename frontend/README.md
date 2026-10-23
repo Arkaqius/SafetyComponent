@@ -47,6 +47,15 @@ w przeglądarce. Bezpośredni odnośnik do diagnostyki otwiera widok rozszerzony
 powrót do podstawowego prowadzi na pulpit. Brak połączenia i ograniczenia danych
 są widoczne w obu widokach. Zmiana widoku nie wysyła poleceń do Home Assistanta.
 
+Nazwy urządzeń i wejść pochodzą z `friendly_name` Home Assistanta; interfejs
+zachowuje ich brzmienie. Znane stany, przyczyny i funkcje systemu mają polskie
+etykiety. Gdy nazwy lub opisu brakuje, widok pokazuje tę niepewność zamiast
+tworzyć nazwę z technicznego identyfikatora. Poprawne wartości liczbowe, także
+ujemne, pozostają odczytami. Podstawowe informacje o pokryciu i działaniach
+wskazują funkcję oraz urządzenie zrozumiałymi nazwami. Surowe identyfikatory,
+kody i zapis **Freeze frame** są dostępne w szczegółach diagnostycznych widoku
+rozszerzonego.
+
 ## Zdrowie systemu: monitorowane encje i baterie
 
 Widok **Rozszerzony → Zdrowie systemu** ma cztery podzakładki:
@@ -100,7 +109,7 @@ pozostaje sprawdzanie czasu raportu baterii (`last_reported`, a przy jego braku
 
 Komunikat **oceny wymagają weryfikacji** dotyczy nieznanych ocen usterek,
 stanów działań lub poziomu systemu, a nie liczby monitorowanych encji.
-Podsumowanie pokazuje ten podział. W **Fault Management → Zdarzenia i stan
+Podsumowanie pokazuje ten podział. W **Usterki i diagnostyka → Zdarzenia i stan
 oceny** domyślny filtr **Wymagające uwagi** obejmuje również nieocenione
 (`NOT_EVALUATED`) i niewiarygodne oceny; nie oznaczają one potwierdzonej awarii.
 
@@ -165,7 +174,7 @@ wartość jest zachowana, a `0` wyłącza to opóźnienie.
 
 ## Freeze frame
 
-Przełącz widok na **Rozszerzony**, otwórz **Fault Management**, a potem
+Przełącz widok na **Rozszerzony**, otwórz **Usterki i diagnostyka**, a potem
 rozwiń kartę w sekcji **Zdarzenia i stan oceny**. Jedna sekcja **Freeze frame**
 pokazuje zapis aktywacji, ostatnią przyczynę, liczniki, czasy i niepewność
 pomiaru czasu z jednego obiektu
@@ -198,13 +207,20 @@ problemu (`SET`), jego aktualizacje i ponowienia, a także ustąpienie
 (`CLEARED`). Usunięcie powiadomienia wskutek przesłonięcia problemu
 (`SHADOWED`) jest osobnym zdarzeniem i nie oznacza, że problem ustąpił.
 
-Każdy wpis pokazuje datę i godzinę w lokalnej strefie przeglądarki, usługę
+Każdy wpis pokazuje datę i godzinę w lokalnej strefie przeglądarki, etykietę
 odbiorcy oraz wynik próby. Kliknij wpis, aby zobaczyć treść, poziom pilności,
 czas utworzenia i próby, numer próby, informację o przekroczeniu terminu oraz
 identyfikatory diagnostyczne. Przyjęcie przez Home Assistanta nie jest
 potwierdzeniem dostarczenia na telefon. Dla grupy, np. `notify/all_phones`,
-lista pokazuje nazwę usługi; nie ustala jej członków ani konkretnych osób,
-które otrzymały wiadomość.
+lista pokazuje etykietę grupy. Inne cele mają etykietę „Skonfigurowany
+odbiorca”, a nazwę techniczną usługi można odczytać w szczegółach. Interfejs
+nie ustala członków grup ani konkretnych osób, które otrzymały wiadomość.
+
+Nazwa problemu w historii pochodzi z zapisanej wiadomości lub jej konkretnego
+tytułu; starsze formaty powiadomień pozostają obsługiwane. Zmiana obecnej nazwy
+urządzenia nie zmienia wcześniejszych wpisów. Sam myślnik w nazwie nie oznacza
+lokalizacji. Jeśli lokalizacji nie zapisano, historia nie uzupełnia jej
+dzisiejszym pomieszczeniem ani nie odgaduje jej z nazwy.
 
 Dziennik pochodzi z `SafetyHomeApiGateway` przez uwierzytelnione zdarzenia
 `safetyhome_notification_history_request` i

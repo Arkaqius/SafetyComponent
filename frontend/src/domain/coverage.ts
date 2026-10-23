@@ -71,7 +71,7 @@ export function getCoverageView(entities: EntityMap): CoverageView {
       ...common,
       state,
       label: 'Pokrycie zdegradowane',
-      detail: `${affectedCount} ograniczeń technicznych w monitoringu lub recovery.`,
+      detail: `${affectedCount} ograniczeń technicznych w monitorowaniu lub działaniach naprawczych.`,
       tone: 'danger',
     };
   }
@@ -105,7 +105,7 @@ export function coverageEffectLabel(effect: string): string {
     publication: 'Publikacja stanu',
     durability: 'Trwałość danych',
   };
-  return labels[effect.trim().toLowerCase()] ?? humanize(effect);
+  return labels[effect.trim().toLowerCase()] ?? 'Inny wpływ — sprawdź diagnostykę';
 }
 
 export function coverageCauseStateLabel(state: CoverageCauseState): string {
@@ -162,13 +162,4 @@ function restrictionArray(value: unknown): CoverageRestriction[] {
 
 function text(value: unknown): string {
   return typeof value === 'string' || typeof value === 'number' ? String(value).trim() : '';
-}
-
-function humanize(value: string): string {
-  return value
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .replace(/[_-]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/^\w/, letter => letter.toUpperCase());
 }

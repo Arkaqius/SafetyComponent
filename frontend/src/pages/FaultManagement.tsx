@@ -13,6 +13,8 @@ import {
 } from '../domain/coverage';
 import { NOTIFICATION_DELIVERY_HEALTH_ID, readAcknowledgedNotificationTags } from '../domain/notificationHistory';
 import type { FaultView, StatusTone } from '../domain/safety';
+import type { EntityMap } from '../domain/safety';
+import { coverageCauseLabel, coverageSubjectName, operatorCodeLabel } from '../domain/operatorLabels';
 import { useSafetyEntities } from '../hooks/useSafetyEntities';
 
 export default function FaultManagement() {
@@ -32,7 +34,7 @@ export default function FaultManagement() {
     <div className='page-stack fault-management-page'>
       <section className='panel fault-management-intro'>
         <div>
-          <span className='section-kicker'>Fault Management</span>
+          <span className='section-kicker'>Usterki i diagnostyka</span>
           <h2>Usterki, diagnostyka i pokrycie</h2>
           <p>
             Warunki zagrożenia kategorii H są prezentowane oddzielnie od usterek diagnostycznych kategorii D. Utrata kanału powiadomień nie
@@ -42,7 +44,7 @@ export default function FaultManagement() {
         <StatusBadge tone={coverage.tone}>{coverage.label}</StatusBadge>
       </section>
 
-      <section aria-label='Podsumowanie Fault Management' className='summary-grid'>
+      <section aria-label='Podsumowanie usterek i diagnostyki' className='summary-grid'>
         <SummaryCard
           detail={`${hazardFaults.length} zdefiniowanych warunków H`}
           icon='alert'
@@ -63,12 +65,12 @@ export default function FaultManagement() {
           label='Pokrycie bezpieczeństwa'
           onClick={() => setSelectedEntityId(COVERAGE_ENTITY_ID)}
           tone={coverage.tone}
-          value={coverage.state}
+          value={coverage.label}
         />
         <SummaryCard
-          detail='Aktywny latch nie jest ukrywany przez bieżący wynik PASS'
+          detail='Podtrzymanie alarmu pozostaje widoczne także po ustąpieniu warunku'
           icon='history'
-          label='Aktywne latche'
+          label='Podtrzymane alarmy'
           tone={activeLatches.length > 0 ? 'critical' : 'safe'}
           value={activeLatches.length}
         />
@@ -84,7 +86,7 @@ export default function FaultManagement() {
         </section>
       )}
 
-      <CoverageDetails coverage={coverage} faults={faults} onSelectEntity={setSelectedEntityId} />
+      <CoverageDetails coverage={coverage} faults={faults} entities={entities} onSelectEntity={setSelectedEntityId} />
 
       <FaultSection acknowledgedTags={acknowledgedTags} faults={faults} recoveries={recoveries} onSelectEntity={setSelectedEntityId} />
 
@@ -96,10 +98,12 @@ export default function FaultManagement() {
 function CoverageDetails({
   coverage,
   faults,
+  entities,
   onSelectEntity,
 }: {
   coverage: ReturnType<typeof getCoverageView>;
   faults: FaultView[];
+  entities: EntityMap;
   onSelectEntity: (entityId: string) => void;
 }) {
   const hasDetails =
@@ -112,7 +116,7 @@ function CoverageDetails({
     <section className='panel coverage-details-panel'>
       <div className='panel-header'>
         <div>
-          <span className='section-kicker'>D → H</span>
+          <span className='section-kicker'>Pokrycie monitorowania</span>
           <h2>Wpływ diagnostyki na funkcje bezpieczeństwa</h2>
         </div>
         <button className='text-button' onClick={() => onSelectEntity(COVERAGE_ENTITY_ID)} type='button'>
@@ -121,7 +125,7 @@ function CoverageDetails({
       </div>
 
       <p className='coverage-explanation'>
-        Przyczyna D ogranicza wyłącznie wskazaną zdolność i zakres H. Stan pokrycia jest niezależny od priorytetu aktywnej usterki.
+        Problem diagnostyczny ogranicza wskazane funkcje i urządzenia. Pokrycie jest oceniane niezależnie od pilności aktywnej usterki.
       </p>
 
       {coverage.restrictions.length > 0 && (
@@ -129,6 +133,7 @@ function CoverageDetails({
           {coverage.restrictions.map((restriction, index) => (
             <RestrictionRow
               faults={faults}
+              entities={entities}
               key={`${restriction.cause}-${restriction.symptom}-${restriction.effect}-${index}`}
               restriction={restriction}
             />
@@ -137,26 +142,31 @@ function CoverageDetails({
         </div>
       )}
 
-      {coverage.exclusions.length > 0 && (
-        <DiagnosticList
-          items={coverage.exclusions.map(item => ({ id: item.symptom, detail: item.reason }))}
-          label='Wyłączenia zakresu'
-          tone='warning'
-        />
-      )}
-      {coverage.bindingErrors.length > 0 && (
-        <DiagnosticList
-          items={coverage.bindingErrors.map(item => ({ id: item.source, detail: item.reason }))}
-          label='Błędy powiązań diagnostycznych'
-          tone='danger'
-        />
-      )}
-      {coverage.unresolvedSymptoms.length > 0 && (
-        <DiagnosticList
-          items={coverage.unresolvedSymptoms.map(symptom => ({ id: symptom, detail: 'Brak aktualnej, rozstrzygającej oceny.' }))}
-          label='Nieocenione funkcje H'
-          tone='muted'
-        />
+      {(coverage.exclusions.length > 0 || coverage.bindingErrors.length > 0 || coverage.unresolvedSymptoms.length > 0) && (
+        <details>
+          <summary>Zaawansowana diagnostyka pokrycia</summary>
+          {coverage.exclusions.length > 0 && (
+            <DiagnosticList
+              items={coverage.exclusions.map(item => ({ id: item.symptom, detail: item.reason }))}
+              label='Wyłączenia zakresu'
+              tone='warning'
+            />
+          )}
+          {coverage.bindingErrors.length > 0 && (
+            <DiagnosticList
+              items={coverage.bindingErrors.map(item => ({ id: item.source, detail: item.reason }))}
+              label='Błędy powiązań diagnostycznych'
+              tone='danger'
+            />
+          )}
+          {coverage.unresolvedSymptoms.length > 0 && (
+            <DiagnosticList
+              items={coverage.unresolvedSymptoms.map(symptom => ({ id: symptom, detail: 'Brak aktualnej, rozstrzygającej oceny.' }))}
+              label='Nieocenione funkcje bezpieczeństwa'
+              tone='muted'
+            />
+          )}
+        </details>
       )}
 
       {!hasDetails && (
@@ -170,7 +180,7 @@ function CoverageDetails({
   );
 }
 
-function RestrictionRow({ restriction, faults }: { restriction: CoverageRestriction; faults: FaultView[] }) {
+function RestrictionRow({ restriction, faults, entities }: { restriction: CoverageRestriction; faults: FaultView[]; entities: EntityMap }) {
   const fault = faults.find(
     item =>
       item.entityId
@@ -185,9 +195,9 @@ function RestrictionRow({ restriction, faults }: { restriction: CoverageRestrict
     <article className='coverage-restriction-row'>
       <div className='coverage-restriction-heading'>
         <div>
-          <strong title={restriction.cause}>{humanize(restriction.cause)}</strong>
+          <strong title={restriction.cause}>{coverageCauseLabel(restriction.cause, entities)}</strong>
           <small>
-            wpływa na {fault?.name ?? humanize(restriction.fault)} · {coverageEffectLabel(restriction.effect)}
+            wpływa na {fault?.name ?? 'funkcję bezpieczeństwa'} · {coverageEffectLabel(restriction.effect)}
           </small>
         </div>
         <StatusBadge tone={tone}>{coverageCauseStateLabel(restriction.causeState)}</StatusBadge>
@@ -195,17 +205,23 @@ function RestrictionRow({ restriction, faults }: { restriction: CoverageRestrict
       <dl className='details-grid'>
         <div>
           <dt>Zdolność</dt>
-          <dd>{humanize(restriction.capability) || 'Nie podano'}</dd>
+          <dd>{operatorCodeLabel(restriction.capability)}</dd>
         </div>
         <div>
           <dt>Zakres</dt>
-          <dd>{humanize(restriction.subject) || 'Nie podano'}</dd>
-        </div>
-        <div>
-          <dt>Symptom H</dt>
-          <dd className='technical-id'>{restriction.symptom}</dd>
+          <dd>{coverageSubjectName(restriction.cause, restriction.subject, entities)}</dd>
         </div>
       </dl>
+      <details>
+        <summary>Techniczne powiązania ograniczenia</summary>
+        <code>{restriction.cause}</code>
+        <br />
+        <code>{restriction.subject}</code>
+        <br />
+        <code>{restriction.capability}</code>
+        <br />
+        <code>{restriction.symptom}</code>
+      </details>
       {restriction.effect === 'notification' && (
         <small className='coverage-channel-note'>Ograniczony jest kanał powiadomień, nie sama detekcja zagrożenia.</small>
       )}
@@ -230,13 +246,4 @@ function DiagnosticList({ items, label, tone }: { items: Array<{ id: string; det
       </ul>
     </div>
   );
-}
-
-function humanize(value: string): string {
-  return value
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .replace(/[_-]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/^\w/, letter => letter.toUpperCase());
 }

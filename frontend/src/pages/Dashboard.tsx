@@ -175,7 +175,7 @@ function AdvancedDashboard() {
           <strong>{coverage.label}</strong>
           <small>{coverage.detail}</small>
         </div>
-        <StatusBadge tone={coverage.tone}>{coverage.state}</StatusBadge>
+        <StatusBadge tone={coverage.tone}>{coverage.label}</StatusBadge>
         <button className='text-button' onClick={() => setSelectedEntityId(COVERAGE_ENTITY_ID)} type='button'>
           Przyczyny i zakres <Icon name='history' size={15} />
         </button>

@@ -313,14 +313,23 @@ export function getFaultLevel(entity: EntitySnapshot): number | null {
 }
 
 export function friendlyEntityName(entityId: string, entity?: EntitySnapshot): string {
-  const configuredName = stringAttribute(entity, 'friendly_name')
+  const rawName = stringAttribute(entity, 'friendly_name').trim();
+  const configuredName = rawName
     .replace(/^Safety Component\s*/i, '')
     .replace(/^Fault:\s*/i, '')
     .replace(/^Recovery\s*/i, '')
     .replace(/^Safety Door:\s*/i, '')
     .replace(/^ManipulateWindow\s*/i, '');
   const fallback = entityId.split('.', 2)[1] ?? entityId;
-  return localizedTechnicalName(configuredName || fallback.replace(/^(fault|recovery)_/, ''));
+  const unnamed = entityId.startsWith(FAULT_PREFIX)
+    ? 'Usterka bez nazwy'
+    : entityId.startsWith(RECOVERY_PREFIX)
+      ? 'Zalecenie bez nazwy'
+      : 'Encja bez nazwy';
+  if (configuredName && !/^(?:Fault:|Recovery\s|Safety Door:|ManipulateWindow)/i.test(rawName.replace(/^Safety Component\s*/i, '')))
+    return configuredName;
+  const generatedFallback = configuredName && /\s|[^\u0020-\u007e]/.test(configuredName) ? configuredName : unnamed;
+  return localizedTechnicalName(configuredName || fallback.replace(/^(fault|recovery)_/, ''), generatedFallback);
 }
 
 export function getFaults(entities: EntityMap): FaultView[] {
@@ -640,7 +649,10 @@ export function getSafetyDoors(entities: EntityMap): SafetyDoorView[] {
 
       return {
         entityId,
-        name: friendlyEntityName(entityId, entity),
+        name:
+          sourceEntityId && entities[sourceEntityId]?.attributes.friendly_name
+            ? friendlyEntityName(sourceEntityId, entities[sourceEntityId])
+            : friendlyEntityName(entityId, entity),
         sourceEntityId,
         sourceEntityName: sourceEntityId
           ? friendlyEntityName(sourceEntityId, entities[sourceEntityId])
@@ -776,7 +788,7 @@ export function observationDisplayName(observation: ExternalObservationView): st
   if (observation.hazardType === 'outdoor_air_pollution') {
     return 'Jakość powietrza dla współrzędnych domu';
   }
-  return labels[observation.hazardType] ?? humanize(observation.hazardType);
+  return labels[observation.hazardType] ?? 'Inne zagrożenie zewnętrzne';
 }
 
 export function localizedEntityState(entityId: string, state: unknown): string {
@@ -820,7 +832,7 @@ export function localizedEntityState(entityId: string, state: unknown): string {
       unavailable: 'Niedostępny',
       unknown: 'Stan nieznany',
     };
-    return labels[normalized] ?? humanize(normalized || 'stan nieznany');
+    return labels[normalized] ?? 'Stan nieznany';
   }
   const commonLabels: Record<string, string> = {
     on: entityId.startsWith('binary_sensor.') ? 'Aktywna' : 'Włączona',
@@ -834,9 +846,27 @@ export function localizedEntityState(entityId: string, state: unknown): string {
     not_occupied: 'Brak obecności',
     unknown: 'Stan nieznany',
     unavailable: 'Niedostępna',
+    none: 'Brak danych',
+    healthy: 'Sprawna',
+    degraded: 'Wymaga uwagi',
+    stale: 'Dane nieaktualne',
+    current: 'Aktualne',
+    attention: 'Wymaga uwagi',
+    observed: 'Ocena wykonana',
+    active: 'Aktywne',
+    inactive: 'Nieaktywne',
+    disabled: 'Wyłączone',
+    online: 'Połączenie działa',
+    offline: 'Brak połączenia',
+    full: 'Pełne pokrycie',
+    partial: 'Częściowe pokrycie',
+    queued: 'Oczekuje w kolejce',
+    failed: 'Niepowodzenie',
   };
   if (normalized in commonLabels) return commonLabels[normalized];
-  return humanize(normalized || 'stan nieznany');
+  if (typeof state === 'number' && Number.isFinite(state)) return String(state);
+  if (typeof state === 'string' && state.trim() !== '' && Number.isFinite(Number(state))) return state;
+  return 'Nieznany stan — sprawdź diagnostykę';
 }
 
 export function getRecentActivity(entities: EntityMap, limit = 8): ActivityItem[] {
@@ -1160,7 +1190,7 @@ function temperatureRoomName(
   return sourceName || 'Lokalizacja niepodana';
 }
 
-function localizedTechnicalName(value: string): string {
+function localizedTechnicalName(value: string, fallback: string): string {
   const normalized = normalizeState(value).replace(/_/g, '');
   const labels: Record<string, string> = {
     riskytemperature: 'Niebezpieczna temperatura',
@@ -1172,10 +1202,10 @@ function localizedTechnicalName(value: string): string {
     externaldataunavailable: 'Problem z danymi zewnętrznymi',
     inputmonitoringunavailable: 'Problem z monitorowanymi wejściami',
   };
-  return labels[normalized] ?? localizedRoomName(value);
+  return labels[normalized] ?? localizedRoomName(value, fallback);
 }
 
-function localizedRoomName(value: string): string {
+function localizedRoomName(value: string, fallback: string): string {
   const normalized = normalizeState(value).replace(/_/g, '');
   const labels: Record<string, string> = {
     bedroom: 'Sypialnia',
@@ -1190,7 +1220,7 @@ function localizedRoomName(value: string): string {
     danepogodoweopenmeteo: 'Dane pogodowe Open-Meteo',
     jakoscpowietrzaopenmeteo: 'Jakość powietrza Open-Meteo',
   };
-  return labels[normalized] ?? humanize(value);
+  return labels[normalized] ?? fallback;
 }
 
 function splitLocations(value: unknown): string[] {
@@ -1205,15 +1235,6 @@ function splitLocations(value: unknown): string[] {
     .split(',')
     .map(item => item.trim())
     .filter(Boolean);
-}
-
-function humanize(value: string): string {
-  return value
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .replace(/[_-]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/^\w/, letter => letter.toUpperCase());
 }
 
 function numericState(value: unknown): number | null {

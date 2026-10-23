@@ -1,6 +1,7 @@
 import { Fragment, useState } from 'react';
 import { filterBatteryRows, type BatteryFilter, type BatteryRow, type BatterySort } from '../domain/batteryHealth';
 import StatusBadge from './StatusBadge';
+import { friendlyEntityName, type EntityMap } from '../domain/safety';
 
 const labels = { low: 'Niska bateria', unknown: 'Brak wiarygodnej oceny', current: 'Prawidłowy' } as const;
 const filters: Array<[BatteryFilter, string]> = [
@@ -11,7 +12,7 @@ const filters: Array<[BatteryFilter, string]> = [
 ];
 const PAGE_SIZE = 50;
 
-export default function BatteryHealth({ rows, total }: { rows: BatteryRow[]; total: number | null }) {
+export default function BatteryHealth({ rows, total, entities = {} }: { rows: BatteryRow[]; total: number | null; entities?: EntityMap }) {
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState<BatteryFilter>('all');
   const [sort, setSort] = useState<BatterySort>('attention');
@@ -114,18 +115,32 @@ export default function BatteryHealth({ rows, total }: { rows: BatteryRow[]; tot
                       </StatusBadge>
                     </td>
                     <td data-label='Encje źródłowe'>
-                      {row.entityIds.length ? row.entityIds.map(id => <code key={id}>{id}</code>) : <span>Brak danych o encji</span>}
+                      {row.entityIds.length ? (
+                        row.entityIds.map((id, index) => (
+                          <span key={id} title={id}>
+                            {index > 0 ? ' · ' : ''}
+                            {friendlyEntityName(id, entities[id])}
+                          </span>
+                        ))
+                      ) : (
+                        <span>Brak danych o encji</span>
+                      )}
                     </td>
                   </tr>
                   <tr className='battery-details-row' id={`battery-details-${row.key}`} hidden={selected !== row.key}>
                     <td colSpan={4}>
                       <section aria-label={`Szczegóły baterii: ${row.name}`} className='battery-evidence'>
+                        <details>
+                          <summary>Zaawansowana diagnostyka baterii</summary>
+                          {row.entityIds.map(id => (
+                            <code key={id}>{id}</code>
+                          ))}
+                          {row.evidence.map((line, index) => (
+                            <p key={index}>{line}</p>
+                          ))}
+                        </details>
                         {row.detail && <p>{row.detail}</p>}
-                        {row.evidence.length ? (
-                          row.evidence.map((line, index) => <p key={index}>{line}</p>)
-                        ) : (
-                          <p>Brak szczegółowych odczytów. Stan pochodzi z podsumowania monitoringu.</p>
-                        )}
+                        {!row.evidence.length && <p>Brak szczegółowych odczytów. Stan pochodzi z podsumowania monitoringu.</p>}
                       </section>
                     </td>
                   </tr>
@@ -162,8 +177,8 @@ export default function BatteryHealth({ rows, total }: { rows: BatteryRow[]; tot
       <details className='panel functional-safety-group'>
         <summary>Jak oceniana jest bateria?</summary>
         <p>
-          Jeśli urządzenie udostępnia last_seen, świeżość wynika z ostatniego kontaktu. Procent nie musi się zmieniać. Brak wiarygodnego
-          kontaktu lub odczytu oznacza brak oceny. Prawidłowa bateria nie potwierdza sprawności funkcji bezpieczeństwa.
+          Jeśli urządzenie udostępnia czas ostatniego kontaktu, to na nim opiera się ocena świeżości. Procent nie musi się zmieniać. Brak
+          wiarygodnego kontaktu lub odczytu oznacza brak oceny. Prawidłowa bateria nie potwierdza sprawności funkcji bezpieczeństwa.
         </p>
       </details>
     </section>

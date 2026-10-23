@@ -4,7 +4,7 @@ import Icon from '../components/Icon';
 import HelpTooltip from '../components/HelpTooltip';
 import StatusBadge from '../components/StatusBadge';
 import { type InternalDetectorStatus, type InternalDetectorView, type InternalEnvironmentStatus } from '../domain/internalHazards';
-import { formatRelativeTime, type StatusTone } from '../domain/safety';
+import { formatRelativeTime, localizedEntityState, type StatusTone } from '../domain/safety';
 import { useSafetyEntities } from '../hooks/useSafetyEntities';
 
 const summaryPresentation: Record<InternalEnvironmentStatus, { label: string; detail: string; tone: StatusTone }> = {
@@ -126,7 +126,11 @@ export default function InternalHazards() {
       {internalEnvironment.persistenceError && (
         <section className='panel internal-persistence-warning'>
           <strong>Stan alarmów nie może zostać zapisany</strong>
-          <p>{internalEnvironment.persistenceError}</p>
+          <p>Nie można potwierdzić zachowania stanu alarmów po ponownym uruchomieniu aplikacji.</p>
+          <details>
+            <summary>Zaawansowana diagnostyka zapisu</summary>
+            <code>{internalEnvironment.persistenceError}</code>
+          </details>
         </section>
       )}
 
@@ -176,7 +180,7 @@ function DetectorCard({ detector, onSelectEntity }: { detector: InternalDetector
         </div>
         <div>
           <dt>Stan źródłowy</dt>
-          <dd>{detector.currentState}</dd>
+          <dd>{localizedEntityState(detector.sourceEntityId, detector.currentState)}</dd>
         </div>
         <div>
           <dt>Klasyfikacja</dt>
@@ -239,6 +243,6 @@ function classificationName(classification: string): string {
       clear: 'Brak alarmu',
       unavailable: 'Niedostępny',
       unevaluable: 'Nie można ocenić',
-    }[classification] ?? classification
+    }[classification] ?? 'Brak wiarygodnej klasyfikacji'
   );
 }

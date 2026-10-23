@@ -24,7 +24,7 @@ const pageLabels: Record<string, { eyebrow: string; title: string }> = {
   '/configuration': { eyebrow: 'Ustawienia aplikacji', title: 'Konfiguracja instalacji' },
   '/functional-safety': { eyebrow: 'Diagnostyka bezpieczeństwa', title: 'Zdrowie systemu' },
   '/help': { eyebrow: 'SafetyHome', title: 'Pomoc i objaśnienia' },
-  '/fault-management': { eyebrow: 'Diagnostyka bezpieczeństwa', title: 'Fault Management' },
+  '/fault-management': { eyebrow: 'Diagnostyka bezpieczeństwa', title: 'Usterki i diagnostyka' },
 };
 
 export default function Topbar({ menuButtonRef, navigationOpen, onMenuClick, viewMode, onViewModeChange }: TopbarProps) {

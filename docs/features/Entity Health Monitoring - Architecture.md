@@ -595,6 +595,18 @@ mounted. Tab navigation shall support Left/Right and Home/End keys.
 The frontend performs only presentation filtering. It may defensively recompute
 simple display classifications, but it shall not create or clear a safety fault.
 
+Ordinary operator content shall use Home Assistant friendly names or Polish
+labels for known system concepts. Live source-entity names shall take precedence
+over technical binding keys in monitored-input and door summaries. Home
+Assistant names shall retain their wording, apart from the existing Safety
+Component presentation wrapper. Missing names and unrecognized state or reason
+codes shall use localized fallback text rather than humanized identifiers;
+valid numeric readings, including their sign, shall remain visible. Coverage
+summaries shall identify the localized failed capability and bound subject when
+known. Raw identifiers, check/reason codes and freeze-frame evidence shall
+remain available in explicit advanced diagnostic details, without changing the
+underlying runtime contracts.
+
 The monitored-entities section provides:
 
 - summary cards for unhealthy Group A and B entities;

@@ -137,13 +137,19 @@ export function getFunctionalSafetySources(entities: EntityMap, fullDiagnostics?
   add('battery-discovery', 'Wykrywanie urządzeń bateryjnych', attributes.battery_discovery);
   const updates = attributes.updates;
   if (updates && typeof updates === 'object' && !Array.isArray(updates)) {
-    Object.entries(updates).forEach(([key, value]) => add(`update-${key}`, `Aktualizacja: ${updateProductNames[key] ?? key}`, value));
+    Object.entries(updates).forEach(([key, value]) =>
+      add(`update-${key}`, `Aktualizacja: ${updateProductNames[key] ?? 'Inny składnik systemu'}`, value)
+    );
   }
   const batteries = attributes.remote_batteries;
   if (batteries && typeof batteries === 'object' && !Array.isArray(batteries)) {
     Object.entries(batteries).forEach(([key, value]) => {
       const item = value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-      add(`battery-${key}`, `Bateria: ${typeof item.friendly_name === 'string' ? item.friendly_name : key}`, value);
+      add(
+        `battery-${key}`,
+        `Bateria: ${typeof item.friendly_name === 'string' && item.friendly_name.trim() ? item.friendly_name : 'Urządzenie bez nazwy'}`,
+        value
+      );
     });
   }
   return rows;
