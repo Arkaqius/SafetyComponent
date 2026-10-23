@@ -22,8 +22,9 @@ export default function FaultManagement() {
   const coverage = getCoverageView(connection.cannotConnect || !connection.ready ? {} : entities);
   const hazardFaults = faults.filter(fault => fault.category === 'H');
   const diagnosticFaults = faults.filter(fault => fault.category === 'D');
-  const activeHazards = hazardFaults.filter(fault => fault.active === true);
-  const activeDiagnostics = diagnosticFaults.filter(fault => fault.active === true);
+  const activeHazards = hazardFaults.filter(fault => fault.active === true && fault.level !== 4);
+  const activeDiagnostics = diagnosticFaults.filter(fault => fault.active === true && fault.level !== 4);
+  const informationCount = faults.filter(fault => fault.active === true && fault.level === 4).length;
   const activeLatches = faults.filter(fault => fault.active === true && fault.latched === true);
   const acknowledgedTags = new Set(readAcknowledgedNotificationTags(entities[NOTIFICATION_DELIVERY_HEALTH_ID]));
 
@@ -50,7 +51,7 @@ export default function FaultManagement() {
           value={activeHazards.length}
         />
         <SummaryCard
-          detail={`${diagnosticFaults.length} zdefiniowanych usterek D`}
+          detail={`${diagnosticFaults.length} zdefiniowanych warunków D · ${informationCount} informacji L4`}
           icon='activity'
           label='Aktywne diagnostyki'
           tone={activeDiagnostics.length > 0 ? 'warning' : diagnosticFaults.length > 0 ? 'safe' : 'muted'}

@@ -21,3 +21,42 @@ test('history preserves locations and activation changes within the same raw fau
     [['Garaż'], ['Kuchnia'], ['Kuchnia'], []]
   );
 });
+
+test('history excludes split MQTT snapshots without inferring activation or changing valid times', () => {
+  const transitions = historyTransitions(
+    historyTimeline([
+      { s: 'PASS', lu: 1, a: { publication_state: 'PASS', active: false } },
+      { s: 'PASS', lu: 2, a: { publication_state: 'FAIL', active: true } },
+      { s: 'FAIL', lu: 3, a: { publication_state: 'FAIL', active: true } },
+      { s: 'FAIL', lu: 4, a: { publication_state: 'PASS', active: false } },
+      { s: 'PASS', lu: 5, a: { publication_state: 'PASS', active: false } },
+      { s: 'PASS', lu: 6, a: { publication_state: 'PASS', active: true, latched: true } },
+    ])
+  );
+  assert.deepEqual(
+    transitions.map(point => [point.state, point.last_changed]),
+    [
+      ['PASS', 1000],
+      ['FAIL', 3000],
+      ['PASS', 5000],
+      ['PASS', 6000],
+    ]
+  );
+});
+
+test('legacy contradictory labels are excluded but missing evidence remains unknown', () => {
+  const transitions = historyTransitions(
+    historyTimeline([
+      { s: 'PASS', lu: 1, a: { state_label: 'Zagrożenie potwierdzone', active: true } },
+      { s: 'FAIL', lu: 2, a: { state_label: 'Zagrożenie potwierdzone', active: true } },
+      { s: 'FAIL', lu: 3, a: { state_label: 'Warunek ustąpił', active: false } },
+      { s: 'PASS', lu: 4, a: { state_label: 'Warunek ustąpił', active: false } },
+      { s: 'UNEVALUABLE', lu: 5, a: {} },
+    ])
+  );
+  assert.deepEqual(
+    transitions.map(point => point.last_changed),
+    [2000, 4000, 5000]
+  );
+  assert.deepEqual(transitions[2].attributes, {});
+});

@@ -44,7 +44,7 @@ MAX_SUMMARY_TEXT_LENGTH = 160
 
 
 class FunctionalSafetyMonitor:
-    """Own L2 memory, L3 WAN, and L4 update/battery policy faults."""
+    """Own host warnings and maintenance information using qualified evidence."""
 
     component_name = "FunctionalSafetyMonitor"
     summary_entity = "sensor.functional_safety_sources"
@@ -155,19 +155,19 @@ class FunctionalSafetyMonitor:
             fault_sources.append(("WanUnavailable", int(self.policy["wan_fault_level"]), label("fault.wan_unavailable")))
         for field, fault, key in (("host_disk_free_entity", "HostDiskLow", "fault.host_disk_low"), ("host_temperature_entity", "HostTemperatureHigh", "fault.host_temperature_high"), ("backup", "BackupNeedsAttention", "fault.backup_needs_attention")):
             if self.bindings.get(field):
-                fault_sources.append((fault, int(self.policy["maintenance_fault_level"]), label(key)))
+                fault_sources.append((fault, int(self.policy.get("warning_fault_level", 3)), label(key)))
         periodic = self.bindings.get("periodic_tests", {"notification_delivery": True})
         for test_key, enabled in periodic.items():
             if enabled:
                 fault_sources.append((f"PeriodicTestDue{self._pascal(test_key)}", int(self.policy["maintenance_fault_level"]), label("fault.periodic_test_due", test=label(f"test.{test_key}"))))
         for product, entity in self.bindings.get("updates", {}).items():
             if entity:
-                fault_sources.append((f"UpdateAvailable{self._pascal(product)}", int(self.policy["maintenance_fault_level"]), label("fault.update_available", product=UPDATE_PRODUCT_NAMES[product])))
+                fault_sources.append((f"UpdateAvailable{self._pascal(product)}", int(self.policy.get("warning_fault_level", 3)), label("fault.update_available", product=UPDATE_PRODUCT_NAMES[product])))
         for device, binding in self.bindings.get("remote_batteries", {}).items():
             if binding.get("enabled", True):
                 fault_sources.append((f"RemoteBatteryLow{device}", int(self.policy["maintenance_fault_level"]), label("fault.remote_battery_low", device=binding["friendly_name"])))
         for detector, friendly_name in self.detector_names.items():
-            fault_sources.append((f"DetectorTestDue{detector}", int(self.policy["maintenance_fault_level"]), label("fault.detector_test_due", detector=friendly_name)))
+            fault_sources.append((f"DetectorTestDue{detector}", int(self.policy.get("warning_fault_level", 3)), label("fault.detector_test_due", detector=friendly_name)))
         symptoms: dict[str, Symptom] = {}
         recoveries: dict[str, RecoveryAction] = {}
         for fault, level, name in fault_sources:

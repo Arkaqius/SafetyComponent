@@ -2,7 +2,7 @@
 
 import copy
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, Mock
 
 import pytest
 
@@ -96,6 +96,8 @@ def test_notification_updates_single_fault_notification_for_prefault_lifecycle(
     _install_stateful_hass(app_instance, mock_behaviors_default)
 
     app_instance.initialize()
+    notification_clock = Mock(return_value=1000.0)
+    app_instance.notify_man._clock = notification_clock
     app_instance.call_service.reset_mock()
     app_instance.set_state.reset_mock()
 
@@ -112,6 +114,8 @@ def test_notification_updates_single_fault_notification_for_prefault_lifecycle(
     assert notify_calls[-1].kwargs["data"]["tag"] == fault_tag
 
     app_instance.fm.set_symptom("RiskyTemperatureKitchen", {"location": "Kitchen"})
+    notification_clock.return_value += 1
+    app_instance.notify_man.tick()
 
     notify_calls = _notify_calls(app_instance)
     assert list(app_instance.notify_man.active_notification) == [fault_tag]
@@ -128,6 +132,8 @@ def test_notification_updates_single_fault_notification_for_prefault_lifecycle(
     )
 
     app_instance.fm.clear_symptom("RiskyTemperatureOffice", {"location": "Office"})
+    notification_clock.return_value += 1
+    app_instance.notify_man.tick()
 
     notify_calls = _notify_calls(app_instance)
     assert app_instance.fm.check_fault("RiskyTemperature") is FaultEvaluationStatus.FAIL

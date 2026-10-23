@@ -315,12 +315,12 @@ def test_mqtt_heartbeat_accepts_appdaemon_dictionary_unpacking_callback(
 ) -> None:
     app_instance, _, __, ___, _ = mocked_hass_app_with_temp_component
     app_instance.initialize()
-    app_instance.mqtt_entities.publish_heartbeat = Mock()
+    app_instance.mqtt_entities.publish_heartbeat_batch = Mock()
 
     app_instance._mqtt_heartbeat()
     app_instance._mqtt_heartbeat(timer="heartbeat")
 
-    assert app_instance.mqtt_entities.publish_heartbeat.call_count == 2
+    assert app_instance.mqtt_entities.publish_heartbeat_batch.call_count == 2
 
     # Verify TemperatureComponent configurations are set up correctly
     assert "TemperatureComponent" in app_instance.sm_modules

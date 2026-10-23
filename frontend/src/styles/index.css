@@ -1412,6 +1412,11 @@ details summary:focus-visible {
   color: var(--safe);
 }
 
+.fault-info .fault-card-icon {
+  background: var(--info-soft);
+  color: var(--info);
+}
+
 .fault-card-title {
   min-width: 0;
 }
@@ -1547,6 +1552,16 @@ details summary:focus-visible {
 .fault-contributor-list .fault-contributor-active {
   background: var(--danger-soft);
   border-color: var(--danger);
+}
+
+.fault-info .fault-contributor-list .fault-contributor-active {
+  background: var(--info-soft);
+  border-color: var(--info);
+}
+
+.fault-warning .fault-contributor-list .fault-contributor-active {
+  background: var(--warning-soft);
+  border-color: var(--warning);
 }
 
 .fault-management-intro,

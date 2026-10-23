@@ -35,6 +35,13 @@ test('brief retains an active incident even when all are shadowed, without inven
   );
 });
 
+test('information stays in the event list without becoming the headline incident', () => {
+  const faults = getFaults({ 'sensor.fault_notice': { state: 'FAIL', attributes: { active: true, level: 4 } } });
+  const brief = basicDashboardItems(faults, []);
+  assert.equal(brief.primaryFault, undefined);
+  assert.equal(brief.activeFaultCount, 1);
+});
+
 test('brief keeps failed and uncertain recommendations visible, excluding completed and unnecessary actions', () => {
   const recoveries = getRecoveries({
     'sensor.recovery_done': { state: 'CONFIRMED', attributes: {} },

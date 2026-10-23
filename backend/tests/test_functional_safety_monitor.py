@@ -78,8 +78,9 @@ POLICY = {
     "battery_stale_after_seconds": 180,
     "memory_fault_level": 2,
     "wan_fault_level": 3,
+    "warning_fault_level": 3,
     "maintenance_fault_level": 4,
-    "cpu_fault_level": 4,
+    "cpu_fault_level": 3,
 }
 
 
@@ -288,7 +289,7 @@ def test_functional_safety_summary_stays_below_recorder_limit() -> None:
     assert all("sources" not in item for item in attributes["remote_batteries"].values())
 
 
-def test_update_and_low_battery_are_separate_level_four_conditions() -> None:
+def test_update_warning_and_low_battery_information_are_independent() -> None:
     monitor, bus, mqtt = make_monitor({
         "sensor.memory": snapshot("800", unit="MiB", kind="data_size"),
         "sensor.psi": snapshot("1", unit="%"),
@@ -300,7 +301,7 @@ def test_update_and_low_battery_are_separate_level_four_conditions() -> None:
     monitor.evaluate()
 
     faults = monitor.get_fault_definitions()
-    assert faults["UpdateAvailableHomeAssistantCore"]["level"] == 4
+    assert faults["UpdateAvailableHomeAssistantCore"]["level"] == 3
     assert faults["RemoteBatteryLowRemote"]["level"] == 4
     assert {item["symptom_id"] for item in bus.events if item["state"] == FaultState.SET} == {
         "fsm_UpdateAvailableHomeAssistantCore", "fsm_RemoteBatteryLowRemote"
@@ -337,7 +338,7 @@ def test_detector_maintenance_fault_does_not_control_or_clear_alarm() -> None:
     assert bus.unavailable == [{"symptom_id": "fsm_DetectorTestDueKitchenSmoke"}]
     monitor.observe_detector_test("KitchenSmoke", "current")
 
-    assert monitor.get_fault_definitions()["DetectorTestDueKitchenSmoke"]["level"] == 4
+    assert monitor.get_fault_definitions()["DetectorTestDueKitchenSmoke"]["level"] == 3
     assert [item["state"] for item in bus.events] == [FaultState.SET, FaultState.CLEARED]
 
 

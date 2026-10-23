@@ -245,6 +245,12 @@ Android `alert_once`/normal priority and iOS `passive` interruption.
 ### 4.2 Active content refresh
 
 A repeated `SET` or newly discovered recovery guidance updates the same tag.
+Removing or replacing guidance shall also refresh that tag, so withdrawn
+instructions do not remain on the phone. Intermediate quiet updates for one
+tag shall be coalesced until the next delivery-scheduler tick and use the latest
+content. New alarms, urgency escalation and resolution shall retain immediate
+submission; coalescing shall preserve pending targets and their original retry
+deadlines. Only actual target submissions shall consume journal entries.
 The refresh uses a quiet profile and shall not re-run local annunciators. On
 Android it uses `alert_once`; on iOS it uses a passive interruption profile.
 If the new-alert attempt is still pending for any target, its content is
@@ -326,6 +332,9 @@ cover correlation, newest-first pagination, snapshot revision, invalid or
 stale cursors, response-size bounds, listener lifecycle, and removal of the
 retired MQTT entity. Retry tests shall cover failed acknowledgement followed
 by newer content and a new SET following a failed resolved submission.
+Tests shall cover guidance removal, coalesced same-tag updates, pending-target
+and deadline preservation, and authoritative battery-identity retirement without
+a false resolved message or notification-journal deletion.
 Frontend domain and component tests shall cover request and response contracts,
 lifecycle labels, filtering, date/time, target presentation, diagnostic
 details, refresh, and empty or unavailable history.

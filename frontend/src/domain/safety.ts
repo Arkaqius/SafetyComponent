@@ -167,6 +167,7 @@ export interface SafetySummary {
   tone: StatusTone;
   effectiveLevel: number | null;
   activeFaultCount: number;
+  informationalFaultCount: number;
   shadowedFaultCount: number;
   actionableRecoveryCount: number;
 }
@@ -866,13 +867,19 @@ export function getSafetySummary(
   recoveries: RecoveryView[],
   availability: SafetyDataAvailability = 'connected'
 ): SafetySummary {
-  const activeFaults = faults.filter(fault => fault.active === true);
-  const shadowedFaults = faults.filter(fault => fault.active === true && fault.shadowedBy.length > 0);
-  const uncertainFaults = faults.filter(faultNeedsVerification);
+  const activeFaults = faults.filter(fault => fault.active === true && fault.level !== 4);
+  const informationalFaults = faults.filter(fault => fault.active === true && fault.level === 4);
+  const shadowedFaults = activeFaults.filter(fault => fault.shadowedBy.length > 0);
+  const uncertainFaults = faults.filter(fault => fault.level !== 4 && faultNeedsVerification(fault));
   const actionableRecoveries = recoveries.filter(recovery => recovery.status === 'to_perform');
-  const uncertainRecoveries = recoveries.filter(recovery => ['unavailable', 'unknown'].includes(recovery.status));
+  const uncertainRecoveries = recoveries.filter(recovery => {
+    if (!['unavailable', 'unknown'].includes(recovery.status)) return false;
+    const owners = faults.filter(fault => recoveriesForFault(fault, [recovery]).length > 0);
+    return owners.length === 0 || owners.some(fault => fault.level !== 4);
+  });
   const base = {
     activeFaultCount: activeFaults.length,
+    informationalFaultCount: informationalFaults.length,
     shadowedFaultCount: shadowedFaults.length,
     actionableRecoveryCount: actionableRecoveries.length,
   };
@@ -880,8 +887,8 @@ export function getSafetySummary(
   if (availability !== 'connected') {
     const reportedLevel = parseSystemLevel(systemEntity?.state);
     const knownLevels = activeFaults.map(fault => fault.level).filter((level): level is number => level !== null);
-    if (reportedLevel !== null && reportedLevel > 0) knownLevels.push(reportedLevel);
-    const hasActiveAlarm = activeFaults.length > 0 || (reportedLevel !== null && reportedLevel > 0);
+    if (reportedLevel !== null && reportedLevel > 0 && reportedLevel < 4) knownLevels.push(reportedLevel);
+    const hasActiveAlarm = activeFaults.length > 0 || (reportedLevel !== null && reportedLevel > 0 && reportedLevel < 4);
     const effectiveLevel =
       hasActiveAlarm && !activeFaults.some(fault => fault.level === null) && knownLevels.length > 0 ? Math.min(...knownLevels) : null;
     const reason = availability === 'disconnected' ? 'Brak połączenia' : 'Dane nieaktualne';
@@ -933,7 +940,7 @@ export function getSafetySummary(
   ]
     .filter(Boolean)
     .join(' · ');
-  const hasReportedFault = reportedLevel !== null && reportedLevel > 0;
+  const hasReportedFault = reportedLevel !== null && reportedLevel > 0 && reportedLevel < 4;
 
   if (uncertainEntityCount > 0) {
     if (activeFaults.length > 0 || hasReportedFault) {
@@ -998,7 +1005,10 @@ export function getSafetySummary(
   return {
     ...base,
     label: 'System bezpieczny',
-    detail: 'Brak aktywnych usterek',
+    detail:
+      informationalFaults.length > 0
+        ? `Brak aktywnych usterek · ${informationalFaults.length} ${polishCount(informationalFaults.length, 'informacja do sprawdzenia', 'informacje do sprawdzenia', 'informacji do sprawdzenia')}`
+        : 'Brak aktywnych usterek',
     tone: 'safe',
     effectiveLevel: 0,
   };

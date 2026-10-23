@@ -11,6 +11,8 @@ from build_app_config import compile_config as _compile_config, main
 from components.safetycomponents.safety_doors.safety_doors_component import (
     SafetyDoorsComponent,
 )
+from components.core.functional_safety_monitor import FunctionalSafetyMonitor
+from tests.test_functional_safety_monitor import FakeBus, FakeEntities, FakeHass
 
 BACKEND_DIR = Path(__file__).parents[1]
 TEST_CORE_LOCATION = {"latitude": 50.0, "longitude": 20.0}
@@ -37,6 +39,38 @@ def test_example_installation_config_compiles() -> None:
     assert compiled["SafetyFunctions"]["app_config"]["calibration"]["functional_safety"]["memory_low_available_mib"] == 256
     assert compiled["SafetyFunctions"]["app_config"]["calibration"]["functional_safety"]["maintenance_poll_interval_seconds"] == 3600
     assert compiled["SafetyFunctions"]["app_config"]["calibration"]["functional_safety"]["battery_fault_catalog_file"] == "/config/appdaemon/battery_fault_catalog.json"
+
+
+def test_packaged_priorities_separate_warnings_from_information() -> None:
+    """The shipped policy raises maintenance warnings while batteries stay informational."""
+    compiled = compile_config(user_path=BACKEND_DIR / "config" / "user_config.example.yml")
+    policy = compiled["SafetyFunctions"]["app_config"]["calibration"]["functional_safety"]
+    monitor = FunctionalSafetyMonitor(
+        FakeHass({}), FakeBus(), FakeEntities(),
+        {
+            "host_cpu_entity": "sensor.cpu",
+            "host_disk_free_entity": "sensor.disk",
+            "host_temperature_entity": "sensor.temperature",
+            "backup": {"last_success_entity": "sensor.backup"},
+            "updates": {product: f"update.{product}" for product in (
+                "home_assistant_core", "home_assistant_os", "home_assistant_supervisor", "safety_component",
+            )},
+            "battery_monitoring": {"enabled": False},
+            "remote_batteries": {"Remote": {"friendly_name": "Remote", "percentage_entity": "sensor.battery"}},
+            "periodic_tests": {"notification_delivery": True, "backup_restore": True},
+        },
+        policy, wan_entity=None, detector_names={"Smoke": "Smoke detector"},
+    )
+    monitor.get_symptoms_data({monitor.component_name: monitor}, {})
+    levels = {name: value["level"] for name, value in monitor.get_fault_definitions().items()}
+    assert levels == {
+        "HostCpuPressure": 3, "HostDiskLow": 3, "HostTemperatureHigh": 3,
+        "BackupNeedsAttention": 3, "DetectorTestDueSmoke": 3,
+        "UpdateAvailableHomeAssistantCore": 3, "UpdateAvailableHomeAssistantOs": 3,
+        "UpdateAvailableHomeAssistantSupervisor": 3, "UpdateAvailableSafetyComponent": 3,
+        "RemoteBatteryLowRemote": 4,
+        "PeriodicTestDueNotificationDelivery": 4, "PeriodicTestDueBackupRestore": 4,
+    }
 
 
 def test_functional_safety_bindings_compile_and_reject_invalid_battery(tmp_path) -> None:

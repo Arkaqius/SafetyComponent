@@ -94,6 +94,7 @@ hazard.guidance.water_leak: Sprawdź wyciek z bezpiecznego miejsca i ręcznie za
 notification.title.1: Wymagane natychmiastowe działanie
 notification.title.2: Wykryto zagrożenie w domu
 notification.title.3: Sprawdź, co dzieje się w domu
+notification.title.4: Informacja do sprawdzenia
 notification.title.cleared: Zagrożenie zostało usunięte
 notification.active: 'Wymaga uwagi: {fault}.'
 notification.cleared: Dobra wiadomość - problem „{fault}” został rozwiązany.

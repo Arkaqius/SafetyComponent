@@ -43,8 +43,14 @@ Monitoring distinguishes three independent concepts:
 
 1. **Observed hazard/fault:** an asserted household condition or a diagnosed
    failure with a configured notification level. `sensor.safetysystem_state`
-   currently reports the highest active fault level; `no_faults` does not mean
-   every safety function was evaluated successfully.
+   shall report the highest active L1–L3 fault level. Active L4 conditions shall
+   remain separate information and shall not degrade overall system state or
+   label it faulty or unhealthy. With only L4 conditions, the aggregate shall
+   remain `no_faults`; this does not mean every safety function was evaluated
+   successfully. Uncertainty confined to a known L4 condition or its explicitly
+   linked manual task shall remain visible in that record without degrading
+   the summary. Startup, unknown priority, unlinked task uncertainty and
+   independent coverage failures shall remain visible.
 2. **Coverage:** whether each safety function had fresh, trustworthy inputs and
    completed evaluation within its budget. `unknown`, stale, malformed, and
    unavailable evidence is not a passing observation. Coverage loss can coexist
@@ -191,11 +197,13 @@ component progress without a blocking request on the alarm callback path.
 | Sustained insufficient memory available to Home Assistant | The host may fail to evaluate or report safety conditions | Level 2 platform-health fault, after calibrated qualification and recovery hysteresis. A high usage percentage alone is insufficient evidence of imminent exhaustion. |
 | Low battery with a still-functioning device | Maintenance is needed; safety coverage has not yet been shown lost | Level 4 informational condition. Do not convert it into a level-3 Entity Monitor failure. |
 | Unavailable or stale safety-device input | The dependent safety function may have lost coverage | Existing owning component or Entity Monitor fault and severity; a battery warning neither replaces nor clears it. |
-| Sustained CPU, disk, swap, or thermal pressure | Possible precursor to missed deadlines | Diagnose the resource and correlate with evaluation lateness; isolated peaks are not faults. Severity is system policy; qualification uses packaged defaults with validated installation overrides. |
+| Sustained CPU, disk, swap, or thermal pressure | Possible precursor to missed deadlines | Diagnose the resource and correlate with evaluation lateness; isolated peaks are not faults. Qualified CPU, low free disk space and high host temperature shall produce Level 3 warnings. Swap observations retain their own declared policy. Qualification uses packaged defaults with validated installation overrides. |
 | Internet/WAN loss | Cloud-dependent providers and mobile delivery may be impaired while local protection remains possible | Level 3 network fault; report the network state separately from local Home Assistant health and apply Local-Only mode/notification policy. A single failed public probe does not prove all Internet connectivity is lost. |
-| Update available for Home Assistant or the SafetyComponent App | Maintenance information, not evidence that the running version is malfunctioning | Level 4 informational condition per product; track installed/offered versions and age, and never install or restart automatically from this monitor. |
-| Sustained low free disk space or high host temperature | Maintenance precursor, not proof of a missed safety decision | Level 4 after independent qualification; fresh recovery samples and separate recovery margins are required. |
-| Backup too old, confirmed backup failure, or due/failed periodic operational test | Maintenance evidence is insufficient or requires attention | Level 4; backup creation, restore, notification receipt, and safety-function coverage remain distinct. |
+| Update available for Home Assistant or the SafetyComponent App | Maintenance requires attention; availability does not prove that the running version is malfunctioning | Level 3 warning per product; track installed/offered versions and age, and never install or restart automatically from this monitor. |
+| Sustained low free disk space or high host temperature | Maintenance precursor, not proof of a missed safety decision | Level 3 after independent qualification; fresh recovery samples and separate recovery margins are required. |
+| Backup too old or confirmed backup failure | Backup maintenance requires attention | Level 3 warning; backup creation and restore capability remain distinct. |
+| Due or failed smoke, gas or CO detector test | Detector maintenance requires attention | Level 3 warning; no suppression or clearing of a live detector alarm. |
+| Due or failed periodic notification-receipt or backup-restore test | Operational-test evidence requires attention | Level 4 information; notification receipt, restore capability and safety-function coverage remain distinct. |
 
 For memory, the level-2 rule uses **both** available memory and memory
 pressure/PSI; total-used percentage alone is not a substitute. Its exact
@@ -271,7 +279,8 @@ maintenance evidence, not hazard-clear evidence. A valid test may come from a
 device-reported test result or an explicit operator attestation containing the
 detector identity, outcome, and time. A quiet detector, acknowledgement of a
 reminder, or a frontend button press without a recorded outcome cannot count as
-a passed test. An overdue or failed test must not silence a live alarm.
+a passed test. A due, overdue or failed detector test shall produce an L3
+warning and must not silence a live alarm.
 
 ### Host storage, temperature, and backup maintenance
 
@@ -279,7 +288,7 @@ Free-disk-space and host-temperature bindings measure the Home Assistant host,
 not an unrelated container. Disk values must use compatible storage units and
 temperature values must use compatible temperature units. Numeric plausibility,
 freshness, sustained qualification, and separate recovery margins apply before
-changing the L4 maintenance fault. Missing, stale, or wrong-unit input is unknown
+changing the L3 maintenance warning. Missing, stale, or wrong-unit input is unknown
 coverage and cannot positively clear an active condition.
 
 Backup monitoring reads the timestamp of the last successful Home Assistant
@@ -288,7 +297,8 @@ failure. An old, valid success timestamp is overdue evidence, not malformed data
 A future, invalid, unavailable, or transport-failed timestamp is unknown rather
 than evidence of a current backup. A configured failure source must provide
 fresh valid evidence; stale or unavailable failure input cannot prove success.
-The monitor never creates, deletes, downloads, or restores backups.
+An overdue or failed backup shall produce an L3 warning. The monitor never
+creates, deletes, downloads, or restores backups.
 
 ### Periodic notification and restore tests
 
@@ -402,9 +412,18 @@ entities are distinguishable. No test of observation invokes installation.
 - Notification acceptance, recipient delivery, recovery command, and verified
   effect remain separate states. No verification scenario actuates equipment.
 - A missing, due, failed, and operator-attested detector test remain distinct;
-  an active detector alarm is unaffected by test maintenance state.
+  due and failed detector tests assert L3, and an active detector alarm is
+  unaffected by test maintenance state.
 - Disk and thermal peaks remain diagnostic; sustained qualified conditions
-  assert L4, and missing or invalid observations cannot clear them.
+  assert L3, and missing or invalid observations cannot clear them.
+- Qualified CPU pressure, available updates and overdue/failed backups assert
+  L3, while low batteries and due/failed periodic operational tests retain L4.
+- L4-only conditions retain informational rows and manual tasks without
+  increasing headline warning/fault counts or degrading the overall state;
+  the raw active-condition count still includes them. Uncertainty confined to
+  known L4 records or their explicitly linked tasks remains local. Active
+  L1–L3, unknown priority, startup and independent coverage uncertainty remain
+  visible.
 - An old valid backup timestamp, a future timestamp, stale failure evidence,
   and unavailable backup transport are distinguishable. No observation creates
   or restores a backup.

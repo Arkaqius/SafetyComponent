@@ -120,7 +120,8 @@ def test_l2_l3_profiles(
 
 def test_active_update_is_quiet_and_keeps_recovery_guidance() -> None:
     hass = make_hass()
-    manager = NotificationManager(hass, {})
+    clock = Clock()
+    manager = NotificationManager(hass, {}, clock=clock)
     manager.notify(
         "RiskyTemperature",
         2,
@@ -145,6 +146,8 @@ def test_active_update_is_quiet_and_keeps_recovery_guidance() -> None:
         "Location: Office, Kitchen\n\n"
         "What you can do:\n- Close the office window."
     )
+    clock.advance(1)
+    manager.tick()
     data = notify_calls(hass)[-1].kwargs["data"]
     assert data["alert_once"] is True
     assert data["priority"] == "normal"
@@ -306,6 +309,8 @@ def test_update_keeps_undelivered_target_alerting_and_quiets_completed_target() 
     hass.call_service.reset_mock()
 
     manager.notify("Fault", 2, FaultState.SET, {"location": "Office"}, "split-tag")
+    clock.advance(1)
+    manager.tick()
 
     quiet_update = hass.call_service.call_args_list[0]
     assert quiet_update.args[0] == "notify/phone_one"
@@ -466,7 +471,8 @@ def test_failed_acknowledgement_retry_cannot_overwrite_newer_fault_content() -> 
     assert "ack-tag:acknowledged" in manager.pending_deliveries
 
     manager.notify("Fault", 2, FaultState.SET, {"location": "New"}, "ack-tag")
-    assert manager.pending_deliveries == {}
+    assert "ack-tag:acknowledged" not in manager.pending_deliveries
+    assert manager.pending_deliveries["ack-tag:active"].kind == "update"
     clock.advance(5)
     manager.tick()
 

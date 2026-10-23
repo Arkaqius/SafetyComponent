@@ -94,6 +94,7 @@ hazard.guidance.water_leak: Check the leak from a safe place and shut off water 
 notification.title.1: Immediate action needed
 notification.title.2: Safety issue detected
 notification.title.3: Please check your home
+notification.title.4: Information to review
 notification.title.cleared: Safety issue resolved
 notification.active: '{fault} needs your attention.'
 notification.cleared: Good news - {fault} is no longer active.

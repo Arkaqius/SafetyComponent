@@ -27,7 +27,10 @@ REPORT_TEMPLATE = """
     {% set is_sensor = entity.startswith('sensor.') or entity.startswith('binary_sensor.') %}
     {% set device = device_id(entity) if is_sensor else none %}
     {% for sibling in (device_entities(device) if device else []) %}
-      {% if sibling.startswith('sensor.') and sibling.endswith('_last_seen') %}
+      {# HA appends a numeric suffix when resolving entity ID collisions. #}
+      {% set name_parts = sibling.rsplit('_', 1) %}
+      {% set contact_name = name_parts[0] if name_parts[-1].isdigit() else sibling %}
+      {% if sibling.startswith('sensor.') and contact_name.endswith('_last_seen') %}
         {% set contact.rows = contact.rows + [dict(entity_id=sibling, state=states(sibling))] %}
       {% endif %}
     {% endfor %}

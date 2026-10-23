@@ -331,8 +331,9 @@ export default function FunctionalSafety() {
             </div>
           </div>
           <p>
-            Poziomy alarmów: brak pamięci L2 (pamięć dostępna i PSI), utrata WAN L3, trwałe obciążenie CPU, dostępne aktualizacje i niska
-            bateria L4. Dysk, temperatura hosta i kopie zapasowe mają osobne progi systemowe. Nieznane źródło nie oznacza sprawności.
+            Poziomy alarmów: brak pamięci L2 (pamięć dostępna i PSI); utrata WAN, trwałe obciążenie CPU, mało miejsca na dysku, wysoka
+            temperatura hosta, problemy z kopiami zapasowymi, dostępne aktualizacje i testy czujników wymagające uwagi L3. Niska bateria i
+            testy okresowe L4 to informacje, które nie pogarszają ogólnego stanu systemu. Nieznane źródło nie oznacza sprawności.
           </p>
           {sources.length === 0 ? (
             <p>Brak diagnostyki źródeł.</p>

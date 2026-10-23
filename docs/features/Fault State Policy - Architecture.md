@@ -77,6 +77,21 @@ degradation target.
 | L3 | Mobile warning, WARNING card | 30 s | No latch; control only by explicit allowlist. |
 | L4 | Dashboard INFO only | Best effort | No latch; control only by explicit allowlist. |
 
+Active L4 conditions shall remain visible as information with any applicable
+manual task, evidence and history. They shall not contribute to the aggregate
+system fault level, headline warning/fault counts, or degraded overall presentation.
+An L4-only condition shall not label the system faulty, unhealthy or red.
+The aggregate shall use active L1–L3 faults, including shadowed faults, and
+report level `0` / `no_faults` when none are active. The raw `fault_count`
+attribute shall still retain the total number of active conditions, including
+L4. Legacy aggregate `information` / level `4` shall be interpreted as
+non-degrading. This does not clear L4 conditions or establish healthy coverage.
+Missing evidence and task uncertainty linked unambiguously to known L4
+conditions shall remain visible locally without degrading the overall summary.
+Startup, unknown fault priority, unlinked task uncertainty and independent
+coverage/channel failures shall remain visible and shall not be masked by an
+informational condition.
+
 The [mobile delivery contract](<Mobile Notification Delivery - Architecture.md>)
 owns transport retries, ACK and platform-specific profiles. Explicit fault
 configuration owns recovery prerequisites, degradation targets, shadowing and
@@ -89,10 +104,29 @@ Each fault MQTT state is exactly one of the eight evaluation status codes above.
 The attributes `active` (Boolean), `shadowed_by` (list of fault IDs), and
 `latched` (Boolean) expose independent axes. `FAIL` and `active` can coexist
 with nonempty `shadowed_by`; `UNEVALUABLE` can coexist with `active: true`.
-System severity counts active faults even when shadowed. Notification history
+System severity counts active L1–L3 faults even when shadowed; L4 activation
+remains available separately as information. Notification history
 uses transition/response event codes `SET`, `CLEARED`, `SHADOWED` and `TEST`;
 these are not fault MQTT states. Consumers must not infer activation or
 shadowing from the evaluation status alone.
+
+Fault attributes shall include `publication_state`, the raw evaluation state
+associated with that attribute snapshot. Because MQTT state and attributes
+arrive separately, entity history may contain intermediate snapshots whose raw
+state contradicts this marker. SafetyHome shall exclude those inconsistent
+snapshots from its fault history. Legacy snapshots may be recognized by a
+contradiction between the raw state and a known localized `state_label`.
+Filtering shall not infer activation from evaluation status, discard a valid
+latched `PASS`, manufacture missing transitions, or interpret missing history
+as positive clear evidence.
+
+SafetyHome entity history shall request and subscribe only to a bounded page
+of the selected entities. The interface shall identify the visible entity range
+and total matching entity count, and allow navigation through the remaining
+pages without discarding Recorder data. Changing the page, category or time
+range shall release superseded history subscriptions. A new category or time
+range shall reset pagination; unloaded pages shall not imply missing or healthy
+evidence.
 
 ## Diagnostic evidence
 

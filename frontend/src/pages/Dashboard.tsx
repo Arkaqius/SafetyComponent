@@ -16,6 +16,7 @@ import { EVALUATION_PROGRESS_ENTITY_ID } from '../domain/functionalSafety';
 import { COVERAGE_ENTITY_ID, getCoverageView } from '../domain/coverage';
 import type { ViewModeContext } from '../components/ViewModeSwitch';
 import BasicDashboard from './BasicDashboard';
+import { basicDashboardItems } from '../domain/basicDashboard';
 
 export default function Dashboard() {
   const view = useOutletContext<ViewModeContext>();
@@ -66,8 +67,7 @@ function AdvancedDashboard() {
             : 'muted';
   const acknowledgedNotificationTags = new Set(readAcknowledgedNotificationTags(entities[NOTIFICATION_DELIVERY_HEALTH_ID]));
   const progressState = entities[EVALUATION_PROGRESS_ENTITY_ID]?.state;
-  const primaryFault =
-    faults.find(fault => fault.active === true && fault.shadowedBy.length === 0) ?? faults.find(fault => fault.active === true);
+  const { primaryFault } = basicDashboardItems(faults, recoveries);
   const coverage = getCoverageView(connection.cannotConnect || !connection.ready ? {} : entities);
 
   return (

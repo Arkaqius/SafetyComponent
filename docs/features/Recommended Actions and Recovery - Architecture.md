@@ -254,6 +254,9 @@ shall not make cached or stale device evidence fresh.
 Notification guidance is keyed by proposal ID. An updated proposal replaces its
 own text, while clear or shadow removes that proposal's guidance. This prevents
 stale or contradictory instructions from accumulating on an active fault.
+Withdrawal shall refresh the active phone notification quietly through the
+existing same-tag delivery path; updating only the saved message shall not
+leave a withdrawn instruction visible to the recipient.
 
 SafetyHome and notifications shall use the owner's same localized instruction.
 The fault card and shared list shall identify the subject, executor, expected

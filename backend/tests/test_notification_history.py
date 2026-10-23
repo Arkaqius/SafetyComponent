@@ -99,6 +99,8 @@ def test_history_is_bounded_and_records_are_not_mutated_by_later_updates() -> No
     manager.notify("Fault", 2, FaultState.SET, {"location": "First"}, "tag")
     first = dict(manager.notification_history[0])
     manager.notify("Fault", 2, FaultState.SET, {"location": "Second"}, "tag")
+    manager.pending_deliveries["tag:active"].next_attempt_at = 0
+    manager.tick()
     assert manager.notification_history[0] == first
     assert manager.notification_history[-1]["kind"] == "update"
     for index in range(HISTORY_LIMIT):

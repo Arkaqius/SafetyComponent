@@ -143,6 +143,18 @@ class NotificationManager:
 
         self._persist_state()
 
+    def retire_fault(self, tag: str) -> None:
+        """Retire lifecycle state without asserting recovery or erasing history."""
+        if tag not in self.active_notification and not any(
+            pending.tag == tag for pending in self.pending_deliveries.values()
+        ):
+            return
+        self.active_notification.pop(tag, None)
+        self._drop_pending_for_tag(tag)
+        self._clear_local(tag)
+        self._persist_state()
+        self._publish_diagnostics()
+
     def _accept_operator_action(self, action: str, data: Mapping[str, Any]) -> bool:
         """Require explicit confirmation and bound repeated operator requests."""
         if not isinstance(data, Mapping) or data.get("confirmed") is not True:
@@ -629,6 +641,14 @@ class NotificationManager:
                     self._publish_diagnostics()
                     return
                 delivery_key = f"{tag}:update"
+            pending_update = self.pending_deliveries.get(delivery_key)
+            if pending_update is not None and pending_update.kind == "update":
+                pending_update.level = level
+                pending_update.title = title
+                pending_update.message = message
+                # Keep original deadlines, retry timing and remaining targets.
+                self._persist_state()
+                return
             for pending_id, pending in list(self.pending_deliveries.items()):
                 if pending.tag == tag and pending_id != f"{tag}:active":
                     del self.pending_deliveries[pending_id]
@@ -642,14 +662,14 @@ class NotificationManager:
             created_at=now,
             deadline_at=now
             + self.notification_config["retry"]["deadlines_seconds"][level],
-            next_attempt_at=now,
+            next_attempt_at=now + (1 if kind == "update" else 0),
             target_services=target_services,
         )
         self.pending_deliveries[delivery_key] = delivery
         self._persist_state()
-        if self.wan_online:
+        if self.wan_online and kind != "update":
             self._attempt_delivery(delivery)
-        else:
+        elif not self.wan_online:
             for service in delivery.target_services:
                 self._channel_status[service] = {
                     "status": "queued",
@@ -791,6 +811,12 @@ class NotificationManager:
             return
         self._refresh_notification_message(notification)
         self._persist_state()
+        level = int(notification["level"])
+        if level in (1, 2, 3):
+            self._queue_delivery(
+                tag=fault_tag, level=level, title=str(notification["title"]),
+                message=str(notification["message"]), kind="update",
+            )
 
     def _refresh_notification_message(self, notification: dict[str, Any]) -> None:
         message = notification.get("_base_message", notification["message"])

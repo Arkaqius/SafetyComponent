@@ -95,6 +95,7 @@ hazard.guidance.water_leak: Prüfen Sie das Leck aus sicherer Entfernung und spe
 notification.title.1: Sofortiges Handeln erforderlich
 notification.title.2: Sicherheitsproblem erkannt
 notification.title.3: Bitte prüfen Sie Ihr Zuhause
+notification.title.4: Information zur Prüfung
 notification.title.cleared: Sicherheitsproblem behoben
 notification.active: '{fault} erfordert Ihre Aufmerksamkeit.'
 notification.cleared: Gute Nachricht – {fault} ist nicht mehr aktiv.

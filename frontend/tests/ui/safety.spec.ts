@@ -35,6 +35,88 @@ async function openMock(page: Page, route = '/', viewMode: 'basic' | 'advanced' 
   await page.waitForFunction(() => Boolean(window.__safetyHomeMock));
 }
 
+test('large history inventories keep only one bounded page subscribed and reset filters', async ({ page }) => {
+  await openMock(page, '/history');
+  await page.evaluate(() => {
+    const entities: EntityMap = {};
+    for (let index = 0; index < 437; index++) {
+      entities[`sensor.fault_bulk_${String(index).padStart(3, '0')}`] = {
+        state: 'PASS',
+        attributes: { friendly_name: `Czujnik ${String(index).padStart(3, '0')}`, active: false, level: 3 },
+      };
+    }
+    window.__safetyHomeMock.update({ entities, connectionStatus: 'connected', ready: true });
+  });
+  await expect(page.locator('.history-card')).toHaveCount(20);
+  await expect(page.getByRole('navigation', { name: 'Strony historii encji' })).toContainText('Encje 1–20 z 437');
+  await page.getByRole('button', { name: 'Następne encje', exact: true }).click();
+  await expect(page.locator('.history-card')).toHaveCount(20);
+  await expect(page.locator('[data-entity-id="sensor.fault_bulk_000"]')).toHaveCount(0);
+  await expect(page.locator('[data-entity-id="sensor.fault_bulk_020"]')).toBeVisible();
+  await page.getByRole('button', { name: 'Usterki', exact: true }).click();
+  await expect(page.getByRole('navigation', { name: 'Strony historii encji' })).toContainText('Encje 1–20 z 437');
+  await page.getByRole('button', { name: 'System', exact: true }).click();
+  await expect(page.locator('.history-card')).toHaveCount(0);
+});
+
+test('L4 stays informational while L3 warnings still change the overall state', async ({ page }, testInfo) => {
+  await openMock(page);
+  await page.evaluate(() => {
+    const entities = window.__safetyHomeMock.snapshot();
+    for (const id of Object.keys(entities)) {
+      if (id.startsWith('sensor.fault_') || id.startsWith('sensor.recovery_')) delete entities[id];
+    }
+    entities['sensor.safety_app_health'] = { state: 'running', attributes: {} };
+    entities['sensor.safetysystem_state'] = { state: 'information', attributes: {} };
+    entities['sensor.fault_battery_notice'] = {
+      state: 'FAIL',
+      attributes: {
+        fault_id: 'BatteryNotice',
+        friendly_name: 'Bateria pilota',
+        level: 4,
+        active: true,
+        category: 'D',
+        latched: false,
+        contributors: ['battery_reading'],
+        active_contributors: ['battery_reading'],
+      },
+    };
+    entities['sensor.recovery_battery_notice'] = {
+      state: 'TO_PERFORM',
+      attributes: {
+        proposals: [{ proposal_id: 'battery', fault_id: 'BatteryNotice', status: 'TO_PERFORM', instruction: 'Sprawdź baterię pilota' }],
+      },
+    };
+    window.__safetyHomeMock.update({ entities, connectionStatus: 'connected', ready: true });
+  });
+  const hero = page.locator('.safety-hero');
+  const notice = page.locator('[data-entity-id="sensor.fault_battery_notice"]');
+  await expect(hero).toHaveClass(/hero-safe/);
+  await expect(hero).toContainText('System bezpieczny');
+  await expect(hero).toContainText('1 informacja do sprawdzenia');
+  await expect(hero.locator('.hero-incident')).toHaveCount(0);
+  await expect(page.locator('.fault-panel .count-badge-alert')).toHaveCount(0);
+  await expect(page.locator('.fault-panel .panel-header')).toContainText('1 informacja');
+  await expect(notice).toHaveClass(/fault-info/);
+  await expect(notice).toContainText('Informacja potwierdzona');
+  await expect(notice.locator('summary .status-danger, summary .status-critical')).toHaveCount(0);
+  await expect(notice.locator('.fault-contributor-active')).toHaveCSS('border-color', 'rgb(111, 181, 255)');
+  await expect(notice).toContainText('Sprawdź baterię pilota');
+  await page.screenshot({ path: testInfo.outputPath('information-only.png'), fullPage: true, scale: 'css' });
+
+  await page.evaluate(() => {
+    const entities = window.__safetyHomeMock.snapshot();
+    entities['sensor.fault_update_warning'] = {
+      state: 'FAIL',
+      attributes: { friendly_name: 'Aktualizacja dostępna', level: 3, active: true, category: 'D' },
+    };
+    window.__safetyHomeMock.update({ entities });
+  });
+  await expect(hero).toHaveClass(/hero-warning/);
+  await expect(hero.getByRole('heading')).toHaveText('Ostrzeżenie');
+  await expect(notice).toHaveClass(/fault-info/);
+});
+
 test('device contact does not turn an unknown water alarm into a clear alarm', async ({ page }, testInfo) => {
   await openMock(page, '/internal-hazards');
   await page.evaluate(() => {

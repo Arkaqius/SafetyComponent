@@ -73,7 +73,8 @@ export default function FaultSection({
     });
   }, [faults, filter, query]);
 
-  const activeCount = faults.filter(fault => fault.active).length;
+  const activeCount = faults.filter(fault => fault.active === true && fault.level !== 4).length;
+  const informationCount = faults.filter(fault => fault.active === true && fault.level === 4).length;
 
   return (
     <section className='panel fault-panel'>
@@ -90,6 +91,9 @@ export default function FaultSection({
         <span className={`count-badge${activeCount > 0 ? ' count-badge-alert' : ''}`}>
           {activeCount === 1 ? '1 aktywne' : `${activeCount} aktywnych`}
         </span>
+        {informationCount > 0 && (
+          <StatusBadge tone='info'>{informationCount === 1 ? '1 informacja' : `${informationCount} informacji`}</StatusBadge>
+        )}
       </div>
 
       {!compact && (
@@ -161,9 +165,20 @@ function FaultCard({
   recoveries: RecoveryView[];
   onSelectEntity?: (entityId: string) => void;
 }) {
-  const status = statusPresentation[fault.status];
   const level = fault.level ? LEVEL_PRESENTATION[fault.level] : undefined;
-  const cardTone = fault.active === true || fault.latched === true ? (fault.level === 1 ? 'critical' : 'danger') : status.tone;
+  const status =
+    fault.level === 4 && ['fail', 'pending_failure', 'pending_recovery', 'unevaluable'].includes(fault.status)
+      ? {
+          label:
+            fault.status === 'fail'
+              ? 'Informacja potwierdzona'
+              : statusPresentation[fault.status].label.replace('zagrożenia', 'informacji'),
+          tone: 'info' as const,
+        }
+      : fault.level === 3 && fault.status === 'fail'
+        ? { label: 'Ostrzeżenie potwierdzone', tone: 'warning' as const }
+        : statusPresentation[fault.status];
+  const cardTone = fault.active === true || fault.latched === true ? (level?.tone ?? 'danger') : status.tone;
   const connection = useHass(store => store.connection);
   const connected = useHass(store => store.connectionStatus === 'connected' && store.ready);
   const [submitting, setSubmitting] = useState(false);
@@ -211,7 +226,9 @@ function FaultCard({
           {fault.category === 'H' ? 'Zagrożenie H' : fault.category === 'D' ? 'Diagnostyka D' : 'Brak kategorii'}
         </StatusBadge>
         {level && <span className={`level-chip status-${level.tone}`}>{level.shortLabel}</span>}
-        {fault.active === true && <StatusBadge tone='danger'>Aktywna</StatusBadge>}
+        {fault.active === true && (
+          <StatusBadge tone={level?.tone ?? 'danger'}>{fault.level === 4 ? 'Do sprawdzenia' : 'Aktywna'}</StatusBadge>
+        )}
         {fault.active === false && <StatusBadge tone='muted'>Nieaktywna</StatusBadge>}
         {fault.latched && <StatusBadge tone='critical'>Zatrzaśnięta</StatusBadge>}
         {fault.shadowedBy.length > 0 && <StatusBadge tone='warning'>Przesłonięta</StatusBadge>}
@@ -219,7 +236,12 @@ function FaultCard({
         <Icon className='details-chevron' name='chevron' size={17} />
       </summary>
       <div className='fault-card-details'>
-        <p>{fault.description || 'Brak dodatkowego opisu dla tej usterki.'}</p>
+        <p>
+          {fault.description ||
+            (fault.level === 4
+              ? 'Informacja do sprawdzenia. Nie oznacza bieżącej awarii systemu.'
+              : 'Brak dodatkowego opisu dla tej usterki.')}
+        </p>
         {fault.entityId === 'sensor.fault_riskytemperatureforecast' && (
           <p>
             Prognoza wykorzystuje temperaturę i tempo jej zmian. Przewidywane przekroczenie progu może wystąpić, gdy aktualna temperatura
@@ -234,7 +256,7 @@ function FaultCard({
           </div>
           <div>
             <dt>Stan</dt>
-            <dd>{localizedEntityState(fault.entityId, fault.state)}</dd>
+            <dd>{fault.level === 4 ? status.label : localizedEntityState(fault.entityId, fault.state)}</dd>
           </div>
           <div>
             <dt>Kategoria</dt>
@@ -242,7 +264,9 @@ function FaultCard({
               {fault.category === 'H'
                 ? 'H — warunek zagrożenia'
                 : fault.category === 'D'
-                  ? 'D — utrata diagnostyki lub pokrycia'
+                  ? fault.level === 4
+                    ? 'D — informacja diagnostyczna'
+                    : 'D — utrata diagnostyki lub pokrycia'
                   : 'Nie podano'}
             </dd>
           </div>

@@ -48,7 +48,7 @@ def test_invalid_dates_rejected(value: object) -> None:
     assert aware_time(value) is None
 
 
-def test_host_units_staleness_and_l4_catalog(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_host_units_staleness_and_warning_catalog(monkeypatch: pytest.MonkeyPatch) -> None:
     clock = [10.0]
     monkeypatch.setattr("components.core.maintenance_evidence.monotonic", lambda: clock[0])
     states = {"sensor.disk": snapshot("0.5", unit="GiB", kind="data_size"), "sensor.temperature": snapshot("85", unit="°C", kind="temperature")}
@@ -59,7 +59,10 @@ def test_host_units_staleness_and_l4_catalog(monkeypatch: pytest.MonkeyPatch) ->
     monitor.evaluate()
     assert mqtt.states[-1][2]["disk"]["status"] == "low"
     assert mqtt.states[-1][2]["host_temperature"]["status"] == "high"
-    assert all(value["level"] == 4 for value in monitor.get_fault_definitions().values())
+    definitions = monitor.get_fault_definitions()
+    assert definitions["HostDiskLow"]["level"] == 3
+    assert definitions["HostTemperatureHigh"]["level"] == 3
+    assert definitions["PeriodicTestDueNotificationDelivery"]["level"] == 4
     events = len(bus.events)
     states["sensor.disk"] = snapshot("99999", unit="%", kind="data_size")
     states["sensor.temperature"] = snapshot("25", unit="°C", kind="temperature", old=True)
