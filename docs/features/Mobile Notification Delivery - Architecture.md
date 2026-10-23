@@ -257,6 +257,19 @@ If the new-alert attempt is still pending for any target, its content is
 updated without downgrading it to quiet; only targets that already completed
 the new-alert submission receive the quiet refresh.
 
+For quiet `update` submissions, the manager shall compare the complete visible
+content and quiet-normalized payload, including actions, with the last content
+accepted by Home Assistant for that active tag and target service. An identical
+update shall not be resubmitted to that service or create a journal entry.
+Acceptance fingerprints shall be persisted only after actual Home Assistant
+acceptance; a legacy snapshot without them shall not imply acceptance or device
+delivery. Changed content shall include every target that has not accepted that
+content, including targets that accepted an earlier version. Updating a pending
+submission shall retain its retry timing and deadline. Returning to already
+accepted content shall cancel a superseded unsent update. This suppression
+shall apply only to quiet updates, not new alarms, escalation, resolution or
+controlled repeats.
+
 ### 4.3 Acknowledgement
 
 The Companion action identifier contains the stable fault tag. A matching
@@ -335,6 +348,9 @@ by newer content and a new SET following a failed resolved submission.
 Tests shall cover guidance removal, coalesced same-tag updates, pending-target
 and deadline preservation, and authoritative battery-identity retirement without
 a false resolved message or notification-journal deletion.
+Content-deduplication tests shall cover independent target acceptance, restart
+restoration, legacy snapshots without fingerprints, changed actions/content,
+return to accepted content, and preservation of retries and lifecycle alerts.
 Frontend domain and component tests shall cover request and response contracts,
 lifecycle labels, filtering, date/time, target presentation, diagnostic
 details, refresh, and empty or unavailable history.

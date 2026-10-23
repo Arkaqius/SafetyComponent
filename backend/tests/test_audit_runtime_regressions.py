@@ -124,12 +124,16 @@ def test_quiet_update_keeps_original_deadline_and_retry_targets():
     subject, clock = make_manager()
     subject.notify("Weather", 2, FaultState.SET, None, "tag")
     subject.upsert_recovery_guidance("window", "Close window", "tag")
+    subject.hass_app.call_service.return_value = {"success": False}
+    clock.return_value = 1001
+    subject.tick()
     first = subject.pending_deliveries["tag:active"]
-    first.target_services = ("notify/remaining_phone",)
     first.next_attempt_at = 1010
     original = (first.created_at, first.deadline_at)
+    original_targets = first.target_services
     clock.return_value = 1005
-    subject.remove_recovery_guidance("window", "tag")
+    subject.upsert_recovery_guidance("window", "Inspect the window contact", "tag")
+    assert subject.pending_deliveries["tag:active"] is first
     assert (first.created_at, first.deadline_at) == original
     assert first.next_attempt_at == 1010
-    assert first.target_services == ("notify/remaining_phone",)
+    assert first.target_services == original_targets

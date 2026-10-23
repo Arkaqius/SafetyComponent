@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 import re
 import time
@@ -516,6 +518,9 @@ class NotificationManager:
                 0 if is_escalation else int((existing or {}).get("repeat_count", 0))
             ),
             "next_repeat_at": (existing or {}).get("next_repeat_at"),
+            "_accepted_content_by_service": dict(
+                (existing or {}).get("_accepted_content_by_service", {})
+            ),
         }
         self._refresh_notification_message(record)
         if (
@@ -616,6 +621,19 @@ class NotificationManager:
     def _title(self, level: int) -> str:
         return self.localizer.text(f"notification.title.{level}")
 
+    def _content_signature(
+        self, *, tag: str, level: int, title: str, message: str
+    ) -> str:
+        """Identify visible content and actions independently of alert sound."""
+        acknowledged = bool(self.active_notification.get(tag, {}).get("acknowledged", False))
+        payload = self.mobile_provider.build_payload(
+            level=level, tag=tag,
+            acknowledgement_title=self.localizer.text("notification.action.ack"),
+            quiet=True, resolved=False, acknowledged=acknowledged,
+        )
+        content = json.dumps([level, title, message, payload], sort_keys=True)
+        return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
     def _queue_delivery(
         self, *, tag: str, level: int, title: str, message: str, kind: str
     ) -> None:
@@ -637,16 +655,30 @@ class NotificationManager:
                     if service not in pending_new_targets
                 )
                 self._persist_state()
-                if not target_services:
-                    self._publish_diagnostics()
-                    return
                 delivery_key = f"{tag}:update"
+            signature = self._content_signature(
+                tag=tag, level=level, title=title, message=message
+            )
+            accepted = self.active_notification.get(tag, {}).get("_accepted_content_by_service", {})
+            target_services = tuple(
+                service for service in target_services
+                if accepted.get(service) != signature
+            )
             pending_update = self.pending_deliveries.get(delivery_key)
+            if not target_services:
+                if pending_update is not None and pending_update.kind == "update":
+                    del self.pending_deliveries[delivery_key]
+                self._persist_state()
+                self._publish_diagnostics()
+                return
             if pending_update is not None and pending_update.kind == "update":
                 pending_update.level = level
                 pending_update.title = title
                 pending_update.message = message
-                # Keep original deadlines, retry timing and remaining targets.
+                # Changed content must also reach previously successful targets.
+                # Accepted signatures omit only targets already holding this content.
+                pending_update.target_services = target_services
+                # Keep original deadlines and retry timing.
                 self._persist_state()
                 return
             for pending_id, pending in list(self.pending_deliveries.items()):
@@ -697,6 +729,10 @@ class NotificationManager:
             acknowledged = delivery.kind in {"acknowledged", "test"} or bool(
                 active_record.get("acknowledged", False)
             )
+            signature = self._content_signature(
+                tag=delivery.tag, level=delivery.level,
+                title=delivery.title, message=delivery.message,
+            )
             result = self.mobile_provider.send(
                 level=delivery.level,
                 title=delivery.title,
@@ -723,6 +759,14 @@ class NotificationManager:
         self._counters["accepted_attempts"] += accepted_count
         self._counters["failed_attempts"] += len(result.failed_services)
         for target in result.targets:
+            if (
+                target.disposition.value == "accepted_by_home_assistant"
+                and delivery.kind in {"new", "update", "acknowledged", "repeat"}
+                and delivery.tag in self.active_notification
+            ):
+                self.active_notification[delivery.tag].setdefault(
+                    "_accepted_content_by_service", {}
+                )[target.service] = signature
             self.notification_history.append(
                 submission_entry(delivery, target, completed_at)
             )
@@ -894,6 +938,14 @@ class NotificationManager:
             }
             self.pending_deliveries = {}
             current_services = set(self.mobile_provider.services)
+            for record in self.active_notification.values():
+                accepted = record.get("_accepted_content_by_service", {})
+                record["_accepted_content_by_service"] = {
+                    service: signature for service, signature in accepted.items()
+                    if service in current_services
+                    and isinstance(signature, str)
+                    and re.fullmatch(r"[0-9a-f]{64}", signature)
+                } if isinstance(accepted, Mapping) else {}
             for raw in snapshot.get("pending_deliveries", []):
                 delivery = PendingDelivery.from_dict(dict(raw))
                 retained_services = tuple(

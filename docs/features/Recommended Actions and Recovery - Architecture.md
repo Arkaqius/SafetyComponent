@@ -259,6 +259,14 @@ existing same-tag delivery path; updating only the saved message shall not
 leave a withdrawn instruction visible to the recipient.
 
 SafetyHome and notifications shall use the owner's same localized instruction.
+Entity-backed manual instructions and door-fault labels shall prefer the Home
+Assistant entity's current nonempty `friendly_name` over a technical binding
+name. Instructions shall resolve that display name when built, so a technical
+startup fallback is not retained after friendly metadata becomes available.
+Missing or unreadable display metadata shall retain the existing subject
+context and shall not block a warning or action. Display-name changes shall
+not change stable fault, entity or proposal identities, completion evidence or
+command authorization.
 The fault card and shared list shall identify the subject, executor, expected
 result, report/evidence status and any block reason. The frontend shall expose
 a manual-work report only when useful for that action, and label consent buttons
@@ -272,6 +280,9 @@ Automated tests shall cover exact proposal payloads, manual versus confirmed
 policy, no actuation before confirmation, invalid and replayed tokens, the exact
 allowlisted service, physical postcondition handling, timeout, persistence,
 shadow/clear withdrawal, and multiple proposals sharing one recovery entity.
+Display-name tests shall cover current Home Assistant names, unavailable or
+empty metadata, later availability after startup, and unchanged runtime
+identities and command boundaries.
 
 Contract tests shall also cover central rejection of actuator changes under
 `manual`, operator reports without actuation or fault clearance, actions without
