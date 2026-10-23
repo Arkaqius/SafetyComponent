@@ -95,9 +95,28 @@ notification.title.1: Immediate action needed
 notification.title.2: Safety issue detected
 notification.title.3: Please check your home
 notification.title.4: Information to review
-notification.title.cleared: Safety issue resolved
+notification.title.cleared: Issue resolved
 notification.active: '{fault} needs your attention.'
-notification.cleared: Good news - {fault} is no longer active.
+notification.cleared: '{fault}.'
+notification.subject.input: Monitored sensor
+notification.problem.generic: Issue requiring attention
+notification.problem.location: '{problem} — {location}'
+notification.problem.urgent: 'URGENT: {problem}'
+notification.input.availability: 'No reading: {entity}'
+notification.input.freshness: '{entity}: readings out of date'
+notification.input.required_value: '{entity}: required reading missing'
+notification.input.allowed_values: '{entity}: invalid reading'
+notification.input.finite_number: '{entity}: invalid reading'
+notification.input.numeric_range: '{entity}: reading outside allowed range'
+notification.input.rate_of_change: '{entity}: reading changing too quickly'
+notification.input.recovery_command: '{entity}: control unavailable'
+notification.input.invalid: '{entity}: reading problem'
+notification.open_details: Check the details in Safety Home.
+notification.inspect_input: Check sensor power and connectivity.
+notification.observation.unavailable: Reading unavailable. Check the details in Safety Home.
+notification.observation.unknown: No reliable reading. Check the details in Safety Home.
+notification.observation.none: No reading. Check the details in Safety Home.
+notification.more_actions: '{count} more recommendations. Open Safety Home.'
 notification.guidance: 'What you can do:'
 notification.action.ack: Acknowledge
 detail.location: Location
@@ -132,7 +151,7 @@ recovery.reason_finite_number: The input does not report a valid number.
 recovery.reason_numeric_range: The reading is outside the permitted range.
 recovery.reason_rate_of_change: The reading changes faster than permitted.
 recovery.result_closed: 'A current contact reading confirms that {subject} is closed.'
-recovery.inspect_input: 'Check the power, connection and reporting path of {subject}, according to the reported failed check.'
+recovery.inspect_input: 'Check sensor power and connectivity: {subject}.'
 recovery.result_input: 'Current valid reports confirm recovery of the failed check for {subject}.'
 recovery.inspect_battery: 'Check the battery instructions for {subject}; replace or charge it as specified for this device.'
 recovery.result_battery: 'A fresh battery report confirms recovery for {subject}.'

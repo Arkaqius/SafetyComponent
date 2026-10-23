@@ -106,10 +106,10 @@ def test_notification_updates_single_fault_notification_for_prefault_lifecycle(
     notify_calls = _notify_calls(app_instance)
     assert len(app_instance.notify_man.active_notification) == 1
     fault_tag = next(iter(app_instance.notify_man.active_notification))
-    assert notify_calls[-1].kwargs["title"] == "Safety issue detected"
+    assert notify_calls[-1].kwargs["title"] == "Unsafe temperature — Office"
     assert (
         notify_calls[-1].kwargs["message"]
-        == "Unsafe temperature needs your attention.\nLocation: Office"
+        == "Check the details in Safety Home."
     )
     assert notify_calls[-1].kwargs["data"]["tag"] == fault_tag
 
@@ -120,8 +120,8 @@ def test_notification_updates_single_fault_notification_for_prefault_lifecycle(
     notify_calls = _notify_calls(app_instance)
     assert list(app_instance.notify_man.active_notification) == [fault_tag]
     assert (
-        notify_calls[-1].kwargs["message"]
-        == "Unsafe temperature needs your attention.\nLocation: Office, Kitchen"
+        notify_calls[-1].kwargs["title"]
+        == "Unsafe temperature — Office, Kitchen"
     )
     assert notify_calls[-1].kwargs["data"]["tag"] == fault_tag
     assert (
@@ -139,8 +139,8 @@ def test_notification_updates_single_fault_notification_for_prefault_lifecycle(
     assert app_instance.fm.check_fault("RiskyTemperature") is FaultEvaluationStatus.FAIL
     assert list(app_instance.notify_man.active_notification) == [fault_tag]
     assert (
-        notify_calls[-1].kwargs["message"]
-        == "Unsafe temperature needs your attention.\nLocation: Kitchen"
+        notify_calls[-1].kwargs["title"]
+        == "Unsafe temperature — Kitchen"
     )
     assert (
         app_instance.mqtt_entities.get_attributes("sensor.fault_RiskyTemperature")[
@@ -155,7 +155,7 @@ def test_notification_updates_single_fault_notification_for_prefault_lifecycle(
     assert app_instance.fm.check_fault("RiskyTemperature") is FaultEvaluationStatus.PASS
     assert app_instance.notify_man.active_notification == {}
     assert notify_calls[-1].kwargs["message"].startswith(
-        "Good news - Unsafe temperature is no longer active."
+        "Unsafe temperature."
     )
     assert notify_calls[-1].kwargs["data"]["tag"] == fault_tag
     assert (

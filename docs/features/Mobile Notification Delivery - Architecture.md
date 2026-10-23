@@ -50,6 +50,28 @@ flowchart LR
   individual target submissions;
 - persists all state needed to resume safely after a restart.
 
+Mobile presentation shall be separate from fault evidence and delivery policy.
+An active title shall identify the concrete problem using friendly subject
+names and the available Home Assistant location; L1 shall add a localized
+urgent prefix. Input-failure titles shall describe the failed check using
+current Home Assistant names, with a localized generic subject when display
+metadata is missing. A technical entity ID shall not substitute for a missing
+friendly name in mobile text.
+
+The body shall prioritize the owner's recommendation and current recovery
+guidance, with duplicate instructions removed. L2 and L3 shall show at most
+two distinct recommendations plus a localized count directing the recipient to
+Safety Home for any remaining recommendations. L1 shall retain all complete
+urgent instructions without presentation truncation. Without guidance,
+availability or freshness failures shall offer a localized input-inspection
+instruction; absent or unreliable readings shall have a localized explanation,
+and other cases shall direct the recipient to Safety Home. Raw machine values
+such as `unavailable`, `unknown` and `none` shall remain diagnostic evidence,
+not be appended to the mobile message. Allowlisted raw fault details and the
+existing MQTT/diagnostic contracts shall remain unchanged. Resolved messages
+shall use a distinct concise localized title and identify the affected subject
+and available location only after an authoritative clear.
+
 ### 2.2 `MobilePushProvider`
 
 - owns Home Assistant notify service names and Companion payload schemas;
@@ -187,6 +209,9 @@ removes a notification and shall not be presented as a healed fault. The journal
 transport exception text, unfiltered fault events, or inferred group members.
 Failure details in the history UI shall use a generic diagnostic explanation;
 existing transport-health diagnostics retain their separate error contract.
+Stored notification content shall reflect the text actually submitted for that
+attempt, subject to the declared journal bounds and truncation indicator;
+history shall not regenerate old messages from current presentation rules.
 
 The SafetyHome History page shall load the complete retained journal through
 bounded gateway pages and present the notification list before entity history.
@@ -351,6 +376,11 @@ a false resolved message or notification-journal deletion.
 Content-deduplication tests shall cover independent target acceptance, restart
 restoration, legacy snapshots without fingerprints, changed actions/content,
 return to accepted content, and preservation of retries and lifecycle alerts.
+Presentation tests shall cover EN/PL/DE titles, friendly-name and location
+fallbacks, failed-check wording, absence of raw missing-reading values, duplicate
+guidance, L2/L3 recommendation bounds and omitted counts, complete L1 guidance,
+distinct authoritative-clear text, unchanged diagnostic evidence, and journal
+content matching actual submissions.
 Frontend domain and component tests shall cover request and response contracts,
 lifecycle labels, filtering, date/time, target presentation, diagnostic
 details, refresh, and empty or unavailable history.

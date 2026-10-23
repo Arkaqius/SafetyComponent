@@ -96,9 +96,28 @@ notification.title.1: Sofortiges Handeln erforderlich
 notification.title.2: Sicherheitsproblem erkannt
 notification.title.3: Bitte prüfen Sie Ihr Zuhause
 notification.title.4: Information zur Prüfung
-notification.title.cleared: Sicherheitsproblem behoben
+notification.title.cleared: Problem behoben
 notification.active: '{fault} erfordert Ihre Aufmerksamkeit.'
-notification.cleared: Gute Nachricht – {fault} ist nicht mehr aktiv.
+notification.cleared: '{fault}.'
+notification.subject.input: Überwachter Sensor
+notification.problem.generic: Problem erfordert Aufmerksamkeit
+notification.problem.location: '{problem} — {location}'
+notification.problem.urgent: 'DRINGEND: {problem}'
+notification.input.availability: 'Kein Messwert: {entity}'
+notification.input.freshness: '{entity}: Messwerte veraltet'
+notification.input.required_value: '{entity}: erforderlicher Messwert fehlt'
+notification.input.allowed_values: '{entity}: ungültiger Messwert'
+notification.input.finite_number: '{entity}: ungültiger Messwert'
+notification.input.numeric_range: '{entity}: Messwert außerhalb des zulässigen Bereichs'
+notification.input.rate_of_change: '{entity}: Messwert ändert sich zu schnell'
+notification.input.recovery_command: '{entity}: Steuerung nicht verfügbar'
+notification.input.invalid: '{entity}: Problem mit Messwerten'
+notification.open_details: Prüfen Sie die Details in Safety Home.
+notification.inspect_input: Prüfen Sie Stromversorgung und Verbindung des Sensors.
+notification.observation.unavailable: Messwert nicht verfügbar. Prüfen Sie die Details in Safety Home.
+notification.observation.unknown: Kein verlässlicher Messwert. Prüfen Sie die Details in Safety Home.
+notification.observation.none: Kein Messwert. Prüfen Sie die Details in Safety Home.
+notification.more_actions: '{count} weitere Empfehlungen. Öffnen Sie Safety Home.'
 notification.guidance: 'Das können Sie tun:'
 notification.action.ack: Bestätigen
 detail.location: Ort
@@ -133,7 +152,7 @@ recovery.reason_finite_number: Der Messwert ist keine gültige Zahl.
 recovery.reason_numeric_range: Der Messwert liegt außerhalb des zulässigen Bereichs.
 recovery.reason_rate_of_change: Der Messwert ändert sich schneller als zulässig.
 recovery.result_closed: 'Eine aktuelle Kontaktmeldung bestätigt, dass {subject} geschlossen ist.'
-recovery.inspect_input: 'Prüfen Sie Stromversorgung, Verbindung und Meldungen von {subject} entsprechend der gemeldeten fehlgeschlagenen Prüfung.'
+recovery.inspect_input: 'Prüfen Sie Stromversorgung und Verbindung des Sensors: {subject}.'
 recovery.result_input: 'Aktuelle gültige Meldungen bestätigen die Behebung der fehlgeschlagenen Prüfung für {subject}.'
 recovery.inspect_battery: 'Prüfen Sie die Batterieanleitung für {subject}; ersetzen oder laden Sie die Batterie gemäß der Geräteanleitung.'
 recovery.result_battery: 'Eine neue Batteriemeldung bestätigt die Erholung für {subject}.'

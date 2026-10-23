@@ -259,6 +259,12 @@ existing same-tag delivery path; updating only the saved message shall not
 leave a withdrawn instruction visible to the recipient.
 
 SafetyHome and notifications shall use the owner's same localized instruction.
+The concise mobile view may select the first two distinct L2/L3 recommendations
+and identify the omitted count, while Safety Home retains all current proposals
+and their evidence. L1 mobile messages shall preserve all complete urgent
+instructions. Presentation shall not replace an owner's advice with raw
+diagnostic values, change proposal eligibility or completion, or suppress an
+urgent instruction merely to shorten a message.
 Entity-backed manual instructions and door-fault labels shall prefer the Home
 Assistant entity's current nonempty `friendly_name` over a technical binding
 name. Instructions shall resolve that display name when built, so a technical
@@ -283,6 +289,9 @@ shadow/clear withdrawal, and multiple proposals sharing one recovery entity.
 Display-name tests shall cover current Home Assistant names, unavailable or
 empty metadata, later availability after startup, and unchanged runtime
 identities and command boundaries.
+Guidance-presentation tests shall cover duplicate removal, bounded L2/L3
+selection with an explicit omitted count, complete L1 instructions, and
+unchanged proposals, evidence and command permissions.
 
 Contract tests shall also cover central rejection of actuator changes under
 `manual`, operator reports without actuation or fault clearance, actions without

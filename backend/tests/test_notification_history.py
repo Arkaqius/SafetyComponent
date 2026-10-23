@@ -42,7 +42,7 @@ def test_set_and_healed_are_distinct_timestamped_records_surviving_restart(
     assert active["service"] == "notify/mobile_app_example_phone"
     assert active["result"] == "accepted_by_home_assistant"
     assert active["tag"] == healed["tag"] == "tag"
-    assert "Biuro" in active["message"]
+    assert "Biuro" in active["title"]
     assert restored.active_notification == {}
 
 
@@ -120,7 +120,7 @@ def test_history_contains_only_filtered_bounded_message_not_private_details() ->
         "tag",
     )
     entry = manager.notification_history[0]
-    assert len(entry["message"]) == 2048
+    assert len(entry["title"]) == 2048
     assert entry["text_truncated"] is True
     assert "PRIVATE" not in json.dumps(entry)
 

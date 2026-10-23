@@ -63,9 +63,9 @@ def test_l1_uses_explicit_group_and_exact_cross_platform_profile() -> None:
     assert "return_result" not in service_call.kwargs
     assert "timeout" not in service_call.kwargs
     assert "hass_timeout" not in service_call.kwargs
-    assert service_call.kwargs["title"] == "Immediate action needed"
+    assert service_call.kwargs["title"] == "URGENT: Smoke alarm — Kitchen"
     assert service_call.kwargs["message"] == (
-        "Smoke alarm needs your attention.\nLocation: Kitchen"
+        "Check the details in Safety Home."
     )
     assert service_call.kwargs["data"] == {
         "tag": "tag-l1",
@@ -142,9 +142,7 @@ def test_active_update_is_quiet_and_keeps_recovery_guidance() -> None:
 
     assert list(manager.active_notification) == ["same-tag"]
     assert manager.active_notification["same-tag"]["message"] == (
-        "Unsafe temperature needs your attention.\n"
-        "Location: Office, Kitchen\n\n"
-        "What you can do:\n- Close the office window."
+        "Close the office window."
     )
     clock.advance(1)
     manager.tick()
@@ -226,8 +224,8 @@ def test_cleared_fault_uses_same_tag_and_resolved_quiet_profile() -> None:
     manager.notify("Fault", 3, FaultState.CLEARED, None, "tag-resolved")
 
     sent = hass.call_service.call_args
-    assert sent.kwargs["title"] == "Safety issue resolved"
-    assert sent.kwargs["message"] == "Good news - Fault is no longer active."
+    assert sent.kwargs["title"] == "Issue resolved"
+    assert sent.kwargs["message"] == "Issue requiring attention."
     assert sent.kwargs["data"]["tag"] == "tag-resolved"
     assert sent.kwargs["data"]["persistent"] is False
     assert sent.kwargs["data"]["sticky"] is False
@@ -318,7 +316,7 @@ def test_update_keeps_undelivered_target_alerting_and_quiets_completed_target() 
     pending_new = manager.pending_deliveries["split-tag:active"]
     assert pending_new.kind == "new"
     assert pending_new.target_services == ("notify/phone_two",)
-    assert "Office" in pending_new.message
+    assert "Office" in pending_new.title
 
     clock.advance(5)
     manager.tick()
@@ -476,9 +474,9 @@ def test_failed_acknowledgement_retry_cannot_overwrite_newer_fault_content() -> 
     clock.advance(5)
     manager.tick()
 
-    messages = [call.kwargs["message"] for call in notify_calls(hass)]
-    assert messages[-1].endswith("Location: New")
-    assert all(not message.endswith("Location: Old") for message in messages[2:])
+    titles = [call.kwargs["title"] for call in notify_calls(hass)]
+    assert titles[-1].endswith("— New")
+    assert all(not title.endswith("— Old") for title in titles[2:])
 
 
 def test_ui_acknowledgement_uses_same_lifecycle_and_cancels_stale_delivery() -> None:
@@ -513,7 +511,7 @@ def test_reopened_fault_cancels_retry_of_previous_resolved_notification() -> Non
     manager.tick()
 
     messages = [call.kwargs["message"] for call in notify_calls(hass)]
-    assert messages[-1].endswith("Location: New")
+    assert notify_calls(hass)[-1].kwargs["title"].endswith("— New")
     assert len(messages) == 3
 
 
@@ -573,7 +571,7 @@ def test_authoritative_clear_reconciles_restored_fault_even_when_not_new() -> No
     )
 
     assert "restored-clear-tag" not in restored.active_notification
-    assert notify_calls(restored_hass)[-1].kwargs["message"].startswith("Good news")
+    assert notify_calls(restored_hass)[-1].kwargs["message"] == "Issue requiring attention."
 
 
 def test_restored_retry_uses_current_explicit_service_configuration() -> None:
@@ -933,10 +931,10 @@ def test_polish_copy_and_acknowledgement_action_are_localized() -> None:
     )
 
     sent = notify_calls(hass)[-1].kwargs
-    assert sent["title"] == "Wykryto zagrożenie w domu"
+    assert sent["title"] == "Niebezpieczna temperatura — Biuro"
     assert sent["data"]["actions"][0]["title"] == "Potwierdź"
     assert sent["message"] == (
-        "Wymaga uwagi: Niebezpieczna temperatura.\nLokalizacja: Biuro"
+        "Sprawdź szczegóły w Safety Home."
     )
 
 
@@ -954,5 +952,7 @@ def test_polish_freshness_notification_labels_elapsed_time() -> None:
     )
 
     sent = notify_calls(hass)[-1].kwargs
-    assert "Czas od ostatniej aktualizacji: 4 h 0 min 16 s" in sent["message"]
+    record = manager.active_notification["freshness-pl"]
+    assert record["_details"]["freshness_age"] == "4 h 0 min 16 s"
+    assert sent["title"] == "Problem z encją: Termostat HC1"
     assert "Wartość zmierzona lub prognozowana" not in sent["message"]

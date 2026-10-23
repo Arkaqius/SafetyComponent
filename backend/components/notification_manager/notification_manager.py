@@ -22,6 +22,7 @@ from components.notification_manager.history import (
 from components.notification_manager.local_annunciator import LocalAnnunciator
 from components.notification_manager.mobile_push_provider import MobilePushProvider
 from components.notification_manager.models import PendingDelivery
+from components.notification_manager.presentation import NotificationPresentation
 from components.notification_manager.schema import NotificationConfig
 from components.notification_manager.state_store import (
     InMemoryNotificationStateStore,
@@ -71,6 +72,7 @@ class NotificationManager:
             )
             self.notification_config = model.model_dump()
         self.localizer = localizer or Localizer()
+        self.presentation = NotificationPresentation(hass_app, self.localizer)
         self.mobile_provider = mobile_provider or MobilePushProvider(
             hass_app, self.notification_config["mobile"]
         )
@@ -220,14 +222,16 @@ class NotificationManager:
     ) -> None:
         """Create, refresh, resolve, or remove one fault notification."""
 
-        display_name = friendly_name or self._humanize_identifier(fault)
+        display_name = self.presentation.problem(friendly_name, additional_info or {})
         safe_info = self._filter_details(additional_info)
+        default_message = self.presentation.default_recommendation(additional_info or {})
 
         if fault_status == FaultState.SET:
-            self._set_active_fault(display_name, level, safe_info, fault_tag)
+            self._set_active_fault(display_name, level, safe_info, fault_tag, default_message)
             return
         if fault_status == FaultState.CLEARED:
-            self._resolve_fault(display_name, level, safe_info, fault_tag)
+            subject = self.presentation.input_subject(additional_info or {}) or friendly_name or display_name
+            self._resolve_fault(subject, level, safe_info, fault_tag)
             return
         if fault_status == FaultState.SHADOWED:
             self._remove_fault(level, fault_tag)
@@ -413,12 +417,6 @@ class NotificationManager:
             self._persist_state()
         self._publish_diagnostics()
 
-    @staticmethod
-    def _humanize_identifier(identifier: str) -> str:
-        words = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", identifier)
-        words = words.replace("_", " ").strip()
-        return words[:1].upper() + words[1:]
-
     def _filter_details(self, additional_info: Optional[dict]) -> dict[str, Any]:
         """Drop non-approved fault context before it reaches push or persistence."""
 
@@ -437,40 +435,19 @@ class NotificationManager:
             return None
         return additional_info.get(detail_name.strip().lower())
 
-    def _format_details(self, additional_info: Optional[dict]) -> list[str]:
-        if not additional_info:
-            return []
-        details = []
-        for key, value in additional_info.items():
-            if key == "recommendation":
-                continue
-            label = self.localizer.detail_label(
-                key, self._humanize_identifier(str(key))
-            )
-            details.append(f"{label}: {value}")
-        return details
-
     def _format_active_message(
         self, friendly_name: str, additional_info: Optional[dict]
     ) -> str:
-        lines = [self.localizer.text("notification.active", fault=friendly_name)]
-        lines.extend(self._format_details(additional_info))
         recommendation = self._get_detail(additional_info, "recommendation")
-        if recommendation:
-            lines.extend(
-                [
-                    "",
-                    self.localizer.text("notification.guidance"),
-                    f"- {recommendation}",
-                ]
-            )
-        return "\n".join(lines)
+        return str(recommendation) if recommendation else ""
 
     def _format_cleared_message(
         self, friendly_name: str, additional_info: Optional[dict]
     ) -> str:
         lines = [self.localizer.text("notification.cleared", fault=friendly_name)]
-        lines.extend(self._format_details(additional_info))
+        location = self._get_detail(additional_info, "location")
+        if location:
+            lines.append(str(location))
         return "\n".join(lines)
 
     def _set_active_fault(
@@ -479,6 +456,7 @@ class NotificationManager:
         level: int,
         additional_info: dict[str, Any],
         tag: str,
+        default_message: str,
     ) -> None:
         existing = self.active_notification.get(tag)
         is_new = existing is None
@@ -499,12 +477,14 @@ class NotificationManager:
         else:
             recovery_messages = {}
         base_message = self._format_active_message(display_name, additional_info)
-        title = self._title(level)
+        title = self.presentation.title(display_name, level, additional_info)
         record: dict[str, Any] = {
             "title": title,
             "message": base_message,
             "level": level,
             "_base_message": base_message,
+            "_default_message": default_message,
+            "_details": additional_info,
             "_recovery_messages": recovery_messages,
             "acknowledged": (
                 False
@@ -865,16 +845,11 @@ class NotificationManager:
     def _refresh_notification_message(self, notification: dict[str, Any]) -> None:
         message = notification.get("_base_message", notification["message"])
         recovery_messages = notification.get("_recovery_messages", {})
-        if recovery_messages:
-            items = (
-                recovery_messages.values()
-                if isinstance(recovery_messages, dict)
-                else recovery_messages
-            )
-            guidance = "\n".join(f"- {item}" for item in items)
-            header = self.localizer.text("notification.guidance")
-            message = f"{message}\n\n{header}\n{guidance}"
-        notification["message"] = message
+        items = recovery_messages.values() if isinstance(recovery_messages, dict) else recovery_messages
+        recommendations = [str(message), *(str(item) for item in items)]
+        if not any(text.strip() for text in recommendations):
+            recommendations = [str(notification.get("_default_message", self.localizer.text("notification.open_details")))]
+        notification["message"] = self.presentation.body(recommendations, int(notification["level"]))
 
     def _is_wan_online(self, state: Any) -> bool:
         return str(state).strip().lower() in set(

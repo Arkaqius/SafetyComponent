@@ -176,4 +176,4 @@ def test_full_content_is_compared_even_when_journal_text_is_truncated():
     clock.return_value += 1
     manager.tick()
     assert app.call_service.call_count == 2
-    assert app.call_service.call_args.kwargs["message"].endswith("B")
+    assert app.call_service.call_args.kwargs["title"].endswith("B")
