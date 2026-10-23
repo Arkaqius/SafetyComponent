@@ -193,6 +193,11 @@ removed devices, including exclusions that predate the catalog, and retries
 retirement after restart. A failed inventory read does not prove removal and
 does not retire otherwise configured device faults.
 
+An authoritative battery-identity retirement shall also reconcile its persisted
+notification lifecycle: remove the retired identity's active record, pending
+submissions and repeats while preserving its notification journal. Retirement
+shall not produce a recovered-battery message or count as valid clear evidence.
+
 The authenticated editor obtains candidate devices and readings from
 `GET /api/batteries`. Monitoring switches update `excluded_devices` in the
 unsaved draft. Saving and restarting the App applies the selection and refreshes

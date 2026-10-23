@@ -25,6 +25,7 @@ import { historyTransitions } from '../domain/history';
 
 type HistoryCategory = 'all' | 'system' | 'fault' | 'recovery';
 type HistoryHours = 6 | 24 | 72;
+const HISTORY_PAGE_SIZE = 20;
 
 interface HistoryEntity {
   entityId: string;
@@ -43,6 +44,7 @@ export default function LogPage() {
   const { entities } = useSafetyEntities();
   const [category, setCategory] = useState<HistoryCategory>('all');
   const [hours, setHours] = useState<HistoryHours>(24);
+  const [page, setPage] = useState(0);
   const notificationHistory = useNotificationHistory(entities[NOTIFICATION_HISTORY_ENTITY_ID]);
 
   const historyEntities = Object.entries(entities)
@@ -58,6 +60,9 @@ export default function LogPage() {
         Date.parse(right.entity.last_changed ?? '') - Date.parse(left.entity.last_changed ?? '') ||
         friendlyEntityName(left.entityId, left.entity).localeCompare(friendlyEntityName(right.entityId, right.entity), 'pl')
     );
+  const currentPage = Math.min(page, Math.max(0, Math.ceil(historyEntities.length / HISTORY_PAGE_SIZE) - 1));
+  const pageStart = currentPage * HISTORY_PAGE_SIZE;
+  const visibleEntities = historyEntities.slice(pageStart, pageStart + HISTORY_PAGE_SIZE);
 
   return (
     <div className='page-stack'>
@@ -86,7 +91,10 @@ export default function LogPage() {
               aria-pressed={category === value}
               className={`filter-button${category === value ? ' filter-button-active' : ''}`}
               key={value}
-              onClick={() => setCategory(value)}
+              onClick={() => {
+                setCategory(value);
+                setPage(0);
+              }}
               type='button'
             >
               {categoryLabels[value]}
@@ -95,7 +103,13 @@ export default function LogPage() {
         </div>
         <label className='select-field compact-select'>
           <span>Zakres</span>
-          <select onChange={event => setHours(Number(event.target.value) as HistoryHours)} value={hours}>
+          <select
+            onChange={event => {
+              setHours(Number(event.target.value) as HistoryHours);
+              setPage(0);
+            }}
+            value={hours}
+          >
             <option value={6}>6 godzin</option>
             <option value={24}>24 godziny</option>
             <option value={72}>3 dni</option>
@@ -104,11 +118,29 @@ export default function LogPage() {
       </section>
 
       {historyEntities.length > 0 ? (
-        <section aria-live='polite' className='history-grid'>
-          {historyEntities.map(item => (
-            <HistoryCard hours={hours} item={item} key={item.entityId} />
-          ))}
-        </section>
+        <>
+          <nav className='history-controls' aria-label='Strony historii encji'>
+            <span>
+              Encje {pageStart + 1}–{pageStart + visibleEntities.length} z {historyEntities.length}. Historia jest pobierana dla widocznej
+              strony.
+            </span>
+            <button type='button' disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>
+              Poprzednie encje
+            </button>
+            <button
+              type='button'
+              disabled={pageStart + HISTORY_PAGE_SIZE >= historyEntities.length}
+              onClick={() => setPage(currentPage + 1)}
+            >
+              Następne encje
+            </button>
+          </nav>
+          <section aria-live='polite' className='history-grid'>
+            {visibleEntities.map(item => (
+              <HistoryCard hours={hours} item={item} key={item.entityId} />
+            ))}
+          </section>
+        </>
       ) : (
         <section className='panel empty-state page-empty-state'>
           <div className='empty-state-icon'>

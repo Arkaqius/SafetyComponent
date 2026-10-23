@@ -81,7 +81,7 @@ export default function NotificationHistory({ entries, total, status, onRefresh 
                     {identity.inherited ? 'Ostatnia zapisana lokalizacja' : 'Lokalizacja'}:{' '}
                     {identity.location || 'Nie zapisano lokalizacji'}
                   </span>
-                  <span>{entry.title || notificationKind(entry.kind)}</span>
+                  {identity.faultName !== entry.title && <span>{entry.title || notificationKind(entry.kind)}</span>}
                   <span>Do: {notificationRecipient(entry.service)}</span>
                   <time dateTime={entry.attempted_at}>{formatNotificationTime(entry.attempted_at)}</time>
                 </span>

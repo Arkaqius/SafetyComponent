@@ -146,15 +146,12 @@ function isNotificationEntry(value: unknown): value is NotificationEntry {
 
 export function notificationRecipient(service: string): string {
   if (service === 'notify/all_phones') return 'Wszystkie telefony (grupa)';
-  return service
-    .replace(/^notify\//, '')
-    .replace(/^mobile_app_/, '')
-    .replace(/_/g, ' ');
+  return 'Skonfigurowany odbiorca';
 }
 
 /** Read identity from the recorded message, never from today's fault/location. */
 export function notificationIdentity(entry: NotificationEntry, entries: NotificationEntry[] = []) {
-  const own = recordedIdentity(entry.message);
+  const own = recordedEntryIdentity(entry);
   if (entry.kind !== 'clear') return { ...own, inherited: false };
   const previous = entries
     .filter(
@@ -162,8 +159,39 @@ export function notificationIdentity(entry: NotificationEntry, entries: Notifica
         candidate.tag === entry.tag && candidate.kind !== 'clear' && Date.parse(candidate.attempted_at) <= Date.parse(entry.attempted_at)
     )
     .sort((left, right) => Date.parse(right.attempted_at) - Date.parse(left.attempted_at))
-    .find(candidate => recordedIdentity(candidate.message).faultName);
-  return { ...(previous ? recordedIdentity(previous.message) : own), inherited: Boolean(previous) };
+    .find(candidate => recordedEntryIdentity(candidate).faultName);
+  return { ...(previous ? recordedEntryIdentity(previous) : own), inherited: Boolean(previous) };
+}
+
+function recordedEntryIdentity(entry: NotificationEntry): { faultName: string; location: string } {
+  const legacy = recordedIdentity(entry.message);
+  if (legacy.faultName || entry.kind === 'clear' || entry.kind === 'test') return legacy;
+  const resolvedTitles = ['Problem ustąpił', 'Issue resolved', 'Problem behoben'];
+  if (entry.kind === 'resolved' && resolvedTitles.includes(entry.title)) {
+    const [subject, location = ''] = entry.message.trim().split(/\r?\n/);
+    return { faultName: subject.replace(/\.$/, ''), location };
+  }
+  const genericTitles = [
+    'Wymagane natychmiastowe działanie',
+    'Wykryto zagrożenie w domu',
+    'Sprawdź, co dzieje się w domu',
+    'Immediate action needed',
+    'Safety issue detected',
+    'Check what is happening at home',
+    'Please check your home',
+    'Bitte prüfen Sie Ihr Zuhause',
+    'Sofortiges Handeln erforderlich',
+    'Sicherheitsproblem erkannt',
+    'Prüfen Sie, was zu Hause passiert',
+    'Zagrożenie zostało usunięte',
+    'Safety issue resolved',
+    'Sicherheitsproblem behoben',
+  ];
+  // New alerts record their identity in the concrete title. Keep the complete
+  // title: an em dash may be part of a HA name, so it cannot prove a location.
+  return genericTitles.includes(entry.title) || !['new', 'update', 'repeat', 'acknowledged'].includes(entry.kind)
+    ? legacy
+    : { faultName: entry.title.replace(/^(?:PILNE|URGENT|DRINGEND):\s*/, ''), location: '' };
 }
 
 function recordedIdentity(message: string): { faultName: string; location: string } {

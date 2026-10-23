@@ -163,6 +163,25 @@ def test_system_state_reports_no_faults_without_active_faults(fault_manager):
         attributes={"fault_count": 0, "highest_fault_level": 0},
     )
 
+@pytest.mark.parametrize("alarm_level,expected_state", [(None, "no_faults"), (3, "warning"), (2, "hazard"), (1, "emergency")])
+def test_information_stays_active_without_degrading_or_masking_system_state(
+    fault_manager, alarm_level, expected_state,
+):
+    notice = Fault("BatteryLow", ["sm_battery"], level=4)
+    notice.evaluation.observe("battery", True)
+    fault_manager.faults = {notice.name: notice}
+    if alarm_level is not None:
+        alarm = Fault("Alarm", ["sm_alarm"], level=alarm_level)
+        alarm.evaluation.observe("alarm", True)
+        fault_manager.faults[alarm.name] = alarm
+    fault_manager.update_system_state_entity()
+    assert notice.evaluation.active
+    fault_manager.mqtt_entities.publish_sensor_state.assert_called_with(
+        "sensor.safetysystem_state", expected_state,
+        attributes={"fault_count": len(fault_manager.faults), "highest_fault_level": alarm_level or 0},
+    )
+
+
 def test_fault_manager_requires_event_bus_and_mqtt(fault_manager):
     """Verify manager-to-manager events and entity output have explicit dependencies."""
     assert isinstance(fault_manager.event_bus, EventBus)

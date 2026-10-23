@@ -135,12 +135,23 @@ def test_contact_is_additional_evidence_and_never_replaces_unknown_alarm_state(m
     "sensor.example_temperature", "sensor.example_humidity",
     "sensor.example_battery", "binary_sensor.example_contact",
 ])
-@pytest.mark.parametrize("siblings", [
-    [], ["sensor.example_last_seen"],
-    ["sensor.example_last_seen", "sensor.duplicate_last_seen"],
+@pytest.mark.parametrize("siblings,contacts", [
+    ([], []),
+    (["sensor.example_last_seen"], ["sensor.example_last_seen"]),
+    (["sensor.example_last_seen_2"], ["sensor.example_last_seen_2"]),
+    (["sensor.example_last_seen_12"], ["sensor.example_last_seen_12"]),
+    (["sensor.example_last_seen", "sensor.duplicate_last_seen"],
+     ["sensor.example_last_seen", "sensor.duplicate_last_seen"]),
+    (["sensor.example_last_seen", "sensor.example_last_seen_2"],
+     ["sensor.example_last_seen", "sensor.example_last_seen_2"]),
+    (["sensor.example_last_seen_2", "sensor.example_last_seen_3"],
+     ["sensor.example_last_seen_2", "sensor.example_last_seen_3"]),
+    (["sensor.example_last_seen_text", "sensor.example_last_seen_2_extra",
+      "sensor.example_last_seen_", "sensor.example_last_seen_2_3",
+      "binary_sensor.example_last_seen_2"], []),
 ])
 def test_report_template_uses_only_one_contact_from_the_same_sensor_device(
-    monkeypatch, entity_id, siblings,
+    monkeypatch, entity_id, siblings, contacts,
 ):
     timestamp = datetime(2024, 9, 14, 12, tzinfo=timezone.utc)
     state = SimpleNamespace(
@@ -165,13 +176,48 @@ def test_report_template_uses_only_one_contact_from_the_same_sensor_device(
     monkeypatch.setattr("components.external_apis.home_assistant_state.urlopen", render_report)
     report = HomeAssistantStateProvider("test").poll({entity_id})[entity_id]
     assert report["state"] == "21.5"
-    assert report["last_contact_source_count"] == len(siblings)
-    if len(siblings) == 1:
+    assert report["last_contact_source_count"] == len(contacts)
+    if len(contacts) == 1:
         assert report["last_contact_at"] == timestamp.isoformat()
-        assert report["last_contact_source_entity"] == siblings[0]
+        assert report["last_contact_source_entity"] == contacts[0]
     else:
         assert "last_contact_at" not in report
         assert "last_contact_source_entity" not in report
+
+
+@pytest.mark.parametrize("value,status", [("16", "current"), ("1", "low")])
+def test_suffixed_device_contact_qualifies_unchanged_battery(monkeypatch, value, status):
+    """A recent suffixed heartbeat qualifies an old value on either side of the threshold."""
+    battery = snapshot(value, unit="%", kind="battery", old=True)
+    state = SimpleNamespace(
+        entity_id="sensor.battery", state=value, attributes=battery["attributes"],
+        last_changed=datetime.fromisoformat(battery["last_updated"]),
+        last_updated=datetime.fromisoformat(battery["last_updated"]),
+        last_reported=datetime.fromisoformat(battery["last_reported"]),
+    )
+    contact = snapshot("on")["last_reported"]
+    environment = ImmutableSandboxedEnvironment()
+    environment.filters["to_json"] = json.dumps
+    environment.globals.update(
+        expand=lambda entity: [state] if entity == state.entity_id else [],
+        device_id=lambda _: "battery-device",
+        device_entities=lambda _: ["sensor.remote_last_seen_2"],
+        states=lambda _: contact,
+    )
+
+    def render_report(request, timeout):
+        payload = json.loads(request.data)
+        return BytesIO(environment.from_string(payload["template"]).render(
+            **payload["variables"],
+        ).encode())
+
+    monkeypatch.setattr("components.external_apis.home_assistant_state.urlopen", render_report)
+    monitor, _, mqtt = make_monitor({"sensor.battery": battery})
+    monitor.state_provider = HomeAssistantStateProvider("test")
+    monitor.evaluate()
+    result = mqtt.states[-1][2]["remote_batteries"]["Remote"]
+    assert result["status"] == status
+    assert result["percentage"] == float(value)
 
 
 def test_temperature_without_registry_device_does_not_guess_a_contact_by_name(monkeypatch):

@@ -74,9 +74,7 @@ export default function EntityDetailsDialog({ entities, entityId, onClose }: Ent
       <header className='entity-dialog-header'>
         <div className='entity-dialog-heading'>
           <span className='section-kicker'>{entityCategory(entityId)}</span>
-          <h2 id='entity-dialog-title'>{exactName}</h2>
-          {shortName !== exactName && <p>{shortName}</p>}
-          <code>{entityId}</code>
+          <h2 id='entity-dialog-title'>{shortName}</h2>
         </div>
         <StatusBadge tone={presentation.tone}>{presentation.label}</StatusBadge>
         <button
@@ -102,10 +100,6 @@ export default function EntityDetailsDialog({ entities, entityId, onClose }: Ent
           <div>
             <dt>Aktualny stan</dt>
             <dd>{entity ? localizedEntityState(entityId, entity.state) : 'Encja niedostępna'}</dd>
-          </div>
-          <div>
-            <dt>Stan techniczny</dt>
-            <dd>{entity?.state ?? 'unavailable'}</dd>
           </div>
           <div>
             <dt>Ostatnia zmiana</dt>
@@ -176,10 +170,24 @@ export default function EntityDetailsDialog({ entities, entityId, onClose }: Ent
           )}
         </section>
 
-        <details className='entity-dialog-attributes' open={attributes.length > 0 && attributes.length <= 6}>
+        <details className='entity-dialog-attributes'>
           <summary>
-            Atrybuty encji <span>{attributes.length}</span>
+            Zaawansowana diagnostyka encji <span>{attributes.length}</span>
           </summary>
+          <p>{exactName}</p>
+          <code>{entityId}</code>
+          <p>
+            Stan techniczny: <code>{entity?.state ?? 'unavailable'}</code>
+          </p>
+          {transitions.length > 0 && (
+            <ul aria-label='Surowe stany historyczne'>
+              {transitions.map(point => (
+                <li key={`${point.last_changed}-${point.state}`}>
+                  <code>{point.state}</code>
+                </li>
+              ))}
+            </ul>
+          )}
           {attributes.length > 0 ? (
             <dl>
               {attributes.map(([key, value]) => (

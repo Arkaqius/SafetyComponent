@@ -50,6 +50,28 @@ flowchart LR
   individual target submissions;
 - persists all state needed to resume safely after a restart.
 
+Mobile presentation shall be separate from fault evidence and delivery policy.
+An active title shall identify the concrete problem using friendly subject
+names and the available Home Assistant location; L1 shall add a localized
+urgent prefix. Input-failure titles shall describe the failed check using
+current Home Assistant names, with a localized generic subject when display
+metadata is missing. A technical entity ID shall not substitute for a missing
+friendly name in mobile text.
+
+The body shall prioritize the owner's recommendation and current recovery
+guidance, with duplicate instructions removed. L2 and L3 shall show at most
+two distinct recommendations plus a localized count directing the recipient to
+Safety Home for any remaining recommendations. L1 shall retain all complete
+urgent instructions without presentation truncation. Without guidance,
+availability or freshness failures shall offer a localized input-inspection
+instruction; absent or unreliable readings shall have a localized explanation,
+and other cases shall direct the recipient to Safety Home. Raw machine values
+such as `unavailable`, `unknown` and `none` shall remain diagnostic evidence,
+not be appended to the mobile message. Allowlisted raw fault details and the
+existing MQTT/diagnostic contracts shall remain unchanged. Resolved messages
+shall use a distinct concise localized title and identify the affected subject
+and available location only after an authoritative clear.
+
 ### 2.2 `MobilePushProvider`
 
 - owns Home Assistant notify service names and Companion payload schemas;
@@ -187,6 +209,9 @@ removes a notification and shall not be presented as a healed fault. The journal
 transport exception text, unfiltered fault events, or inferred group members.
 Failure details in the history UI shall use a generic diagnostic explanation;
 existing transport-health diagnostics retain their separate error contract.
+Stored notification content shall reflect the text actually submitted for that
+attempt, subject to the declared journal bounds and truncation indicator;
+history shall not regenerate old messages from current presentation rules.
 
 The SafetyHome History page shall load the complete retained journal through
 bounded gateway pages and present the notification list before entity history.
@@ -198,6 +223,13 @@ not infer which person or device received a group notification. Home Assistant
 acceptance shall remain distinct from confirmed device delivery. A temporary
 read-only fallback may consume the retired entity during migration, but no new
 backend shall publish it.
+
+History identity shall come from the recorded submission, including concrete
+alert titles and resolved-message subjects, while retaining compatibility with
+legacy generic titles and message formats. A dash in recorded text shall not
+be treated as proof of a location: it may belong to a friendly name. Missing
+historical identity or location shall remain explicitly unspecified rather
+than being filled from current Home Assistant names or current fault context.
 
 ## 3. Configuration contract
 
@@ -245,11 +277,30 @@ Android `alert_once`/normal priority and iOS `passive` interruption.
 ### 4.2 Active content refresh
 
 A repeated `SET` or newly discovered recovery guidance updates the same tag.
+Removing or replacing guidance shall also refresh that tag, so withdrawn
+instructions do not remain on the phone. Intermediate quiet updates for one
+tag shall be coalesced until the next delivery-scheduler tick and use the latest
+content. New alarms, urgency escalation and resolution shall retain immediate
+submission; coalescing shall preserve pending targets and their original retry
+deadlines. Only actual target submissions shall consume journal entries.
 The refresh uses a quiet profile and shall not re-run local annunciators. On
 Android it uses `alert_once`; on iOS it uses a passive interruption profile.
 If the new-alert attempt is still pending for any target, its content is
 updated without downgrading it to quiet; only targets that already completed
 the new-alert submission receive the quiet refresh.
+
+For quiet `update` submissions, the manager shall compare the complete visible
+content and quiet-normalized payload, including actions, with the last content
+accepted by Home Assistant for that active tag and target service. An identical
+update shall not be resubmitted to that service or create a journal entry.
+Acceptance fingerprints shall be persisted only after actual Home Assistant
+acceptance; a legacy snapshot without them shall not imply acceptance or device
+delivery. Changed content shall include every target that has not accepted that
+content, including targets that accepted an earlier version. Updating a pending
+submission shall retain its retry timing and deadline. Returning to already
+accepted content shall cancel a superseded unsent update. This suppression
+shall apply only to quiet updates, not new alarms, escalation, resolution or
+controlled repeats.
 
 ### 4.3 Acknowledgement
 
@@ -326,9 +377,23 @@ cover correlation, newest-first pagination, snapshot revision, invalid or
 stale cursors, response-size bounds, listener lifecycle, and removal of the
 retired MQTT entity. Retry tests shall cover failed acknowledgement followed
 by newer content and a new SET following a failed resolved submission.
+Tests shall cover guidance removal, coalesced same-tag updates, pending-target
+and deadline preservation, and authoritative battery-identity retirement without
+a false resolved message or notification-journal deletion.
+Content-deduplication tests shall cover independent target acceptance, restart
+restoration, legacy snapshots without fingerprints, changed actions/content,
+return to accepted content, and preservation of retries and lifecycle alerts.
+Presentation tests shall cover EN/PL/DE titles, friendly-name and location
+fallbacks, failed-check wording, absence of raw missing-reading values, duplicate
+guidance, L2/L3 recommendation bounds and omitted counts, complete L1 guidance,
+distinct authoritative-clear text, unchanged diagnostic evidence, and journal
+content matching actual submissions.
 Frontend domain and component tests shall cover request and response contracts,
 lifecycle labels, filtering, date/time, target presentation, diagnostic
-details, refresh, and empty or unavailable history.
+details, refresh, and empty or unavailable history. Identity tests shall cover
+legacy generic titles, concrete localized titles, resolved subjects, names
+containing dashes, and missing historical locations without current-data
+substitution.
 
 Live verification shall not trigger a household fault, siren, warning light,
 or unsolicited phone notification. Production delivery requires a separately

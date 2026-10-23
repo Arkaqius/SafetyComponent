@@ -254,14 +254,35 @@ shall not make cached or stale device evidence fresh.
 Notification guidance is keyed by proposal ID. An updated proposal replaces its
 own text, while clear or shadow removes that proposal's guidance. This prevents
 stale or contradictory instructions from accumulating on an active fault.
+Withdrawal shall refresh the active phone notification quietly through the
+existing same-tag delivery path; updating only the saved message shall not
+leave a withdrawn instruction visible to the recipient.
 
 SafetyHome and notifications shall use the owner's same localized instruction.
+The concise mobile view may select the first two distinct L2/L3 recommendations
+and identify the omitted count, while Safety Home retains all current proposals
+and their evidence. L1 mobile messages shall preserve all complete urgent
+instructions. Presentation shall not replace an owner's advice with raw
+diagnostic values, change proposal eligibility or completion, or suppress an
+urgent instruction merely to shorten a message.
+Entity-backed manual instructions and door-fault labels shall prefer the Home
+Assistant entity's current nonempty `friendly_name` over a technical binding
+name. Instructions shall resolve that display name when built, so a technical
+startup fallback is not retained after friendly metadata becomes available.
+Missing or unreadable display metadata shall retain the existing subject
+context and shall not block a warning or action. Display-name changes shall
+not change stable fault, entity or proposal identities, completion evidence or
+command authorization.
 The fault card and shared list shall identify the subject, executor, expected
 result, report/evidence status and any block reason. The frontend shall expose
 a manual-work report only when useful for that action, and label consent buttons
 by the actual command rather than assume every command closes a gate. Runtime
 text shall maintain EN/PL/DE meaning parity; technical IDs and raw codes shall
 remain language-independent.
+Operator-facing recovery summaries shall use Polish labels for component,
+completion-evidence source and known reason codes, with a localized fallback
+for unrecognized codes. Raw values shall remain available in explicit
+diagnostics and shall not be presented as translated operator advice.
 
 ## 6. Verification
 
@@ -269,6 +290,12 @@ Automated tests shall cover exact proposal payloads, manual versus confirmed
 policy, no actuation before confirmation, invalid and replayed tokens, the exact
 allowlisted service, physical postcondition handling, timeout, persistence,
 shadow/clear withdrawal, and multiple proposals sharing one recovery entity.
+Display-name tests shall cover current Home Assistant names, unavailable or
+empty metadata, later availability after startup, and unchanged runtime
+identities and command boundaries.
+Guidance-presentation tests shall cover duplicate removal, bounded L2/L3
+selection with an explicit omitted count, complete L1 instructions, and
+unchanged proposals, evidence and command permissions.
 
 Contract tests shall also cover central rejection of actuator changes under
 `manual`, operator reports without actuation or fault clearance, actions without

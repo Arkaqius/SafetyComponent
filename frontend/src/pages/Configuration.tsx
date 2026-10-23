@@ -521,7 +521,7 @@ export default function Configuration() {
         </div>
         <p>
           Próg CPU instalacji: ≥ {String(functionalSafetySystem.cpu_high_percent ?? '—')}% przez{' '}
-          {String(functionalSafetySystem.cpu_qualification_seconds ?? '—')} s (L4).
+          {String(functionalSafetySystem.cpu_qualification_seconds ?? '—')} s (L3).
         </p>
         <fieldset className='configuration-fieldset'>
           <legend>Dysk, temperatura i kopie zapasowe</legend>
@@ -608,7 +608,7 @@ export default function Configuration() {
                 key={key}
                 label={`Encja aktualizacji: ${label}`}
                 entityDomains={['update']}
-                help='Opcjonalna encja update.*; dostępna aktualizacja ma poziom informacyjny L4.'
+                help='Opcjonalna encja update.*; dostępna aktualizacja ma poziom ostrzeżenia L3.'
                 value={stringValue(updates[key])}
                 onChange={value => update(['installation', 'functional_safety', 'updates', key], value || null)}
               />

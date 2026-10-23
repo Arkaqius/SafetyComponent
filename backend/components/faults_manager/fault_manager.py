@@ -951,10 +951,10 @@ class FaultManager:
     
     def get_system_fault_level(self) -> int:
         """
-        Determines the highest severity level of active faults in the system.
+        Determine the highest active alarm severity, excluding L4 information.
 
         The severity level is based on the `level` attribute of faults.
-        If no faults are active, the system's fault level is considered 0.
+        If only informational conditions are active, the system level is 0.
 
         Returns:
             int: The highest severity level of active faults, or 0 if no faults are active.
@@ -962,7 +962,7 @@ class FaultManager:
         active_levels = [
             fault.level
             for fault in self.faults.values()
-            if fault.evaluation.active
+            if fault.evaluation.active and fault.level < 4
         ]
         return min(active_levels, default=0)
     

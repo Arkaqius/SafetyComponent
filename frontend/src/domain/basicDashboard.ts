@@ -3,10 +3,9 @@ import { recoveriesForFault, recoveryNeedsAttention, type FaultView, type Recove
 /** Prioritize the brief without losing the count of other active conditions. */
 export function basicDashboardItems(faults: FaultView[], recoveries: RecoveryView[]) {
   const activeFaults = faults.filter(fault => fault.active === true);
-  const unshadowed = activeFaults.filter(fault => fault.shadowedBy.length === 0);
-  const primaryFault = [...(unshadowed.length > 0 ? unshadowed : activeFaults)].sort(
-    (left, right) => (left.level ?? 0) - (right.level ?? 0)
-  )[0];
+  const alarms = activeFaults.filter(fault => fault.level !== 4);
+  const unshadowed = alarms.filter(fault => fault.shadowedBy.length === 0);
+  const primaryFault = [...(unshadowed.length > 0 ? unshadowed : alarms)].sort((left, right) => (left.level ?? 0) - (right.level ?? 0))[0];
   const attentionRecoveries = recoveries.filter(recoveryNeedsAttention);
   const primaryFaultRecoveries = primaryFault ? recoveriesForFault(primaryFault, attentionRecoveries) : [];
   return {

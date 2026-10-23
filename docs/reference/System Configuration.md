@@ -207,24 +207,26 @@ capacity and workload before an installation relies on L2 memory detection.
 | `memory_low_available_mib` / `memory_recovery_available_mib` | 256 / 384 MiB | L2 assertion and recovery margins, requiring corroborating PSI. |
 | `memory_high_psi_percent` / `memory_recovery_psi_percent` | 10% / 5% | PSI qualification and recovery margins. |
 | `memory_qualification_seconds` / `memory_recovery_seconds` | 120 / 120 s | Sustained L2 assertion and distinct recovery duration. |
-| `cpu_high_percent` / `cpu_recovery_percent` | 90% / 70% | L4 host CPU qualification and recovery margins. |
+| `cpu_high_percent` / `cpu_recovery_percent` | 90% / 70% | L3 host CPU qualification and recovery margins. |
 | `cpu_qualification_seconds` / `cpu_recovery_seconds` | 300 / 120 s | Sustained high CPU load and distinct recovery duration. |
-| `disk_low_free_mib` / `disk_recovery_free_mib` | 1024 / 2048 MiB | L4 low host-disk-space threshold and positive recovery margin. |
-| `host_temperature_high_c` / `host_temperature_recovery_c` | 80 / 70 °C | L4 host-temperature threshold and distinct recovery margin. |
+| `disk_low_free_mib` / `disk_recovery_free_mib` | 1024 / 2048 MiB | L3 low host-disk-space threshold and positive recovery margin. |
+| `host_temperature_high_c` / `host_temperature_recovery_c` | 80 / 70 °C | L3 host-temperature threshold and distinct recovery margin. |
 | `resource_qualification_seconds` / `resource_recovery_seconds` | 120 / 120 s | Sustained disk/thermal qualification and recovery. |
-| `backup_max_age_hours` | 48 h | Maximum age of a valid last-success backup timestamp before L4 overdue maintenance. |
+| `backup_max_age_hours` | 48 h | Maximum age of a valid last-success backup timestamp before an L3 overdue maintenance warning. |
 | `backup_stale_after_seconds` | 86400 s | Maximum observation age for an optional backup-failure source; not a substitute for backup-success age. |
 | `wan_qualification_seconds` / `wan_recovery_seconds` | 60 / 60 s | Sustained L3 WAN fault and recovery. |
 | `battery_low_percent` | 15% | L4 maintenance threshold per configured remote device. |
 | `battery_fault_catalog_file` | `/config/appdaemon/battery_fault_catalog.json` | One-time legacy import path for active/retired battery-fault identities; SQLite retains MQTT discovery cleanup state after exclusions or removal. |
-| `detector_test_interval_days` | 180 days | L4 due/failed maintenance condition per configured detector. |
+| `detector_test_interval_days` | 180 days | L3 due/failed maintenance warning per configured detector. |
 | `notification_test_interval_days` | 30 days | Due date after an operator-attested notification-receipt pass. |
 | `backup_restore_test_interval_days` | 180 days | Due date after an operator-attested restore pass on a separate installation, when enabled. |
 | `resource_stale_after_seconds` / `wan_stale_after_seconds` | 180 / 180 s | Maximum age for accepted host and WAN evidence. |
 | `update_stale_after_seconds` / `battery_stale_after_seconds` | 86400 / 86400 s | Maximum age for accepted update and battery evidence. |
 | `detector_test_state_file` | `/config/appdaemon/detector_tests.json` | One-time legacy import path for operator-reported detector results stored in SQLite. |
 | `periodic_test_state_file` | `/config/appdaemon/periodic_tests.json` | One-time legacy import path for SQLite operational-test attestations, separate from detector records and editable configuration. |
-| `memory_fault_level` / `wan_fault_level` / `cpu_fault_level` / `maintenance_fault_level` | L2 / L3 / L4 / L4 | Fixed reviewed severities for host memory, WAN, CPU, and maintenance. |
+| `memory_fault_level` / `wan_fault_level` / `cpu_fault_level` | L2 / L3 / L3 | Fixed reviewed severities for host memory, WAN and CPU. |
+| `warning_fault_level` | L3 | Fixed severity for disk, host temperature, backup, available updates and due/failed detector tests. |
+| `maintenance_fault_level` | L4 | Fixed informational severity for low batteries and due/failed periodic notification-receipt or backup-restore tests. These conditions remain visible without degrading the overall system state. |
 
 Disk and temperature baselines require review against the actual host and normal
 workload; they are maintenance limits, not hardware shutdown protection. Backup

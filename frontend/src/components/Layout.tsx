@@ -20,7 +20,7 @@ const menuItems: Array<{ title: string; path: string; icon: IconName; descriptio
     description: 'Odczyty i trendy pomiarów',
   },
   {
-    title: 'Fault Management',
+    title: 'Usterki i diagnostyka',
     path: '/fault-management',
     icon: 'alert',
     description: 'Usterki, diagnostyka i pokrycie',

@@ -73,7 +73,8 @@ export default function FaultSection({
     });
   }, [faults, filter, query]);
 
-  const activeCount = faults.filter(fault => fault.active).length;
+  const activeCount = faults.filter(fault => fault.active === true && fault.level !== 4).length;
+  const informationCount = faults.filter(fault => fault.active === true && fault.level === 4).length;
 
   return (
     <section className='panel fault-panel'>
@@ -90,6 +91,9 @@ export default function FaultSection({
         <span className={`count-badge${activeCount > 0 ? ' count-badge-alert' : ''}`}>
           {activeCount === 1 ? '1 aktywne' : `${activeCount} aktywnych`}
         </span>
+        {informationCount > 0 && (
+          <StatusBadge tone='info'>{informationCount === 1 ? '1 informacja' : `${informationCount} informacji`}</StatusBadge>
+        )}
       </div>
 
       {!compact && (
@@ -161,9 +165,20 @@ function FaultCard({
   recoveries: RecoveryView[];
   onSelectEntity?: (entityId: string) => void;
 }) {
-  const status = statusPresentation[fault.status];
   const level = fault.level ? LEVEL_PRESENTATION[fault.level] : undefined;
-  const cardTone = fault.active === true || fault.latched === true ? (fault.level === 1 ? 'critical' : 'danger') : status.tone;
+  const status =
+    fault.level === 4 && ['fail', 'pending_failure', 'pending_recovery', 'unevaluable'].includes(fault.status)
+      ? {
+          label:
+            fault.status === 'fail'
+              ? 'Informacja potwierdzona'
+              : statusPresentation[fault.status].label.replace('zagrożenia', 'informacji'),
+          tone: 'info' as const,
+        }
+      : fault.level === 3 && fault.status === 'fail'
+        ? { label: 'Ostrzeżenie potwierdzone', tone: 'warning' as const }
+        : statusPresentation[fault.status];
+  const cardTone = fault.active === true || fault.latched === true ? (level?.tone ?? 'danger') : status.tone;
   const connection = useHass(store => store.connection);
   const connected = useHass(store => store.connectionStatus === 'connected' && store.ready);
   const [submitting, setSubmitting] = useState(false);
@@ -211,7 +226,9 @@ function FaultCard({
           {fault.category === 'H' ? 'Zagrożenie H' : fault.category === 'D' ? 'Diagnostyka D' : 'Brak kategorii'}
         </StatusBadge>
         {level && <span className={`level-chip status-${level.tone}`}>{level.shortLabel}</span>}
-        {fault.active === true && <StatusBadge tone='danger'>Aktywna</StatusBadge>}
+        {fault.active === true && (
+          <StatusBadge tone={level?.tone ?? 'danger'}>{fault.level === 4 ? 'Do sprawdzenia' : 'Aktywna'}</StatusBadge>
+        )}
         {fault.active === false && <StatusBadge tone='muted'>Nieaktywna</StatusBadge>}
         {fault.latched && <StatusBadge tone='critical'>Zatrzaśnięta</StatusBadge>}
         {fault.shadowedBy.length > 0 && <StatusBadge tone='warning'>Przesłonięta</StatusBadge>}
@@ -219,7 +236,12 @@ function FaultCard({
         <Icon className='details-chevron' name='chevron' size={17} />
       </summary>
       <div className='fault-card-details'>
-        <p>{fault.description || 'Brak dodatkowego opisu dla tej usterki.'}</p>
+        <p>
+          {fault.description ||
+            (fault.level === 4
+              ? 'Informacja do sprawdzenia. Nie oznacza bieżącej awarii systemu.'
+              : 'Brak dodatkowego opisu dla tej usterki.')}
+        </p>
         {fault.entityId === 'sensor.fault_riskytemperatureforecast' && (
           <p>
             Prognoza wykorzystuje temperaturę i tempo jej zmian. Przewidywane przekroczenie progu może wystąpić, gdy aktualna temperatura
@@ -234,7 +256,7 @@ function FaultCard({
           </div>
           <div>
             <dt>Stan</dt>
-            <dd>{localizedEntityState(fault.entityId, fault.state)}</dd>
+            <dd>{fault.level === 4 ? status.label : localizedEntityState(fault.entityId, fault.state)}</dd>
           </div>
           <div>
             <dt>Kategoria</dt>
@@ -242,7 +264,9 @@ function FaultCard({
               {fault.category === 'H'
                 ? 'H — warunek zagrożenia'
                 : fault.category === 'D'
-                  ? 'D — utrata diagnostyki lub pokrycia'
+                  ? fault.level === 4
+                    ? 'D — informacja diagnostyczna'
+                    : 'D — utrata diagnostyki lub pokrycia'
                   : 'Nie podano'}
             </dd>
           </div>
@@ -251,13 +275,13 @@ function FaultCard({
             <dd>{fault.active === null ? 'Nieznana' : fault.active ? 'Aktywna' : 'Nieaktywna'}</dd>
           </div>
           <div>
-            <dt>Latch</dt>
+            <dt>Podtrzymanie alarmu</dt>
             <dd>{fault.latched === null ? 'Brak danych' : fault.latched ? 'Aktywny — wymaga poprawnego resetu' : 'Nieaktywny'}</dd>
           </div>
           {fault.shadowedBy.length > 0 && (
             <div>
               <dt>Przesłonięta przez</dt>
-              <dd>{fault.shadowedBy.join(', ')}</dd>
+              <dd>Inne aktywne warunki: {fault.shadowedBy.length}. Powiązania są dostępne w diagnostyce.</dd>
             </div>
           )}
           <div>
@@ -266,17 +290,20 @@ function FaultCard({
           </div>
         </dl>
         {fault.contributors.length > 0 && (
-          <div className='fault-diagnostic-block'>
-            <strong>Źródła oceny</strong>
+          <details className='fault-diagnostic-block'>
+            <summary>Zaawansowana diagnostyka źródeł oceny</summary>
             <ul className='fault-contributor-list'>
               {fault.contributors.map(contributor => (
                 <li className={fault.activeContributors.includes(contributor) ? 'fault-contributor-active' : ''} key={contributor}>
                   <code>{contributor}</code>
-                  <span>{fault.activeContributors.includes(contributor) ? 'Aktywny contributor' : 'Powiązany contributor'}</span>
+                  <span>{fault.activeContributors.includes(contributor) ? 'Aktywne źródło' : 'Powiązane źródło'}</span>
                 </li>
               ))}
             </ul>
-          </div>
+            {fault.shadowedBy.map(id => (
+              <code key={id}>{id}</code>
+            ))}
+          </details>
         )}
         {fault.diagnosticData.freezeFrame && <FreezeFrame record={fault.diagnosticData.freezeFrame} />}
         {recoveries.length > 0 && (
@@ -305,7 +332,10 @@ function FaultCard({
         {error && <small className='recovery-error'>{error}</small>}
         <details className='technical-details'>
           <summary>Diagnostyka</summary>
-          <code>{fault.entityId}</code>
+          <details>
+            <summary>Identyfikator techniczny usterki</summary>
+            <code>{fault.entityId}</code>
+          </details>
         </details>
         {onSelectEntity && (
           <button className='text-button fault-details-button' onClick={() => onSelectEntity(fault.entityId)} type='button'>

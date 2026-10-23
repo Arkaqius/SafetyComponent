@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
+import math
 import re
+import time
+from collections import deque
 from typing import Any, Mapping
 
 import appdaemon.plugins.hass.hassapi as hass  # type: ignore
@@ -146,6 +149,9 @@ class MqttEntityManager:
         self.discovered_entities: set[str] = set()
         self._discovery_payloads: dict[str, str] = {}
         self._prepared_entities: set[str] = set()
+        self._heartbeat_queue: deque[tuple[str, bool]] = deque()
+        self._heartbeat_due = 0.0
+        self._heartbeat_batch_size = 16
 
     def publish_availability(self, online: bool = True) -> None:
         """Publish app availability to the configured MQTT availability topic."""
@@ -209,6 +215,8 @@ class MqttEntityManager:
                 else self.entity_attributes.get(canonical_id, {})
             )
             effective_attributes["state_label"] = state_label
+            if state is not _UNSET:
+                effective_attributes["publication_state"] = self._state_payload(state)
 
         if effective_attributes is not None:
             self.publish_sensor_attributes(canonical_id, effective_attributes)
@@ -243,6 +251,7 @@ class MqttEntityManager:
                 else self.entity_attributes.get(canonical_id, {})
             )
             effective_attributes["state_label"] = state_label
+            effective_attributes["publication_state"] = self._state_payload(state)
 
         if effective_attributes is not None:
             self.publish_sensor_attributes(canonical_id, effective_attributes)
@@ -296,6 +305,37 @@ class MqttEntityManager:
                 attributes,
                 retain=self.retain_state,
             )
+
+    def publish_heartbeat_batch(self) -> None:
+        """Refresh current cached values in bounded, interleaved scheduler work."""
+        now = time.monotonic()
+        if not self._heartbeat_queue:
+            if now < self._heartbeat_due:
+                return
+            self._heartbeat_queue.extend((key, False) for key in self.entity_states)
+            self._heartbeat_queue.extend((key, True) for key in self.entity_attributes)
+            interval = max(1, self.settings.heartbeat_seconds)
+            self._heartbeat_batch_size = max(
+                16, math.ceil(len(self._heartbeat_queue) / interval)
+            )
+            self._heartbeat_due = now + interval
+        for _ in range(min(self._heartbeat_batch_size, len(self._heartbeat_queue))):
+            entity_id, attributes = self._heartbeat_queue[0]
+            # Read at dispatch, never replay a snapshot from the cycle's start.
+            cache = self.entity_attributes if attributes else self.entity_states
+            if entity_id in cache:
+                if attributes:
+                    self._publish_json(
+                        self.attributes_topic(entity_id), cache[entity_id],
+                        retain=self.retain_state,
+                    )
+                else:
+                    self._publish(
+                        self.state_topic(entity_id), self._state_payload(cache[entity_id]),
+                        retain=self.retain_state,
+                    )
+            # A failed publication stays at the head for the next attempt.
+            self._heartbeat_queue.popleft()
 
     def get_attributes(self, entity_id: str) -> dict[str, Any]:
         """Return the last attributes published for an MQTT entity."""

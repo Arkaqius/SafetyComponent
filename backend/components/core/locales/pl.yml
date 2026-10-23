@@ -94,9 +94,29 @@ hazard.guidance.water_leak: Sprawdź wyciek z bezpiecznego miejsca i ręcznie za
 notification.title.1: Wymagane natychmiastowe działanie
 notification.title.2: Wykryto zagrożenie w domu
 notification.title.3: Sprawdź, co dzieje się w domu
-notification.title.cleared: Zagrożenie zostało usunięte
+notification.title.4: Informacja do sprawdzenia
+notification.title.cleared: Problem ustąpił
 notification.active: 'Wymaga uwagi: {fault}.'
-notification.cleared: Dobra wiadomość - problem „{fault}” został rozwiązany.
+notification.cleared: '{fault}.'
+notification.subject.input: Monitorowany czujnik
+notification.problem.generic: Problem wymagający uwagi
+notification.problem.location: '{problem} — {location}'
+notification.problem.urgent: 'PILNE: {problem}'
+notification.input.availability: 'Brak odczytu: {entity}'
+notification.input.freshness: '{entity}: nieaktualne odczyty'
+notification.input.required_value: '{entity}: brak wymaganego odczytu'
+notification.input.allowed_values: '{entity}: nieprawidłowy odczyt'
+notification.input.finite_number: '{entity}: nieprawidłowy odczyt'
+notification.input.numeric_range: '{entity}: odczyt poza zakresem'
+notification.input.rate_of_change: '{entity}: zbyt szybka zmiana odczytu'
+notification.input.recovery_command: '{entity}: sterowanie niedostępne'
+notification.input.invalid: '{entity}: problem z odczytami'
+notification.open_details: Sprawdź szczegóły w Safety Home.
+notification.inspect_input: Sprawdź zasilanie i łączność czujnika.
+notification.observation.unavailable: Odczyt niedostępny. Sprawdź szczegóły w Safety Home.
+notification.observation.unknown: Brak wiarygodnego odczytu. Sprawdź szczegóły w Safety Home.
+notification.observation.none: Brak odczytu. Sprawdź szczegóły w Safety Home.
+notification.more_actions: 'Pozostałe zalecenia: {count}. Otwórz Safety Home.'
 notification.guidance: 'Co możesz zrobić:'
 notification.action.ack: Potwierdź
 detail.location: Lokalizacja
@@ -131,7 +151,7 @@ recovery.reason_finite_number: Odczyt nie jest poprawną liczbą.
 recovery.reason_numeric_range: Odczyt jest poza dozwolonym zakresem.
 recovery.reason_rate_of_change: Odczyt zmienia się szybciej niż dopuszczono.
 recovery.result_closed: 'Aktualny odczyt kontaktronu potwierdza zamknięcie: {subject}.'
-recovery.inspect_input: 'Sprawdź zasilanie, połączenie i przesyłanie odczytów: {subject}, zgodnie ze wskazanym problemem.'
+recovery.inspect_input: 'Sprawdź zasilanie i łączność czujnika: {subject}.'
 recovery.result_input: 'Aktualne poprawne odczyty potwierdzają ustąpienie wskazanego problemu: {subject}.'
 recovery.inspect_battery: 'Sprawdź instrukcję baterii urządzenia {subject}; wymień lub naładuj ją zgodnie z instrukcją tego urządzenia.'
 recovery.result_battery: 'Nowy odczyt baterii potwierdza poprawę: {subject}.'

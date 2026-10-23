@@ -31,6 +31,8 @@ export interface SourceView {
   detail: string;
   group: 'host' | 'wan' | 'updates' | 'batteries' | 'inventory';
   evidence: string[];
+  percentage?: number | null;
+  sourceEntities?: string[];
 }
 
 export function getFunctionalSafetySources(entities: EntityMap, fullDiagnostics?: Record<string, unknown> | null): SourceView[] {
@@ -68,6 +70,21 @@ export function getFunctionalSafetySources(entities: EntityMap, fullDiagnostics?
               ? 'wan'
               : 'host',
       evidence: sourceEvidence(item),
+      ...(key.startsWith('battery-') && key !== 'battery-discovery'
+        ? {
+            percentage: batteryPercentage(item),
+            sourceEntities: [
+              ...new Set([
+                ...(Array.isArray(item.source_entities) ? item.source_entities.filter((id): id is string => typeof id === 'string') : []),
+                ...(Array.isArray(item.sources)
+                  ? item.sources.flatMap(raw =>
+                      raw && typeof raw === 'object' && typeof raw.entity_id === 'string' ? [raw.entity_id] : []
+                    )
+                  : []),
+              ]),
+            ],
+          }
+        : {}),
     });
   };
   const memory = attributes.memory as Record<string, unknown> | undefined;
@@ -120,16 +137,27 @@ export function getFunctionalSafetySources(entities: EntityMap, fullDiagnostics?
   add('battery-discovery', 'Wykrywanie urządzeń bateryjnych', attributes.battery_discovery);
   const updates = attributes.updates;
   if (updates && typeof updates === 'object' && !Array.isArray(updates)) {
-    Object.entries(updates).forEach(([key, value]) => add(`update-${key}`, `Aktualizacja: ${updateProductNames[key] ?? key}`, value));
+    Object.entries(updates).forEach(([key, value]) =>
+      add(`update-${key}`, `Aktualizacja: ${updateProductNames[key] ?? 'Inny składnik systemu'}`, value)
+    );
   }
   const batteries = attributes.remote_batteries;
   if (batteries && typeof batteries === 'object' && !Array.isArray(batteries)) {
     Object.entries(batteries).forEach(([key, value]) => {
       const item = value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-      add(`battery-${key}`, `Bateria: ${typeof item.friendly_name === 'string' ? item.friendly_name : key}`, value);
+      add(
+        `battery-${key}`,
+        `Bateria: ${typeof item.friendly_name === 'string' && item.friendly_name.trim() ? item.friendly_name : 'Urządzenie bez nazwy'}`,
+        value
+      );
     });
   }
   return rows;
+}
+
+function batteryPercentage(item: Record<string, unknown>): number | null {
+  const value = numberOrNull(item.percentage);
+  return ['low', 'current'].includes(String(item.status)) && value !== null && value >= 0 && value <= 100 ? value : null;
 }
 
 function sourceEvidence(item: Record<string, unknown>): string[] {
@@ -165,7 +193,7 @@ function sourceEvidence(item: Record<string, unknown>): string[] {
       time('Ostatnia zmiana wartości/atrybutów', source.last_updated);
     }
   if ('checked_at' in item) time('Ostatnia ocena monitora', item.checked_at);
-  if ('percentage' in item) lines.unshift(`Wiarygodny poziom baterii: ${numberOrNull(item.percentage) ?? '—'}%`);
+  if ('percentage' in item) lines.unshift(`Wiarygodny poziom baterii: ${batteryPercentage(item) ?? '—'}%`);
   if ('device_count' in item)
     lines.push(`Urządzenia w inwentarzu: ${numberOrNull(item.device_count) ?? '—'} (wykrywanie nie jest monitorem stanu baterii)`);
   return lines;

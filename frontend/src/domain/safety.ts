@@ -167,6 +167,7 @@ export interface SafetySummary {
   tone: StatusTone;
   effectiveLevel: number | null;
   activeFaultCount: number;
+  informationalFaultCount: number;
   shadowedFaultCount: number;
   actionableRecoveryCount: number;
 }
@@ -312,14 +313,23 @@ export function getFaultLevel(entity: EntitySnapshot): number | null {
 }
 
 export function friendlyEntityName(entityId: string, entity?: EntitySnapshot): string {
-  const configuredName = stringAttribute(entity, 'friendly_name')
+  const rawName = stringAttribute(entity, 'friendly_name').trim();
+  const configuredName = rawName
     .replace(/^Safety Component\s*/i, '')
     .replace(/^Fault:\s*/i, '')
     .replace(/^Recovery\s*/i, '')
     .replace(/^Safety Door:\s*/i, '')
     .replace(/^ManipulateWindow\s*/i, '');
   const fallback = entityId.split('.', 2)[1] ?? entityId;
-  return localizedTechnicalName(configuredName || fallback.replace(/^(fault|recovery)_/, ''));
+  const unnamed = entityId.startsWith(FAULT_PREFIX)
+    ? 'Usterka bez nazwy'
+    : entityId.startsWith(RECOVERY_PREFIX)
+      ? 'Zalecenie bez nazwy'
+      : 'Encja bez nazwy';
+  if (configuredName && !/^(?:Fault:|Recovery\s|Safety Door:|ManipulateWindow)/i.test(rawName.replace(/^Safety Component\s*/i, '')))
+    return configuredName;
+  const generatedFallback = configuredName && /\s|[^\u0020-\u007e]/.test(configuredName) ? configuredName : unnamed;
+  return localizedTechnicalName(configuredName || fallback.replace(/^(fault|recovery)_/, ''), generatedFallback);
 }
 
 export function getFaults(entities: EntityMap): FaultView[] {
@@ -639,7 +649,10 @@ export function getSafetyDoors(entities: EntityMap): SafetyDoorView[] {
 
       return {
         entityId,
-        name: friendlyEntityName(entityId, entity),
+        name:
+          sourceEntityId && entities[sourceEntityId]?.attributes.friendly_name
+            ? friendlyEntityName(sourceEntityId, entities[sourceEntityId])
+            : friendlyEntityName(entityId, entity),
         sourceEntityId,
         sourceEntityName: sourceEntityId
           ? friendlyEntityName(sourceEntityId, entities[sourceEntityId])
@@ -775,7 +788,7 @@ export function observationDisplayName(observation: ExternalObservationView): st
   if (observation.hazardType === 'outdoor_air_pollution') {
     return 'Jakość powietrza dla współrzędnych domu';
   }
-  return labels[observation.hazardType] ?? humanize(observation.hazardType);
+  return labels[observation.hazardType] ?? 'Inne zagrożenie zewnętrzne';
 }
 
 export function localizedEntityState(entityId: string, state: unknown): string {
@@ -819,7 +832,7 @@ export function localizedEntityState(entityId: string, state: unknown): string {
       unavailable: 'Niedostępny',
       unknown: 'Stan nieznany',
     };
-    return labels[normalized] ?? humanize(normalized || 'stan nieznany');
+    return labels[normalized] ?? 'Stan nieznany';
   }
   const commonLabels: Record<string, string> = {
     on: entityId.startsWith('binary_sensor.') ? 'Aktywna' : 'Włączona',
@@ -833,9 +846,27 @@ export function localizedEntityState(entityId: string, state: unknown): string {
     not_occupied: 'Brak obecności',
     unknown: 'Stan nieznany',
     unavailable: 'Niedostępna',
+    none: 'Brak danych',
+    healthy: 'Sprawna',
+    degraded: 'Wymaga uwagi',
+    stale: 'Dane nieaktualne',
+    current: 'Aktualne',
+    attention: 'Wymaga uwagi',
+    observed: 'Ocena wykonana',
+    active: 'Aktywne',
+    inactive: 'Nieaktywne',
+    disabled: 'Wyłączone',
+    online: 'Połączenie działa',
+    offline: 'Brak połączenia',
+    full: 'Pełne pokrycie',
+    partial: 'Częściowe pokrycie',
+    queued: 'Oczekuje w kolejce',
+    failed: 'Niepowodzenie',
   };
   if (normalized in commonLabels) return commonLabels[normalized];
-  return humanize(normalized || 'stan nieznany');
+  if (typeof state === 'number' && Number.isFinite(state)) return String(state);
+  if (typeof state === 'string' && state.trim() !== '' && Number.isFinite(Number(state))) return state;
+  return 'Nieznany stan — sprawdź diagnostykę';
 }
 
 export function getRecentActivity(entities: EntityMap, limit = 8): ActivityItem[] {
@@ -866,13 +897,19 @@ export function getSafetySummary(
   recoveries: RecoveryView[],
   availability: SafetyDataAvailability = 'connected'
 ): SafetySummary {
-  const activeFaults = faults.filter(fault => fault.active === true);
-  const shadowedFaults = faults.filter(fault => fault.active === true && fault.shadowedBy.length > 0);
-  const uncertainFaults = faults.filter(faultNeedsVerification);
+  const activeFaults = faults.filter(fault => fault.active === true && fault.level !== 4);
+  const informationalFaults = faults.filter(fault => fault.active === true && fault.level === 4);
+  const shadowedFaults = activeFaults.filter(fault => fault.shadowedBy.length > 0);
+  const uncertainFaults = faults.filter(fault => fault.level !== 4 && faultNeedsVerification(fault));
   const actionableRecoveries = recoveries.filter(recovery => recovery.status === 'to_perform');
-  const uncertainRecoveries = recoveries.filter(recovery => ['unavailable', 'unknown'].includes(recovery.status));
+  const uncertainRecoveries = recoveries.filter(recovery => {
+    if (!['unavailable', 'unknown'].includes(recovery.status)) return false;
+    const owners = faults.filter(fault => recoveriesForFault(fault, [recovery]).length > 0);
+    return owners.length === 0 || owners.some(fault => fault.level !== 4);
+  });
   const base = {
     activeFaultCount: activeFaults.length,
+    informationalFaultCount: informationalFaults.length,
     shadowedFaultCount: shadowedFaults.length,
     actionableRecoveryCount: actionableRecoveries.length,
   };
@@ -880,8 +917,8 @@ export function getSafetySummary(
   if (availability !== 'connected') {
     const reportedLevel = parseSystemLevel(systemEntity?.state);
     const knownLevels = activeFaults.map(fault => fault.level).filter((level): level is number => level !== null);
-    if (reportedLevel !== null && reportedLevel > 0) knownLevels.push(reportedLevel);
-    const hasActiveAlarm = activeFaults.length > 0 || (reportedLevel !== null && reportedLevel > 0);
+    if (reportedLevel !== null && reportedLevel > 0 && reportedLevel < 4) knownLevels.push(reportedLevel);
+    const hasActiveAlarm = activeFaults.length > 0 || (reportedLevel !== null && reportedLevel > 0 && reportedLevel < 4);
     const effectiveLevel =
       hasActiveAlarm && !activeFaults.some(fault => fault.level === null) && knownLevels.length > 0 ? Math.min(...knownLevels) : null;
     const reason = availability === 'disconnected' ? 'Brak połączenia' : 'Dane nieaktualne';
@@ -933,7 +970,7 @@ export function getSafetySummary(
   ]
     .filter(Boolean)
     .join(' · ');
-  const hasReportedFault = reportedLevel !== null && reportedLevel > 0;
+  const hasReportedFault = reportedLevel !== null && reportedLevel > 0 && reportedLevel < 4;
 
   if (uncertainEntityCount > 0) {
     if (activeFaults.length > 0 || hasReportedFault) {
@@ -998,7 +1035,10 @@ export function getSafetySummary(
   return {
     ...base,
     label: 'System bezpieczny',
-    detail: 'Brak aktywnych usterek',
+    detail:
+      informationalFaults.length > 0
+        ? `Brak aktywnych usterek · ${informationalFaults.length} ${polishCount(informationalFaults.length, 'informacja do sprawdzenia', 'informacje do sprawdzenia', 'informacji do sprawdzenia')}`
+        : 'Brak aktywnych usterek',
     tone: 'safe',
     effectiveLevel: 0,
   };
@@ -1150,7 +1190,7 @@ function temperatureRoomName(
   return sourceName || 'Lokalizacja niepodana';
 }
 
-function localizedTechnicalName(value: string): string {
+function localizedTechnicalName(value: string, fallback: string): string {
   const normalized = normalizeState(value).replace(/_/g, '');
   const labels: Record<string, string> = {
     riskytemperature: 'Niebezpieczna temperatura',
@@ -1162,10 +1202,10 @@ function localizedTechnicalName(value: string): string {
     externaldataunavailable: 'Problem z danymi zewnętrznymi',
     inputmonitoringunavailable: 'Problem z monitorowanymi wejściami',
   };
-  return labels[normalized] ?? localizedRoomName(value);
+  return labels[normalized] ?? localizedRoomName(value, fallback);
 }
 
-function localizedRoomName(value: string): string {
+function localizedRoomName(value: string, fallback: string): string {
   const normalized = normalizeState(value).replace(/_/g, '');
   const labels: Record<string, string> = {
     bedroom: 'Sypialnia',
@@ -1180,7 +1220,7 @@ function localizedRoomName(value: string): string {
     danepogodoweopenmeteo: 'Dane pogodowe Open-Meteo',
     jakoscpowietrzaopenmeteo: 'Jakość powietrza Open-Meteo',
   };
-  return labels[normalized] ?? humanize(value);
+  return labels[normalized] ?? fallback;
 }
 
 function splitLocations(value: unknown): string[] {
@@ -1195,15 +1235,6 @@ function splitLocations(value: unknown): string[] {
     .split(',')
     .map(item => item.trim())
     .filter(Boolean);
-}
-
-function humanize(value: string): string {
-  return value
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .replace(/[_-]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/^\w/, letter => letter.toUpperCase());
 }
 
 function numericState(value: unknown): number | null {

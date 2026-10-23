@@ -2,6 +2,7 @@ import { formatRelativeTime, type RecoveryStatus, type RecoveryView, type Status
 import { recoveryConfirmationBlock, recoveryReportBlock } from '../domain/recoveryConfirmation.js';
 import Icon from './Icon.js';
 import StatusBadge from './StatusBadge.js';
+import { componentLabel, evidenceSourceLabel, operatorCodeLabel, operatorExplanation } from '../domain/operatorLabels.js';
 
 export type RecoveryRequest = 'consent' | 'report';
 
@@ -34,7 +35,7 @@ function evidenceTime(value: string): string {
 }
 
 function reportSourceLabel(value: string): string {
-  return value === 'operator' ? 'użytkownik' : value;
+  return operatorCodeLabel(value, 'Źródło zgłoszenia opisane w diagnostyce');
 }
 
 /** Shared operator presentation: consent, work reporting and evidence stay distinct. */
@@ -97,11 +98,11 @@ export default function RecoveryCard({
         {!compact && recovery.completionCondition === 'operator_report' && (
           <small>Wykonanie tej czynności potwierdza użytkownik. System nie sprawdza jej samodzielnie; zgłoszenie nie usuwa usterki.</small>
         )}
-        {!compact && recovery.reason && <small>Powód: {recovery.reason}</small>}
-        {!compact && recovery.source && <small>Źródło zalecenia: {recovery.source}</small>}
+        {!compact && recovery.reason && <small title={recovery.reason}>Powód: {operatorExplanation(recovery.reason)}</small>}
+        {!compact && recovery.source && <small title={recovery.source}>Źródło zalecenia: {componentLabel(recovery.source)}</small>}
         {!compact && recovery.validUntil && <small>Ważne do {evidenceTime(recovery.validUntil)}</small>}
         {error && <small className='recovery-error'>{error}</small>}
-        {block && <small className='recovery-error'>Działanie wstrzymane: {block}</small>}
+        {block && <small className='recovery-error'>Działanie wstrzymane: {operatorExplanation(block)}</small>}
         {submitted && (
           <small>
             {submitted === 'report'
@@ -119,7 +120,7 @@ export default function RecoveryCard({
         {!compact && recovery.evidenceAt && (
           <small>
             Dowód rezultatu: {evidenceTime(recovery.evidenceAt)}
-            {recovery.evidenceSource ? ` · ${recovery.evidenceSource}` : ''}
+            {recovery.evidenceSource ? ` · ${evidenceSourceLabel(recovery.evidenceSource)}` : ''}
           </small>
         )}
         {!compact && <small>Zmiana {formatRelativeTime(recovery.lastChanged)}</small>}
@@ -143,8 +144,25 @@ export default function RecoveryCard({
         {!compact && recovery.latestOutcome?.evidenceAt && (
           <small>
             Dowód ostatniego wyniku: {evidenceTime(recovery.latestOutcome.evidenceAt)}
-            {recovery.latestOutcome.evidenceSource ? ` · ${recovery.latestOutcome.evidenceSource}` : ''}
+            {recovery.latestOutcome.evidenceSource ? ` · ${evidenceSourceLabel(recovery.latestOutcome.evidenceSource)}` : ''}
           </small>
+        )}
+        {!compact && (
+          <details>
+            <summary>Zaawansowana diagnostyka zalecenia</summary>
+            <p>
+              Źródło: <code>{recovery.source || '—'}</code>
+            </p>
+            <p>
+              Powód: <code>{recovery.reason || '—'}</code>
+            </p>
+            <p>
+              Dowód: <code>{recovery.evidenceSource || '—'}</code>
+            </p>
+            <p>
+              Ostatni dowód: <code>{recovery.latestOutcome?.evidenceSource || '—'}</code>
+            </p>
+          </details>
         )}
       </div>
       <StatusBadge tone={presentation.tone}>{presentation.label}</StatusBadge>

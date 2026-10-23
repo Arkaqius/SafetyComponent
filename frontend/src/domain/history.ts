@@ -66,11 +66,32 @@ export function historyTimeline(states: HistoryState[]): HistoryPoint[] {
 }
 
 /** Keep recorded identity and activation changes even when the raw state is unchanged. */
+const legacyLabels: Record<string, string[]> = {
+  NOT_EVALUATED: ['Not evaluated', 'Nieoceniona', 'Nicht bewertet'],
+  PASS: ['Condition recovered', 'Warunek ustąpił', 'Bedingung behoben'],
+  PENDING_FAILURE: ['Checking failure', 'Potwierdzanie zagrożenia', 'Fehler wird geprüft'],
+  FAIL: ['Failure confirmed', 'Zagrożenie potwierdzone', 'Fehler bestätigt'],
+  PENDING_RECOVERY: ['Checking recovery', 'Potwierdzanie ustąpienia', 'Erholung wird geprüft'],
+  UNEVALUABLE: ['Cannot evaluate', 'Brak wiarygodnej oceny', 'Nicht bewertbar'],
+  INHIBITED: ['Temporarily inhibited', 'Czasowo wyłączona', 'Vorübergehend unterdrückt'],
+  DISABLED: ['Disabled', 'Wyłączona', 'Deaktiviert'],
+};
+const legacyLabelStates = new Map(Object.entries(legacyLabels).flatMap(([state, labels]) => labels.map(label => [label, state] as const)));
+
 export function historyTransitions(timeline: HistoryPoint[]): HistoryPoint[] {
+  const coherent = timeline.filter(point => {
+    const published = point.attributes?.publication_state;
+    if (typeof published === 'string') return published === point.state;
+    // Legacy snapshots have no marker. Only reject a recognized, contradictory
+    // label; activation and latch are independent axes and are never inferred.
+    if (!legacyLabels[point.state]) return true;
+    const labeledState = legacyLabelStates.get(String(point.attributes?.state_label));
+    return !labeledState || labeledState === point.state;
+  });
   const identity = (point: HistoryPoint) =>
     JSON.stringify(['friendly_name', 'area_name', 'location', 'active', 'latched'].map(key => point.attributes?.[key]));
-  return timeline
-    .filter((point, index) => index === 0 || point.state !== timeline[index - 1].state || identity(point) !== identity(timeline[index - 1]))
+  return coherent
+    .filter((point, index) => index === 0 || point.state !== coherent[index - 1].state || identity(point) !== identity(coherent[index - 1]))
     .map(point => ({ ...point, last_changed: point.last_updated ?? point.last_changed }));
 }
 
