@@ -44,6 +44,7 @@ from components.safetycomponents.temperature.schema import (
     COMPONENT_NAME as TEMPERATURE_COMPONENT_NAME,
     validate_temperature_config,
 )
+from components.safetycomponents.heating.schema import HeatingConfig
 
 
 class AppCfgValidationError(Exception):
@@ -462,6 +463,8 @@ def _to_runtime(
                 strict_validation=strict_validation,
                 log=log,
             )
+        elif name == "HeatingSystemMonitorComponent":
+            runtime_components[name] = HeatingConfig.model_validate(component_cfg).model_dump()
         else:
             runtime_components[name] = component_cfg
 

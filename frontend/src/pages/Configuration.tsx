@@ -359,7 +359,7 @@ export default function Configuration() {
               <ToggleField
                 checked={Boolean(enabled)}
                 key={name}
-                label={friendlyName(name, 'Component')}
+                label={name === 'HeatingSystemMonitorComponent' ? 'Monitoring ogrzewania' : friendlyName(name, 'Component')}
                 onChange={value => update(['components_enabled', name], value)}
               />
             ))}

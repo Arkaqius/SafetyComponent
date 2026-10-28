@@ -11,6 +11,7 @@ user_config:
     ExternalHazardComponent: true
     EntityMonitorComponent: true
     InternalEnvironmentalHazardMonitorComponent: false
+    HeatingSystemMonitorComponent: false
 
   localization:
     language: pl
@@ -34,6 +35,38 @@ user_config:
       enabled: true
 
   installation:
+    # Enable HeatingSystemMonitorComponent and replace these generic bindings.
+    # No controller product/integration is assumed. Literal maps are data only.
+    # availability_only preserves uncertainty about physical observation age.
+    # For qualified input, select freshness: source_timestamp and provide an
+    # original timestamp attribute or observed_at_entity_id (optionally with its
+    # observed_at_attribute). HA last_updated is deliberately not substituted.
+    heating_systems:
+      Main:
+        friendly_name: Heating system
+        profile: Diagnostic
+        inputs:
+          boiler_active:
+            entity_id: binary_sensor.example_boiler_active
+            value_map: {"on": true, "off": false}
+            evidence_kind: measurement
+            independence_group: boiler
+          dhw_active:
+            entity_id: binary_sensor.example_dhw_active
+            value_map: {"on": true, "off": false}
+            evidence_kind: measurement
+            independence_group: boiler
+          flow_temperature:
+            entity_id: sensor.example_boiler_flow
+            unit: °C
+            evidence_kind: measurement
+            independence_group: boiler
+          power_percent:
+            entity_id: sensor.example_boiler_power
+            unit: "%"
+            evidence_kind: measurement
+            independence_group: boiler
+
     site:
       timezone: Europe/Warsaw
       country_code: PL

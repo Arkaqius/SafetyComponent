@@ -33,6 +33,16 @@ class StartupGrace:
         self._pending: dict[str, dict[str, Any]] = {}
         event_bus.subscribe("symptom", self.observe)
         event_bus.subscribe("evaluation_unavailable", self.mark_unavailable)
+        event_bus.subscribe("evaluation_pending", self.mark_pending)
+
+    def mark_pending(self, *, symptom_id: str, violation: bool, **_: Any) -> None:
+        """Keep diagnostic qualification behind the same startup boundary."""
+        if symptom_id in self.diagnostic_symptoms and not self._complete:
+            self.mark_unavailable(symptom_id=symptom_id)
+            return
+        self.event_bus.publish(
+            "qualified_evaluation_pending", symptom_id=symptom_id, violation=violation
+        )
 
     def observe(self, *, symptom_id: str, state: FaultState, **context: Any) -> None:
         """Defer D events, letting H and application failures through immediately."""

@@ -17,6 +17,7 @@ from components.notification_manager.schema import (
 )
 from components.recovery_manager.schema import RecoveryTiming
 from components.safetycomponents.entity_monitor.schema import ComponentEntityOverride
+from components.safetycomponents.heating.schema import HeatingCalibration
 from components.safetycomponents.internal_environmental_hazard.schema import (
     BinaryDetectorProfile,
     InternalEnvironmentPersistence,
@@ -194,6 +195,7 @@ class CalibrationSource(SystemSourceModel):
     external_hazard: ExternalHazardCalibrationSource
     internal_environmental_hazard: InternalHazardCalibrationSource
     functional_safety: FunctionalSafetyCalibrationSource
+    heating_system_monitor: HeatingCalibration = Field(default_factory=HeatingCalibration)
 
 
 class ProviderRuntimeSource(SystemSourceModel):

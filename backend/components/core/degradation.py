@@ -542,6 +542,20 @@ def compile_runtime_bindings(
                     RestrictionEffect.EVALUATION,
                 ),
             )))
+        elif symptom.sm_name == "sm_hsm_supervision_loss":
+            installation = symptom.parameters.get("installation_key")
+            targets = tuple(
+                DegradationTarget(
+                    target_id, "HeatingSupervision", str(installation),
+                    RestrictionEffect.EVALUATION,
+                )
+                for target_id, target in symptoms.items()
+                if target_id in hazard_owners and target.sm_name.startswith("sm_hsm_")
+                and target.parameters.get("installation_key") == installation
+            )
+            bindings.append(DiagnosticBinding(
+                symptom_id, targets, external_only=not targets
+            ))
         elif symptom.sm_name.startswith("sm_fsm_"):
             bindings.append(DiagnosticBinding(symptom_id, (), external_only=True))
     return tuple(bindings)

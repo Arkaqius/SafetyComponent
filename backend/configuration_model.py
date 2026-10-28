@@ -15,6 +15,8 @@ from pydantic import (
     model_validator,
 )
 
+from components.safetycomponents.heating.schema import HeatingConfig, HeatingInstallation
+
 from build_appdaemon_config import validated_number
 from components.core.pydantic_utils import StrictBaseModel
 from components.safetycomponents.entity_monitor.schema import (
@@ -474,6 +476,7 @@ class InstallationConfig(SourceModel):
     openings: dict[str, InstallationOpening] = Field(default_factory=dict)
     detectors: dict[str, InternalDetectorConfig] = Field(default_factory=dict)
     monitored_entities: dict[str, ExplicitEntityConfig] = Field(default_factory=dict)
+    heating_systems: dict[str, HeatingInstallation] = Field(default_factory=dict)
     functional_safety: FunctionalSafetyBindings = Field(default_factory=FunctionalSafetyBindings)
 
     @model_validator(mode="after")
@@ -483,6 +486,7 @@ class InstallationConfig(SourceModel):
             "openings": set(self.openings),
             "detectors": set(self.detectors),
             "monitored_entities": set(self.monitored_entities),
+            "heating_systems": set(self.heating_systems),
         }
         for collection_name, collection in registries.items():
             invalid = [key for key in collection if not _STABLE_KEY.fullmatch(key)]
@@ -525,6 +529,7 @@ class ComponentSelection(SourceModel):
     ExternalHazardComponent: bool
     EntityMonitorComponent: bool
     InternalEnvironmentalHazardMonitorComponent: bool
+    HeatingSystemMonitorComponent: bool = False
 
     @model_validator(mode="after")
     def _at_least_one_component(self) -> "ComponentSelection":
@@ -747,5 +752,22 @@ def compile_user_config_v2(
             system_components.get("InternalEnvironmentalHazardMonitorComponent", {}),
             installation,
         ),
+        "HeatingSystemMonitorComponent": {
+            **copy.deepcopy(system_components.get("HeatingSystemMonitorComponent", {})),
+            "systems": {key: value.model_dump() for key, value in installation.heating_systems.items()},
+        },
     }
+    if not source.components_enabled.HeatingSystemMonitorComponent:
+        compiled["safety_components"].pop("HeatingSystemMonitorComponent")
+    else:
+        compiled["safety_components"]["HeatingSystemMonitorComponent"] = HeatingConfig.model_validate(
+            compiled["safety_components"]["HeatingSystemMonitorComponent"]
+        ).model_dump()
+        temperature_sources = {
+            room.temperature_sensor for room in installation.rooms.values()
+        } if source.components_enabled.TemperatureComponent else set()
+        for system in installation.heating_systems.values():
+            bindings = list(system.inputs.values()) + [binding for room in system.rooms.values() for binding in room.inputs.values()]
+            if any(binding.shared_temperature and (binding.entity_id not in temperature_sources or binding.attribute is not None) for binding in bindings):
+                raise ValueError("shared heating temperatures require an enabled C-TEMP binding to the same sensor state")
     return compiled

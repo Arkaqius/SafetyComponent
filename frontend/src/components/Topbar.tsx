@@ -19,6 +19,7 @@ const pageLabels: Record<string, { eyebrow: string; title: string }> = {
   '/temperature': { eyebrow: 'Monitoring środowiska', title: 'Temperatury i trendy' },
   '/safety-doors': { eyebrow: 'Wejścia do domu', title: 'Drzwi i bramy' },
   '/internal-hazards': { eyebrow: 'Bezpieczeństwo wewnątrz domu', title: 'Zagrożenia wewnętrzne' },
+  '/heating': { eyebrow: 'Nadzór ogrzewania', title: 'Ogrzewanie' },
   '/external-hazards': { eyebrow: 'Otoczenie domu', title: 'Zagrożenia zewnętrzne' },
   '/history': { eyebrow: 'Diagnostyka', title: 'Historia powiadomień i stanów' },
   '/configuration': { eyebrow: 'Ustawienia aplikacji', title: 'Konfiguracja instalacji' },
