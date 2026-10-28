@@ -36,10 +36,10 @@ manual guidance; notification acceptance shall not prove physical risk removal.
 
 | Element | Contract |
 | --- | --- |
-| Heating telemetry adapter | Own provider/model schema, read lifecycle, cache, source quality, unit normalization and current-code interpretation; expose no household policy or actuator API |
+| Configured input normalizer | Resolve installation-owned entity/attribute/value mappings into the normalized model; preserve signal meaning, provenance and freshness without product recognition or an actuator API |
 | Entity Monitor (C-ENT) | Evaluate declared input quality and publish Group B diagnostics; preserve shared consumer contracts and suppress duplicate faults only where component ownership is declared |
 | `HeatingSystemMonitorComponent` | Own room-need evaluation, phase resolution, heating checks, time budgets, symptom evidence and heating-state reconciliation |
-| SmartHeating / boiler controller | Own normal demand generation, operating setpoints and appliance control outside C-HVAC |
+| Heating controller | Own normal demand generation, operating setpoints and appliance control outside C-HVAC |
 | TemperatureComponent (C-TEMP) | Own existing direct/forecast room-temperature safety mechanisms, limits and faults |
 | FaultManager | Aggregate all active symptoms per stable fault and publish lifecycle events |
 | NotificationManager | Own delivery targets, retries, quiet updates, acknowledgement, notification persistence and bounded attempt history |
@@ -48,7 +48,7 @@ manual guidance; notification acceptance shall not prove physical risk removal.
 
 ```mermaid
 flowchart TD
-    HA[HA and EMS-ESP telemetry] --> AD[Provider and model adapter]
+    HA[Configured Home Assistant entity states and attributes] --> AD[Read-only normalization bindings]
     AD --> SS[Immutable snapshot and bounded sample buffers]
     EH[Entity Monitor quality] --> SS
     CT[Controller request and effective mode] --> SS
@@ -63,16 +63,16 @@ flowchart TD
     NM --> UI
 ```
 
-No component shall reach into another component's mutable state. Adapter
+No component shall reach into another component's mutable state. Entity-change
 callbacks and scheduled evaluation shall create immutable input snapshots;
-EventBus and explicit read contracts shall carry results. Provider I/O shall
-have bounded timeouts and independent schedules. Cached data shall retain its
+EventBus and explicit read contracts shall carry results. Source reads shall
+be bounded and shall not block evaluation of other rules. Cached data shall retain its
 original observation time and shall not become fresh because it was read again.
 
 C-HVAC shall supply model-specific manual inspection and service recovery under
 the [shared action contract](<Recommended Actions and Recovery - Architecture.md>).
 It shall not issue boiler reset,
-climate/setpoint, pump, relay or gas-valve commands. Adapters shall not expose
+climate/setpoint, pump, relay or gas-valve commands. Input bindings shall not expose
 a write path to the policy engine. Notification transport calls shall remain
 owned by NotificationManager. Separate backup/failover authorization shall not
 be inferred from an active heating fault.
@@ -89,11 +89,11 @@ calibrated tolerance shall be invalid.
 | Signal group | Semantic fields | Use |
 | --- | --- | --- |
 | Boiler thermal | `flow_temperature`, `return_temperature`, `requested_flow_temperature` | Rise, tracking, distribution and temperature limits |
-| Boiler operation | `burner_active`, `pump_active`, `burner_power`, `pump_modulation` | Response, phase and hydraulic consistency; percentage fields have range 0..100 |
-| Operating context | `heating_requested`, `dhw_active`, `inhibition_reason`, `inhibition_until`, operating mode | Separate eligible CH evaluation from DHW, overrun and permitted delay |
-| Source supervision | transport state, boiler observation timestamp/sequence, adapter quality | Detect unavailable or stale telemetry, including frozen streams |
+| Boiler operation | `boiler_active`, `power_percent`; explicitly evidenced pump/burner observations where required | Response, phase and hydraulic consistency; percentage fields have range 0..100; a generic active state shall not imply an unobserved pump or burner state |
+| Operating context | `heat_request`, `dhw_active`, `inhibition_reason`, `inhibition_until`, operating mode | Separate eligible CH evaluation from DHW, overrun and permitted delay |
+| Source supervision | source availability, boiler observation timestamp/sequence, normalized input quality | Detect unavailable or stale telemetry, including frozen streams |
 | Device codes | current service/fault code tuple, model/profile version, maintenance code, historical last error | Distinguish current operating condition, active fault, maintenance and history |
-| Independent room need | room temperature, effective comfort target, heating permission, schedule/override, associated installation/circuit | Detect missing request independently of controller output |
+| Independent room need | `room_temperature`, `target_temperature`, `heating_permitted`, schedule/override, associated installation/circuit | Detect missing request independently of controller output |
 | Delivery context | room-temperature samples, relevant configured window/inhibition context | Assess room delivery while retaining C-TEMP authority |
 | Optional diagnostics | burner-start counters, runtime counters, DHW temperature/target, pressure when actually supported | Calibrated cycling, maintenance and optional DHW/pressure checks |
 
@@ -119,9 +119,10 @@ They shall appear in monitored entities without duplicate `explicit_entities`
 entries. Input plausibility shall remain separate from operating-temperature
 limits: a plausible numeric reading may still prove an overheating fault.
 
-Boiler-specific feed and measurement dependencies shall use
-`fault_owner: component`. C-ENT shall retain their individual diagnostics while
-C-HVAC aggregates their impact into supervision loss. Shared C-TEMP/common
+Boiler-specific feed and measurement dependencies shall declare C-HVAC as the
+owner and use `fault_owner: none` in C-ENT to suppress duplicate C-ENT faults.
+C-ENT shall retain their individual diagnostics while C-HVAC aggregates their
+impact into supervision loss. Shared C-TEMP/common
 inputs shall retain compatible existing fault ownership; C-HVAC shall consume
 their quality and shall not emit a second notification for the same root input
 failure. Incompatible shared checks/ownership shall be rejected, not silently
@@ -134,7 +135,7 @@ IR-008 flow sampling shall be at least 0.2 Hz and samples older than 120 s shall
 be invalid. Tighter freshness thresholds shall apply to SG-003 paths as needed
 by section 7. HA `last_updated` shall be used only when its integration contract
 proves periodic source confirmation, including unchanged readings. Otherwise
-an adapter-provided observation timestamp/sequence or heartbeat tied to actual
+an explicitly bound observation timestamp/sequence or heartbeat tied to actual
 boiler reception shall be required. MQTT connectivity alone proves neither
 boiler availability nor freshness.
 
@@ -144,6 +145,77 @@ reject excessive cross-signal skew and sample gaps; interpolation across a gap
 shall not supply failure or recovery evidence. Rate windows shall use source
 time, while runtime durations shall use a monotonic clock. Receipt time shall
 support latency diagnosis, not replace the original observation time.
+
+### 3.3 Configurable read-only input boundary
+
+The safety engine shall consume a product-neutral normalized input model. Installation
+configuration shall bind semantic signals to Home Assistant entity states or
+attributes, including explicit value/state mappings, units and freshness
+provenance. No controller product, release, discovery prefix or entity naming
+pattern shall be required by the core rules. Device integrations shall expose
+their observations through the configured Home Assistant input bindings; the
+component shall not select or recognize a device/provider integration.
+
+The normalizer shall be read-only and shall not import controller decision code
+or share its mutable room, schedule, output or state-machine objects. Entity
+names, availability and a successful command/readback shall not determine their
+physical meaning.
+
+| Binding field group | Required contract |
+| --- | --- |
+| Identity and selector | Stable installation/room/circuit identity, semantic signal, source entity and optional attribute path |
+| Value interpretation | Expected value type; explicit valid true/false or enumerated state mapping where applicable; numeric units and supported conversion; unknown/unavailable handling |
+| Observation provenance | Source observation timestamp or sequence, its entity/attribute selector where separate, and the evidence that it represents this measurement rather than publication contact |
+| Timing and coherence | Maximum age, future-time tolerance, maximum signal skew and required source cadence/heartbeat semantics, checked against the system-owned rule budget |
+| Independence and ownership | Source role, controller/common-cause relationship, shared quality/fault ownership and the rules allowed to consume the evidence |
+
+Configuration shall not contain executable expressions or arbitrary service
+calls. Unknown states, missing attributes, invalid conversion and unmapped values
+shall produce invalid/unsupported evidence rather than a default false or zero.
+Reusing a source or heartbeat shall not remove a declared common-cause limitation.
+
+| Controller evidence | Permitted interpretation | Prohibited inference |
+| --- | --- | --- |
+| Effective room target and explicit room mode | Current controller intent, with schedule/override provenance where supplied | Independent proof that the intended schedule/permission was calculated correctly |
+| Future comfort target, arrival time or preheat context | Future intent and explanation | Substitution for the effective target at the observation time |
+| Controller `needs_heat`, requesting-room list or aggregate demand | Reported controller decision to compare against independently evaluated need | Gate that disables missing-demand detection when the controller reports no need |
+| Room-control output setpoint and HA readback | Requested and observed room-control setting | Boiler requested flow temperature, burner activity, pump activity or delivered heat |
+| Command confirmation, controller phase and diagnostic status | Controller execution/communication evidence | Physical appliance response or successful room heat delivery |
+| Controller heartbeat or refreshed MQTT publication | Controller/publication contact at its stated cadence | A fresh source room measurement or a fresh boiler telegram |
+
+C-HVAC shall calculate room need from qualified temperature, the effective
+current target and explicit permission using its own activation/release bands.
+A numeric target while the room mode is off shall not establish permission.
+Permission/target originating solely in the supervised controller shall carry
+a common-cause limitation. Full independent need-to-request coverage shall
+require an independently evidenced schedule/override/permission contract;
+controller-only evidence shall remain diagnostic or explicitly partial coverage.
+
+Each mapped field shall retain its provenance, quality and observation-time
+contract. A controller snapshot that republishes an old temperature shall not
+refresh that temperature. Missing original observation time shall be exposed as
+unverified measurement freshness, even when publication contact is current.
+The normalizer shall not translate unavailable/unsupported fields into `false`,
+zero, no demand or a passing rule.
+
+### 3.4 Capability and coverage admission
+
+Coverage shall be admitted per rule and installation, rather than inferred from
+component enablement. The validator shall bind each enabled rule to its required
+signals, independent source where required, freshness/rate proof, equipment
+profile and worst-case timing allocation. An enabled active safety rule with
+an unsatisfied contract shall fail validation. An explicitly excluded, diagnostic
+or shadow rule shall remain visible with its admission/exclusion reason and
+shall not contribute to claimed safety coverage. An operational diagnostic
+alarm shall not establish compliance with an unallocated safety deadline.
+
+Runtime loss of previously qualified evidence shall produce `unevaluable`
+coverage and the applicable input-supervision behavior. It shall not silently
+disable a rule or clear its active symptom. Published coverage shall distinguish
+controller contact, room-need assessment, boiler response, thermal output,
+distribution, room delivery, code interpretation and thermal protection. A
+healthy selected subset shall still identify the missing end-to-end paths;
+neither its health nor an empty fault list shall imply full C-HVAC coverage.
 
 ## 4. Operating phase and supervision coverage
 
@@ -366,7 +438,7 @@ The configuration contract shall preserve the repository's two-source model:
 | Source | Heating responsibility |
 | --- | --- |
 | `backend/config/system_config.yml` | Component rule definitions, calibration, model/code profiles, fault mapping/severity, evidence limits and persistence policy |
-| `backend/config/user_config.yml` | Component/installation selection, stable installation/room keys, entity and area bindings, equipment/profile identity and hydraulic topology selection |
+| `backend/config/user_config.yml` | Component/installation selection, stable installation/room keys, entity/attribute and area bindings, value/state mappings, units, freshness provenance, equipment/profile identity and hydraulic topology selection |
 | `backend/app_cfg.yaml` | Generated validated deployment artifact; no independent policy or manual edits |
 
 Equipment profile selection shall bind an installation to a reviewed system
@@ -375,6 +447,18 @@ The compiler shall construct installations from explicit user selection so a
 deleted installation cannot survive as a default. Calibration overrides shall
 preserve the same ownership rules as other components.
 
+`installation.heating_systems` shall map stable installation keys to
+`friendly_name`, semantic-role `inputs` and room associations. Each configured
+input shall select `entity_id` and optional `attribute`; `value_map` shall map
+raw states explicitly, while `unit`, `scale` and `offset` shall describe numeric
+conversion. `observed_at_attribute` or `observed_at_entity_id` shall bind original
+observation time where supplied. `freshness` shall distinguish
+`source_timestamp` from `availability_only`; `max_age_seconds` shall be checked
+against the admitted rule's timing allocation. Availability-only bindings shall
+not satisfy a rule's measurement-freshness prerequisite. No binding shall select
+a product/provider adapter. `rooms` shall retain stable room/circuit identity
+and the corresponding input bindings.
+
 Validation shall reject unknown fields, ambiguous key generation, missing
 enabled-rule inputs, incompatible units, invalid profiles/topology, inverted
 thresholds, recovery bands that cannot demonstrate recovery, unbounded sample
@@ -382,6 +466,15 @@ storage, incompatible shared dependency ownership, unsafe timing combinations
 and inconsistent phase capabilities. Diagnostics-only or shadow rules shall be
 explicitly excluded from active safety coverage. Deployable configuration
 shall not claim an enabled safety rule merely because a binding exists.
+
+Entity/attribute selection, value/state mappings, units, source roles,
+room/circuit mapping and freshness provenance shall be explicit installation
+bindings. Mapping a source value shall not redefine system-owned failure limits,
+manufacturer profiles, qualification durations or recovery policy. Controller
+calibration, published status strings and MQTT discovery defaults shall not
+become heating policy by inheritance. Adding C-HVAC shall preserve
+the configuration model's explicit component/installation selection and shall
+not enable monitoring of every discovered controller room or boiler entity.
 
 ## 9. Fault, notification and diagnostic presentation
 
@@ -431,15 +524,15 @@ rendered with the user's local date, time and timezone.
 
 ## 10. Verification and traceability
 
-Tests shall use controlled time, provider fixtures and the bundled AppDaemon
+Tests shall use controlled time, source-input fixtures and the bundled AppDaemon
 stub. Passive installation evidence shall calibrate thermal windows and code
 profiles. No household heating/actuator routine shall be triggered merely to
 verify documentation or backend unit behavior.
 
 | Test group | Required scenarios | Software requirements |
 | --- | --- | --- |
-| HSM-V01 Input contracts | Finite/invalid values, units, future/out-of-order samples, duplicates versus fresh unchanged observations, skew/gaps, cached connected state and lost heartbeat | SWR-HSM-001/002/003/004/009 |
-| HSM-V02 Independent need | Missing controller demand despite permitted cold room; disabled schedule; unknown target; common-cause inputs; two installations and correct room/circuit routing | SWR-HSM-005/008/024 |
+| HSM-V01 Input contracts | Entity state and attribute bindings; numeric/boolean/enumerated mappings; absent attributes and unmapped states; finite/invalid values, units, future/out-of-order samples, duplicates versus fresh unchanged observations, skew/gaps, cached connected state and lost heartbeat; controller republishing an old measurement; room-control setpoint rejected as boiler-flow target | SWR-HSM-001/002/003/004/009 |
+| HSM-V02 Independent need | Missing controller demand despite permitted cold room; disabled schedule with a numeric target; future comfort target versus effective target; unknown target; common-cause inputs; two installations and correct room/circuit routing | SWR-HSM-005/008/024 |
 | HSM-V03 Phase and eligibility | Idle at target, startup, DHW priority, anti-cycle, pump overrun, contradictory signals and mode change; valid above-absolute readings still reach the thermal rule despite normal controller limits | SWR-HSM-006/007/008/011 |
 | HSM-V04 Performance | Adequate/inadequate rise, tracking deficits, target changes, delayed pump, normal idle differential, suspected blocked distribution, sustained room cooling and successful recovery | SWR-HSM-009/010/011/015 |
 | HSM-V05 Codes and counters | Operating/maintenance/current fault/unknown codes, historical error with malformed date, profile mismatch, reset/wrap/replay, mode-separated cycles | SWR-HSM-002/012/013 |
@@ -447,7 +540,7 @@ verify documentation or backend unit behavior.
 | HSM-V07 Deadlines | Sampling/evaluation/debounce boundaries, total 60 s and 1800 s paths, prolonged/repeated inhibition, fresh-start budget and notification deadline miss | SWR-HSM-007/018/026 |
 | HSM-V08 Restart and time | Restart in each pending/active/recovering state, repeated restart, corrupt/missing/version-mismatched snapshot, calibration change, unavailable store, clock rollback/forward jump and downtime without positive recovery | SWR-HSM-019/020/026 |
 | HSM-V09 Evidence and UI | SET/context/HEAL incident correlation, per-target retries, accepted-versus-delivered semantics, legacy journal compatibility, bounded data, local timestamp and EN/PL/DE rendering | SWR-HSM-021/022/023 |
-| HSM-V10 Boundaries | Invalid configuration, absent thermal allocation or masking plausibility limits, excluded/shadow coverage, removed installation, bounded buffers and slow adapters, model-specific manual recovery with zero boiler/pump/climate/reset commands even on reload | SWR-HSM-024/025/026, SWR-REC-009/010/018 |
+| HSM-V10 Boundaries | Invalid/ambiguous source mappings, two differently named device/entity fixtures with equivalent normalized behavior, incomplete independence/freshness proof, absent thermal allocation or masking plausibility limits, excluded/shadow/partial coverage, removed installation, bounded buffers and slow source reads, model-specific manual recovery with zero boiler/pump/climate/reset commands even on reload | SWR-HSM-024/025/026, SWR-REC-009/010/018 |
 
 | SYS requirement | Refinement in SSRD |
 | --- | --- |

@@ -233,6 +233,39 @@ workload; they are maintenance limits, not hardware shutdown protection. Backup
 creation and a successful separate-installation restore are different evidence.
 Operational-test records never trigger a notification or backup operation.
 
+### 4.7 Heating input supervision
+
+`calibration.heating_system_monitor` owns the generic input monitor's bounded
+schedule, persistence and diagnostic qualification. It contains no controller
+product selection or device-specific entity names.
+
+| Field | Packaged default | Meaning | User override |
+| --- | --- | --- | --- |
+| `evaluation_interval_seconds` | `5` | Reconciliation cadence in seconds. | No |
+| `maximum_systems` | `8` | Maximum explicitly selected heating installations. | No |
+| `state_file` | `/config/appdaemon/heating_monitor_state.json` | Legacy import path for the `heating_monitor_state` store in the shared SQLite database, outside the deployed app tree. | No |
+| `profiles.Diagnostic.provenance` | Input availability diagnostics; excluded from thermal and SG-003 coverage | Describes the admitted diagnostic scope, not manufacturer or thermal evidence. | No |
+| `profiles.Diagnostic.enabled_rules` | `[R01]` | Input-source supervision only. Activating R02..R13 is rejected. | No |
+| `profiles.Diagnostic.failure_seconds` | `5` | Qualified input failure duration before activation, subject to shared diagnostic startup qualification. | No |
+| `profiles.Diagnostic.recovery_seconds` | `60` | Continuous valid input duration before clearing; missing evidence does not clear activation. | No |
+
+The private configuration enables `HeatingSystemMonitorComponent` and selects
+`installation.heating_systems` with stable keys, friendly names and semantic
+input/room bindings. A binding supplies `entity_id`, optional literal
+`attribute`, `value_map`, units/conversion, required `evidence_kind` and
+`independence_group`, and explicit freshness selectors where supported.
+`availability_only` preserves uncertainty about original measurement age;
+`source_timestamp` requires `observed_at_attribute` or
+`observed_at_entity_id`. Neither source publication nor HA `last_updated` is
+silently substituted for measurement time.
+
+The compiled component publishes partial coverage and explicit R02..R13
+exclusions. R01 success does not prove physical heating response or SG-003
+timing compliance. Input maps cannot enable the excluded physical rules or
+write device setpoints. See the exact
+[generic input contract and example](../HEATING_MONITOR_DELIVERY.md#generic-input-contract)
+and [installation template](../../backend/config/user_config.example.yml).
+
 ## 5. Runtime configuration
 
 ### 5.1 Faults

@@ -117,6 +117,31 @@ Po zapisaniu uruchom aplikację ponownie. Alarm jest zgłaszany jako L2 i nie
 zamyka automatycznie zaworu wody. Wynik fizycznego testu czujnika można zapisać
 w **Zdrowiu systemu → Testy czujników**; sam przycisk nie uruchamia testu.
 
+## Wejścia monitoringu ogrzewania
+
+Mapowanie wejść ogrzewania zapisuje się w prywatnym `user_config.yml`, pod
+`installation.heating_systems`. Włącz `HeatingSystemMonitorComponent` tylko
+po przypisaniu rzeczywistych źródeł. Każde wejście wybiera encję, opcjonalny
+atrybut i mapowanie surowych stanów, np. `on`/`off` na wartości logiczne.
+Nie trzeba wybierać producenta ani konkretnego sterownika.
+
+Profil `Diagnostic` obejmuje R01: utratę lub niepoprawność danych wejściowych.
+Kontrole fizycznego działania ogrzewania R02–R13 pozostają wyłączone; próba
+włączenia ich w profilu jest odrzucana. Strona **Ogrzewanie** pokazuje ten
+częściowy zakres również wtedy, gdy dane są dostępne.
+
+`availability_only` oznacza wyłącznie dostępność odczytu. Jeśli urządzenie
+dostarcza rzeczywisty czas obserwacji, można jawnie przypisać go przez
+`observed_at_attribute` lub `observed_at_entity_id` z
+`freshness: source_timestamp`. Czas aktualizacji encji w HA nie zastępuje
+czasu pomiaru. Wartość „kocioł nieaktywny” nie oznacza niedostępnego wejścia.
+
+Dokładne pola i krótki przykład są w
+[opisie konfiguracji ogrzewania](../docs/HEATING_MONITOR_DELIVERY.md#generic-input-contract)
+oraz [szablonie YAML](../backend/config/user_config.example.yml).
+Po zastosowaniu konfiguracji sprawdź wejścia, ich jakość i wyłączone kontrole
+na stronie **Ogrzewanie**; sam dostępny odczyt nie potwierdza dostarczenia ciepła.
+
 ## Dodawanie obiektów i kontrole zdrowia
 
 W sekcji **Zdrowie systemu i konserwacja** para pamięć/PSI musi dotyczyć
