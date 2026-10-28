@@ -411,7 +411,7 @@ test('discovers only configured Safety Doors MQTT entities', () => {
   });
 
   assert.equal(doors.length, 2);
-  assert.equal(doors[0].name, 'Garage Gate');
+  assert.equal(doors[0].name, 'Brama garażowa');
   assert.equal(doors[0].status, 'active');
   assert.equal(doors[0].doorState, 'open');
   assert.equal(doors[0].timeoutSeconds, 120);
@@ -630,16 +630,54 @@ test('never maps a malformed system level to a safe state', () => {
   assert.equal(summary.tone, 'muted');
 });
 
-test('escalates an active fault when another fault state is uncertain', () => {
+test('information does not escalate unavailable hazard evidence into an active alarm', () => {
   const faults = getFaults({
     'sensor.fault_notice': entity('FAIL', { level: 'level_4', active: true }),
     'sensor.fault_emergency': entity('unavailable', { level: 'level_1' }),
   });
   const summary = getSafetySummary(entity('running'), entity('4'), faults, []);
 
-  assert.equal(summary.label, 'Aktywna usterka · dane niepełne');
+  assert.equal(summary.label, 'Dane niepełne');
   assert.equal(summary.effectiveLevel, null);
-  assert.equal(summary.tone, 'critical');
+  assert.equal(summary.tone, 'muted');
+});
+
+test('L4 information never degrades the overall status, including legacy aggregates', () => {
+  const faults = getFaults({
+    'sensor.fault_battery': entity('FAIL', { fault_id: 'Battery', level: 4, active: true }),
+    'sensor.fault_other_battery': entity('NOT_EVALUATED', { level: 4, active: null }),
+  });
+  const recoveries = getRecoveries({
+    'sensor.recovery_battery': entity('unknown', {
+      proposals: [{ proposal_id: 'battery', fault_id: 'Battery', status: 'unknown' }],
+    }),
+  });
+  for (const aggregate of ['no_faults', 'information', '4']) {
+    const summary = getSafetySummary(entity('running'), entity(aggregate), faults, recoveries);
+    assert.equal(summary.label, 'System bezpieczny');
+    assert.equal(summary.tone, 'safe');
+    assert.equal(summary.effectiveLevel, 0);
+    assert.equal(summary.activeFaultCount, 0);
+    assert.equal(summary.informationalFaultCount, 1);
+    assert.match(summary.detail, /1 informacja do sprawdzenia/);
+  }
+});
+
+test('information does not hide L1-L3 alarms or invent an alarm after connection loss', () => {
+  const notice = { 'sensor.fault_notice': entity('FAIL', { level: 4, active: true }) };
+  for (const level of [1, 2, 3]) {
+    const faults = getFaults({ ...notice, 'sensor.fault_alarm': entity('FAIL', { level, active: true }) });
+    const summary = getSafetySummary(entity('running'), entity('information'), faults, []);
+    assert.equal(summary.effectiveLevel, level);
+    assert.equal(summary.activeFaultCount, 1);
+    assert.equal(summary.informationalFaultCount, 1);
+  }
+  for (const availability of ['disconnected', 'stale'] as const) {
+    const summary = getSafetySummary(entity('running'), entity('information'), getFaults(notice), [], availability);
+    assert.equal(summary.tone, 'muted');
+    assert.equal(summary.effectiveLevel, null);
+    assert.doesNotMatch(summary.label, /Alarm|Zagrożenie|usterka/);
+  }
 });
 
 test('does not trust an aggregate severity when an active fault has no level attribute', () => {

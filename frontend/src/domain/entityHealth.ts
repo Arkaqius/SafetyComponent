@@ -1,4 +1,4 @@
-import { normalizeState, type EntityMap, type EntitySnapshot } from './safety.js';
+import { friendlyEntityName, localizedEntityState, normalizeState, type EntityMap, type EntitySnapshot } from './safety.js';
 
 export const ENTITY_HEALTH_PREFIX = 'sensor.entity_health_';
 export const ENTITY_MONITOR_SUMMARY_ID = 'sensor.entity_monitor_summary';
@@ -17,10 +17,10 @@ export interface EntityCheckView {
 
 export function formatEntityCheckObservation(check: string, value: unknown): string {
   if (value === null || value === undefined || value === '') return '';
-  if (check !== 'freshness') return `odczyt: ${String(value)}`;
+  if (check !== 'freshness') return `odczyt: ${localizedEntityState('', value)}`;
 
   const seconds = Number(value);
-  if (!Number.isFinite(seconds)) return `czas od ostatniej aktualizacji: ${String(value)}`;
+  if (!Number.isFinite(seconds)) return 'brak wiarygodnego czasu ostatniej aktualizacji';
   const totalSeconds = Math.max(0, Math.round(seconds));
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
@@ -67,7 +67,7 @@ const HEALTH_STATES = new Set<EntityHealth>(['healthy', 'degraded', 'stale', 'un
 export function getMonitoredEntities(entities: EntityMap): MonitoredEntityView[] {
   return Object.entries(entities)
     .filter(([entityId]) => entityId.startsWith(ENTITY_HEALTH_PREFIX))
-    .map(([diagnosticEntityId, entity]) => monitoredEntity(diagnosticEntityId, entity))
+    .map(([diagnosticEntityId, entity]) => monitoredEntity(diagnosticEntityId, entity, entities))
     .filter((entity): entity is MonitoredEntityView => entity !== null)
     .sort((left, right) => healthRank(right.health) - healthRank(left.health) || left.friendlyName.localeCompare(right.friendlyName, 'pl'));
 }
@@ -97,7 +97,7 @@ export function getEntityMonitorSummary(entities: EntityMap, monitored = getMoni
   };
 }
 
-function monitoredEntity(diagnosticEntityId: string, entity: EntitySnapshot): MonitoredEntityView | null {
+function monitoredEntity(diagnosticEntityId: string, entity: EntitySnapshot, entities: EntityMap): MonitoredEntityView | null {
   const entityId = stringAttribute(entity, 'source_entity_id') ?? stringAttribute(entity, 'entity_id');
   const entityKey = stringAttribute(entity, 'entity_key');
   if (!entityId || !entityKey) return null;
@@ -105,7 +105,11 @@ function monitoredEntity(diagnosticEntityId: string, entity: EntitySnapshot): Mo
     diagnosticEntityId,
     entityId,
     entityKey,
-    friendlyName: stringAttribute(entity, 'friendly_name') ?? entityKey,
+    friendlyName: entities[entityId]?.attributes.friendly_name
+      ? friendlyEntityName(entityId, entities[entityId])
+      : entity.attributes.friendly_name === entityKey
+        ? 'Monitorowana encja bez nazwy'
+        : friendlyEntityName(diagnosticEntityId, entity),
     health: healthValue(entity.state) ?? 'unavailable',
     currentState: stringAttribute(entity, 'current_state') ?? 'unavailable',
     sourceGroups: stringArrayAttribute(entity, 'source_groups').filter(

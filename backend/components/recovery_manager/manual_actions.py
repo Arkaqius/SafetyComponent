@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from components.core.entity_names import friendly_entity_name
 from components.core.localization import Localizer
 from components.core.types_common import RecoveryAction, RecoveryResult, Symptom
 
@@ -52,10 +53,11 @@ def _manual_result(
     localizer = getattr(hass_app, "localizer", None)
     if not isinstance(localizer, Localizer):
         localizer = Localizer()
-    instruction = localizer.text(params["instruction_key"], subject=params["subject"])
+    subject = friendly_entity_name(hass_app, params.get("entity_id"), params["subject"])
+    instruction = localizer.text(params["instruction_key"], subject=subject)
     if str(params["instruction_key"]).startswith("hazard.guidance."):
-        instruction = f"{params['subject']}: {instruction}"
-    expected = localizer.text(params["result_key"], subject=params["subject"])
+        instruction = f"{subject}: {instruction}"
+    expected = localizer.text(params["result_key"], subject=subject)
     closed = bool(params["closed_contact"])
     check_key = str(symptom.parameters.get("check_key", ""))
     return RecoveryResult(

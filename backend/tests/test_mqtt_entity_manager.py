@@ -58,7 +58,9 @@ def test_register_sensor_publishes_discovery_state_and_attributes():
             -1
         ].kwargs["payload"]
     )
-    assert attributes_payload == {"mode": "test", "state_label": "Running"}
+    assert attributes_payload == {
+        "mode": "test", "state_label": "Running", "publication_state": "running"
+    }
 
 
 def test_localization_keeps_state_code_and_localizes_display_metadata():

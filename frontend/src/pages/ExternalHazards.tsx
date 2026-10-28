@@ -256,7 +256,10 @@ function ProviderCard({ provider }: { provider: ExternalProviderView }) {
           <div>
             <dt>Diagnostyka</dt>
             <dd>
-              <code>{provider.detailCode}</code>
+              <details>
+                <summary>Zaawansowana diagnostyka źródła</summary>
+                <code>{provider.detailCode}</code>
+              </details>
             </dd>
           </div>
         )}
@@ -286,7 +289,7 @@ function providerDisplayName(provider: string): string {
     ImgwWarningsApiComponent: 'Ostrzeżenia IMGW',
     OpenMeteoAirQualityApiComponent: 'Jakość powietrza Open-Meteo',
   };
-  return names[provider] ?? provider;
+  return names[provider] ?? 'Inne źródło danych';
 }
 
 function providerDescription(provider: string): string {
@@ -304,5 +307,5 @@ function humanizeReason(reason: string): string {
     wind: 'Niebezpieczny wiatr',
     storm: 'Burza',
   };
-  return labels[reason] ?? reason.replace(/_/g, ' ');
+  return labels[reason] ?? 'Dodatkowa blokada porady otwierania';
 }

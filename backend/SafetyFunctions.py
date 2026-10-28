@@ -381,9 +381,10 @@ class SafetyFunctions(hass.Hass):
             self._start_mqtt_reporting()
             return
 
+        retired_battery_faults: set[str] = set()
         if self.functional_safety_monitor is not None:
             try:
-                reconcile_battery_faults(
+                retired_battery_faults = reconcile_battery_faults(
                     BatteryFaultCatalog(
                         functional_policy["battery_fault_catalog_file"],
                         state_store=self.state_database.store(
@@ -504,6 +505,8 @@ class SafetyFunctions(hass.Hass):
             mqtt_entities=self.mqtt_entities,
             diagnostics_observer=self.self_diagnostics.record_app_cause,
         )
+        for fault_name in retired_battery_faults:
+            self.notify_man.retire_fault(self.fm._generate_fault_tag(fault_name))
         for component in self.sm_modules.values():
             get_inhibitions = getattr(component, "get_output_inhibitions", None)
             if callable(get_inhibitions):
@@ -888,13 +891,13 @@ class SafetyFunctions(hass.Hass):
             self.run_every(
                 self._mqtt_heartbeat,
                 "now",
-                self.mqtt_entities.settings.heartbeat_seconds,
+                1,
             )
 
     def _mqtt_heartbeat(self, **_: Any) -> None:
         """Refresh MQTT sensor states used by ``expire_after``."""
         try:
-            self.mqtt_entities.publish_heartbeat()
+            self.mqtt_entities.publish_heartbeat_batch()
         except Exception as exc:
             self.log(f"MQTT heartbeat publication failed: {exc}", level="ERROR")
             diagnostics = getattr(self, "self_diagnostics", None)

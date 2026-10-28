@@ -100,7 +100,7 @@ def reconcile_battery_faults(
     current: set[str],
     explicitly_inactive: set[str],
     inventory_complete: bool,
-) -> None:
+) -> set[str]:
     """Retire only owned identities; retain history on discovery failure."""
 
     previous, previously_retired = catalog.load()
@@ -116,3 +116,4 @@ def reconcile_battery_faults(
             f"sensor.fault_{name}", remove_legacy_topic=True
         )
     catalog.save(active, retired)
+    return retired

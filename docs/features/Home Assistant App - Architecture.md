@@ -154,6 +154,13 @@ Component:
 - MQTT availability and heartbeat distinguish an absent backend from a healthy
   safety state.
 
+Heartbeat refresh work shall be spread across bounded publication batches so
+refreshing unchanged entities does not monopolize AppDaemon callbacks. A batch
+shall publish the latest cached state and attributes for its entities, preserve
+the existing topics and payload contracts, and complete each refresh cycle
+before the configured entity expiry. A heartbeat shall not establish fresh
+physical evidence or replace component evaluation.
+
 These mechanisms cover process loss, initialization failure, configuration
 failure, Home Assistant dependency failure, and missing heartbeat. A live
 process or reachable web port is not positive evidence that all safety logic is

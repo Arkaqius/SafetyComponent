@@ -9,6 +9,7 @@ from typing import Any
 import appdaemon.plugins.hass.hassapi as hass  # type: ignore
 
 from components.core.common_entities import CommonEntities
+from components.core.entity_names import friendly_entity_name
 from components.core.event_bus import EventBus
 from components.core.mqtt_entity_manager import MqttEntityManager
 from components.core.types_common import FaultState, RecoveryAction, SMState, Symptom
@@ -116,9 +117,10 @@ class SafetyDoorsComponent(SafetyComponent):
                 symptom_name = self._symptom_name(door_name)
                 runtime_parameters = dict(parameters)
                 runtime_parameters["door_name"] = door_name
-                snapshot = self.hass_app.get_state(parameters["entity_id"], attribute="all")
-                attributes = snapshot.get("attributes", {}) if isinstance(snapshot, dict) else {}
-                subject = str(parameters.get("friendly_name") or attributes.get("friendly_name") or door_name)
+                subject = friendly_entity_name(
+                    self.hass_app, parameters["entity_id"],
+                    str(parameters.get("friendly_name") or door_name),
+                )
                 recoveries[symptom_name] = manual_action(
                     f"CloseSafetyDoor{door_name}",
                     subject=subject,
@@ -138,9 +140,9 @@ class SafetyDoorsComponent(SafetyComponent):
                 localizer = getattr(self.hass_app, "localizer", None)
                 self._fault_definitions[symptom_name] = {
                     "name": (
-                        localizer.text("fault.safety_door_timeout", door=door_name)
+                        localizer.text("fault.safety_door_timeout", door=subject)
                         if localizer is not None
-                        else f"Zbyt długo otwarte drzwi lub brama: {door_name}"
+                        else f"Zbyt długo otwarte drzwi lub brama: {subject}"
                     ),
                     "level": 2,
                     "category": "H",

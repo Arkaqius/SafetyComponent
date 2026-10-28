@@ -155,8 +155,9 @@ class FunctionalSafetyCalibrationSource(SystemSourceModel):
     battery_stale_after_seconds: int = Field(ge=1)
     memory_fault_level: Literal[2]
     wan_fault_level: Literal[3]
+    warning_fault_level: Literal[3] = 3
     maintenance_fault_level: Literal[4]
-    cpu_fault_level: Literal[4]
+    cpu_fault_level: Literal[3]
     disk_low_free_mib: float = Field(gt=0, allow_inf_nan=False)
     disk_recovery_free_mib: float = Field(gt=0, allow_inf_nan=False)
     host_temperature_high_c: float = Field(gt=0, allow_inf_nan=False)

@@ -62,3 +62,47 @@ test('missing historical identity stays missing instead of treating a generic ti
     ''
   );
 });
+
+test('concise alert titles preserve recorded identity without guessing a dash-separated location', () => {
+  assert.deepEqual(
+    notificationIdentity({ ...entry, title: 'Brak odczytu: Okno sypialni — prawe', message: 'Sprawdź zasilanie i łączność czujnika.' }),
+    {
+      faultName: 'Brak odczytu: Okno sypialni — prawe',
+      location: '',
+      inherited: false,
+    }
+  );
+  assert.deepEqual(notificationIdentity({ ...entry, title: 'PILNE: Czujnik dymu — Salon', message: 'Opuść zagrożone miejsce.' }), {
+    faultName: 'Czujnik dymu — Salon',
+    location: '',
+    inherited: false,
+  });
+});
+
+test('concise resolved subjects and clear inheritance use only stored content', () => {
+  const resolved: NotificationEntry = {
+    ...entry,
+    kind: 'resolved',
+    fault_state: 'CLEARED',
+    title: 'Problem ustąpił',
+    message: 'Okno sypialni — prawe.\nSypialnia',
+  };
+  assert.deepEqual(notificationIdentity(resolved), { faultName: 'Okno sypialni — prawe', location: 'Sypialnia', inherited: false });
+  const clear: NotificationEntry = {
+    ...entry,
+    kind: 'clear',
+    fault_state: 'SHADOWED',
+    message: 'clear_notification',
+    attempted_at: '2026-10-05T16:30:00Z',
+  };
+  assert.deepEqual(notificationIdentity(clear, [resolved]), { faultName: 'Okno sypialni — prawe', location: 'Sypialnia', inherited: true });
+});
+
+test('legacy generic titles without recorded identity remain unknown in all languages', () => {
+  for (const title of ['Sprawdź, co dzieje się w domu', 'Please check your home', 'Bitte prüfen Sie Ihr Zuhause'])
+    assert.deepEqual(notificationIdentity({ ...entry, title, message: 'Brak zapisanego opisu' }), {
+      faultName: '',
+      location: '',
+      inherited: false,
+    });
+});

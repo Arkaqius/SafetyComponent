@@ -1,4 +1,4 @@
-import { type EntityMap } from './safety.js';
+import { friendlyEntityName, type EntityMap } from './safety.js';
 
 export const INTERNAL_ENVIRONMENT_SUMMARY_ID = 'sensor.internal_environment_summary';
 export const INTERNAL_ENVIRONMENT_DETECTOR_PREFIX = 'sensor.internal_environment_';
@@ -75,8 +75,10 @@ export function getInternalEnvironmentMonitoring(entities: EntityMap): InternalE
         entityId,
         healthEntityId,
         sourceEntityId,
-        name: stringAttribute(entity.attributes.friendly_name) || friendlyFallback(entityId),
-        areaName: stringAttribute(entity.attributes.area_name) || stringAttribute(entity.attributes.area_id) || 'Brak lokalizacji',
+        name: entities[sourceEntityId]?.attributes.friendly_name
+          ? friendlyEntityName(sourceEntityId, entities[sourceEntityId])
+          : stringAttribute(entity.attributes.friendly_name) || 'Czujnik bez nazwy',
+        areaName: stringAttribute(entity.attributes.area_name) || 'Brak lokalizacji',
         hazard: stringAttribute(entity.attributes.hazard) || 'unknown',
         gasIdentity: optionalStringAttribute(entity.attributes.gas_identity),
         status,
@@ -190,13 +192,4 @@ function stringAttribute(value: unknown): string {
 function optionalStringAttribute(value: unknown): string | undefined {
   const parsed = stringAttribute(value);
   return parsed || undefined;
-}
-
-function friendlyFallback(entityId: string): string {
-  return entityId
-    .slice(INTERNAL_ENVIRONMENT_DETECTOR_PREFIX.length)
-    .split('_')
-    .filter(Boolean)
-    .map(part => part.charAt(0).toLocaleUpperCase('pl') + part.slice(1))
-    .join(' ');
 }

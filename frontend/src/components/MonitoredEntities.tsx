@@ -9,6 +9,7 @@ import {
   type MonitoredEntityView,
 } from '../domain/entityHealth';
 import { formatRelativeTime, localizedEntityState, type StatusTone } from '../domain/safety';
+import { componentLabel } from '../domain/operatorLabels';
 import { useEntityHistory } from '../hooks/useEntityHistory';
 
 const PAGE_SIZE = 50;
@@ -54,7 +55,7 @@ export default function MonitoredEntities({ monitored, summary }: { monitored: M
       <header className='panel-header'>
         <div>
           <h2>Monitorowane encje ({summary.total})</h2>
-          <p>Źródła danych używane przez funkcje bezpieczeństwa. Baterie urządzeń znajdują się poniżej, w osobnej sekcji.</p>
+          <p>Źródła danych używane przez funkcje bezpieczeństwa. Baterie urządzeń mają osobną podzakładkę.</p>
         </div>
       </header>
       <section aria-label='Podsumowanie monitorowanych encji' className='entity-health-summary'>
@@ -169,7 +170,6 @@ export default function MonitoredEntities({ monitored, summary }: { monitored: M
                       <td>
                         <button className='entity-name-button' title={entity.entityId} type='button'>
                           <strong>{entity.friendlyName}</strong>
-                          <small>{entity.entityId}</small>
                         </button>
                       </td>
                       <td>{entity.areaName ?? 'Nieprzypisana'}</td>
@@ -212,7 +212,10 @@ function EntityDetails({ entity }: { entity: MonitoredEntityView }) {
         <div>
           <span className='section-kicker'>Szczegóły monitoringu</span>
           <h2 title={entity.entityId}>{entity.friendlyName}</h2>
-          <p className='technical-id'>{entity.entityId}</p>
+          <details>
+            <summary>Identyfikator techniczny</summary>
+            <code>{entity.entityId}</code>
+          </details>
         </div>
         <StatusBadge tone={healthPresentation[entity.health].tone}>{healthPresentation[entity.health].label}</StatusBadge>
       </div>
@@ -387,19 +390,6 @@ function EmptyState({ title, detail }: { title: string; detail: string }) {
 function unique(values: string[]): string[] {
   return [...new Set(values)].sort((left, right) => left.localeCompare(right, 'pl'));
 }
-function componentLabel(value: string): string {
-  return (
-    (
-      {
-        TemperatureComponent: 'Temperatury',
-        SafetyDoorsComponent: 'Wejścia',
-        ExternalHazardComponent: 'Zagrożenia zewnętrzne',
-        SafetyFunctions: 'System',
-        installation: 'Konfiguracja użytkownika',
-      } as Record<string, string>
-    )[value] ?? value
-  );
-}
 function checkLabel(value: string): string {
   return (
     (
@@ -413,7 +403,7 @@ function checkLabel(value: string): string {
         rate_of_change: 'Tempo zmiany',
         recovery_command: 'Wykonanie działania naprawczego',
       } as Record<string, string>
-    )[value] ?? value
+    )[value] ?? 'Inna kontrola — sprawdź diagnostykę'
   );
 }
 function resultLabel(value: string): string {
@@ -427,7 +417,7 @@ function resultLabel(value: string): string {
         unevaluable: 'Brak oceny',
         not_tested: 'Nieprzetestowana',
       } as Record<string, string>
-    )[value] ?? value
+    )[value] ?? 'Brak wiarygodnej oceny'
   );
 }
 function reasonLabel(check: string, reason: string, value: unknown): string {
@@ -462,7 +452,7 @@ function reasonLabel(check: string, reason: string, value: unknown): string {
   };
   const observation = formatEntityCheckObservation(check, value);
   const observed = observation ? ` · ${observation}` : '';
-  return `${labels[reason] ?? reason}${observed}`;
+  return `${labels[reason] ?? 'Przyczyna opisana w diagnostyce'}${observed}`;
 }
 function calibrationLabel(calibration: Record<string, unknown>): string {
   const labels: Record<string, string> = {

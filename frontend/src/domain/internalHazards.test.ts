@@ -3,6 +3,23 @@ import test from 'node:test';
 import { getInternalEnvironmentMonitoring } from './internalHazards.js';
 import { type EntityMap } from './safety.js';
 
+test('detector labels use the source HA name and never promote raw IDs to operator names', () => {
+  const entities: EntityMap = {
+    'sensor.internal_environment_private_detector': entity('unavailable', {
+      source_entity_id: 'binary_sensor.private_alarm',
+      area_id: 'technical_area',
+      current_state: 'unavailable',
+    }),
+    'binary_sensor.private_alarm': entity('unavailable', { friendly_name: 'Czujnik zalania łazienki' }),
+  };
+  const named = getInternalEnvironmentMonitoring(entities).detectors[0];
+  assert.equal(named.name, 'Czujnik zalania łazienki');
+  assert.equal(named.areaName, 'Brak lokalizacji');
+  assert.equal(named.status, 'unavailable');
+  delete entities['binary_sensor.private_alarm'];
+  assert.equal(getInternalEnvironmentMonitoring(entities).detectors[0].name, 'Czujnik bez nazwy');
+});
+
 test('keeps detector alarm and technical health as separate states', () => {
   const entities: EntityMap = {
     'sensor.internal_environment_summary': entity('active_hazard', {

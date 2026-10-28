@@ -42,7 +42,7 @@ def test_set_and_healed_are_distinct_timestamped_records_surviving_restart(
     assert active["service"] == "notify/mobile_app_example_phone"
     assert active["result"] == "accepted_by_home_assistant"
     assert active["tag"] == healed["tag"] == "tag"
-    assert "Biuro" in active["message"]
+    assert "Biuro" in active["title"]
     assert restored.active_notification == {}
 
 
@@ -99,6 +99,8 @@ def test_history_is_bounded_and_records_are_not_mutated_by_later_updates() -> No
     manager.notify("Fault", 2, FaultState.SET, {"location": "First"}, "tag")
     first = dict(manager.notification_history[0])
     manager.notify("Fault", 2, FaultState.SET, {"location": "Second"}, "tag")
+    manager.pending_deliveries["tag:active"].next_attempt_at = 0
+    manager.tick()
     assert manager.notification_history[0] == first
     assert manager.notification_history[-1]["kind"] == "update"
     for index in range(HISTORY_LIMIT):
@@ -118,7 +120,7 @@ def test_history_contains_only_filtered_bounded_message_not_private_details() ->
         "tag",
     )
     entry = manager.notification_history[0]
-    assert len(entry["message"]) == 2048
+    assert len(entry["title"]) == 2048
     assert entry["text_truncated"] is True
     assert "PRIVATE" not in json.dumps(entry)
 

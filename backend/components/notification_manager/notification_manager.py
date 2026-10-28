@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 import re
 import time
@@ -20,6 +22,7 @@ from components.notification_manager.history import (
 from components.notification_manager.local_annunciator import LocalAnnunciator
 from components.notification_manager.mobile_push_provider import MobilePushProvider
 from components.notification_manager.models import PendingDelivery
+from components.notification_manager.presentation import NotificationPresentation
 from components.notification_manager.schema import NotificationConfig
 from components.notification_manager.state_store import (
     InMemoryNotificationStateStore,
@@ -69,6 +72,7 @@ class NotificationManager:
             )
             self.notification_config = model.model_dump()
         self.localizer = localizer or Localizer()
+        self.presentation = NotificationPresentation(hass_app, self.localizer)
         self.mobile_provider = mobile_provider or MobilePushProvider(
             hass_app, self.notification_config["mobile"]
         )
@@ -143,6 +147,18 @@ class NotificationManager:
 
         self._persist_state()
 
+    def retire_fault(self, tag: str) -> None:
+        """Retire lifecycle state without asserting recovery or erasing history."""
+        if tag not in self.active_notification and not any(
+            pending.tag == tag for pending in self.pending_deliveries.values()
+        ):
+            return
+        self.active_notification.pop(tag, None)
+        self._drop_pending_for_tag(tag)
+        self._clear_local(tag)
+        self._persist_state()
+        self._publish_diagnostics()
+
     def _accept_operator_action(self, action: str, data: Mapping[str, Any]) -> bool:
         """Require explicit confirmation and bound repeated operator requests."""
         if not isinstance(data, Mapping) or data.get("confirmed") is not True:
@@ -206,14 +222,16 @@ class NotificationManager:
     ) -> None:
         """Create, refresh, resolve, or remove one fault notification."""
 
-        display_name = friendly_name or self._humanize_identifier(fault)
+        display_name = self.presentation.problem(friendly_name, additional_info or {})
         safe_info = self._filter_details(additional_info)
+        default_message = self.presentation.default_recommendation(additional_info or {})
 
         if fault_status == FaultState.SET:
-            self._set_active_fault(display_name, level, safe_info, fault_tag)
+            self._set_active_fault(display_name, level, safe_info, fault_tag, default_message)
             return
         if fault_status == FaultState.CLEARED:
-            self._resolve_fault(display_name, level, safe_info, fault_tag)
+            subject = self.presentation.input_subject(additional_info or {}) or friendly_name or display_name
+            self._resolve_fault(subject, level, safe_info, fault_tag)
             return
         if fault_status == FaultState.SHADOWED:
             self._remove_fault(level, fault_tag)
@@ -399,12 +417,6 @@ class NotificationManager:
             self._persist_state()
         self._publish_diagnostics()
 
-    @staticmethod
-    def _humanize_identifier(identifier: str) -> str:
-        words = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", identifier)
-        words = words.replace("_", " ").strip()
-        return words[:1].upper() + words[1:]
-
     def _filter_details(self, additional_info: Optional[dict]) -> dict[str, Any]:
         """Drop non-approved fault context before it reaches push or persistence."""
 
@@ -423,40 +435,19 @@ class NotificationManager:
             return None
         return additional_info.get(detail_name.strip().lower())
 
-    def _format_details(self, additional_info: Optional[dict]) -> list[str]:
-        if not additional_info:
-            return []
-        details = []
-        for key, value in additional_info.items():
-            if key == "recommendation":
-                continue
-            label = self.localizer.detail_label(
-                key, self._humanize_identifier(str(key))
-            )
-            details.append(f"{label}: {value}")
-        return details
-
     def _format_active_message(
         self, friendly_name: str, additional_info: Optional[dict]
     ) -> str:
-        lines = [self.localizer.text("notification.active", fault=friendly_name)]
-        lines.extend(self._format_details(additional_info))
         recommendation = self._get_detail(additional_info, "recommendation")
-        if recommendation:
-            lines.extend(
-                [
-                    "",
-                    self.localizer.text("notification.guidance"),
-                    f"- {recommendation}",
-                ]
-            )
-        return "\n".join(lines)
+        return str(recommendation) if recommendation else ""
 
     def _format_cleared_message(
         self, friendly_name: str, additional_info: Optional[dict]
     ) -> str:
         lines = [self.localizer.text("notification.cleared", fault=friendly_name)]
-        lines.extend(self._format_details(additional_info))
+        location = self._get_detail(additional_info, "location")
+        if location:
+            lines.append(str(location))
         return "\n".join(lines)
 
     def _set_active_fault(
@@ -465,6 +456,7 @@ class NotificationManager:
         level: int,
         additional_info: dict[str, Any],
         tag: str,
+        default_message: str,
     ) -> None:
         existing = self.active_notification.get(tag)
         is_new = existing is None
@@ -485,12 +477,14 @@ class NotificationManager:
         else:
             recovery_messages = {}
         base_message = self._format_active_message(display_name, additional_info)
-        title = self._title(level)
+        title = self.presentation.title(display_name, level, additional_info)
         record: dict[str, Any] = {
             "title": title,
             "message": base_message,
             "level": level,
             "_base_message": base_message,
+            "_default_message": default_message,
+            "_details": additional_info,
             "_recovery_messages": recovery_messages,
             "acknowledged": (
                 False
@@ -504,6 +498,9 @@ class NotificationManager:
                 0 if is_escalation else int((existing or {}).get("repeat_count", 0))
             ),
             "next_repeat_at": (existing or {}).get("next_repeat_at"),
+            "_accepted_content_by_service": dict(
+                (existing or {}).get("_accepted_content_by_service", {})
+            ),
         }
         self._refresh_notification_message(record)
         if (
@@ -604,6 +601,19 @@ class NotificationManager:
     def _title(self, level: int) -> str:
         return self.localizer.text(f"notification.title.{level}")
 
+    def _content_signature(
+        self, *, tag: str, level: int, title: str, message: str
+    ) -> str:
+        """Identify visible content and actions independently of alert sound."""
+        acknowledged = bool(self.active_notification.get(tag, {}).get("acknowledged", False))
+        payload = self.mobile_provider.build_payload(
+            level=level, tag=tag,
+            acknowledgement_title=self.localizer.text("notification.action.ack"),
+            quiet=True, resolved=False, acknowledged=acknowledged,
+        )
+        content = json.dumps([level, title, message, payload], sort_keys=True)
+        return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
     def _queue_delivery(
         self, *, tag: str, level: int, title: str, message: str, kind: str
     ) -> None:
@@ -625,10 +635,32 @@ class NotificationManager:
                     if service not in pending_new_targets
                 )
                 self._persist_state()
-                if not target_services:
-                    self._publish_diagnostics()
-                    return
                 delivery_key = f"{tag}:update"
+            signature = self._content_signature(
+                tag=tag, level=level, title=title, message=message
+            )
+            accepted = self.active_notification.get(tag, {}).get("_accepted_content_by_service", {})
+            target_services = tuple(
+                service for service in target_services
+                if accepted.get(service) != signature
+            )
+            pending_update = self.pending_deliveries.get(delivery_key)
+            if not target_services:
+                if pending_update is not None and pending_update.kind == "update":
+                    del self.pending_deliveries[delivery_key]
+                self._persist_state()
+                self._publish_diagnostics()
+                return
+            if pending_update is not None and pending_update.kind == "update":
+                pending_update.level = level
+                pending_update.title = title
+                pending_update.message = message
+                # Changed content must also reach previously successful targets.
+                # Accepted signatures omit only targets already holding this content.
+                pending_update.target_services = target_services
+                # Keep original deadlines and retry timing.
+                self._persist_state()
+                return
             for pending_id, pending in list(self.pending_deliveries.items()):
                 if pending.tag == tag and pending_id != f"{tag}:active":
                     del self.pending_deliveries[pending_id]
@@ -642,14 +674,14 @@ class NotificationManager:
             created_at=now,
             deadline_at=now
             + self.notification_config["retry"]["deadlines_seconds"][level],
-            next_attempt_at=now,
+            next_attempt_at=now + (1 if kind == "update" else 0),
             target_services=target_services,
         )
         self.pending_deliveries[delivery_key] = delivery
         self._persist_state()
-        if self.wan_online:
+        if self.wan_online and kind != "update":
             self._attempt_delivery(delivery)
-        else:
+        elif not self.wan_online:
             for service in delivery.target_services:
                 self._channel_status[service] = {
                     "status": "queued",
@@ -677,6 +709,10 @@ class NotificationManager:
             acknowledged = delivery.kind in {"acknowledged", "test"} or bool(
                 active_record.get("acknowledged", False)
             )
+            signature = self._content_signature(
+                tag=delivery.tag, level=delivery.level,
+                title=delivery.title, message=delivery.message,
+            )
             result = self.mobile_provider.send(
                 level=delivery.level,
                 title=delivery.title,
@@ -703,6 +739,14 @@ class NotificationManager:
         self._counters["accepted_attempts"] += accepted_count
         self._counters["failed_attempts"] += len(result.failed_services)
         for target in result.targets:
+            if (
+                target.disposition.value == "accepted_by_home_assistant"
+                and delivery.kind in {"new", "update", "acknowledged", "repeat"}
+                and delivery.tag in self.active_notification
+            ):
+                self.active_notification[delivery.tag].setdefault(
+                    "_accepted_content_by_service", {}
+                )[target.service] = signature
             self.notification_history.append(
                 submission_entry(delivery, target, completed_at)
             )
@@ -791,20 +835,21 @@ class NotificationManager:
             return
         self._refresh_notification_message(notification)
         self._persist_state()
+        level = int(notification["level"])
+        if level in (1, 2, 3):
+            self._queue_delivery(
+                tag=fault_tag, level=level, title=str(notification["title"]),
+                message=str(notification["message"]), kind="update",
+            )
 
     def _refresh_notification_message(self, notification: dict[str, Any]) -> None:
         message = notification.get("_base_message", notification["message"])
         recovery_messages = notification.get("_recovery_messages", {})
-        if recovery_messages:
-            items = (
-                recovery_messages.values()
-                if isinstance(recovery_messages, dict)
-                else recovery_messages
-            )
-            guidance = "\n".join(f"- {item}" for item in items)
-            header = self.localizer.text("notification.guidance")
-            message = f"{message}\n\n{header}\n{guidance}"
-        notification["message"] = message
+        items = recovery_messages.values() if isinstance(recovery_messages, dict) else recovery_messages
+        recommendations = [str(message), *(str(item) for item in items)]
+        if not any(text.strip() for text in recommendations):
+            recommendations = [str(notification.get("_default_message", self.localizer.text("notification.open_details")))]
+        notification["message"] = self.presentation.body(recommendations, int(notification["level"]))
 
     def _is_wan_online(self, state: Any) -> bool:
         return str(state).strip().lower() in set(
@@ -868,6 +913,14 @@ class NotificationManager:
             }
             self.pending_deliveries = {}
             current_services = set(self.mobile_provider.services)
+            for record in self.active_notification.values():
+                accepted = record.get("_accepted_content_by_service", {})
+                record["_accepted_content_by_service"] = {
+                    service: signature for service, signature in accepted.items()
+                    if service in current_services
+                    and isinstance(signature, str)
+                    and re.fullmatch(r"[0-9a-f]{64}", signature)
+                } if isinstance(accepted, Mapping) else {}
             for raw in snapshot.get("pending_deliveries", []):
                 delivery = PendingDelivery.from_dict(dict(raw))
                 retained_services = tuple(

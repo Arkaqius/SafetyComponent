@@ -584,9 +584,28 @@ and reason codes remain language-independent.
 System Health presents C-ENT MQTT diagnostics for authoritative Group A/B
 health and fault context alongside the separate C-FSM battery section. Its
 monitored list shall not enumerate the Home Assistant entity or device registry.
+The page separates monitored entities, batteries, platform diagnostics, and
+tests/notifications into four URL-selected subtabs. Both monitored entities
+and battery maintenance remain within System Health.
+Selection uses `/functional-safety?tab=entities` (default), `tab=batteries`,
+`tab=platform` or `tab=tests`, and shall follow browser navigation. Inactive
+panels shall preserve filter and row-selection state while the page remains
+mounted. Tab navigation shall support Left/Right and Home/End keys.
 
 The frontend performs only presentation filtering. It may defensively recompute
 simple display classifications, but it shall not create or clear a safety fault.
+
+Ordinary operator content shall use Home Assistant friendly names or Polish
+labels for known system concepts. Live source-entity names shall take precedence
+over technical binding keys in monitored-input and door summaries. Home
+Assistant names shall retain their wording, apart from the existing Safety
+Component presentation wrapper. Missing names and unrecognized state or reason
+codes shall use localized fallback text rather than humanized identifiers;
+valid numeric readings, including their sign, shall remain visible. Coverage
+summaries shall identify the localized failed capability and bound subject when
+known. Raw identifiers, check/reason codes and freeze-frame evidence shall
+remain available in explicit advanced diagnostic details, without changing the
+underlying runtime contracts.
 
 The monitored-entities section provides:
 

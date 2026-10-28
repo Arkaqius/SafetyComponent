@@ -57,7 +57,7 @@ test('rejects unavailable shapes, malformed dates and inconsistent fault states'
 
 test('renders recipient groups without inventing a person and distinguishes shadowing', () => {
   assert.equal(notificationRecipient('notify/all_phones'), 'Wszystkie telefony (grupa)');
-  assert.equal(notificationRecipient('notify/mobile_app_test_phone'), 'test phone');
+  assert.equal(notificationRecipient('notify/mobile_app_test_phone'), 'Skonfigurowany odbiorca');
   assert.equal(notificationState('SHADOWED'), 'Usterka przesłonięta');
   assert.equal(notificationState('CLEARED'), 'Usterka ustąpiła');
   assert.equal(notificationKind('acknowledged'), 'Potwierdzenie użytkownika');

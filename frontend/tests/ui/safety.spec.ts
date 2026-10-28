@@ -35,6 +35,88 @@ async function openMock(page: Page, route = '/', viewMode: 'basic' | 'advanced' 
   await page.waitForFunction(() => Boolean(window.__safetyHomeMock));
 }
 
+test('large history inventories keep only one bounded page subscribed and reset filters', async ({ page }) => {
+  await openMock(page, '/history');
+  await page.evaluate(() => {
+    const entities: EntityMap = {};
+    for (let index = 0; index < 437; index++) {
+      entities[`sensor.fault_bulk_${String(index).padStart(3, '0')}`] = {
+        state: 'PASS',
+        attributes: { friendly_name: `Czujnik ${String(index).padStart(3, '0')}`, active: false, level: 3 },
+      };
+    }
+    window.__safetyHomeMock.update({ entities, connectionStatus: 'connected', ready: true });
+  });
+  await expect(page.locator('.history-card')).toHaveCount(20);
+  await expect(page.getByRole('navigation', { name: 'Strony historii encji' })).toContainText('Encje 1–20 z 437');
+  await page.getByRole('button', { name: 'Następne encje', exact: true }).click();
+  await expect(page.locator('.history-card')).toHaveCount(20);
+  await expect(page.locator('[data-entity-id="sensor.fault_bulk_000"]')).toHaveCount(0);
+  await expect(page.locator('[data-entity-id="sensor.fault_bulk_020"]')).toBeVisible();
+  await page.getByRole('button', { name: 'Usterki', exact: true }).click();
+  await expect(page.getByRole('navigation', { name: 'Strony historii encji' })).toContainText('Encje 1–20 z 437');
+  await page.getByRole('button', { name: 'System', exact: true }).click();
+  await expect(page.locator('.history-card')).toHaveCount(0);
+});
+
+test('L4 stays informational while L3 warnings still change the overall state', async ({ page }, testInfo) => {
+  await openMock(page);
+  await page.evaluate(() => {
+    const entities = window.__safetyHomeMock.snapshot();
+    for (const id of Object.keys(entities)) {
+      if (id.startsWith('sensor.fault_') || id.startsWith('sensor.recovery_')) delete entities[id];
+    }
+    entities['sensor.safety_app_health'] = { state: 'running', attributes: {} };
+    entities['sensor.safetysystem_state'] = { state: 'information', attributes: {} };
+    entities['sensor.fault_battery_notice'] = {
+      state: 'FAIL',
+      attributes: {
+        fault_id: 'BatteryNotice',
+        friendly_name: 'Bateria pilota',
+        level: 4,
+        active: true,
+        category: 'D',
+        latched: false,
+        contributors: ['battery_reading'],
+        active_contributors: ['battery_reading'],
+      },
+    };
+    entities['sensor.recovery_battery_notice'] = {
+      state: 'TO_PERFORM',
+      attributes: {
+        proposals: [{ proposal_id: 'battery', fault_id: 'BatteryNotice', status: 'TO_PERFORM', instruction: 'Sprawdź baterię pilota' }],
+      },
+    };
+    window.__safetyHomeMock.update({ entities, connectionStatus: 'connected', ready: true });
+  });
+  const hero = page.locator('.safety-hero');
+  const notice = page.locator('[data-entity-id="sensor.fault_battery_notice"]');
+  await expect(hero).toHaveClass(/hero-safe/);
+  await expect(hero).toContainText('System bezpieczny');
+  await expect(hero).toContainText('1 informacja do sprawdzenia');
+  await expect(hero.locator('.hero-incident')).toHaveCount(0);
+  await expect(page.locator('.fault-panel .count-badge-alert')).toHaveCount(0);
+  await expect(page.locator('.fault-panel .panel-header')).toContainText('1 informacja');
+  await expect(notice).toHaveClass(/fault-info/);
+  await expect(notice).toContainText('Informacja potwierdzona');
+  await expect(notice.locator('summary .status-danger, summary .status-critical')).toHaveCount(0);
+  await expect(notice.locator('.fault-contributor-active')).toHaveCSS('border-color', 'rgb(111, 181, 255)');
+  await expect(notice).toContainText('Sprawdź baterię pilota');
+  await page.screenshot({ path: testInfo.outputPath('information-only.png'), fullPage: true, scale: 'css' });
+
+  await page.evaluate(() => {
+    const entities = window.__safetyHomeMock.snapshot();
+    entities['sensor.fault_update_warning'] = {
+      state: 'FAIL',
+      attributes: { friendly_name: 'Aktualizacja dostępna', level: 3, active: true, category: 'D' },
+    };
+    window.__safetyHomeMock.update({ entities });
+  });
+  await expect(hero).toHaveClass(/hero-warning/);
+  await expect(hero.getByRole('heading')).toHaveText('Ostrzeżenie');
+  await expect(notice).toHaveClass(/fault-info/);
+});
+
 test('device contact does not turn an unknown water alarm into a clear alarm', async ({ page }, testInfo) => {
   await openMock(page, '/internal-hazards');
   await page.evaluate(() => {
@@ -403,20 +485,23 @@ test('system health contains monitored entities and batteries without a general 
     expect(await monitored.locator('.search-field').evaluate(element => element.getBoundingClientRect().height)).toBeLessThan(100);
   await expect(monitored.locator('tbody tr')).toHaveCount(45);
   await expect(monitored).not.toContainText('Poza monitoringiem');
-  await monitored.getByRole('button', { name: 'Źródło testowe 3 sensor.example_outdoor_temperature', exact: true }).click();
-  await expect(monitored.getByRole('heading', { name: 'Źródło testowe 3', exact: true })).toBeVisible();
-  await monitored.getByLabel('Wyszukaj', { exact: true }).fill('biura');
+  await monitored.getByRole('button', { name: 'Temperatura zewnętrzna', exact: true }).nth(1).click();
+  await expect(monitored.getByRole('heading', { name: 'Temperatura zewnętrzna', exact: true })).toBeVisible();
+  await monitored.getByLabel('Wyszukaj', { exact: true }).fill('office');
   await expect(monitored.locator('tbody tr')).toHaveCount(1);
-  await monitored.getByRole('button', { name: /Temperatura biura/ }).click();
+  await monitored.getByRole('button', { name: 'Example office temperature', exact: true }).click();
   await expect(monitored.getByText('Szczegóły monitoringu')).toBeVisible();
-  const batteries = page.locator('details').filter({ has: page.locator('summary', { hasText: /^Baterie urządzeń/ }) });
-  await batteries.locator('summary').click();
-  await expect(batteries.getByText('Bateria: Przykładowy pilot', { exact: true })).toBeVisible();
+  await page.getByRole('tab', { name: /^Baterie/ }).click();
+  const batteries = page.getByRole('region', { name: 'Baterie urządzeń', exact: true });
+  await expect(batteries.getByRole('button', { name: /^Przykładowy pilot/ })).toBeVisible();
+  await batteries.getByRole('button', { name: /^Przykładowy pilot/ }).click();
   await expect(batteries).toContainText('12%');
   await expect(batteries).toContainText('Niska bateria');
-  await expect(batteries).toContainText('last_seen');
+  await batteries.getByText('Zaawansowana diagnostyka baterii', { exact: true }).click();
+  await expect(batteries.locator('code').filter({ hasText: 'sensor.example_remote_battery' })).toBeVisible();
   expect(await page.evaluate(() => window.__safetyHomeMock.messages.filter(message => message.type === 'fire_event'))).toEqual([]);
   await page.screenshot({ path: testInfo.outputPath('system-health-batteries.png'), scale: 'css' });
+  await page.getByRole('tab', { name: /^Monitorowane encje/ }).click();
   await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
   await page.screenshot({ path: testInfo.outputPath('system-health.png'), scale: 'css', fullPage: true });
   await page.screenshot({ path: testInfo.outputPath('system-health-monitored.png'), scale: 'css' });
@@ -443,6 +528,47 @@ test('not evaluated faults remain visible in the attention view', async ({ page 
   const card = page.locator('.fault-card').filter({ has: page.getByText('Nieoceniona bateria testowa', { exact: true }) });
   await card.locator(':scope > summary').click();
   await expect(card.locator('dd').getByText('Nieoceniona', { exact: true })).toBeVisible();
+});
+
+test('operator monitoring uses HA names and Polish states while raw IDs stay in diagnostics', async ({ page }, testInfo) => {
+  await openMock(page, '/functional-safety');
+  await page.evaluate(() => {
+    const entities = window.__safetyHomeMock.snapshot();
+    for (const id of Object.keys(entities)) {
+      if (id.startsWith('sensor.entity_health_')) delete entities[id];
+    }
+    entities['binary_sensor.private_window_source'] = {
+      state: 'unavailable',
+      attributes: { friendly_name: 'Okno sypialni — prawe' },
+    };
+    entities['sensor.entity_health_private_window'] = {
+      state: 'unavailable',
+      attributes: {
+        entity_id: 'binary_sensor.private_window_source',
+        entity_key: 'ExternalOpeningBedroomRightWindow',
+        friendly_name: 'Stara nazwa',
+        current_state: 'unavailable',
+        owners: ['EntityMonitorComponent'],
+      },
+    };
+    window.__safetyHomeMock.update({ entities });
+  });
+  const monitored = page.getByRole('region', { name: 'Monitorowane encje', exact: true });
+  const row = monitored.locator('tbody tr');
+  await expect(row).toHaveCount(1);
+  await expect(row).toContainText('Okno sypialni — prawe');
+  await expect(row).toContainText('Niedostępna');
+  await expect(row).not.toContainText('unavailable');
+  await expect(row).not.toContainText('binary_sensor.private_window_source');
+  await monitored.getByRole('button', { name: 'Okno sypialni — prawe', exact: true }).click();
+  const details = monitored.locator('.entity-details-panel');
+  await expect(details).toContainText('Monitoring wejść');
+  const rawId = details.locator('code').filter({ hasText: 'binary_sensor.private_window_source' });
+  await expect(rawId).toBeHidden();
+  await page.screenshot({ path: testInfo.outputPath('operator-labels.png'), scale: 'css', fullPage: true });
+  await details.getByText('Identyfikator techniczny', { exact: true }).click();
+  await expect(rawId).toBeVisible();
+  expect(await page.evaluate(() => window.__safetyHomeMock.messages.filter(message => message.type === 'fire_event'))).toEqual([]);
 });
 
 test('entity modal traps keyboard focus and restores its trigger', async ({ page }) => {
