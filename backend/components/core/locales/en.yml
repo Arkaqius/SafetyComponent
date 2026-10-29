@@ -286,3 +286,17 @@ recovery.inspect_command: 'Inspect the failed command or missing effect for {sub
 recovery.reason_recovery_command: 'A command failed or its required effect was not observed.'
 recovery.confirm_close_opening: Confirm closing {opening}. SafetyComponent will act
   only after your confirmation.
+heating.reason.clock_uncertain: "Time continuity needs confirmation"
+heating.reason.input_skew: "Measurements do not describe the same moment"
+heating.reason.target_attained: "Temperature target reached"
+heating.reason.target_changed: "Target changed; previous need remains unresolved"
+heating.reason.request_observed: "Heating request confirmed"
+heating.reason.response_observed: "Central heating response confirmed"
+heating.reason.request_allowance: "Waiting for a heating request"
+heating.reason.bounded_inhibition: "Temporary heating pause within its allowance"
+heating.reason.missing_request: "Room needs heat but no request is present"
+heating.reason.no_response: "No central heating response after its allowance"
+heating.input.inhibition_reason: "Reason for the heating pause"
+heating.inhibition.none: "No pause"
+heating.inhibition.startup: "Startup"
+heating.inhibition.anti_cycle: "Pause between burner starts"

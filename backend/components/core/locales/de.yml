@@ -287,3 +287,17 @@ recovery.inspect_command: 'Prüfen Sie den fehlgeschlagenen Befehl oder fehlende
 recovery.reason_recovery_command: 'Ein Befehl ist fehlgeschlagen oder der erforderliche Effekt wurde nicht beobachtet.'
 recovery.confirm_close_opening: Bestätigen Sie das Schließen von {opening}. SafetyComponent
   handelt erst nach Ihrer Bestätigung.
+heating.reason.clock_uncertain: "Zeitkontinuität muss bestätigt werden"
+heating.reason.input_skew: "Messwerte stammen nicht vom selben Zeitpunkt"
+heating.reason.target_attained: "Solltemperatur erreicht"
+heating.reason.target_changed: "Sollwert geändert; vorheriger Wärmebedarf bleibt offen"
+heating.reason.request_observed: "Heizanforderung bestätigt"
+heating.reason.response_observed: "Reaktion der Raumheizung bestätigt"
+heating.reason.request_allowance: "Warten auf eine Heizanforderung"
+heating.reason.bounded_inhibition: "Vorübergehende Heizpause innerhalb der zulässigen Dauer"
+heating.reason.missing_request: "Raum benötigt Wärme, aber es liegt keine Heizanforderung vor"
+heating.reason.no_response: "Keine Heizreaktion nach der zulässigen Wartezeit"
+heating.input.inhibition_reason: "Grund der Heizpause"
+heating.inhibition.none: "Keine Pause"
+heating.inhibition.startup: "Anlauf"
+heating.inhibition.anti_cycle: "Pause zwischen Brennerstarts"

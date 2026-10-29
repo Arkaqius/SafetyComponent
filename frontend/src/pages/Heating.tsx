@@ -13,6 +13,7 @@ const statuses: Record<string, { label: string; tone: StatusTone }> = {
   PENDING_RECOVERY: { label: 'Potwierdzanie poprawy', tone: 'warning' },
   UNEVALUABLE: { label: 'Brak danych do oceny', tone: 'muted' },
   INHIBITED: { label: 'Ocena wstrzymana', tone: 'muted' },
+  NOT_APPLICABLE: { label: 'Brak potrzeby tej kontroli', tone: 'muted' },
   DISABLED: { label: 'Kontrola niewłączona', tone: 'muted' },
 };
 
@@ -88,10 +89,10 @@ export default function Heating() {
                     <tr key={index}>
                       <td>
                         {rule.name}
-                        {rule.active && <small> · Usterka nadal aktywna</small>}
+                        {rule.active && <small> · {rule.informational ? 'Informacja nadal aktualna' : 'Usterka nadal aktywna'}</small>}
                       </td>
                       <td>
-                        <StatusBadge tone={status.tone}>{status.label}</StatusBadge>
+                        <StatusBadge tone={status.tone}>{rule.informational && rule.active ? 'Wymaga uwagi' : status.label}</StatusBadge>
                       </td>
                       <td>{rule.reasons.join('; ')}</td>
                     </tr>

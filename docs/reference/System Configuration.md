@@ -236,8 +236,9 @@ Operational-test records never trigger a notification or backup operation.
 ### 4.7 Heating input supervision
 
 `calibration.heating_system_monitor` owns the generic input monitor's bounded
-schedule, persistence and diagnostic qualification. It contains no controller
-product selection or device-specific entity names.
+schedule, persistence and rule qualification. It contains no controller product
+selection or device-specific entity names. `Diagnostic` remains the default R01
+profile; an application upgrade does not enable additional rules.
 
 | Field | Packaged default | Meaning | User override |
 | --- | --- | --- | --- |
@@ -245,9 +246,13 @@ product selection or device-specific entity names.
 | `maximum_systems` | `8` | Maximum explicitly selected heating installations. | No |
 | `state_file` | `/config/appdaemon/heating_monitor_state.json` | Legacy import path for the `heating_monitor_state` store in the shared SQLite database, outside the deployed app tree. | No |
 | `profiles.Diagnostic.provenance` | Input availability diagnostics; excluded from thermal and SG-003 coverage | Describes the admitted diagnostic scope, not manufacturer or thermal evidence. | No |
-| `profiles.Diagnostic.enabled_rules` | `[R01]` | Input-source supervision only. Activating R02..R13 is rejected. | No |
+| `profiles.Diagnostic.enabled_rules` | `[R01]` | Input-source supervision only. Other profiles may admit R02/R03/R04/R13 after validation; R05..R12 remain rejected. | No |
 | `profiles.Diagnostic.failure_seconds` | `5` | Qualified input failure duration before activation, subject to shared diagnostic startup qualification. | No |
 | `profiles.Diagnostic.recovery_seconds` | `60` | Continuous valid input duration before clearing; missing evidence does not clear activation. | No |
+| `profiles.<key>.device_fault` | Absent | R02 current-status policy; required when R02 is enabled. | No |
+| `profiles.<key>.missing_demand` | Absent | R03 independent room-need/request policy; required when R03 is enabled. | No |
+| `profiles.<key>.no_response` | Absent | R04 request/response and bounded inhibition policy; required when R04 is enabled. | No |
+| `profiles.<key>.maintenance` | Absent | R13 fresh maintenance-status policy; required when R13 is enabled. | No |
 
 The private configuration enables `HeatingSystemMonitorComponent` and selects
 `installation.heating_systems` with stable keys, friendly names and semantic
@@ -259,10 +264,23 @@ input/room bindings. A binding supplies `entity_id`, optional literal
 `observed_at_entity_id`. Neither source publication nor HA `last_updated` is
 silently substituted for measurement time.
 
-The compiled component publishes partial coverage and explicit R02..R13
-exclusions. R01 success does not prove physical heating response or SG-003
-timing compliance. Input maps cannot enable the excluded physical rules or
-write device setpoints. See the exact
+Each optional rule policy provides `evidence_reference`, `failure_seconds` and
+`recovery_seconds`. Demand/response policies additionally declare separate need
+bands or target recovery tolerance, explicit allowances, source-time skew and
+a total unresolved-need budget of at most 1800 seconds. `no_response` declares
+`inhibition_context: none` or `mapped_reason`; the latter requires a normalized
+`inhibition_reason` (`none`, `startup`, `anti_cycle`). The component derives its
+bounded expiry; a source `until` value is not assumed. Required inputs must have
+original observation timestamps, appropriate physical/intent meaning and a
+validated complete source-to-notification timing allocation. Unqualified
+availability-only bindings cannot activate those rules.
+
+The compiled component publishes partial coverage and explicit rule exclusions.
+R01 success does not prove physical heating response or SG-003 timing
+compliance. R13 remains L4 maintenance information. Input maps cannot enable
+the excluded R05..R12 rules or write device setpoints. State-version migration
+preserves unchanged R01 incidents; new defaults do not authorize clearing old
+active evidence. See the exact policy fields, bounds and
 [generic input contract and example](../HEATING_MONITOR_DELIVERY.md#generic-input-contract)
 and [installation template](../../backend/config/user_config.example.yml).
 

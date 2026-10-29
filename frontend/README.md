@@ -62,10 +62,14 @@ W widoku rozszerzonym strona **Ogrzewanie** pokazuje skonfigurowane wejścia,
 ich jakość, obserwowaną fazę pracy i zakres kontroli. Nazwy źródeł pochodzą
 z Home Assistanta, a brak wiarygodnych danych pozostaje widoczny.
 
-Bieżący zakres obejmuje diagnostykę dostępności i poprawności wejść (R01).
-Pozostałe kontrole pokazują wyłączenie z zakresu. Poprawny odczyt lub brak
-aktywnego alarmu nie potwierdza dostarczania ciepła ani bezpiecznej temperatury
-kotła. Mapowanie dowolnych urządzeń opisuje
+Domyślny zakres obejmuje diagnostykę dostępności i poprawności wejść (R01).
+Po dopuszczeniu odpowiedniego profilu dostępne są również: bieżąca usterka
+urządzenia (R02), brak żądania grzania (R03), brak odpowiedzi kotła (R04) i
+informacja serwisowa (R13). Wymagają kompletnych, świeżych i właściwie opisanych
+wejść. R05–R12 pozostają poza zakresem; aktualizacja nie włącza ich ani żadnej
+nowej reguły automatycznie. Poprawny odczyt lub brak aktywnego alarmu nie
+potwierdza dostarczania ciepła ani bezpiecznej temperatury kotła.
+Mapowanie dowolnych urządzeń opisuje
 [konfiguracja wejść ogrzewania](CONFIGURATION.md#wejścia-monitoringu-ogrzewania).
 
 ## Zdrowie systemu: monitorowane encje i baterie

@@ -464,6 +464,11 @@ def compile_runtime_bindings(
                 )
                 and (
                     cause != "persistence"
+                    or symptom.parameters.get("store") != "heating_monitor_state"
+                    or target.sm_name.startswith("sm_hsm_")
+                )
+                and (
+                    cause != "persistence"
                     or symptom.parameters.get("store") not in {
                         "periodic_test_state", "detector_test_state"
                     }
@@ -556,6 +561,8 @@ def compile_runtime_bindings(
             bindings.append(DiagnosticBinding(
                 symptom_id, targets, external_only=not targets
             ))
+        elif symptom.sm_name == "sm_hsm_maintenance":
+            bindings.append(DiagnosticBinding(symptom_id, (), external_only=True))
         elif symptom.sm_name.startswith("sm_fsm_"):
             bindings.append(DiagnosticBinding(symptom_id, (), external_only=True))
     return tuple(bindings)

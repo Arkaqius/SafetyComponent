@@ -90,7 +90,7 @@ calibrated tolerance shall be invalid.
 | --- | --- | --- |
 | Boiler thermal | `flow_temperature`, `return_temperature`, `requested_flow_temperature` | Rise, tracking, distribution and temperature limits |
 | Boiler operation | `boiler_active`, `power_percent`; explicitly evidenced pump/burner observations where required | Response, phase and hydraulic consistency; percentage fields have range 0..100; a generic active state shall not imply an unobserved pump or burner state |
-| Operating context | `heat_request`, `dhw_active`, `inhibition_reason`, `inhibition_until`, operating mode | Separate eligible CH evaluation from DHW, overrun and permitted delay |
+| Operating context | `heat_request`, `dhw_active`, mapped `inhibition_reason`, operating mode and bounded inhibition expiry | Separate eligible CH evaluation from DHW, overrun and permitted delay; distinguish any source-reported expiry from the component's policy-derived deadline |
 | Source supervision | source availability, boiler observation timestamp/sequence, normalized input quality | Detect unavailable or stale telemetry, including frozen streams |
 | Device codes | current service/fault code tuple, model/profile version, maintenance code, historical last error | Distinguish current operating condition, active fault, maintenance and history |
 | Independent room need | `room_temperature`, `target_temperature`, `heating_permitted`, schedule/override, associated installation/circuit | Detect missing request independently of controller output |
@@ -276,8 +276,19 @@ to a device fault or a healthy boiler by default. Code profiles shall contain
 equipment applicability and source-document/version provenance. Historical
 error strings, including malformed dates, shall be diagnostic only.
 
+The rule engine shall consume normalized current `device_status` and
+`maintenance_status` values from configured mappings, with reviewed meaning,
+equipment applicability and version provenance. It shall not select an
+integration or recognize a product from an entity name. Explicit `clear` shall
+be distinguished from unknown classification, history and communication
+recovery. A code mapping alone shall not establish observation freshness.
+
 R01 shall maintain a bounded cause ledger within each installation symptom.
-Each constituent cause shall retain its own failure/recovery latch and timing;
+Each constituent cause shall retain its own failure qualification timing.
+Recovery shall require positive evidence for every active cause for the full
+recovery duration; a conservative shared interval during which all constituent
+causes are simultaneously valid may implement this recovery barrier.
+Cause qualification shall survive restart without counting unevaluated time;
 recovering communication shall not clear a still-invalid measurement, unknown
 code interpretation or persistence failure. The installation symptom shall
 clear only when every active constituent cause has positively recovered.
@@ -288,6 +299,15 @@ and DHW priority. R05/R06 shall require eligible windows after target changes;
 target/phase changes may invalidate a sample window but shall not erase the
 total unresolved-need deadline. Continuous or repeated inhibition that exhausts
 the heating-loss budget shall set R04 with the reason `inhibition_budget_exhausted`.
+
+Response policy shall explicitly declare whether additional inhibition context
+exists. A mapped context shall classify `none`, `startup` or `anti_cycle` from
+an evidenced source; DHW handling shall remain a separate required input.
+Policy-derived expiry shall begin with the first continuous eligible
+indication, be bounded individually and remain inside the durable total need
+budget. A source-provided `until` value shall not be assumed when none is
+bound. Unknown inhibition shall not grant an unlimited allowance or constitute
+positive recovery. An active burner during DHW shall not establish CH response.
 
 R08 shall not fault on a small or inverted differential at idle, nor on a small
 differential at low load alone. R09 shall distinguish a delivery symptom from
@@ -368,6 +388,13 @@ Clock uncertainty shall consume the remaining deadline conservatively instead
 of granting another full grace period. Repeated restart shall not extend the
 supervision guarantee.
 
+Migration of a supported older state version shall validate that version's
+configuration projection before preserving its incidents and active evidence.
+Additive inactive policy defaults or new rule paths shall not reset unchanged
+existing contracts. New rules shall begin without fabricated prior successful
+observations. Removed or materially changed active contracts shall require
+explicit reconciliation rather than an empty healthy snapshot.
+
 ## 7. Calibration and timing allocation
 
 All operating thresholds shall be calibration values with source, units,
@@ -402,6 +429,13 @@ and the maximum of explicitly concurrent stages. Startup, sample windows,
 inhibitions, evaluation cadence and debounce shall be included once each. The
 decision/evidence shall expose the actual onset used; onset shall not be moved
 forward because detection was delayed.
+
+When one reconciliation enters qualification and a later reconciliation
+confirms it, both worst-case evaluation latencies shall be allocated. A
+single-evaluation example shall not authorize a two-stage path. Concurrent
+source stages shall use their maximum elapsed bound rather than an invented
+sum; overlapping startup/inhibition allowance shall not be renewed or counted
+twice.
 
 | Safety path | Limit | Example bounded allocation |
 | --- | --- | --- |

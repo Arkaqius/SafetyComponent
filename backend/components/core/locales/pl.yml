@@ -286,3 +286,17 @@ recovery.inspect_command: 'Sprawdź nieudaną komendę lub brak jej efektu dla {
 recovery.reason_recovery_command: 'Komenda nie powiodła się albo nie zaobserwowano wymaganego efektu.'
 recovery.confirm_close_opening: 'Potwierdź zamknięcie: {opening}. SafetyComponent
   wykona polecenie dopiero po Twoim potwierdzeniu.'
+heating.reason.clock_uncertain: "Ciągłość czasu wymaga potwierdzenia"
+heating.reason.input_skew: "Odczyty nie dotyczą tego samego momentu"
+heating.reason.target_attained: "Osiągnięto zadaną temperaturę"
+heating.reason.target_changed: "Zmieniono nastawę; wcześniejsza potrzeba grzania pozostaje nierozwiązana"
+heating.reason.request_observed: "Potwierdzono żądanie grzania"
+heating.reason.response_observed: "Potwierdzono reakcję ogrzewania"
+heating.reason.request_allowance: "Oczekiwanie na żądanie grzania"
+heating.reason.bounded_inhibition: "Przerwa w grzaniu mieści się w dopuszczalnym czasie"
+heating.reason.missing_request: "Pomieszczenie potrzebuje ciepła, ale nie ma żądania grzania"
+heating.reason.no_response: "Brak reakcji ogrzewania po dopuszczalnym czasie"
+heating.input.inhibition_reason: "Powód przerwy w grzaniu"
+heating.inhibition.none: "Brak przerwy"
+heating.inhibition.startup: "Uruchamianie"
+heating.inhibition.anti_cycle: "Przerwa między uruchomieniami palnika"

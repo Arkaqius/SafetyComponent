@@ -20,6 +20,7 @@ class HeatingObservation:
     entity_id: str
     independence_group: str
     evidence_kind: str
+    maximum_age_seconds: int = 120
 
     @property
     def qualified(self) -> bool:
@@ -67,6 +68,7 @@ class HeatingInputReader:
                 binding.entity_id,
                 binding.independence_group,
                 binding.evidence_kind,
+                binding.max_age_seconds,
             )
 
         try:
@@ -113,6 +115,8 @@ class HeatingInputReader:
                         "unknown",
                     }
                     if role == "boiler_state"
+                    else {"none", "startup", "anti_cycle"}
+                    if role == "inhibition_reason"
                     else {"clear", "fault"}
                     if role == "device_status"
                     else {"clear", "maintenance"}

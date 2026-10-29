@@ -126,15 +126,29 @@ atrybut i mapowanie surowych stanów, np. `on`/`off` na wartości logiczne.
 Nie trzeba wybierać producenta ani konkretnego sterownika.
 
 Profil `Diagnostic` obejmuje R01: utratę lub niepoprawność danych wejściowych.
-Kontrole fizycznego działania ogrzewania R02–R13 pozostają wyłączone; próba
-włączenia ich w profilu jest odrzucana. Strona **Ogrzewanie** pokazuje ten
-częściowy zakres również wtedy, gdy dane są dostępne.
+Pozostaje profilem domyślnym po aktualizacji. Osobno zweryfikowany profil może
+włączyć bieżącą usterkę urządzenia (R02), brak żądania mimo potrzeby ciepła
+(R03), brak odpowiedzi kotła (R04) i informację serwisową (R13). Każda reguła
+wymaga własnej polityki oraz kompletnych, świeżych danych. R05–R12 pozostają
+wyłączone, a próba ich włączenia jest odrzucana. Strona **Ogrzewanie** pokazuje
+rzeczywisty częściowy zakres również wtedy, gdy wszystkie wejścia są dostępne.
 
 `availability_only` oznacza wyłącznie dostępność odczytu. Jeśli urządzenie
 dostarcza rzeczywisty czas obserwacji, można jawnie przypisać go przez
 `observed_at_attribute` lub `observed_at_entity_id` z
 `freshness: source_timestamp`. Czas aktualizacji encji w HA nie zastępuje
 czasu pomiaru. Wartość „kocioł nieaktywny” nie oznacza niedostępnego wejścia.
+
+Sama aktualizacja aplikacji nie włącza nowych kontroli. Dla R03 potrzebne są
+niezależnie potwierdzone: bieżąca temperatura, aktualny cel i zezwolenie na
+grzanie; decyzja sterownika nie zastępuje tych danych. R04 uwzględnia ograniczony
+rozruch i priorytet CWU. Kolejne wstrzymanie lub restart nie daje nowego pełnego
+czasu oczekiwania. Reguły nie usuwają aktywnej usterki tylko dlatego, że żądanie
+zniknęło albo obniżono temperaturę zadaną. R13 jest informacją L4 o serwisie,
+nie potwierdzeniem awarii ogrzewania.
+
+Polityki, czasy kwalifikacji i dowody dopuszczenia należą do konfiguracji
+systemowej. Nie zastępuj ich przykładowymi wartościami bez weryfikacji instalacji.
 
 Dokładne pola i krótki przykład są w
 [opisie konfiguracji ogrzewania](../docs/HEATING_MONITOR_DELIVERY.md#generic-input-contract)

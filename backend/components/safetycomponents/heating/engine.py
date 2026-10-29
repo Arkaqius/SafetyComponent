@@ -32,6 +32,12 @@ class HeatingResult:
 
     violation: bool | None
     reason: str
+    urgent: bool = False
+    quality_cause: str | None = None
+    onset_utc: float | None = None
+    elapsed_seconds: float | None = None
+    reference_target: float | None = None
+    remaining_seconds: float | None = None
 
 
 def supervise_inputs(inputs: Mapping[str, HeatingObservation]) -> HeatingResult:

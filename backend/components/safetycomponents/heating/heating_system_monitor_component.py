@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-import hashlib
 import json
 import math
+import time
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -22,8 +22,10 @@ from components.safetycomponents.core.safety_component import (
 from components.safetycomponents.core.safety_mechanism import SafetyMechanism
 
 from .engine import RULES, HeatingResult, observed_phase, supervise_inputs
-from .inputs import HeatingInputReader
+from .inputs import HeatingInputReader, HeatingObservation
+from .rules import HeatingRuleEngine
 from .schema import COMPONENT_NAME, HeatingConfig, TEMPERATURE_ROLES
+from .state import compatible_contract, fingerprint, legacy_fingerprint
 
 
 @dataclass
@@ -56,6 +58,9 @@ class HeatingSystemMonitorComponent(SafetyComponent):
         self._sensor_ids: dict[str, str] = {}
         self._store: Any = None
         self._fingerprint = ""
+        self._semantic_config: dict[str, Any] = {}
+        self._engines: dict[str, HeatingRuleEngine] = {}
+        self._quality_pending: dict[str, dict[str, float]] = {}
         self._restore_error: str | None = None
         self._save_error: str | None = None
         self._last_tick: float | None = None
@@ -107,9 +112,8 @@ class HeatingSystemMonitorComponent(SafetyComponent):
             system.pop("friendly_name", None)
             for room in system["rooms"].values():
                 room.pop("friendly_name", None)
-        self._fingerprint = hashlib.sha256(
-            json.dumps(semantic_config, sort_keys=True).encode()
-        ).hexdigest()
+        self._semantic_config = semantic_config
+        self._fingerprint = fingerprint(semantic_config)
         database = getattr(self.hass_app, "state_database", None)
         if not isinstance(database, SqliteStateDatabase):
             raise ValueError(
@@ -122,6 +126,11 @@ class HeatingSystemMonitorComponent(SafetyComponent):
         recoveries: dict[str, RecoveryAction] = {}
         for key, system in self._config.systems.items():
             profile = self._config.profiles[system.profile]
+            self._engines[key] = HeatingRuleEngine(
+                profile,
+                self._config.evaluation_interval_seconds,
+                self._config.maximum_clock_drift_seconds,
+            )
             for rule in profile.enabled_rules:
                 room_keys = (
                     list(system.rooms)
@@ -177,6 +186,7 @@ class HeatingSystemMonitorComponent(SafetyComponent):
                 entity_category="diagnostic",
             )
         self._restore()
+        self._last_tick = self._monotonic()
         if self._config.systems:
             self._timer = self.hass_app.run_every(
                 self._tick,
@@ -221,11 +231,12 @@ class HeatingSystemMonitorComponent(SafetyComponent):
 
     def _tick(self, **_: Any) -> None:
         now = self._now().timestamp()
+        mono = self._monotonic()
         gap = self._last_tick is not None and (
-            now < self._last_tick
-            or now - self._last_tick > self._config.evaluation_interval_seconds * 2
+            mono < self._last_tick
+            or mono - self._last_tick > self._config.evaluation_interval_seconds * 2
         )
-        self._last_tick = now
+        self._last_tick = mono
         if self._restore_error:
             self.event_bus.publish(
                 "app_health_persistence",
@@ -234,6 +245,9 @@ class HeatingSystemMonitorComponent(SafetyComponent):
                 operation="load",
             )
         for key, system in self._config.systems.items():
+            engine = self._engines[key]
+            engine.advance(now, mono)
+            quality_causes: dict[str, str] = {}
             inputs = {
                 role: self._reader.read(role, binding, now)
                 for role, binding in system.inputs.items()
@@ -253,7 +267,10 @@ class HeatingSystemMonitorComponent(SafetyComponent):
                     for role, value in values.items()
                 },
             }
-            for symptom_id, (system_key, rule, room_key) in self._bindings.items():
+            # Evaluate specific rules before their quality supervisor.
+            for symptom_id, (system_key, rule, room_key) in sorted(
+                self._bindings.items(), key=lambda item: item[1][1] == "R01"
+            ):
                 if system_key != key:
                     continue
                 mechanism = self.safety_mechanisms.get(symptom_id)
@@ -263,6 +280,7 @@ class HeatingSystemMonitorComponent(SafetyComponent):
                 if gap:
                     latch.pending_since = None
                     latch.pending_kind = None
+                    self._quality_pending.pop(symptom_id, None)
                 if latch.restore_pending:
                     self._publish(symptom_id, True, {"restored": True})
                     latch.restore_pending = False
@@ -280,7 +298,11 @@ class HeatingSystemMonitorComponent(SafetyComponent):
                         if not binding.shared_temperature
                     )
                     evidence = {
-                        role: item for role, item in all_inputs.items() if role in owned
+                        role: item
+                        for role, item in all_inputs.items()
+                        if role in owned
+                        or item.quality
+                        in {"stale", "invalid_timestamp", "future", "replayed"}
                     }
                 self._evidence[symptom_id] = {
                     "observed_inputs": {
@@ -295,12 +317,33 @@ class HeatingSystemMonitorComponent(SafetyComponent):
                     "evaluated_at": now,
                     "profile": system.profile,
                 }
-                outcome = supervise_inputs(evidence)
-                if self._restore_error or self._save_error:
+                if rule == "R01":
+                    outcome = self._supervision_outcome(
+                        symptom_id,
+                        evidence,
+                        all_inputs,
+                        owned,
+                        quality_causes,
+                        engine.clock_uncertain,
+                        mono,
+                    )
+                else:
+                    outcome = engine.evaluate(
+                        rule, evidence, now, mono, key=symptom_id, active=latch.active
+                    )
+                    if outcome.quality_cause:
+                        quality_causes[symptom_id] = outcome.quality_cause
+                self._evidence[symptom_id]["need_budget"] = {
+                    "onset_utc": outcome.onset_utc,
+                    "elapsed_seconds": outcome.elapsed_seconds,
+                    "remaining_seconds": outcome.remaining_seconds,
+                    "reference_target": outcome.reference_target,
+                }
+                if rule != "R01" and (self._restore_error or self._save_error):
                     outcome = HeatingResult(
                         rule == "R01" or None, "storage_unavailable"
                     )
-                self._qualify(symptom_id, outcome, now)
+                self._qualify(symptom_id, outcome, mono)
             selected = {
                 symptom: latch
                 for symptom, latch in self._latches.items()
@@ -316,6 +359,7 @@ class HeatingSystemMonitorComponent(SafetyComponent):
                 rules.append(
                     {
                         "key": rule,
+                        "level": RULES[rule][2],
                         "label": self._text(f"heating.rule.{rule}"),
                         "admission": "diagnostic_only"
                         if rule == "R01" and contributors
@@ -326,8 +370,15 @@ class HeatingSystemMonitorComponent(SafetyComponent):
                         "active": any(item.active for item in contributors),
                         "reasons": list(
                             dict.fromkeys(
-                                self._text(f"heating.reason.{item.reason}")
-                                for item in contributors
+                                (
+                                    system.rooms[self._bindings[name][2]].friendly_name
+                                    + ": "
+                                    if self._bindings[name][2]
+                                    else ""
+                                )
+                                + self._text(f"heating.reason.{item.reason}")
+                                for name, item in selected.items()
+                                if self._bindings[name][1] == rule
                             )
                         )
                         or [self._text("heating.reason.excluded")],
@@ -396,13 +447,26 @@ class HeatingSystemMonitorComponent(SafetyComponent):
 
     def _qualify(self, symptom_id: str, outcome: HeatingResult, now: float) -> None:
         latch = self._latches[symptom_id]
-        key, _rule, _room = self._bindings[symptom_id]
+        key, rule, _room = self._bindings[symptom_id]
         profile = self._config.profiles[self._config.systems[key].profile]
+        policy = profile.rule_policy(rule) or profile
         latch.reason = outcome.reason
         if outcome.violation is None:
             latch.pending_since = None
             latch.pending_kind = None
-            latch.status = "UNEVALUABLE"
+            latch.status = (
+                "NOT_APPLICABLE"
+                if outcome.reason == "not_applicable"
+                else "INHIBITED"
+                if outcome.reason
+                in {
+                    "request_allowance",
+                    "starting_allowance",
+                    "bounded_inhibition",
+                    "target_changed",
+                }
+                else "UNEVALUABLE"
+            )
             latch.published = None
             self.event_bus.publish("evaluation_unavailable", symptom_id=symptom_id)
             return
@@ -416,7 +480,7 @@ class HeatingSystemMonitorComponent(SafetyComponent):
         kind = "failure" if violation else "recovery"
         if latch.pending_kind != kind or latch.pending_since is None:
             latch.pending_kind, latch.pending_since = kind, now
-        delay = profile.failure_seconds if violation else profile.recovery_seconds
+        delay = policy.failure_seconds if violation else policy.recovery_seconds
         if now - latch.pending_since >= delay:
             latch.active = violation
             latch.pending_since = None
@@ -440,6 +504,85 @@ class HeatingSystemMonitorComponent(SafetyComponent):
                 "evaluation_pending", symptom_id=symptom_id, violation=violation
             )
 
+    def _supervision_outcome(
+        self,
+        symptom_id: str,
+        evidence: dict[str, HeatingObservation],
+        all_inputs: dict[str, HeatingObservation],
+        owned: set[str],
+        quality_causes: dict[str, str],
+        clock_uncertain: bool,
+        mono: float,
+    ) -> HeatingResult:
+        """Qualify each source independently; missing shared evidence cannot HEAL."""
+        outcome = supervise_inputs(evidence)
+        causes = {
+            f"input:{role}"
+            for role, item in evidence.items()
+            if item.quality not in {"valid", "availability_only"}
+            or role == "source_health"
+            and item.value is False
+        }
+        causes.update(f"rule:{name}" for name in quality_causes)
+        if clock_uncertain:
+            causes.add("clock")
+        if self._restore_error or self._save_error:
+            causes.add("persistence")
+        pending = self._quality_pending.setdefault(symptom_id, {})
+        for cause in list(pending):
+            if cause not in causes:
+                pending.pop(cause)
+        for cause in causes:
+            pending.setdefault(cause, mono)
+        latch = self._latches[symptom_id]
+        if causes and not latch.active:
+            latch.pending_kind = "failure"
+            latch.pending_since = min(pending.values())
+        if self._restore_error or self._save_error:
+            return HeatingResult(True, "storage_unavailable")
+        if clock_uncertain or quality_causes:
+            return HeatingResult(
+                True,
+                "clock_uncertain"
+                if clock_uncertain
+                else next(iter(quality_causes.values())),
+            )
+        if (
+            outcome.violation is False
+            and latch.active
+            and any(
+                role not in owned and item.quality not in {"valid", "availability_only"}
+                for role, item in all_inputs.items()
+            )
+        ):
+            return HeatingResult(None, "unqualified_input")
+        return outcome
+
+    def _restore_quality_pending(self, pending: Any, expected: set[str]) -> None:
+        """Restore valid observed duration, excluding unevaluated downtime."""
+        if not isinstance(pending, dict) or set(pending) - expected:
+            raise ValueError("invalid heating cause qualification")
+        for name, causes in pending.items():
+            if (
+                self._bindings[name][1] != "R01"
+                or not isinstance(causes, dict)
+                or len(causes) > 2048
+            ):
+                raise ValueError("invalid heating cause registry")
+            for cause, elapsed in causes.items():
+                if (
+                    not isinstance(cause, str)
+                    or len(cause) > 200
+                    or isinstance(elapsed, bool)
+                    or not isinstance(elapsed, (int, float))
+                    or not math.isfinite(elapsed)
+                    or not 0 <= elapsed <= 1800
+                ):
+                    raise ValueError("invalid heating cause duration")
+            self._quality_pending[name] = {
+                cause: self._monotonic() - elapsed for cause, elapsed in causes.items()
+            }
+
     def _publish(self, symptom_id: str, active: bool, extra: dict[str, Any]) -> None:
         latch = self._latches[symptom_id]
         key, rule, room = self._bindings[symptom_id]
@@ -454,6 +597,7 @@ class HeatingSystemMonitorComponent(SafetyComponent):
             "installation": self._config.systems[key].friendly_name,
             "rule_key": rule,
             "room_key": room,
+            "room": self._config.systems[key].rooms[room].friendly_name if room else "",
             "incident_id": self._incidents.get(fault, ""),
             "recommendation": self._text("heating.guidance"),
             "reason": self._text(f"heating.reason.{latch.reason}"),
@@ -494,18 +638,16 @@ class HeatingSystemMonitorComponent(SafetyComponent):
             if existed and not snapshot:
                 raise ValueError("previous heating state is missing")
             if snapshot:
-                if snapshot.get("version") != 1 or not isinstance(
+                if snapshot.get("version") not in {1, 2} or not isinstance(
                     snapshot.get("latches"), dict
                 ):
                     raise ValueError("unsupported heating state")
                 # Restore known active conditions even when calibration changed;
                 # a mismatch then blocks recovery until state is reconciled.
                 for name, item in snapshot["latches"].items():
-                    if (
-                        name in self._latches
-                        and isinstance(item, dict)
-                        and isinstance(item.get("active"), bool)
-                    ):
+                    if isinstance(item, dict) and isinstance(item.get("active"), bool):
+                        if name not in self._latches:
+                            raise ValueError("removed heating contract requires review")
                         latch = self._latches[name]
                         latch.active = item["active"]
                         latch.restore_pending = latch.active
@@ -519,7 +661,7 @@ class HeatingSystemMonitorComponent(SafetyComponent):
                             raise ValueError("invalid heating qualification state")
                         if elapsed:
                             latch.pending_kind = "failure"
-                            latch.pending_since = self._now().timestamp() - elapsed
+                            latch.pending_since = self._monotonic() - elapsed
                     else:
                         raise ValueError("unrecognized heating latch")
                 incidents = snapshot.get("incidents", {})
@@ -528,7 +670,9 @@ class HeatingSystemMonitorComponent(SafetyComponent):
                 ):
                     raise ValueError("invalid heating incident state")
                 self._incidents = incidents
-                if set(snapshot["latches"]) != set(self._latches):
+                if snapshot["version"] == 1 and set(snapshot["latches"]) != set(
+                    self._latches
+                ):
                     raise ValueError("missing expected heating latches")
                 for name, latch in self._latches.items():
                     if latch.active:
@@ -542,11 +686,60 @@ class HeatingSystemMonitorComponent(SafetyComponent):
                             raise ValueError(
                                 "missing or invalid active heating incident"
                             )
-                if snapshot.get("fingerprint") != self._fingerprint:
+                if snapshot["version"] == 1:
+                    compatible = snapshot.get("fingerprint") in {
+                        self._fingerprint,
+                        legacy_fingerprint(self._semantic_config),
+                    }
+                    # V1 did not identify the failed constituent; its aggregate
+                    # pending duration cannot qualify a different source.
+                    for latch in self._latches.values():
+                        latch.pending_since = None
+                        latch.pending_kind = None
+                else:
+                    contract = snapshot.get("contract")
+                    compatible = (
+                        isinstance(contract, dict)
+                        and snapshot.get("fingerprint") == fingerprint(contract)
+                        and compatible_contract(contract, self._semantic_config)
+                    )
+                    engines = snapshot.get("engines")
+                    if (
+                        not isinstance(contract, dict)
+                        or not isinstance(engines, dict)
+                        or set(engines) != set(contract.get("systems", {}))
+                    ):
+                        raise ValueError("invalid heating budget registry")
+                    for key, state in engines.items():
+                        if key not in self._engines:
+                            raise ValueError("removed heating budget owner")
+                        allowed = {
+                            name
+                            for name, (owner, rule, _) in self._bindings.items()
+                            if owner == key and rule in {"R03", "R04"}
+                        }
+                        self._engines[key].restore(state, allowed)
+                    expected_old = self._contract_latches(contract)
+                    if set(snapshot["latches"]) != expected_old:
+                        raise ValueError("missing expected heating latches")
+                    self._restore_quality_pending(
+                        snapshot.get("quality_pending"), expected_old
+                    )
+                if not compatible:
                     raise ValueError(
                         "heating configuration changed; persisted evidence requires review"
                     )
-        except (OSError, ValueError, TypeError) as exc:
+                active_faults = {
+                    RULES[self._bindings[name][1]][1]
+                    for name, latch in self._latches.items()
+                    if latch.active
+                }
+                self._incidents = {
+                    key: value
+                    for key, value in self._incidents.items()
+                    if key in active_faults
+                }
+        except (OSError, ValueError, TypeError, KeyError) as exc:
             self._restore_error = str(exc)
         self.event_bus.publish(
             "app_health_persistence",
@@ -559,20 +752,58 @@ class HeatingSystemMonitorComponent(SafetyComponent):
         if self._store is None or self._restore_error:
             return
         snapshot = {
-            "version": 1,
+            "version": 2,
             "fingerprint": self._fingerprint,
+            "contract": self._semantic_config,
+            "engines": {
+                key: engine.snapshot() for key, engine in self._engines.items()
+            },
+            "quality_pending": {
+                name: {
+                    cause: max(
+                        0,
+                        min(
+                            1800,
+                            (
+                                self._last_tick
+                                if self._last_tick is not None
+                                else self._monotonic()
+                            )
+                            - since,
+                        ),
+                    )
+                    for cause, since in causes.items()
+                }
+                for name, causes in self._quality_pending.items()
+            },
             "latches": {
                 name: {
                     "active": item.active,
                     "pending_failure_seconds": max(
-                        0, min(1800, self._now().timestamp() - item.pending_since)
+                        0,
+                        min(
+                            1800,
+                            (
+                                self._last_tick
+                                if self._last_tick is not None
+                                else self._monotonic()
+                            )
+                            - item.pending_since,
+                        ),
                     )
                     if item.pending_kind == "failure" and item.pending_since is not None
                     else 0,
                 }
                 for name, item in self._latches.items()
             },
-            "incidents": self._incidents,
+            "incidents": {
+                key: value
+                for key, value in self._incidents.items()
+                if any(
+                    item.active and RULES[self._bindings[name][1]][1] == key
+                    for name, item in self._latches.items()
+                )
+            },
         }
         if snapshot == self._last_snapshot and not self._save_error:
             return
@@ -604,10 +835,36 @@ class HeatingSystemMonitorComponent(SafetyComponent):
         """Evaluate admitted input diagnostics without implying thermal coverage."""
         return self._evaluate_mechanism(mechanism, entities_changes)
 
+    def sm_hsm_device_fault(
+        self, mechanism: SafetyMechanism, entities_changes: dict | None = None
+    ) -> bool:
+        """Evaluate a freshly classified current device fault."""
+        return self._evaluate_mechanism(mechanism, entities_changes)
+
+    def sm_hsm_missing_demand(
+        self, mechanism: SafetyMechanism, entities_changes: dict | None = None
+    ) -> bool:
+        """Evaluate independent permitted room need without a heating request."""
+        return self._evaluate_mechanism(mechanism, entities_changes)
+
+    def sm_hsm_no_response(
+        self, mechanism: SafetyMechanism, entities_changes: dict | None = None
+    ) -> bool:
+        """Evaluate commissioned CH response and its bounded allowances."""
+        return self._evaluate_mechanism(mechanism, entities_changes)
+
+    def sm_hsm_maintenance(
+        self, mechanism: SafetyMechanism, entities_changes: dict | None = None
+    ) -> bool:
+        """Evaluate informational maintenance without restricting hazard checks."""
+        return self._evaluate_mechanism(mechanism, entities_changes)
+
     def _value_label(self, value: Any, role: str) -> str:
         if isinstance(value, bool):
             return self._text("heating.value.on" if value else "heating.value.off")
         if isinstance(value, str):
+            if role == "inhibition_reason":
+                return self._text(f"heating.inhibition.{value}")
             if value in {"clear", "fault", "maintenance"}:
                 return self._text(f"heating.value.{value}")
             return self._text(f"heating.phase.{value}")
@@ -643,6 +900,8 @@ class HeatingSystemMonitorComponent(SafetyComponent):
             "PENDING_FAILURE",
             "PENDING_RECOVERY",
             "NOT_EVALUATED",
+            "INHIBITED",
+            "NOT_APPLICABLE",
             "PASS",
         ):
             if any(item.status == status for item in contributors):
@@ -652,3 +911,23 @@ class HeatingSystemMonitorComponent(SafetyComponent):
     @staticmethod
     def _now() -> datetime:
         return datetime.now(timezone.utc)
+
+    @staticmethod
+    def _monotonic() -> float:
+        return time.monotonic()
+
+    @staticmethod
+    def _contract_latches(contract: dict[str, Any]) -> set[str]:
+        """Derive the old complete registry without trusting a saved latch list."""
+        result = set()
+        for key, system in contract["systems"].items():
+            for rule in contract["profiles"][system["profile"]]["enabled_rules"]:
+                rooms = (
+                    list(system["rooms"]) if rule == "R03" and system["rooms"] else [""]
+                )
+                for room in rooms:
+                    result.add(
+                        f"Heating_{RULES[rule][0].removeprefix('sm_hsm_')}_{key}"
+                        + (f"_{room}" if room else "")
+                    )
+        return result

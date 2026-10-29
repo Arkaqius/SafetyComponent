@@ -54,7 +54,11 @@ test('generic heating inputs stay readable and retained values lose current stat
                 quality_label: 'Wiek pomiaru niepotwierdzony',
               },
             ],
-            rules: [{ label: 'Odpowiedź kotła', status: 'DISABLED', active: false, reasons: ['Kontrola niewłączona'] }],
+            rules: [
+              { label: 'Odpowiedź kotła', status: 'INHIBITED', active: false, reasons: ['Trwa podgrzewanie CWU'] },
+              { label: 'Żądanie grzania', status: 'NOT_APPLICABLE', active: false, reasons: ['Brak potrzeby grzania'] },
+              { label: 'Przegląd ogrzewania', level: 4, status: 'FAIL', active: true, reasons: ['Wymagany przegląd'] },
+            ],
           },
         },
       },
@@ -65,6 +69,10 @@ test('generic heating inputs stay readable and retained values lose current stat
   await expect(page.getByRole('heading', { name: 'Kotłownia' })).toBeVisible();
   await expect(page.getByText('35 °C', { exact: true })).toBeVisible();
   await expect(page.getByRole('cell', { name: 'Kocioł — zasilanie', exact: true })).toBeVisible();
+  await expect(page.getByText('Ocena wstrzymana', { exact: true })).toBeVisible();
+  await expect(page.getByText('Brak potrzeby tej kontroli', { exact: true })).toBeVisible();
+  await expect(page.getByText('Informacja nadal aktualna', { exact: false })).toBeVisible();
+  await expect(page.getByText('Wykryto nieprawidłowość', { exact: true })).toHaveCount(0);
   await page.evaluate(() => window.__safetyHomeMock.update({ connectionStatus: 'disconnected', ready: false }));
   await expect(page.getByText('35 °C', { exact: true })).toHaveCount(0);
   await expect(page.getByText('Brak bieżących danych', { exact: true }).first()).toBeVisible();

@@ -195,13 +195,13 @@ def test_code_history_is_not_a_supported_input_role():
         )
 
 
-@pytest.mark.parametrize("rule", [f"R{index:02}" for index in range(2, 14)])
+@pytest.mark.parametrize("rule", [f"R{index:02}" for index in range(5, 13)])
 def test_unqualified_safety_paths_cannot_be_activated_by_configuration(rule):
     with pytest.raises(ValueError, match="Only R01"):
-        HeatingProfile(enabled_rules=[rule], provenance="test")
+        HeatingProfile(enabled_rules=["R01", rule], provenance="test")
 
 
-def build_component(tmp_path, states, *, initial=100):
+def build_component(tmp_path, states, *, initial=100, configuration=None):
     app = MagicMock()
     app.localizer = Localizer({"language": "pl"})
     app.state_database = SqliteStateDatabase(tmp_path / "state.sqlite3")
@@ -214,6 +214,7 @@ def build_component(tmp_path, states, *, initial=100):
     )
     clock = [initial]
     monitor._now = lambda: datetime.fromtimestamp(clock[0], timezone.utc)
+    monitor._monotonic = lambda: clock[0]
     config = {
         "state_file": str(tmp_path / "legacy.json"),
         "systems": {
@@ -231,6 +232,7 @@ def build_component(tmp_path, states, *, initial=100):
             }
         },
     }
+    config = configuration or config
     symptoms, _ = monitor.get_symptoms_data({monitor.component_name: monitor}, config)
     for symptom in symptoms.values():
         assert monitor.init_safety_mechanism(

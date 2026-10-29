@@ -17,6 +17,7 @@ calibration:
     evaluation_interval_seconds: 5
     state_file: /config/appdaemon/heating_monitor_state.json
     maximum_systems: 8
+    maximum_clock_drift_seconds: 2
     profiles:
       Diagnostic:
         provenance: Input availability diagnostics; excluded from thermal and SG-003 coverage

@@ -11,6 +11,7 @@ export interface HeatingRuleView {
   name: string;
   status: string;
   active: boolean;
+  informational: boolean;
   reasons: string[];
 }
 
@@ -59,6 +60,7 @@ export function getHeatingSystems(entities: EntityMap, connected = true): Heatin
           name: text(rule.label, 'Kontrola ogrzewania'),
           status: available ? text(rule.status, 'UNEVALUABLE') : 'UNEVALUABLE',
           active: rule.active === true,
+          informational: rule.level === 4,
           reasons:
             available && Array.isArray(rule.reasons)
               ? rule.reasons.filter((value): value is string => typeof value === 'string')
