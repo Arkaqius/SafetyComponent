@@ -64,9 +64,12 @@ z Home Assistanta, a brak wiarygodnych danych pozostaje widoczny.
 
 Domyślny zakres obejmuje diagnostykę dostępności i poprawności wejść (R01).
 Po dopuszczeniu odpowiedniego profilu dostępne są również: bieżąca usterka
-urządzenia (R02), brak żądania grzania (R03), brak odpowiedzi kotła (R04) i
+urządzenia (R02), brak żądania grzania (R03), brak odpowiedzi kotła (R04),
+niewystarczający wzrost temperatury zasilania (R05), nieosiąganie temperatury
+zadanej (R06) i
 informacja serwisowa (R13). Wymagają kompletnych, świeżych i właściwie opisanych
-wejść. R05–R12 pozostają poza zakresem; aktualizacja nie włącza ich ani żadnej
+wejść. R05/R06 wymagają historii nowych pomiarów i jawnych progów; powtarzanie
+starych odczytów nie potwierdza poprawy. R07–R12 pozostają poza zakresem; aktualizacja nie włącza ich ani żadnej
 nowej reguły automatycznie. Poprawny odczyt lub brak aktywnego alarmu nie
 potwierdza dostarczania ciepła ani bezpiecznej temperatury kotła.
 Mapowanie dowolnych urządzeń opisuje

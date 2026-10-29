@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 import json
 import math
@@ -35,6 +35,7 @@ class HeatingLatch:
     active: bool = False
     pending_kind: str | None = None
     pending_since: float | None = None
+    pending_observed_seconds: float | None = None
     status: str = "NOT_EVALUATED"
     reason: str = "collecting_samples"
     published: bool | None = None
@@ -55,6 +56,7 @@ class HeatingSystemMonitorComponent(SafetyComponent):
         self._latches: dict[str, HeatingLatch] = {}
         self._fault_definitions: dict[str, dict[str, Any]] = {}
         self._incidents: dict[str, str] = {}
+        self._incident_owners: dict[str, str] = {}
         self._sensor_ids: dict[str, str] = {}
         self._store: Any = None
         self._fingerprint = ""
@@ -67,6 +69,10 @@ class HeatingSystemMonitorComponent(SafetyComponent):
         self._last_snapshot: dict[str, Any] | None = None
         self._evidence: dict[str, dict[str, Any]] = {}
         self._timer: Any = None
+        self._sampling = False
+        self._flushing_publications = False
+        self._queued_publications: list[tuple[str, bool, dict[str, Any]]] = []
+        self._queued_sensors: list[tuple[str, str, dict[str, Any]]] = []
 
     @classmethod
     def get_entity_dependencies(
@@ -230,6 +236,82 @@ class HeatingSystemMonitorComponent(SafetyComponent):
         return mechanism.isEnabled
 
     def _tick(self, **_: Any) -> None:
+        """Commit one coherent evaluation before publishing aggregate transitions."""
+        previous = {name: replace(latch) for name, latch in self._latches.items()}
+        incidents, owners = dict(self._incidents), dict(self._incident_owners)
+        self._queued_publications = []
+        self._queued_sensors = []
+        self._sampling = True
+        try:
+            self._sample_tick()
+        except Exception:
+            self._latches, self._incidents, self._incident_owners = (
+                previous,
+                incidents,
+                owners,
+            )
+            raise
+        finally:
+            self._sampling = False
+        self._persist()
+        if self._save_error:
+            for name, latch in self._latches.items():
+                if previous[name].active and not latch.active:
+                    latch.active = True
+                    latch.status = "UNEVALUABLE"
+                    latch.reason = "storage_unavailable"
+                self.event_bus.publish("evaluation_unavailable", symptom_id=name)
+        # Pending/unavailable contributors have already invalidated their old
+        # results. Publish current failures before any qualified group clears.
+        self._flushing_publications = True
+        try:
+            for name, active, extra in sorted(
+                self._queued_publications, key=lambda item: not item[1]
+            ):
+                if active or not self._save_error:
+                    self._publish(name, active, extra)
+        finally:
+            self._flushing_publications = False
+        for fault in list(self._incidents):
+            if self._fault_positively_clear(fault):
+                self._incidents.pop(fault, None)
+                self._incident_owners.pop(fault, None)
+        for key, state, attributes in self._queued_sensors:
+            attributes["persistence_error"] = bool(
+                self._restore_error or self._save_error
+            )
+            selected = {
+                name: latch
+                for name, latch in self._latches.items()
+                if self._bindings[name][0] == key
+            }
+            attributes["active_faults"] = list(
+                dict.fromkeys(
+                    RULES[self._bindings[name][1]][1]
+                    for name, latch in selected.items()
+                    if latch.active
+                )
+            )
+            for row in attributes["rules"]:
+                contributors = [
+                    latch
+                    for name, latch in selected.items()
+                    if self._bindings[name][1] == row["key"]
+                ]
+                row["active"] = any(latch.active for latch in contributors)
+                row["status"] = self._aggregate_status(contributors)
+                if self._save_error and any(
+                    latch.reason == "storage_unavailable" for latch in contributors
+                ):
+                    row["reasons"] = [self._text("heating.reason.storage_unavailable")]
+            self.mqtt_entities.publish_sensor_state(
+                self._sensor_ids[key], state=state, attributes=attributes
+            )
+        self.record_evaluation(
+            success=not bool(self._restore_error or self._save_error)
+        )
+
+    def _sample_tick(self) -> None:
         now = self._now().timestamp()
         mono = self._monotonic()
         gap = self._last_tick is not None and (
@@ -339,6 +421,9 @@ class HeatingSystemMonitorComponent(SafetyComponent):
                     "remaining_seconds": outcome.remaining_seconds,
                     "reference_target": outcome.reference_target,
                 }
+                self._evidence[symptom_id]["output_window"] = dict(
+                    outcome.window_evidence
+                )
                 if rule != "R01" and (self._restore_error or self._save_error):
                     outcome = HeatingResult(
                         rule == "R01" or None, "storage_unavailable"
@@ -392,58 +477,60 @@ class HeatingSystemMonitorComponent(SafetyComponent):
                 )
                 else "degraded"
             )
-            self.mqtt_entities.publish_sensor_state(
-                self._sensor_ids[key],
-                state=state,
-                attributes={
-                    "state_label": self._text(f"heating.state.{state}"),
-                    "phase": observed_phase(inputs),
-                    "phase_label": self._text(
-                        f"heating.phase.{observed_phase(inputs)}"
-                    ),
-                    "coverage": "partial",
-                    "coverage_label": self._text("heating.coverage.partial"),
-                    "rules": rules,
-                    "active_faults": list(
-                        dict.fromkeys(
-                            RULES[self._bindings[symptom][1]][1]
-                            for symptom, latch in selected.items()
-                            if latch.active
-                        )
-                    ),
-                    "inputs": [
-                        {
-                            "role": role,
-                            "label": self._text(f"heating.input.{role.split('.')[-1]}"),
-                            "entity_id": item.entity_id,
-                            "source_name": friendly_entity_name(
-                                self.hass_app,
-                                item.entity_id,
-                                self._text(f"heating.input.{role.split('.')[-1]}"),
-                            ),
-                            "value_label": self._value_label(
-                                item.value, role.split(".")[-1]
-                            ),
-                            "value": item.value,
-                            "quality": item.quality,
-                            "quality_label": self._text(
-                                f"heating.quality.{item.quality}"
-                            ),
-                            "observed_at": datetime.fromtimestamp(
-                                item.observed_at, timezone.utc
-                            ).isoformat()
-                            if item.observed_at is not None
-                            else None,
-                        }
-                        for role, item in all_inputs.items()
-                    ],
-                    "persistence_error": bool(self._restore_error or self._save_error),
-                },
+            self._queued_sensors.append(
+                (
+                    key,
+                    state,
+                    {
+                        "state_label": self._text(f"heating.state.{state}"),
+                        "phase": observed_phase(inputs),
+                        "phase_label": self._text(
+                            f"heating.phase.{observed_phase(inputs)}"
+                        ),
+                        "coverage": "partial",
+                        "coverage_label": self._text("heating.coverage.partial"),
+                        "rules": rules,
+                        "active_faults": list(
+                            dict.fromkeys(
+                                RULES[self._bindings[symptom][1]][1]
+                                for symptom, latch in selected.items()
+                                if latch.active
+                            )
+                        ),
+                        "inputs": [
+                            {
+                                "role": role,
+                                "label": self._text(
+                                    f"heating.input.{role.split('.')[-1]}"
+                                ),
+                                "entity_id": item.entity_id,
+                                "source_name": friendly_entity_name(
+                                    self.hass_app,
+                                    item.entity_id,
+                                    self._text(f"heating.input.{role.split('.')[-1]}"),
+                                ),
+                                "value_label": self._value_label(
+                                    item.value, role.split(".")[-1]
+                                ),
+                                "value": item.value,
+                                "quality": item.quality,
+                                "quality_label": self._text(
+                                    f"heating.quality.{item.quality}"
+                                ),
+                                "observed_at": datetime.fromtimestamp(
+                                    item.observed_at, timezone.utc
+                                ).isoformat()
+                                if item.observed_at is not None
+                                else None,
+                            }
+                            for role, item in all_inputs.items()
+                        ],
+                        "persistence_error": bool(
+                            self._restore_error or self._save_error
+                        ),
+                    },
+                )
             )
-        self._persist()
-        self.record_evaluation(
-            success=not bool(self._restore_error or self._save_error)
-        )
 
     def _qualify(self, symptom_id: str, outcome: HeatingResult, now: float) -> None:
         latch = self._latches[symptom_id]
@@ -451,6 +538,7 @@ class HeatingSystemMonitorComponent(SafetyComponent):
         profile = self._config.profiles[self._config.systems[key].profile]
         policy = profile.rule_policy(rule) or profile
         latch.reason = outcome.reason
+        latch.pending_observed_seconds = outcome.observed_qualification_seconds
         if outcome.violation is None:
             latch.pending_since = None
             latch.pending_kind = None
@@ -464,6 +552,7 @@ class HeatingSystemMonitorComponent(SafetyComponent):
                     "starting_allowance",
                     "bounded_inhibition",
                     "target_changed",
+                    "output_hysteresis",
                 }
                 else "UNEVALUABLE"
             )
@@ -471,7 +560,13 @@ class HeatingSystemMonitorComponent(SafetyComponent):
             self.event_bus.publish("evaluation_unavailable", symptom_id=symptom_id)
             return
         violation = outcome.violation
-        if violation == latch.active:
+        group_recovery_pending = (
+            not violation
+            and RULES[rule][1] in self._incidents
+            and outcome.observed_qualification_seconds is not None
+            and outcome.observed_qualification_seconds < policy.recovery_seconds
+        )
+        if violation == latch.active and not group_recovery_pending:
             latch.pending_since = None
             latch.pending_kind = None
             latch.status = "FAIL" if violation else "PASS"
@@ -481,7 +576,12 @@ class HeatingSystemMonitorComponent(SafetyComponent):
         if latch.pending_kind != kind or latch.pending_since is None:
             latch.pending_kind, latch.pending_since = kind, now
         delay = policy.failure_seconds if violation else policy.recovery_seconds
-        if now - latch.pending_since >= delay:
+        elapsed = (
+            outcome.observed_qualification_seconds
+            if outcome.observed_qualification_seconds is not None
+            else now - latch.pending_since
+        )
+        if elapsed >= delay:
             latch.active = violation
             latch.pending_since = None
             latch.pending_kind = None
@@ -490,6 +590,7 @@ class HeatingSystemMonitorComponent(SafetyComponent):
                 self._incidents.setdefault(
                     RULES[self._bindings[symptom_id][1]][1], str(uuid4())
                 )
+                self._incident_owners.setdefault(RULES[rule][1], symptom_id)
             self._persist()
             if not violation and self._save_error:
                 latch.active = True
@@ -582,8 +683,18 @@ class HeatingSystemMonitorComponent(SafetyComponent):
             self._quality_pending[name] = {
                 cause: self._monotonic() - elapsed for cause, elapsed in causes.items()
             }
+            for cause in causes:
+                if cause.startswith("rule:"):
+                    symptom = cause.removeprefix("rule:")
+                    if symptom in self._bindings:
+                        owner, rule, _ = self._bindings[symptom]
+                        if rule in {"R05", "R06"}:
+                            self._engines[owner].output.lost.add(symptom)
 
     def _publish(self, symptom_id: str, active: bool, extra: dict[str, Any]) -> None:
+        if self._sampling:
+            self._queued_publications.append((symptom_id, active, extra))
+            return
         latch = self._latches[symptom_id]
         key, rule, room = self._bindings[symptom_id]
         fault = RULES[rule][1]
@@ -592,6 +703,7 @@ class HeatingSystemMonitorComponent(SafetyComponent):
                 fault,
                 "" if extra.get("restored") and self._restore_error else str(uuid4()),
             )
+            self._incident_owners.setdefault(fault, symptom_id)
         state = FaultState.SET if active else FaultState.CLEARED
         details = {
             "installation": self._config.systems[key].friendly_name,
@@ -618,12 +730,17 @@ class HeatingSystemMonitorComponent(SafetyComponent):
             )
         latch.published = active
         self.symptom_states[symptom_id] = state
-        if not any(
-            item.active
+        if not self._flushing_publications and self._fault_positively_clear(fault):
+            self._incidents.pop(fault, None)
+            self._incident_owners.pop(fault, None)
+
+    def _fault_positively_clear(self, fault: str) -> bool:
+        """Keep the aggregate incident open until every contributor is positive."""
+        return all(
+            not item.active and item.status == "PASS"
             for name, item in self._latches.items()
             if RULES[self._bindings[name][1]][1] == fault
-        ):
-            self._incidents.pop(fault, None)
+        )
 
     def _restore(self) -> None:
         try:
@@ -659,7 +776,7 @@ class HeatingSystemMonitorComponent(SafetyComponent):
                             or not 0 <= elapsed <= 1800
                         ):
                             raise ValueError("invalid heating qualification state")
-                        if elapsed:
+                        if elapsed and self._bindings[name][1] not in {"R05", "R06"}:
                             latch.pending_kind = "failure"
                             latch.pending_since = self._monotonic() - elapsed
                     else:
@@ -716,7 +833,7 @@ class HeatingSystemMonitorComponent(SafetyComponent):
                         allowed = {
                             name
                             for name, (owner, rule, _) in self._bindings.items()
-                            if owner == key and rule in {"R03", "R04"}
+                            if owner == key and rule in {"R03", "R04", "R05", "R06"}
                         }
                         self._engines[key].restore(state, allowed)
                     expected_old = self._contract_latches(contract)
@@ -734,11 +851,45 @@ class HeatingSystemMonitorComponent(SafetyComponent):
                     for name, latch in self._latches.items()
                     if latch.active
                 }
-                self._incidents = {
-                    key: value
-                    for key, value in self._incidents.items()
-                    if key in active_faults
-                }
+                owners = (
+                    snapshot.get("incident_owners")
+                    if snapshot["version"] == 2
+                    else None
+                )
+                if owners is None:
+                    self._incidents = {
+                        key: value
+                        for key, value in self._incidents.items()
+                        if key in active_faults
+                    }
+                    self._incident_owners = {
+                        fault: next(
+                            name
+                            for name, latch in self._latches.items()
+                            if latch.active
+                            and RULES[self._bindings[name][1]][1] == fault
+                        )
+                        for fault in self._incidents
+                    }
+                else:
+                    if not isinstance(owners, dict) or set(owners) != set(
+                        self._incidents
+                    ):
+                        raise ValueError("invalid heating aggregate owners")
+                    for fault, owner in owners.items():
+                        if (
+                            owner not in self._latches
+                            or RULES[self._bindings[owner][1]][1] != fault
+                            or str(UUID(self._incidents[fault]))
+                            != self._incidents[fault]
+                        ):
+                            raise ValueError("invalid heating aggregate identity")
+                        if fault not in active_faults:
+                            # FaultManager retained this incident while another
+                            # contributor lacked positive clear evidence.
+                            self._latches[owner].active = True
+                            self._latches[owner].restore_pending = True
+                    self._incident_owners = owners
         except (OSError, ValueError, TypeError, KeyError) as exc:
             self._restore_error = str(exc)
         self.event_bus.publish(
@@ -749,7 +900,7 @@ class HeatingSystemMonitorComponent(SafetyComponent):
         )
 
     def _persist(self) -> None:
-        if self._store is None or self._restore_error:
+        if self._sampling or self._store is None or self._restore_error:
             return
         snapshot = {
             "version": 2,
@@ -783,7 +934,9 @@ class HeatingSystemMonitorComponent(SafetyComponent):
                         0,
                         min(
                             1800,
-                            (
+                            item.pending_observed_seconds
+                            if item.pending_observed_seconds is not None
+                            else (
                                 self._last_tick
                                 if self._last_tick is not None
                                 else self._monotonic()
@@ -799,10 +952,12 @@ class HeatingSystemMonitorComponent(SafetyComponent):
             "incidents": {
                 key: value
                 for key, value in self._incidents.items()
-                if any(
-                    item.active and RULES[self._bindings[name][1]][1] == key
-                    for name, item in self._latches.items()
-                )
+                if not self._fault_positively_clear(key)
+            },
+            "incident_owners": {
+                key: value
+                for key, value in self._incident_owners.items()
+                if key in self._incidents and not self._fault_positively_clear(key)
             },
         }
         if snapshot == self._last_snapshot and not self._save_error:
@@ -857,6 +1012,18 @@ class HeatingSystemMonitorComponent(SafetyComponent):
         self, mechanism: SafetyMechanism, entities_changes: dict | None = None
     ) -> bool:
         """Evaluate informational maintenance without restricting hazard checks."""
+        return self._evaluate_mechanism(mechanism, entities_changes)
+
+    def sm_hsm_no_flow_rise(
+        self, mechanism: SafetyMechanism, entities_changes: dict | None = None
+    ) -> bool:
+        """Evaluate physical CH flow rise from qualified observation windows."""
+        return self._evaluate_mechanism(mechanism, entities_changes)
+
+    def sm_hsm_flow_tracking(
+        self, mechanism: SafetyMechanism, entities_changes: dict | None = None
+    ) -> bool:
+        """Evaluate physical CH target deficit from qualified observation windows."""
         return self._evaluate_mechanism(mechanism, entities_changes)
 
     def _value_label(self, value: Any, role: str) -> str:

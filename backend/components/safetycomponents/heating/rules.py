@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 import math
 from typing import Any, Mapping
 
 from .engine import HeatingResult
 from .inputs import HeatingObservation
+from .output import OutputWindows
 from .schema import (
     HeatingDemandPolicy,
     HeatingProfile,
     HeatingResponsePolicy,
+    HeatingOutputPolicy,
+    HeatingRisePolicy,
+    HeatingTrackingPolicy,
     RULE_INPUTS,
 )
 
@@ -39,6 +43,7 @@ class HeatingRuleEngine:
         self._mono: float | None = None
         self._clock_uncertain = False
         self._stable_since: float | None = None
+        self.output = OutputWindows()
 
     @property
     def clock_uncertain(self) -> bool:
@@ -60,10 +65,12 @@ class HeatingRuleEngine:
             episode.elapsed_seconds = min(1800.0, episode.elapsed_seconds + elapsed)
         if elapsed > self.interval * 2:
             self._attained_since.clear()
+            self.output.invalidate()
         if jumped:
             self._clock_uncertain = True
             self._stable_since = mono
             self._attained_since.clear()
+            self.output.invalidate()
         elif self._clock_uncertain:
             if self._stable_since is None:
                 self._stable_since = mono
@@ -92,7 +99,7 @@ class HeatingRuleEngine:
             )
         required = set(RULE_INPUTS[rule])
         if (
-            isinstance(policy, HeatingResponsePolicy)
+            isinstance(policy, (HeatingResponsePolicy, HeatingOutputPolicy))
             and policy.inhibition_context == "mapped_reason"
         ):
             required.add("inhibition_reason")
@@ -100,11 +107,15 @@ class HeatingRuleEngine:
             return HeatingResult(None, "missing_input", quality_cause="missing_input")
         if any(not inputs[role].qualified for role in required):
             self._attained_since.pop(key, None)
+            if rule in {"R05", "R06"}:
+                self.output.reset(key, lost=True)
             return HeatingResult(None, "unqualified_input")
         observed = [float(inputs[role].observed_at) for role in required]  # type: ignore[arg-type]
         skew = getattr(policy, "maximum_input_skew_seconds", None)
         if skew is not None and max(observed) - min(observed) > skew:
             self._attained_since.pop(key, None)
+            if rule in {"R05", "R06"}:
+                self.output.reset(key, lost=True)
             return HeatingResult(None, "input_skew", quality_cause="input_skew")
         values = {role: inputs[role].value for role in required}
         inputs = {role: inputs[role] for role in required}
@@ -119,6 +130,10 @@ class HeatingRuleEngine:
             return HeatingResult(values[role] == failed, "observed")
         if isinstance(policy, HeatingDemandPolicy):
             return self._demand(
+                values, inputs, observed, policy, wall, mono, key, active
+            )
+        if isinstance(policy, HeatingOutputPolicy):
+            return self._performance(
                 values, inputs, observed, policy, wall, mono, key, active
             )
         assert isinstance(policy, HeatingResponsePolicy)
@@ -326,6 +341,119 @@ class HeatingRuleEngine:
             urgent=urgent,
         )
 
+    def _performance(
+        self,
+        values: dict[str, Any],
+        inputs: Mapping[str, HeatingObservation],
+        observed: list[float],
+        policy: HeatingOutputPolicy,
+        wall: float,
+        mono: float,
+        key: str,
+        active: bool,
+    ) -> HeatingResult:
+        target, actual = (
+            float(values["requested_flow_temperature"]),
+            float(values["flow_temperature"]),
+        )
+        episode = self.episodes.get(key)
+        recovery_margin = (
+            policy.target_recovery_margin_k
+            if isinstance(policy, HeatingRisePolicy)
+            else policy.recovery_deficit_k
+            if isinstance(policy, HeatingTrackingPolicy)
+            else 0.0
+        )
+        age = max(item.maximum_age_seconds for item in inputs.values())
+
+        def ineligible(reason: str, *, expired: bool = False) -> HeatingResult:
+            deadline = episode is not None and self._urgent(
+                episode,
+                policy.maximum_unresolved_seconds,
+                age,
+                max(policy.failure_seconds, self.profile.failure_seconds),
+            )
+            lost = expired or deadline
+            label = "output_window_incomplete" if lost else reason
+            result = (
+                self._result(episode, policy.maximum_unresolved_seconds, None, label)
+                if episode is not None
+                else HeatingResult(None, label)
+            )
+            return replace(
+                result, quality_cause="output_window_incomplete" if lost else None
+            )
+
+        if values["heat_request"] is not True:
+            self.output.reset(key)
+            return ineligible("not_applicable")
+        if (
+            episode is not None
+            and target < episode.reference_target - policy.target_stability_tolerance_k
+        ):
+            self.output.reset(key)
+            return ineligible("target_changed")
+        if target - actual > recovery_margin or episode is not None or active:
+            if episode is None:
+                self.output.reset(key)
+            episode = self._episode(key, target, observed, wall)
+        reference = episode.reference_target if episode is not None else target
+        urgent = episode is not None and self._urgent(
+            episode,
+            policy.maximum_unresolved_seconds,
+            age,
+            max(policy.failure_seconds, self.profile.failure_seconds),
+        )
+        blocked = (
+            values["dhw_active"] is True
+            or values.get("inhibition_reason", "none") != "none"
+        )
+        if blocked or values["boiler_active"] is not True:
+            self.output.reset(key)
+            expired = urgent
+            if episode is not None and blocked:
+                if episode.inhibition_started_elapsed is None:
+                    episode.inhibition_started_elapsed = episode.elapsed_seconds
+                expired = (
+                    expired
+                    or episode.elapsed_seconds - episode.inhibition_started_elapsed
+                    >= policy.maximum_inhibition_seconds
+                )
+            return ineligible(
+                "bounded_inhibition" if blocked else "not_applicable", expired=expired
+            )
+        if episode is not None:
+            episode.inhibition_started_elapsed = None
+        if (
+            isinstance(policy, HeatingRisePolicy)
+            and reference - actual < policy.minimum_target_deficit_k
+            and reference - actual > recovery_margin
+            and key not in self.output.windows
+        ):
+            return ineligible("not_applicable")
+        result = self.output.observe(
+            key, policy, inputs["flow_temperature"], reference, mono, urgent=urgent
+        )
+        if episode is not None:
+            result = replace(
+                result,
+                onset_utc=episode.onset_utc,
+                elapsed_seconds=episode.elapsed_seconds,
+                remaining_seconds=max(
+                    0.0, policy.maximum_unresolved_seconds - episode.elapsed_seconds
+                ),
+                reference_target=episode.reference_target,
+            )
+            if (
+                not active
+                and result.violation is False
+                and (result.observed_qualification_seconds or 0)
+                >= policy.recovery_seconds
+                and reference - actual <= recovery_margin
+            ):
+                self.episodes.pop(key, None)
+        return result
+
     def snapshot(self) -> dict[str, Any]:
         """Persist only bounded budget facts; no downtime becomes recovery samples."""
         return {
@@ -396,5 +524,8 @@ class HeatingRuleEngine:
                 raise ValueError("invalid heating inhibition onset")
             restored[key] = NeedEpisode(**values)
         self.episodes = restored
+        # Restart loses observation windows; unresolved paths must prove covered
+        # observations again before their quality supervision can recover.
+        self.output.lost.update(restored)
         self._wall, self._mono = saved_at, None
         self._clock_uncertain = snapshot["clock_uncertain"]

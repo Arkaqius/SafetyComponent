@@ -113,10 +113,58 @@ class HeatingResponsePolicy(HeatingStatusPolicy):
     inhibition_context: Literal["none", "mapped_reason"]
 
 
+class HeatingOutputPolicy(HeatingStatusPolicy):
+    """Commissioned coverage and stable-target contract for physical CH output."""
+
+    startup_allowance_seconds: int = Field(ge=0, le=1800)
+    maximum_inhibition_seconds: int = Field(ge=0, le=1800)
+    maximum_unresolved_seconds: int = Field(ge=1, le=1800)
+    maximum_input_skew_seconds: int = Field(ge=0, le=60)
+    inhibition_context: Literal["none", "mapped_reason"]
+    observation_window_seconds: int = Field(ge=1, le=1800)
+    minimum_sample_count: int = Field(ge=2, le=1801)
+    maximum_sample_gap_seconds: int = Field(ge=1, le=1800)
+    target_stability_tolerance_k: float = Field(ge=0, allow_inf_nan=False)
+
+
+class HeatingRisePolicy(HeatingOutputPolicy):
+    """Endpoint-rise bands for an eligible, sufficiently loaded flow window."""
+
+    minimum_target_deficit_k: float = Field(gt=0, allow_inf_nan=False)
+    minimum_rise_k: float = Field(gt=0, allow_inf_nan=False)
+    recovery_rise_k: float = Field(gt=0, allow_inf_nan=False)
+    target_recovery_margin_k: float = Field(ge=0, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def _rise_bands(self) -> HeatingRisePolicy:
+        if self.recovery_rise_k <= self.minimum_rise_k:
+            raise ValueError("rise recovery must exceed the failure boundary")
+        if self.target_recovery_margin_k >= self.minimum_target_deficit_k:
+            raise ValueError(
+                "rise target recovery must be narrower than its activation deficit"
+            )
+        return self
+
+
+class HeatingTrackingPolicy(HeatingOutputPolicy):
+    """Covered flow-deficit failure window and narrower positive recovery band."""
+
+    failure_deficit_k: float = Field(gt=0, allow_inf_nan=False)
+    recovery_deficit_k: float = Field(ge=0, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def _tracking_bands(self) -> HeatingTrackingPolicy:
+        if self.recovery_deficit_k >= self.failure_deficit_k:
+            raise ValueError("tracking recovery must be narrower than failure")
+        return self
+
+
 RULE_POLICY_FIELDS = {
     "R02": "device_fault",
     "R03": "missing_demand",
     "R04": "no_response",
+    "R05": "flow_rise",
+    "R06": "flow_tracking",
     "R13": "maintenance",
 }
 RULE_INPUTS = {
@@ -136,6 +184,8 @@ RULE_INPUTS = {
     },
     "R13": {"maintenance_status"},
 }
+RULE_INPUTS["R05"] = RULE_INPUTS["R04"]
+RULE_INPUTS["R06"] = RULE_INPUTS["R04"]
 INTENT_ROLES = {
     "heat_request",
     "target_temperature",
@@ -233,6 +283,8 @@ class HeatingProfile(HeatingModel):
     device_fault: HeatingStatusPolicy | None = None
     missing_demand: HeatingDemandPolicy | None = None
     no_response: HeatingResponsePolicy | None = None
+    flow_rise: HeatingRisePolicy | None = None
+    flow_tracking: HeatingTrackingPolicy | None = None
     maintenance: HeatingStatusPolicy | None = None
 
     @model_validator(mode="after")
@@ -242,7 +294,9 @@ class HeatingProfile(HeatingModel):
         ):
             raise ValueError("heating profiles require one R01 supervisor")
         if set(self.enabled_rules) - {"R01", *RULE_POLICY_FIELDS}:
-            raise ValueError("Only R01/R02/R03/R04/R13 are implemented and admissible")
+            raise ValueError(
+                "Only R01/R02/R03/R04/R05/R06/R13 are implemented and admissible"
+            )
         for rule, field in RULE_POLICY_FIELDS.items():
             if (rule in self.enabled_rules) != (getattr(self, field) is not None):
                 raise ValueError(
@@ -306,8 +360,7 @@ class HeatingConfig(HeatingCalibration):
                 assert policy is not None
                 required = set(RULE_INPUTS[rule])
                 if (
-                    rule == "R04"
-                    and isinstance(policy, HeatingResponsePolicy)
+                    isinstance(policy, (HeatingResponsePolicy, HeatingOutputPolicy))
                     and policy.inhibition_context == "mapped_reason"
                 ):
                     required.add("inhibition_reason")
@@ -351,7 +404,7 @@ class HeatingConfig(HeatingCalibration):
                         maximum_age + 2 * self.evaluation_interval_seconds + 1 + 30
                     )
                     if (
-                        rule in {"R02", "R03", "R04"}
+                        rule in {"R02", "R03", "R04", "R05", "R06"}
                         and latency + profile.failure_seconds > 60
                     ):
                         raise ValueError(
@@ -370,5 +423,30 @@ class HeatingConfig(HeatingCalibration):
                         ):
                             raise ValueError(
                                 f"{rule} complete timing allocation exceeds its unresolved-need budget"
+                            )
+                    if isinstance(policy, HeatingOutputPolicy):
+                        cadence = self.evaluation_interval_seconds
+                        window = policy.observation_window_seconds
+                        gap = policy.maximum_sample_gap_seconds
+                        if (
+                            window < cadence
+                            or not cadence <= gap <= window
+                            or policy.minimum_sample_count
+                            > (window + cadence - 1) // cadence + 1
+                        ):
+                            raise ValueError(
+                                f"{rule} observation coverage is not achievable at its cadence"
+                            )
+                        if (
+                            latency
+                            + policy.startup_allowance_seconds
+                            + policy.maximum_inhibition_seconds
+                            + window
+                            + gap
+                            + max(policy.failure_seconds, profile.failure_seconds)
+                            > policy.maximum_unresolved_seconds
+                        ):
+                            raise ValueError(
+                                f"{rule} complete output timing exceeds its unresolved-need budget"
                             )
         return self

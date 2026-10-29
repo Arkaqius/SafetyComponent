@@ -195,7 +195,7 @@ def test_code_history_is_not_a_supported_input_role():
         )
 
 
-@pytest.mark.parametrize("rule", [f"R{index:02}" for index in range(5, 13)])
+@pytest.mark.parametrize("rule", [f"R{index:02}" for index in range(7, 13)])
 def test_unqualified_safety_paths_cannot_be_activated_by_configuration(rule):
     with pytest.raises(ValueError, match="Only R01"):
         HeatingProfile(enabled_rules=["R01", rule], provenance="test")

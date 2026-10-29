@@ -315,6 +315,21 @@ a proved boiler defect and account for room thermal inertia and declared
 ventilation/inhibition. C-TEMP shall still detect unsafe room temperatures even
 when C-HVAC's delivery check is inhibited or unevaluable.
 
+R05/R06 shall use distinct original flow observations in bounded windows with
+an explicit minimum sample count, covered duration and maximum inter-sample
+gap. Both source-time and runtime gaps shall be bounded. R05 shall compare the
+endpoint rise under a sufficiently large target deficit; R06 shall require
+every sample of a failing window to exceed its calibrated deficit band.
+Positive recovery shall use adequate rise/target attainment for R05 and the
+narrower tracking band for R06, in eligible comparable CH context. Qualification
+duration shall advance with new original flow observations only. Repeated
+publication of a cached sample shall not advance failure or recovery timing.
+Target stability tolerance and all windows, bands and allowances shall be
+explicitly commissioned. Restart shall rebuild observation windows from new
+samples while preserving unresolved need and incident state. Incomplete
+coverage at the reserved total deadline shall become diagnostic quality loss
+instead of manufactured insufficient-output evidence.
+
 R10 shall not apply a CH-only limit while heating DHW. Its envelope shall include
 configured operating maximum, native hysteresis and measurement tolerance;
 R11 shall never be disabled by demand, normal startup or DHW priority. An invalid

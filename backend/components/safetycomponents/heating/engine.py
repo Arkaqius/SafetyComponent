@@ -38,6 +38,8 @@ class HeatingResult:
     elapsed_seconds: float | None = None
     reference_target: float | None = None
     remaining_seconds: float | None = None
+    observed_qualification_seconds: float | None = None
+    window_evidence: tuple[tuple[str, float | int], ...] = ()
 
 
 def supervise_inputs(inputs: Mapping[str, HeatingObservation]) -> HeatingResult:

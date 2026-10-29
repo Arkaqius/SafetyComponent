@@ -128,10 +128,18 @@ Nie trzeba wybierać producenta ani konkretnego sterownika.
 Profil `Diagnostic` obejmuje R01: utratę lub niepoprawność danych wejściowych.
 Pozostaje profilem domyślnym po aktualizacji. Osobno zweryfikowany profil może
 włączyć bieżącą usterkę urządzenia (R02), brak żądania mimo potrzeby ciepła
-(R03), brak odpowiedzi kotła (R04) i informację serwisową (R13). Każda reguła
-wymaga własnej polityki oraz kompletnych, świeżych danych. R05–R12 pozostają
+(R03), brak odpowiedzi kotła (R04), niewystarczający wzrost temperatury zasilania
+(R05), nieosiąganie wartości zadanej (R06) i informację serwisową (R13). Każda reguła
+wymaga własnej polityki oraz kompletnych, świeżych danych. R07–R12 pozostają
 wyłączone, a próba ich włączenia jest odrzucana. Strona **Ogrzewanie** pokazuje
 rzeczywisty częściowy zakres również wtedy, gdy wszystkie wejścia są dostępne.
+
+Polityki `flow_rise` i `flow_tracking` wymagają jawnych progów, czasu rozruchu,
+dopuszczalnej przerwy, okna pomiarowego, minimalnej liczby próbek i maksymalnego
+odstępu między nimi. Dane muszą dotyczyć rzeczywistego grzania CO. CWU, obniżenie
+nastawy ani zakończenie żądania nie kasują aktywnej usterki. Po restarcie okno
+zbiera nowe pomiary, zachowując wcześniejszy alarm i całkowity czas oczekiwania.
+Wspólne pola i progi opisuje [kontrakt kontroli wydajności](../docs/HEATING_MONITOR_DELIVERY.md#flow-output-policies-and-observed-windows).
 
 `availability_only` oznacza wyłącznie dostępność odczytu. Jeśli urządzenie
 dostarcza rzeczywisty czas obserwacji, można jawnie przypisać go przez

@@ -10,8 +10,8 @@ Requirement IDs and all R01..R13 mechanism/fault identities remain unchanged.
 
 The initial deployment established generic input normalization and R01
 input-source diagnostics. This stage extends the rule contract to R02 current
-device faults, R03 missing heating requests, R04 missing boiler responses and
-R13 maintenance indications. R05..R12 remain excluded and their activation is
+device faults, R03 missing heating requests, R04 missing boiler responses,
+R05 flow rise, R06 target tracking and R13 maintenance indications. R07..R12 remain excluded and their activation is
 rejected. The packaged `Diagnostic` profile continues to select only R01;
 upgrading the application does not enable another rule or change installation
 bindings.
@@ -61,7 +61,7 @@ Installation input roles are `source_health`, `boiler_active`, `boiler_state`,
 The configuration model and compiler resolve these bindings into the component's
 `systems` registry. System-owned settings select evaluation cadence, bounded
 installation count, persistence location and named calibration profiles. The
-admitted rule set is R01/R02/R03/R04/R13. Rule selection alone does not establish
+admitted rule set is R01/R02/R03/R04/R05/R06/R13. Rule selection alone does not establish
 an input, independence, operating-condition or timing contract.
 Mappings contain data only, with no expressions or service calls. Unmapped states,
 missing attributes, non-finite conversions and unavailable sources produce
@@ -195,9 +195,64 @@ A fresh active boiler response does not become a no-response fault merely
 because another performance deadline elapsed. A lowered target after request
 withdrawal is not positive recovery evidence.
 
+### Flow-output policies and observed windows
+
+Optional system-owned policies `flow_rise` (R05) and `flow_tracking` (R06)
+consume the same fresh physical/intent inputs as R04. Eligible operation requires
+an issued CH request, operating boiler, DHW inactive, a comparable stable target
+and no mapped inhibition. Burner-off behavior is not an insufficient-output
+measurement. A lowered target cannot clear the original condition.
+
+Both policies explicitly declare `evidence_reference`, `failure_seconds`,
+`recovery_seconds`, `startup_allowance_seconds`, `maximum_inhibition_seconds`,
+`maximum_unresolved_seconds`, `maximum_input_skew_seconds`, `inhibition_context`,
+`observation_window_seconds`, `minimum_sample_count`, `maximum_sample_gap_seconds`
+and `target_stability_tolerance_k`. No operating threshold is supplied by default.
+
+| Policy-specific field | Meaning |
+| --- | --- |
+| `flow_rise.minimum_target_deficit_k` | Positive deficit required to start a rise-failure window |
+| `flow_rise.minimum_rise_k` | Positive minimum endpoint temperature rise over the covered window |
+| `flow_rise.recovery_rise_k` | Adequate endpoint rise; strictly greater than the failing-rise boundary |
+| `flow_rise.target_recovery_margin_k` | Nonnegative target-attainment tolerance, strictly below the activation deficit, in eligible CH operation |
+| `flow_tracking.failure_deficit_k` | Positive deficit exceeded by every sample in a failing tracking window |
+| `flow_tracking.recovery_deficit_k` | Nonnegative narrower deficit band for positive recovery |
+
+Only distinct original flow timestamps add samples. Each window must meet the
+full observed span and minimum count, with no source-time or runtime gap above
+the configured limit. The bounded buffer retains the anchor needed to cover
+the window. R05 compares its latest and anchor temperatures; R06 checks the
+observed deficits throughout the covered window. Failure/recovery qualification
+then accrues only between distinct eligible source observations. A cached value
+cannot advance qualification merely because the evaluation timer ran again.
+
+Missing data, clock discontinuities, target changes outside tolerance, phase
+changes and restart discard measurement/qualification windows. Durable need
+onset, consumed total budget, active conditions and aggregate incident identity
+remain. Initial startup/sample collection is explicit; insufficient eligible
+coverage at the reserved deadline becomes R01 quality loss, not fabricated
+thermal failure. Inhibition beyond its commissioned allowance likewise loses
+coverage. Timing admission allocates source age, sequential startup/inhibition,
+window plus a maximum sample gap, the greater of output/R01 failure duration, evaluation and
+decision/notification reserves inside the total budget of at most 1800 seconds.
+
+R05/R06 share `HeatingInsufficientOutput` L3. Its UUID remains open while any
+contributor is active or still lacks positive clear evidence. Restart reasserts
+the last recorded contributor of such an unresolved aggregate without creating
+a new incident. Only a complete positive group recovery retires the UUID.
+An evaluation cycle commits its complete contributor state before publishing
+SET/CLEAR transitions. Unavailable/pending contributors invalidate older results
+before any clear is published; current SETs precede current CLEARs. A failed
+durable clear commit preserves activation in both fault events and the public
+installation sensor. Freeze-frame evidence retains a bounded window summary:
+anchor/latest observation times and temperatures, sample counts, source/runtime
+spans and gaps, target, measured rise and deficit range.
+
 ### Restart and compatibility
 
-Runtime qualification and elapsed budgets use monotonic time. State version 2
+Elapsed budgets use monotonic runtime; R01..R04 qualification uses observed
+runtime intervals, while R05/R06 qualification is bounded by both distinct
+source-observation and runtime spans. State version 2
 retains rule/room need onset, consumed/remaining budget, inhibition onset and
 the existing active latches and shared incident UUIDs. Nonnegative, known UTC
 downtime is reconciled into the remaining total budget after restart; it does
@@ -227,8 +282,8 @@ durable-write success and every contributing symptom's clear evidence.
    input mappings and room associations. Keep rule calibration under
    `calibration.heating_system_monitor`. Installation mappings do not own
    manufacturer limits, failure qualification or recovery policy.
-3. Retain the read-only R01 foundation and admit R02/R03/R04/R13 only with their
-   complete policy/input contracts. Keep R05..R12 rejected. Report
+3. Retain the read-only R01 foundation and admit R02/R03/R04/R05/R06/R13 only with their
+   complete policy/input contracts. Keep R07..R12 rejected. Report
    missing independence, freshness, boiler response, thermal, code and delivery
    evidence explicitly. An empty fault list or healthy selected source must not
    be called full heating supervision. Enable no thermal rule without its
@@ -241,7 +296,7 @@ durable-write success and every contributing symptom's clear evidence.
    allocations have their own tests and installation evidence. No guessed
    universal thermal limit substitutes for reviewed
    `HSM-H05/<EquipmentProfileKey>` evidence. Merely adding a profile cannot
-   activate the excluded R05..R12 rules in this delivery.
+   activate the excluded R07..R12 rules in this delivery.
 6. Validate, publish the focused branch/PR and deploy the validated capability.
    Check live version, source ages, coverage, startup qualification, faults and
    logs separately; record the deployed commit and remaining exclusions.
