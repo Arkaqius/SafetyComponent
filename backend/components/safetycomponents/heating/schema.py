@@ -38,6 +38,8 @@ SignalRole = Literal[
     "requested_flow_temperature",
     "heat_request",
     "heating_permitted",
+    "heat_delivery_active",
+    "room_inhibited",
     "device_status",
     "maintenance_status",
     "inhibition_reason",
@@ -52,6 +54,8 @@ BOOLEAN_ROLES = {
     "dhw_active",
     "pump_active",
     "heat_request",
+    "heat_delivery_active",
+    "room_inhibited",
     "heating_permitted",
 }
 TEXT_ROLES = {
@@ -159,12 +163,218 @@ class HeatingTrackingPolicy(HeatingOutputPolicy):
         return self
 
 
+class HeatingPumpPolicy(HeatingStatusPolicy):
+    """A commissioned physical CH burner/pump relationship."""
+
+    hydraulic_reference: str = Field(min_length=1)
+    topology_requires_pump: Literal[True]
+    startup_allowance_seconds: int = Field(ge=0, le=1800)
+    maximum_unresolved_seconds: int = Field(ge=1, le=1800)
+    maximum_input_skew_seconds: int = Field(ge=0, le=60)
+
+
+class HeatingTrendPolicy(HeatingStatusPolicy):
+    """Original-observation coverage for distribution and room delivery."""
+
+    startup_allowance_seconds: int = Field(ge=0, le=1800)
+    maximum_inhibition_seconds: int = Field(ge=0, le=1800)
+    maximum_unresolved_seconds: int = Field(ge=1, le=1800)
+    maximum_input_skew_seconds: int = Field(ge=0, le=60)
+    inhibition_context: Literal["none", "mapped_reason"]
+    observation_window_seconds: int = Field(ge=1, le=1800)
+    minimum_sample_count: int = Field(ge=2, le=1801)
+    maximum_sample_gap_seconds: int = Field(ge=1, le=1800)
+
+
+class HeatingDifferentialPolicy(HeatingTrendPolicy):
+    """Loaded physical flow/return limits; low load alone is not a fault."""
+
+    hydraulic_reference: str = Field(min_length=1)
+    load_role: Literal["power_percent", "power_w"]
+    minimum_load: float = Field(gt=0, allow_inf_nan=False)
+    minimum_flow_temperature_c: float = Field(gt=-273.15, lt=1000, allow_inf_nan=False)
+    failure_delta_k: float = Field(gt=0, allow_inf_nan=False)
+    recovery_delta_k: float = Field(ge=0, allow_inf_nan=False)
+    inverted_failure_k: float = Field(gt=0, allow_inf_nan=False)
+    inverted_recovery_k: float = Field(ge=0, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def _bands(self) -> HeatingDifferentialPolicy:
+        if (
+            self.recovery_delta_k >= self.failure_delta_k
+            or self.inverted_recovery_k >= self.inverted_failure_k
+        ):
+            raise ValueError(
+                "distribution recovery bands must be narrower than failure"
+            )
+        if self.load_role == "power_percent" and self.minimum_load > 100:
+            raise ValueError("percent load must fit the physical input range")
+        return self
+
+
+class HeatingRoomDeliveryPolicy(HeatingTrendPolicy):
+    """Cooling during an independently evidenced room heat-delivery attempt."""
+
+    delivery_reference: str = Field(min_length=1)
+    need_on_margin_k: float = Field(gt=0, allow_inf_nan=False)
+    need_off_margin_k: float = Field(ge=0, allow_inf_nan=False)
+    minimum_cooling_k: float = Field(gt=0, allow_inf_nan=False)
+    recovery_rise_k: float = Field(gt=0, allow_inf_nan=False)
+    target_stability_tolerance_k: float = Field(ge=0, allow_inf_nan=False)
+    room_inhibition_context: Literal["none", "mapped"]
+
+    @model_validator(mode="after")
+    def _bands(self) -> HeatingRoomDeliveryPolicy:
+        if self.need_off_margin_k >= self.need_on_margin_k:
+            raise ValueError(
+                "room-delivery recovery band must be narrower than need-on"
+            )
+        return self
+
+
+class HeatingThermalAllocation(HeatingModel):
+    """Reviewed equipment response allocation, never a universal boiler deadline."""
+
+    allocation_key: str = Field(pattern=r"^HSM-H05/[A-Za-z][A-Za-z0-9]*$")
+    manufacturer_reference: str = Field(min_length=1)
+    hydraulic_reference: str = Field(min_length=1)
+    maximum_response_seconds: int = Field(ge=1, le=86400)
+    detection_budget_seconds: int = Field(ge=1, le=86400)
+    decision_budget_seconds: int = Field(ge=1, le=86400)
+    notification_budget_seconds: int = Field(ge=30, le=86400)
+
+    @model_validator(mode="after")
+    def _allocation(self) -> HeatingThermalAllocation:
+        if (
+            self.detection_budget_seconds
+            + self.decision_budget_seconds
+            + self.notification_budget_seconds
+            > self.maximum_response_seconds
+        ):
+            raise ValueError(
+                "thermal portions exceed the equipment response allocation"
+            )
+        return self
+
+
+class HeatingTemperatureEnvelope(HeatingModel):
+    """Operating envelope including native hysteresis and measurement tolerance."""
+
+    operating_maximum_c: float = Field(gt=-273.15, lt=1000, allow_inf_nan=False)
+    native_hysteresis_k: float = Field(ge=0, allow_inf_nan=False)
+    measurement_tolerance_k: float = Field(ge=0, allow_inf_nan=False)
+    recovery_margin_k: float = Field(gt=0, allow_inf_nan=False)
+
+    @property
+    def failure_c(self) -> float:
+        """Return the inclusive physical alarm boundary in normalized Celsius."""
+        return (
+            self.operating_maximum_c
+            + self.native_hysteresis_k
+            + self.measurement_tolerance_k
+        )
+
+    @property
+    def recovery_c(self) -> float:
+        """Return the stricter clear boundary."""
+        return self.failure_c - self.recovery_margin_k
+
+    @model_validator(mode="after")
+    def _range(self) -> HeatingTemperatureEnvelope:
+        if not -273.15 < self.recovery_c < self.failure_c < 1000:
+            raise ValueError("thermal envelope must fit the physical measurement range")
+        return self
+
+
+class HeatingModeTemperaturePolicy(HeatingStatusPolicy):
+    """Reviewed mode-specific envelopes for the commissioned hydraulic system."""
+
+    allocation: HeatingThermalAllocation
+    maximum_input_skew_seconds: int = Field(ge=0, le=60)
+    envelopes: dict[
+        Literal["idle", "starting", "heating", "dhw", "pump_overrun"],
+        HeatingTemperatureEnvelope,
+    ]
+
+    @model_validator(mode="after")
+    def _modes(self) -> HeatingModeTemperaturePolicy:
+        if set(self.envelopes) != {
+            "idle",
+            "starting",
+            "heating",
+            "dhw",
+            "pump_overrun",
+        }:
+            raise ValueError(
+                "mode temperature policy requires every physical operating envelope"
+            )
+        return self
+
+
+class HeatingAbsoluteTemperaturePolicy(HeatingStatusPolicy):
+    """Absolute flow protection independent of demand or operating mode."""
+
+    allocation: HeatingThermalAllocation
+    absolute_limit_c: float = Field(gt=-273.15, lt=1000, allow_inf_nan=False)
+    measurement_tolerance_k: float = Field(ge=0, allow_inf_nan=False)
+    recovery_margin_k: float = Field(gt=0, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def _range(self) -> HeatingAbsoluteTemperaturePolicy:
+        threshold = self.absolute_limit_c - self.measurement_tolerance_k
+        if not -273.15 < threshold - self.recovery_margin_k < threshold < 1000:
+            raise ValueError(
+                "absolute temperature boundaries must fit the physical range"
+            )
+        return self
+
+
+class HeatingCyclingPolicy(HeatingStatusPolicy):
+    """Covered CH/DHW counters and interval-bounded burner transitions."""
+
+    counter_reference: str = Field(min_length=1)
+    maximum_input_skew_seconds: int = Field(ge=0, le=3600)
+    observation_window_seconds: int = Field(ge=1, le=3600)
+    minimum_sample_count: int = Field(ge=2, le=3601)
+    maximum_sample_gap_seconds: int = Field(ge=1, le=3600)
+    maximum_counter_gap_seconds: int = Field(ge=1, le=3600)
+    maximum_starts_ch: int = Field(ge=1, le=100000)
+    maximum_starts_dhw: int = Field(ge=1, le=100000)
+    recovery_starts_ch: int = Field(ge=0, le=100000)
+    recovery_starts_dhw: int = Field(ge=0, le=100000)
+    short_cycle_seconds: int = Field(ge=1, le=3600)
+    minimum_short_cycles: int = Field(ge=1, le=100000)
+    recovery_short_cycles: int = Field(ge=0, le=100000)
+    minimum_recovery_cycles: int = Field(ge=1, le=100000)
+
+    @model_validator(mode="after")
+    def _bands(self) -> HeatingCyclingPolicy:
+        if (
+            self.recovery_starts_ch >= self.maximum_starts_ch
+            or self.recovery_starts_dhw >= self.maximum_starts_dhw
+            or self.recovery_short_cycles >= self.minimum_short_cycles
+            or self.minimum_recovery_cycles
+            > min(self.recovery_starts_ch, self.recovery_starts_dhw)
+            or self.short_cycle_seconds <= 2 * self.maximum_sample_gap_seconds
+        ):
+            raise ValueError(
+                "cycling recovery/transition bands are not independently observable"
+            )
+        return self
+
+
 RULE_POLICY_FIELDS = {
     "R02": "device_fault",
     "R03": "missing_demand",
     "R04": "no_response",
     "R05": "flow_rise",
     "R06": "flow_tracking",
+    "R07": "pump_response",
+    "R08": "flow_return",
+    "R09": "room_delivery",
+    "R10": "mode_temperature",
+    "R11": "absolute_temperature",
+    "R12": "cycling",
     "R13": "maintenance",
 }
 RULE_INPUTS = {
@@ -183,6 +393,32 @@ RULE_INPUTS = {
         "requested_flow_temperature",
     },
     "R13": {"maintenance_status"},
+    "R07": {"boiler_active", "dhw_active", "pump_active"},
+    "R08": {
+        "boiler_active",
+        "dhw_active",
+        "pump_active",
+        "flow_temperature",
+        "return_temperature",
+    },
+    "R09": {
+        "boiler_active",
+        "dhw_active",
+        "pump_active",
+        "room_temperature",
+        "target_temperature",
+        "heating_permitted",
+        "heat_delivery_active",
+    },
+    "R10": {
+        "flow_temperature",
+        "boiler_active",
+        "dhw_active",
+        "pump_active",
+        "heat_request",
+    },
+    "R11": {"flow_temperature"},
+    "R12": {"burner_starts_ch", "burner_starts_dhw", "boiler_active", "dhw_active"},
 }
 RULE_INPUTS["R05"] = RULE_INPUTS["R04"]
 RULE_INPUTS["R06"] = RULE_INPUTS["R04"]
@@ -192,7 +428,28 @@ INTENT_ROLES = {
     "heating_permitted",
     "requested_flow_temperature",
     "inhibition_reason",
+    "room_inhibited",
 }
+
+
+def required_inputs(rule: str, policy: HeatingStatusPolicy | None) -> set[str]:
+    """Resolve the exact commissioned dependencies shared by validation/runtime."""
+    required = set(RULE_INPUTS[rule])
+    if (
+        isinstance(
+            policy, (HeatingResponsePolicy, HeatingOutputPolicy, HeatingTrendPolicy)
+        )
+        and policy.inhibition_context == "mapped_reason"
+    ):
+        required.add("inhibition_reason")
+    if isinstance(policy, HeatingDifferentialPolicy):
+        required.add(policy.load_role)
+    if (
+        isinstance(policy, HeatingRoomDeliveryPolicy)
+        and policy.room_inhibition_context == "mapped"
+    ):
+        required.add("room_inhibited")
+    return required
 
 
 class HeatingInput(HeatingModel):
@@ -248,7 +505,13 @@ class HeatingRoom(HeatingModel):
 
     friendly_name: str = Field(min_length=1)
     inputs: dict[
-        Literal["room_temperature", "target_temperature", "heating_permitted"],
+        Literal[
+            "room_temperature",
+            "target_temperature",
+            "heating_permitted",
+            "heat_delivery_active",
+            "room_inhibited",
+        ],
         HeatingInput,
     ]
 
@@ -285,6 +548,12 @@ class HeatingProfile(HeatingModel):
     no_response: HeatingResponsePolicy | None = None
     flow_rise: HeatingRisePolicy | None = None
     flow_tracking: HeatingTrackingPolicy | None = None
+    pump_response: HeatingPumpPolicy | None = None
+    flow_return: HeatingDifferentialPolicy | None = None
+    room_delivery: HeatingRoomDeliveryPolicy | None = None
+    mode_temperature: HeatingModeTemperaturePolicy | None = None
+    absolute_temperature: HeatingAbsoluteTemperaturePolicy | None = None
+    cycling: HeatingCyclingPolicy | None = None
     maintenance: HeatingStatusPolicy | None = None
 
     @model_validator(mode="after")
@@ -293,14 +562,24 @@ class HeatingProfile(HeatingModel):
             self.enabled_rules
         ):
             raise ValueError("heating profiles require one R01 supervisor")
-        if set(self.enabled_rules) - {"R01", *RULE_POLICY_FIELDS}:
-            raise ValueError(
-                "Only R01/R02/R03/R04/R05/R06/R13 are implemented and admissible"
-            )
         for rule, field in RULE_POLICY_FIELDS.items():
             if (rule in self.enabled_rules) != (getattr(self, field) is not None):
                 raise ValueError(
                     f"{rule} enablement and its reviewed {field} policy must agree"
+                )
+        if self.mode_temperature and self.absolute_temperature:
+            mode, absolute = self.mode_temperature, self.absolute_temperature
+            if mode.allocation != absolute.allocation:
+                raise ValueError(
+                    "mode and absolute protection require the same equipment allocation"
+                )
+            if any(
+                envelope.failure_c
+                >= absolute.absolute_limit_c - absolute.measurement_tolerance_k
+                for envelope in mode.envelopes.values()
+            ):
+                raise ValueError(
+                    "mode envelopes must remain below the absolute thermal boundary"
                 )
         return self
 
@@ -358,19 +637,23 @@ class HeatingConfig(HeatingCalibration):
                     continue
                 policy = profile.rule_policy(rule)
                 assert policy is not None
-                required = set(RULE_INPUTS[rule])
-                if (
-                    isinstance(policy, (HeatingResponsePolicy, HeatingOutputPolicy))
-                    and policy.inhibition_context == "mapped_reason"
-                ):
-                    required.add("inhibition_reason")
-                room_maps = (
+                required = required_inputs(rule, policy)
+                room_maps: list[HeatingRoom | None] = (
                     list(system.rooms.values())
-                    if rule == "R03" and system.rooms
+                    if rule in {"R03", "R09"} and system.rooms
                     else [None]
                 )
                 for room in room_maps:
-                    bindings = {**system.inputs, **(room.inputs if room else {})}
+                    bindings: dict[str, HeatingInput] = {
+                        str(role): binding for role, binding in system.inputs.items()
+                    }
+                    if room:
+                        bindings.update(
+                            {
+                                str(role): binding
+                                for role, binding in room.inputs.items()
+                            }
+                        )
                     missing = required - bindings.keys()
                     if missing:
                         raise ValueError(
@@ -404,7 +687,19 @@ class HeatingConfig(HeatingCalibration):
                         maximum_age + 2 * self.evaluation_interval_seconds + 1 + 30
                     )
                     if (
-                        rule in {"R02", "R03", "R04", "R05", "R06"}
+                        rule
+                        in {
+                            "R02",
+                            "R03",
+                            "R04",
+                            "R05",
+                            "R06",
+                            "R07",
+                            "R08",
+                            "R09",
+                            "R10",
+                            "R11",
+                        }
                         and latency + profile.failure_seconds > 60
                     ):
                         raise ValueError(
@@ -424,10 +719,22 @@ class HeatingConfig(HeatingCalibration):
                             raise ValueError(
                                 f"{rule} complete timing allocation exceeds its unresolved-need budget"
                             )
-                    if isinstance(policy, HeatingOutputPolicy):
+                    if isinstance(
+                        policy,
+                        (HeatingOutputPolicy, HeatingTrendPolicy, HeatingCyclingPolicy),
+                    ):
                         cadence = self.evaluation_interval_seconds
                         window = policy.observation_window_seconds
                         gap = policy.maximum_sample_gap_seconds
+                        if (
+                            isinstance(policy, HeatingCyclingPolicy)
+                            and not cadence
+                            <= policy.maximum_counter_gap_seconds
+                            <= window
+                        ):
+                            raise ValueError(
+                                "cycling counter coverage is not achievable at its cadence"
+                            )
                         if (
                             window < cadence
                             or not cadence <= gap <= window
@@ -437,6 +744,17 @@ class HeatingConfig(HeatingCalibration):
                             raise ValueError(
                                 f"{rule} observation coverage is not achievable at its cadence"
                             )
+                        retention = window
+                        if isinstance(policy, HeatingCyclingPolicy):
+                            retention += (
+                                policy.maximum_counter_gap_seconds
+                                + policy.maximum_input_skew_seconds
+                            )
+                        if (retention + cadence - 1) // cadence + 2 > 4096:
+                            raise ValueError(
+                                "observation retention exceeds bounded capacity"
+                            )
+                    if isinstance(policy, (HeatingOutputPolicy, HeatingTrendPolicy)):
                         if (
                             latency
                             + policy.startup_allowance_seconds
@@ -448,5 +766,31 @@ class HeatingConfig(HeatingCalibration):
                         ):
                             raise ValueError(
                                 f"{rule} complete output timing exceeds its unresolved-need budget"
+                            )
+                    if (
+                        isinstance(policy, HeatingPumpPolicy)
+                        and latency
+                        + policy.startup_allowance_seconds
+                        + max(policy.failure_seconds, profile.failure_seconds)
+                        > policy.maximum_unresolved_seconds
+                    ):
+                        raise ValueError(
+                            "pump response timing exceeds its unresolved-need budget"
+                        )
+                    if isinstance(
+                        policy,
+                        (
+                            HeatingModeTemperaturePolicy,
+                            HeatingAbsoluteTemperaturePolicy,
+                        ),
+                    ):
+                        if (
+                            maximum_age
+                            + 2 * self.evaluation_interval_seconds
+                            + policy.failure_seconds
+                            > policy.allocation.detection_budget_seconds
+                        ):
+                            raise ValueError(
+                                "thermal detection exceeds the equipment allocation"
                             )
         return self

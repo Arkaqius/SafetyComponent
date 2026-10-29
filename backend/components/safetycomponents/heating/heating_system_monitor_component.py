@@ -24,7 +24,7 @@ from components.safetycomponents.core.safety_mechanism import SafetyMechanism
 from .engine import RULES, HeatingResult, observed_phase, supervise_inputs
 from .inputs import HeatingInputReader, HeatingObservation
 from .rules import HeatingRuleEngine
-from .schema import COMPONENT_NAME, HeatingConfig, TEMPERATURE_ROLES
+from .schema import COMPONENT_NAME, HeatingConfig, HeatingInput, TEMPERATURE_ROLES
 from .state import compatible_contract, fingerprint, legacy_fingerprint
 
 
@@ -82,7 +82,9 @@ class HeatingSystemMonitorComponent(SafetyComponent):
         config = HeatingConfig.model_validate(component_cfg)
         dependencies = []
         for key, system in config.systems.items():
-            bindings = [(role, binding) for role, binding in system.inputs.items()]
+            bindings: list[tuple[str, HeatingInput]] = [
+                (role, binding) for role, binding in system.inputs.items()
+            ]
             bindings += [
                 (f"{room_key}{role}", binding)
                 for room_key, room in system.rooms.items()
@@ -109,7 +111,7 @@ class HeatingSystemMonitorComponent(SafetyComponent):
         return dependencies
 
     def get_symptoms_data(
-        self, modules: dict, component_cfg: dict[str, Any]
+        self, modules: dict, component_cfg: dict[str, Any] | list[dict[str, Any]]
     ) -> tuple[dict[str, Symptom], dict[str, RecoveryAction]]:
         """Bind only selected installations and profile-enabled mechanisms."""
         self._config = HeatingConfig.model_validate(component_cfg)
@@ -274,8 +276,7 @@ class HeatingSystemMonitorComponent(SafetyComponent):
             self._flushing_publications = False
         for fault in list(self._incidents):
             if self._fault_positively_clear(fault):
-                self._incidents.pop(fault, None)
-                self._incident_owners.pop(fault, None)
+                self._retire_incident(fault)
         for key, state, attributes in self._queued_sensors:
             attributes["persistence_error"] = bool(
                 self._restore_error or self._save_error
@@ -330,11 +331,11 @@ class HeatingSystemMonitorComponent(SafetyComponent):
             engine = self._engines[key]
             engine.advance(now, mono)
             quality_causes: dict[str, str] = {}
-            inputs = {
+            inputs: dict[str, HeatingObservation] = {
                 role: self._reader.read(role, binding, now)
                 for role, binding in system.inputs.items()
             }
-            room_inputs = {
+            room_inputs: dict[str, dict[str, HeatingObservation]] = {
                 room_key: {
                     role: self._reader.read(role, binding, now)
                     for role, binding in room.inputs.items()
@@ -368,7 +369,7 @@ class HeatingSystemMonitorComponent(SafetyComponent):
                     latch.restore_pending = False
                 evidence = {**inputs, **room_inputs.get(room_key, {})}
                 if rule == "R01":
-                    owned = {
+                    owned: set[str] = {
                         role
                         for role, binding in system.inputs.items()
                         if not binding.shared_temperature
@@ -424,7 +425,11 @@ class HeatingSystemMonitorComponent(SafetyComponent):
                 self._evidence[symptom_id]["output_window"] = dict(
                     outcome.window_evidence
                 )
-                if rule != "R01" and (self._restore_error or self._save_error):
+                if (
+                    rule != "R01"
+                    and (self._restore_error or self._save_error)
+                    and not (rule in {"R10", "R11"} and outcome.violation is True)
+                ):
                     outcome = HeatingResult(
                         rule == "R01" or None, "storage_unavailable"
                     )
@@ -690,6 +695,8 @@ class HeatingSystemMonitorComponent(SafetyComponent):
                         owner, rule, _ = self._bindings[symptom]
                         if rule in {"R05", "R06"}:
                             self._engines[owner].output.lost.add(symptom)
+                        if rule in {"R08", "R09"}:
+                            self._engines[owner].distribution.lost.add(symptom)
 
     def _publish(self, symptom_id: str, active: bool, extra: dict[str, Any]) -> None:
         if self._sampling:
@@ -731,8 +738,19 @@ class HeatingSystemMonitorComponent(SafetyComponent):
         latch.published = active
         self.symptom_states[symptom_id] = state
         if not self._flushing_publications and self._fault_positively_clear(fault):
-            self._incidents.pop(fault, None)
-            self._incident_owners.pop(fault, None)
+            self._retire_incident(fault)
+
+    def _retire_incident(self, fault: str) -> None:
+        """Discard recovery references only after the whole incident is clear."""
+        self._incidents.pop(fault, None)
+        self._incident_owners.pop(fault, None)
+        for name, (owner, rule, _) in self._bindings.items():
+            if RULES[rule][1] != fault:
+                continue
+            if rule in {"R10", "R11"}:
+                self._engines[owner].episodes.pop(name, None)
+            if rule == "R12":
+                self._engines[owner].cycling.active_modes.pop(name, None)
 
     def _fault_positively_clear(self, fault: str) -> bool:
         """Keep the aggregate incident open until every contributor is positive."""
@@ -776,7 +794,13 @@ class HeatingSystemMonitorComponent(SafetyComponent):
                             or not 0 <= elapsed <= 1800
                         ):
                             raise ValueError("invalid heating qualification state")
-                        if elapsed and self._bindings[name][1] not in {"R05", "R06"}:
+                        if elapsed and self._bindings[name][1] not in {
+                            "R05",
+                            "R06",
+                            "R08",
+                            "R09",
+                            "R12",
+                        }:
                             latch.pending_kind = "failure"
                             latch.pending_since = self._monotonic() - elapsed
                     else:
@@ -833,9 +857,33 @@ class HeatingSystemMonitorComponent(SafetyComponent):
                         allowed = {
                             name
                             for name, (owner, rule, _) in self._bindings.items()
-                            if owner == key and rule in {"R03", "R04", "R05", "R06"}
+                            if owner == key
+                            and rule
+                            in {
+                                "R03",
+                                "R04",
+                                "R05",
+                                "R06",
+                                "R07",
+                                "R08",
+                                "R09",
+                                "R10",
+                                "R11",
+                            }
                         }
-                        self._engines[key].restore(state, allowed)
+                        cycling_keys = {
+                            name
+                            for name, (owner, rule, _) in self._bindings.items()
+                            if owner == key and rule == "R12"
+                        }
+                        self._engines[key].restore(state, allowed, cycling_keys)
+                        for name in cycling_keys:
+                            if self._latches[name].active and not self._engines[
+                                key
+                            ].cycling.active_modes.get(name):
+                                raise ValueError(
+                                    "missing active heating cycling causes"
+                                )
                     expected_old = self._contract_latches(contract)
                     if set(snapshot["latches"]) != expected_old:
                         raise ValueError("missing expected heating latches")
@@ -890,6 +938,12 @@ class HeatingSystemMonitorComponent(SafetyComponent):
                             self._latches[owner].active = True
                             self._latches[owner].restore_pending = True
                     self._incident_owners = owners
+                for name, (owner, rule, _) in self._bindings.items():
+                    if RULES[rule][1] not in self._incidents:
+                        if rule in {"R10", "R11"}:
+                            self._engines[owner].episodes.pop(name, None)
+                        if rule == "R12":
+                            self._engines[owner].cycling.active_modes.pop(name, None)
         except (OSError, ValueError, TypeError, KeyError) as exc:
             self._restore_error = str(exc)
         self.event_bus.publish(
@@ -1026,6 +1080,42 @@ class HeatingSystemMonitorComponent(SafetyComponent):
         """Evaluate physical CH target deficit from qualified observation windows."""
         return self._evaluate_mechanism(mechanism, entities_changes)
 
+    def sm_hsm_pump_mismatch(
+        self, mechanism: SafetyMechanism, entities_changes: dict | None = None
+    ) -> bool:
+        """Evaluate the commissioned physical CH pump relationship."""
+        return self._evaluate_mechanism(mechanism, entities_changes)
+
+    def sm_hsm_flow_return(
+        self, mechanism: SafetyMechanism, entities_changes: dict | None = None
+    ) -> bool:
+        """Evaluate loaded flow/return differential windows."""
+        return self._evaluate_mechanism(mechanism, entities_changes)
+
+    def sm_hsm_room_delivery(
+        self, mechanism: SafetyMechanism, entities_changes: dict | None = None
+    ) -> bool:
+        """Evaluate physical delivery and the observed room response."""
+        return self._evaluate_mechanism(mechanism, entities_changes)
+
+    def sm_hsm_mode_overtemperature(
+        self, mechanism: SafetyMechanism, entities_changes: dict | None = None
+    ) -> bool:
+        """Evaluate the reviewed physical envelope of the observed phase."""
+        return self._evaluate_mechanism(mechanism, entities_changes)
+
+    def sm_hsm_absolute_overtemperature(
+        self, mechanism: SafetyMechanism, entities_changes: dict | None = None
+    ) -> bool:
+        """Evaluate the independent absolute physical temperature limit."""
+        return self._evaluate_mechanism(mechanism, entities_changes)
+
+    def sm_hsm_short_cycling(
+        self, mechanism: SafetyMechanism, entities_changes: dict | None = None
+    ) -> bool:
+        """Evaluate informational CH/DHW cycling from covered observations."""
+        return self._evaluate_mechanism(mechanism, entities_changes)
+
     def _value_label(self, value: Any, role: str) -> str:
         if isinstance(value, bool):
             return self._text("heating.value.on" if value else "heating.value.off")
@@ -1090,7 +1180,9 @@ class HeatingSystemMonitorComponent(SafetyComponent):
         for key, system in contract["systems"].items():
             for rule in contract["profiles"][system["profile"]]["enabled_rules"]:
                 rooms = (
-                    list(system["rooms"]) if rule == "R03" and system["rooms"] else [""]
+                    list(system["rooms"])
+                    if rule in {"R03", "R09"} and system["rooms"]
+                    else [""]
                 )
                 for room in rooms:
                     result.add(

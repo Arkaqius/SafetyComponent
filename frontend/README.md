@@ -69,8 +69,11 @@ niewystarczający wzrost temperatury zasilania (R05), nieosiąganie temperatury
 zadanej (R06) i
 informacja serwisowa (R13). Wymagają kompletnych, świeżych i właściwie opisanych
 wejść. R05/R06 wymagają historii nowych pomiarów i jawnych progów; powtarzanie
-starych odczytów nie potwierdza poprawy. R07–R12 pozostają poza zakresem; aktualizacja nie włącza ich ani żadnej
-nowej reguły automatycznie. Poprawny odczyt lub brak aktywnego alarmu nie
+starych odczytów nie potwierdza poprawy. Dostępne są także kontrole obiegu i
+dostarczania ciepła (R07–R09), temperatury kotła (R10–R11) i częstych uruchomień
+palnika (R12). Wymagają potwierdzonych pomiarów i progów dla danej instalacji.
+R12 pozostaje informacją L4 bez pogarszania ogólnego stanu systemu. Aktualizacja
+nie włącza żadnej nowej reguły automatycznie. Poprawny odczyt lub brak aktywnego alarmu nie
 potwierdza dostarczania ciepła ani bezpiecznej temperatury kotła.
 Mapowanie dowolnych urządzeń opisuje
 [konfiguracja wejść ogrzewania](CONFIGURATION.md#wejścia-monitoringu-ogrzewania).

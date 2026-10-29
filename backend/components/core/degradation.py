@@ -556,12 +556,13 @@ def compile_runtime_bindings(
                 )
                 for target_id, target in symptoms.items()
                 if target_id in hazard_owners and target.sm_name.startswith("sm_hsm_")
+                and target.sm_name != "sm_hsm_absolute_overtemperature"
                 and target.parameters.get("installation_key") == installation
             )
             bindings.append(DiagnosticBinding(
                 symptom_id, targets, external_only=not targets
             ))
-        elif symptom.sm_name == "sm_hsm_maintenance":
+        elif symptom.sm_name in {"sm_hsm_maintenance", "sm_hsm_short_cycling"}:
             bindings.append(DiagnosticBinding(symptom_id, (), external_only=True))
         elif symptom.sm_name.startswith("sm_fsm_"):
             bindings.append(DiagnosticBinding(symptom_id, (), external_only=True))

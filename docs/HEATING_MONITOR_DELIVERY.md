@@ -11,8 +11,9 @@ Requirement IDs and all R01..R13 mechanism/fault identities remain unchanged.
 The initial deployment established generic input normalization and R01
 input-source diagnostics. This stage extends the rule contract to R02 current
 device faults, R03 missing heating requests, R04 missing boiler responses,
-R05 flow rise, R06 target tracking and R13 maintenance indications. R07..R12 remain excluded and their activation is
-rejected. The packaged `Diagnostic` profile continues to select only R01;
+R05 flow rise, R06 target tracking, R07/R08 distribution, R09 room delivery,
+R10/R11 thermal protection, R12 cycling and R13 maintenance indications.
+The packaged `Diagnostic` profile continues to select only R01;
 upgrading the application does not enable another rule or change installation
 bindings.
 
@@ -61,7 +62,8 @@ Installation input roles are `source_health`, `boiler_active`, `boiler_state`,
 The configuration model and compiler resolve these bindings into the component's
 `systems` registry. System-owned settings select evaluation cadence, bounded
 installation count, persistence location and named calibration profiles. The
-admitted rule set is R01/R02/R03/R04/R05/R06/R13. Rule selection alone does not establish
+admitted rule catalog is R01..R13. Every selected rule still requires its
+complete commissioned policy and input contract. Rule selection alone does not establish
 an input, independence, operating-condition or timing contract.
 Mappings contain data only, with no expressions or service calls. Unmapped states,
 missing attributes, non-finite conversions and unavailable sources produce
@@ -283,7 +285,8 @@ durable-write success and every contributing symptom's clear evidence.
    `calibration.heating_system_monitor`. Installation mappings do not own
    manufacturer limits, failure qualification or recovery policy.
 3. Retain the read-only R01 foundation and admit R02/R03/R04/R05/R06/R13 only with their
-   complete policy/input contracts. Keep R07..R12 rejected. Report
+   complete policy/input contracts. Admit R07..R12 only under their
+   [additional rule contracts](features/Heating%20Additional%20Rule%20Policies.md). Report
    missing independence, freshness, boiler response, thermal, code and delivery
    evidence explicitly. An empty fault list or healthy selected source must not
    be called full heating supervision. Enable no thermal rule without its
@@ -296,7 +299,7 @@ durable-write success and every contributing symptom's clear evidence.
    allocations have their own tests and installation evidence. No guessed
    universal thermal limit substitutes for reviewed
    `HSM-H05/<EquipmentProfileKey>` evidence. Merely adding a profile cannot
-   activate the excluded R07..R12 rules in this delivery.
+   activate an uncommissioned rule in this delivery.
 6. Validate, publish the focused branch/PR and deploy the validated capability.
    Check live version, source ages, coverage, startup qualification, faults and
    logs separately; record the deployed commit and remaining exclusions.

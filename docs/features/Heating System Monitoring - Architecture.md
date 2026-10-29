@@ -243,6 +243,10 @@ reason and, where applicable, an expiry/deadline.
 
 ## 5. Rules, fault identities and evidence
 
+The [additional rule policy reference](<Heating Additional Rule Policies.md>)
+defines explicit R07..R12 input, qualification, thermal-allocation and cycling
+contracts without manufacturer-specific defaults.
+
 Mechanism IDs shall be stable and each mechanism shall map to exactly one
 fault. A fault shall aggregate symptoms from all affected installations/rooms.
 Installation and room keys shall be validated alphanumeric identifiers;

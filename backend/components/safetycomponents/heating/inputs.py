@@ -27,6 +27,18 @@ class HeatingObservation:
         """Whether this evidence has a qualified original observation time."""
         return self.quality == "valid"
 
+    @property
+    def source_time(self) -> float:
+        """Expose the original time only after caller qualification."""
+        assert self.qualified and self.observed_at is not None
+        return self.observed_at
+
+    @property
+    def number(self) -> float:
+        """Expose normalized numeric or binary evidence after qualification."""
+        assert self.qualified and isinstance(self.value, (float, int))
+        return float(self.value)
+
 
 def timestamp(value: Any) -> float | None:
     """Read ISO timestamps with timezone or epoch seconds; reject naive time."""

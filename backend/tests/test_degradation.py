@@ -94,18 +94,21 @@ def test_heating_storage_and_quality_restrict_only_heating_and_service_is_extern
         "other": SimpleNamespace(sm_name="sm_temp_room", parameters={}),
         "quality": SimpleNamespace(sm_name="sm_hsm_supervision_loss", parameters={"installation_key": "Main"}),
         "service": SimpleNamespace(sm_name="sm_hsm_maintenance", parameters={"installation_key": "Main"}),
+        "cycling": SimpleNamespace(sm_name="sm_hsm_short_cycling", parameters={"installation_key": "Main"}),
+        "absolute": SimpleNamespace(sm_name="sm_hsm_absolute_overtemperature", parameters={"installation_key": "Main"}),
         "storage": SimpleNamespace(sm_name="sm_app_health", parameters={"cause": "persistence", "store": "heating_monitor_state"}),
     }
     faults = {
         name: Fault(name, [symptoms[name].sm_name], 4 if name == "service" else 3,
-                    category=FaultCategory.H if name in {"heating", "other"} else FaultCategory.D,
+                    category=FaultCategory.H if name in {"heating", "other", "absolute"} else FaultCategory.D,
                     related_symptom_ids=[name])
         for name in symptoms
     }
     bindings = {binding.symptom_id: binding for binding in compile_runtime_bindings(symptoms, (), faults=faults)}
-    assert {target.symptom_id for target in bindings["storage"].targets} == {"heating"}
+    assert {target.symptom_id for target in bindings["storage"].targets} == {"heating", "absolute"}
     assert {target.symptom_id for target in bindings["quality"].targets} == {"heating"}
     assert bindings["service"].external_only and not bindings["service"].targets
+    assert bindings["cycling"].external_only and not bindings["cycling"].targets
 
 
 def test_shared_input_fault_retains_independent_room_coverage() -> None:

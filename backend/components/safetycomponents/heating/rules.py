@@ -9,6 +9,9 @@ from typing import Any, Mapping
 from .engine import HeatingResult
 from .inputs import HeatingObservation
 from .output import OutputWindows
+from .distribution import DistributionRules
+from .thermal import ThermalRules
+from .cycling import CyclingRules
 from .schema import (
     HeatingDemandPolicy,
     HeatingProfile,
@@ -16,7 +19,12 @@ from .schema import (
     HeatingOutputPolicy,
     HeatingRisePolicy,
     HeatingTrackingPolicy,
-    RULE_INPUTS,
+    HeatingPumpPolicy,
+    HeatingTrendPolicy,
+    HeatingModeTemperaturePolicy,
+    HeatingAbsoluteTemperaturePolicy,
+    HeatingCyclingPolicy,
+    required_inputs,
 )
 
 
@@ -44,6 +52,9 @@ class HeatingRuleEngine:
         self._clock_uncertain = False
         self._stable_since: float | None = None
         self.output = OutputWindows()
+        self.distribution = DistributionRules(self)
+        self.thermal = ThermalRules(self)
+        self.cycling = CyclingRules()
 
     @property
     def clock_uncertain(self) -> bool:
@@ -56,6 +67,7 @@ class HeatingRuleEngine:
             elapsed = max(0.0, wall - self._wall) if self._wall is not None else 0.0
             jumped = self._wall is not None and wall < self._wall
         else:
+            assert self._wall is not None
             elapsed = max(0.0, mono - self._mono)
             jumped = (
                 mono < self._mono
@@ -66,11 +78,15 @@ class HeatingRuleEngine:
         if elapsed > self.interval * 2:
             self._attained_since.clear()
             self.output.invalidate()
+            self.distribution.invalidate()
+            self.cycling.invalidate()
         if jumped:
             self._clock_uncertain = True
             self._stable_since = mono
             self._attained_since.clear()
             self.output.invalidate()
+            self.distribution.invalidate()
+            self.cycling.invalidate()
         elif self._clock_uncertain:
             if self._stable_since is None:
                 self._stable_since = mono
@@ -93,22 +109,21 @@ class HeatingRuleEngine:
         policy = self.profile.rule_policy(rule)
         if policy is None:
             return HeatingResult(None, "excluded")
-        if self.clock_uncertain:
+        if self.clock_uncertain and rule not in {"R10", "R11"}:
             return HeatingResult(
                 None, "clock_uncertain", quality_cause="clock_uncertain"
             )
-        required = set(RULE_INPUTS[rule])
-        if (
-            isinstance(policy, (HeatingResponsePolicy, HeatingOutputPolicy))
-            and policy.inhibition_context == "mapped_reason"
-        ):
-            required.add("inhibition_reason")
+        required = required_inputs(rule, policy)
         if required - inputs.keys():
             return HeatingResult(None, "missing_input", quality_cause="missing_input")
         if any(not inputs[role].qualified for role in required):
             self._attained_since.pop(key, None)
             if rule in {"R05", "R06"}:
                 self.output.reset(key, lost=True)
+            if rule in {"R07", "R08", "R09"}:
+                self.distribution.reset(key, lost=True)
+            if rule == "R12":
+                self.cycling.reset(key)
             return HeatingResult(None, "unqualified_input")
         observed = [float(inputs[role].observed_at) for role in required]  # type: ignore[arg-type]
         skew = getattr(policy, "maximum_input_skew_seconds", None)
@@ -116,6 +131,10 @@ class HeatingRuleEngine:
             self._attained_since.pop(key, None)
             if rule in {"R05", "R06"}:
                 self.output.reset(key, lost=True)
+            if rule in {"R07", "R08", "R09"}:
+                self.distribution.reset(key, lost=True)
+            if rule == "R12":
+                self.cycling.reset(key)
             return HeatingResult(None, "input_skew", quality_cause="input_skew")
         values = {role: inputs[role].value for role in required}
         inputs = {role: inputs[role] for role in required}
@@ -136,6 +155,14 @@ class HeatingRuleEngine:
             return self._performance(
                 values, inputs, observed, policy, wall, mono, key, active
             )
+        if isinstance(policy, (HeatingPumpPolicy, HeatingTrendPolicy)):
+            return self.distribution.evaluate(policy, inputs, wall, mono, key, active)
+        if isinstance(
+            policy, (HeatingModeTemperaturePolicy, HeatingAbsoluteTemperaturePolicy)
+        ):
+            return self.thermal.evaluate(policy, inputs, wall, key)
+        if isinstance(policy, HeatingCyclingPolicy):
+            return self.cycling.evaluate(policy, inputs, mono, key)
         assert isinstance(policy, HeatingResponsePolicy)
         return self._response(values, inputs, observed, policy, wall, mono, key, active)
 
@@ -312,6 +339,7 @@ class HeatingRuleEngine:
             policy.failure_seconds,
         )
         if blocked:
+            assert episode.inhibition_started_elapsed is not None
             inhibited_for = episode.elapsed_seconds - float(
                 episode.inhibition_started_elapsed
             )
@@ -456,20 +484,46 @@ class HeatingRuleEngine:
 
     def snapshot(self) -> dict[str, Any]:
         """Persist only bounded budget facts; no downtime becomes recovery samples."""
-        return {
-            "saved_at": self._wall if self.episodes or self._clock_uncertain else None,
+        snapshot: dict[str, Any] = {
+            "saved_at": self._wall
+            if self.episodes or self._clock_uncertain or self.cycling.active_modes
+            else None,
             "clock_uncertain": self._clock_uncertain,
             "episodes": {key: asdict(value) for key, value in self.episodes.items()},
         }
+        if self.cycling.active_modes:
+            snapshot["cycling_modes"] = {
+                key: sorted(modes)
+                for key, modes in self.cycling.active_modes.items()
+                if modes
+            }
+        return snapshot
 
-    def restore(self, snapshot: Any, allowed_keys: set[str]) -> None:
+    def restore(
+        self,
+        snapshot: Any,
+        allowed_keys: set[str],
+        cycling_keys: set[str] | None = None,
+    ) -> None:
         """Reject malformed or orphaned budgets instead of resetting deadlines."""
-        if not isinstance(snapshot, dict) or set(snapshot) != {
+        if not isinstance(snapshot, dict) or set(snapshot) - {"cycling_modes"} != {
             "saved_at",
             "clock_uncertain",
             "episodes",
         }:
             raise ValueError("invalid heating budget state")
+        modes = snapshot.get("cycling_modes", {})
+        if not isinstance(modes, dict) or set(modes) - (cycling_keys or set()):
+            raise ValueError("invalid heating cycling owners")
+        for values in modes.values():
+            if (
+                not isinstance(values, list)
+                or not values
+                or any(value not in {"ch", "dhw"} for value in values)
+                or len(set(values)) != len(values)
+            ):
+                raise ValueError("invalid heating cycling causes")
+        self.cycling.active_modes = {key: set(values) for key, values in modes.items()}
         saved_at = snapshot["saved_at"]
         if saved_at is not None and (
             isinstance(saved_at, bool)
@@ -527,5 +581,6 @@ class HeatingRuleEngine:
         # Restart loses observation windows; unresolved paths must prove covered
         # observations again before their quality supervision can recover.
         self.output.lost.update(restored)
+        self.distribution.lost.update(restored)
         self._wall, self._mono = saved_at, None
         self._clock_uncertain = snapshot["clock_uncertain"]

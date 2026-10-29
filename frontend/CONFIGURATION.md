@@ -130,8 +130,11 @@ Pozostaje profilem domyślnym po aktualizacji. Osobno zweryfikowany profil może
 włączyć bieżącą usterkę urządzenia (R02), brak żądania mimo potrzeby ciepła
 (R03), brak odpowiedzi kotła (R04), niewystarczający wzrost temperatury zasilania
 (R05), nieosiąganie wartości zadanej (R06) i informację serwisową (R13). Każda reguła
-wymaga własnej polityki oraz kompletnych, świeżych danych. R07–R12 pozostają
-wyłączone, a próba ich włączenia jest odrzucana. Strona **Ogrzewanie** pokazuje
+wymaga własnej polityki oraz kompletnych, świeżych danych. Dostępne są także
+kontrole pompy (R07), różnicy zasilania i powrotu (R08), dostarczania ciepła do
+pokoju (R09), temperatury w trybie pracy (R10), temperatury bezwzględnej (R11)
+i częstych uruchomień palnika (R12). Ich progi wymagają potwierdzenia dla konkretnej
+instalacji; nie mają uniwersalnych ustawień. Strona **Ogrzewanie** pokazuje
 rzeczywisty częściowy zakres również wtedy, gdy wszystkie wejścia są dostępne.
 
 Polityki `flow_rise` i `flow_tracking` wymagają jawnych progów, czasu rozruchu,
@@ -154,6 +157,14 @@ rozruch i priorytet CWU. Kolejne wstrzymanie lub restart nie daje nowego pełneg
 czasu oczekiwania. Reguły nie usuwają aktywnej usterki tylko dlatego, że żądanie
 zniknęło albo obniżono temperaturę zadaną. R13 jest informacją L4 o serwisie,
 nie potwierdzeniem awarii ogrzewania.
+
+R09 wymaga fizycznego potwierdzenia próby dostarczenia ciepła do pokoju przez
+`heat_delivery_active`; samo żądanie sterownika nie wystarcza. Opcjonalny
+`room_inhibited` opisuje uzgodnione wstrzymanie grzania, np. wietrzenie.
+R10/R11 wymagają limitów urządzenia i udokumentowanego czasu reakcji.
+R12 jest informacją L4: nie pogarsza ogólnego stanu systemu. Reset licznika lub
+postój kotła nie kasuje jej jako dowodu poprawy. Szczegółowe pola opisuje
+[kontrakt R07–R12](<../docs/features/Heating Additional Rule Policies.md>).
 
 Polityki, czasy kwalifikacji i dowody dopuszczenia należą do konfiguracji
 systemowej. Nie zastępuj ich przykładowymi wartościami bez weryfikacji instalacji.

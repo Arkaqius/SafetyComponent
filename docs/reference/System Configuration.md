@@ -246,7 +246,7 @@ profile; an application upgrade does not enable additional rules.
 | `maximum_systems` | `8` | Maximum explicitly selected heating installations. | No |
 | `state_file` | `/config/appdaemon/heating_monitor_state.json` | Legacy import path for the `heating_monitor_state` store in the shared SQLite database, outside the deployed app tree. | No |
 | `profiles.Diagnostic.provenance` | Input availability diagnostics; excluded from thermal and SG-003 coverage | Describes the admitted diagnostic scope, not manufacturer or thermal evidence. | No |
-| `profiles.Diagnostic.enabled_rules` | `[R01]` | Input-source supervision only. Other profiles may admit R02/R03/R04/R05/R06/R13 after validation; R07..R12 remain rejected. | No |
+| `profiles.Diagnostic.enabled_rules` | `[R01]` | Input-source supervision only. Other profiles may select R02..R13 with complete reviewed policies and qualified mappings. | No |
 | `profiles.Diagnostic.failure_seconds` | `5` | Qualified input failure duration before activation, subject to shared diagnostic startup qualification. | No |
 | `profiles.Diagnostic.recovery_seconds` | `60` | Continuous valid input duration before clearing; missing evidence does not clear activation. | No |
 | `profiles.<key>.device_fault` | Absent | R02 current-status policy; required when R02 is enabled. | No |
@@ -254,6 +254,12 @@ profile; an application upgrade does not enable additional rules.
 | `profiles.<key>.no_response` | Absent | R04 request/response and bounded inhibition policy; required when R04 is enabled. | No |
 | `profiles.<key>.flow_rise` | Absent | R05 commissioned physical flow-rise windows, thresholds and timing. | No |
 | `profiles.<key>.flow_tracking` | Absent | R06 commissioned flow-target bands, observed windows and timing. | No |
+| `profiles.<key>.pump_response` | Absent | R07 topology-specific physical pump response and timing. | No |
+| `profiles.<key>.flow_return` | Absent | R08 loaded flow/return differential bands and covered windows. | No |
+| `profiles.<key>.room_delivery` | Absent | R09 room need, independently evidenced physical delivery and temperature response. | No |
+| `profiles.<key>.mode_temperature` | Absent | R10 reviewed per-phase envelopes and HSM-H05 equipment response allocation. | No |
+| `profiles.<key>.absolute_temperature` | Absent | R11 independent absolute flow limit and HSM-H05 equipment response allocation. | No |
+| `profiles.<key>.cycling` | Absent | R12 informational CH/DHW counters and bounded physical cycle observations. | No |
 | `profiles.<key>.maintenance` | Absent | R13 fresh maintenance-status policy; required when R13 is enabled. | No |
 
 The private configuration enables `HeatingSystemMonitorComponent` and selects
@@ -279,11 +285,12 @@ availability-only bindings cannot activate those rules.
 
 The compiled component publishes partial coverage and explicit rule exclusions.
 R01 success does not prove physical heating response or SG-003 timing
-compliance. R13 remains L4 maintenance information. Input maps cannot enable
-the excluded R07..R12 rules or write device setpoints. State-version migration
+compliance. R12/R13 remain L4 maintenance information and do not restrict hazard
+checks. Input maps cannot write device setpoints. State-version migration
 preserves unchanged R01 incidents; new defaults do not authorize clearing old
 active evidence. See the exact policy fields, bounds and
 [generic input contract and example](../HEATING_MONITOR_DELIVERY.md#generic-input-contract)
+and [R07..R12 policy fields](<../features/Heating Additional Rule Policies.md>)
 and [installation template](../../backend/config/user_config.example.yml).
 
 ## 5. Runtime configuration

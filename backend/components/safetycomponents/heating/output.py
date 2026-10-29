@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import math
+from typing import cast
 
 from .engine import HeatingResult
 from .inputs import HeatingObservation
@@ -60,6 +61,7 @@ class OutputWindows:
         urgent: bool,
     ) -> HeatingResult:
         """Require covered source/runtime spans, then accrue distinct-sample time."""
+        assert isinstance(policy, (HeatingRisePolicy, HeatingTrackingPolicy))
         window = self.windows.get(key)
         if window is None or (
             abs(target - window.target) > policy.target_stability_tolerance_k
@@ -80,7 +82,7 @@ class OutputWindows:
                 quality_cause="output_window_incomplete" if lost else None,
             )
         assert flow.observed_at is not None
-        sample = FlowSample(flow.observed_at, mono, float(flow.value))
+        sample = FlowSample(flow.observed_at, mono, flow.number)
         if window.samples:
             last = window.samples[-1]
             if (
@@ -167,6 +169,7 @@ class OutputWindows:
                 last.at,
                 last.seen,
             )
+        assert window.pending_seen is not None
         duration = max(
             0.0,
             min(last.at - window.pending_at, last.seen - float(window.pending_seen)),
@@ -180,8 +183,14 @@ class OutputWindows:
             )
             if isinstance(policy, HeatingRisePolicy)
             else (
-                ("failure_deficit_k", policy.failure_deficit_k),
-                ("recovery_deficit_k", policy.recovery_deficit_k),
+                (
+                    "failure_deficit_k",
+                    cast(HeatingTrackingPolicy, policy).failure_deficit_k,
+                ),
+                (
+                    "recovery_deficit_k",
+                    cast(HeatingTrackingPolicy, policy).recovery_deficit_k,
+                ),
             )
         )
         return HeatingResult(
