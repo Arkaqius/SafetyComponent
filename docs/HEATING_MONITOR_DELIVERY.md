@@ -34,8 +34,9 @@ the same semantic value regardless of the underlying device or entity name.
 Installation configuration selects sources under `installation.heating_systems`.
 Each stable installation key contains `friendly_name`, `profile` (default
 `Diagnostic`), `inputs` and optional `rooms`. Each room has `friendly_name` and
-`inputs`; room inputs select `room_temperature`, `target_temperature` and
-`heating_permitted`. Installation keys and room keys are alphanumeric, begin
+`inputs`; room inputs select `room_temperature`, `target_temperature`,
+`heating_permitted`, `heat_delivery_active` and `room_inhibited`.
+Installation keys and room keys are alphanumeric, begin
 with a letter and must not collide ignoring case.
 
 Installation input roles are `source_health`, `boiler_active`, `boiler_state`,
@@ -43,7 +44,7 @@ Installation input roles are `source_health`, `boiler_active`, `boiler_state`,
 `return_temperature`, `requested_flow_temperature`, `heat_request`,
 `heating_permitted`, `device_status`, `maintenance_status`, `burner_starts_ch`,
 `burner_starts_dhw`, `room_temperature`, `target_temperature` and
-`inhibition_reason`.
+`inhibition_reason`, `heat_delivery_active` and `room_inhibited`.
 
 | Binding field | Meaning |
 | --- | --- |
@@ -89,6 +90,9 @@ between 1970 and year 9999, or timezone-aware ISO timestamps;
 naive, future, stale, regressing and changed-value/same-timestamp evidence is
 rejected. Numeric timestamps belong in the selector's source value, rather
 than being inferred from HA `last_updated`.
+
+The [input provenance qualification guide](<features/Heating Input Provenance.md>)
+defines the producer evidence and checks needed before mapping original times.
 
 A minimal installation mapping can select inputs without a controller-specific
 integration contract:

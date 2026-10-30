@@ -15,6 +15,8 @@ targets, permission and explicit inhibition context are `intent`. Required
 observations have original timestamps, bounded age and coherence. Publication
 time, a gateway heartbeat or command acknowledgement alone does not establish
 a fresh physical measurement. Unavailable evidence never becomes false or zero.
+The [input provenance guide](<Heating Input Provenance.md>) describes how to
+verify upstream timestamps and physical meanings before policy admission.
 
 Windowed distribution/room policies additionally declare
 `startup_allowance_seconds`, `maximum_inhibition_seconds`,

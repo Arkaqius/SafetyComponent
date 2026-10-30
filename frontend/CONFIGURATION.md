@@ -150,6 +150,12 @@ dostarcza rzeczywisty czas obserwacji, można jawnie przypisać go przez
 `freshness: source_timestamp`. Czas aktualizacji encji w HA nie zastępuje
 czasu pomiaru. Wartość „kocioł nieaktywny” nie oznacza niedostępnego wejścia.
 
+Każda wielkość musi zachować własny czas obserwacji, także gdy jej wartość się
+nie zmienia. Ponowna publikacja zestawu danych nie odświeża starych pomiarów.
+Producent danych powinien aktualizować czas dopiero po nowym, prawidłowym
+odczycie konkretnej wielkości. Techniczny opis i przykład mapowania zawiera
+[kwalifikacja pochodzenia danych](<../docs/features/Heating Input Provenance.md>).
+
 Sama aktualizacja aplikacji nie włącza nowych kontroli. Dla R03 potrzebne są
 niezależnie potwierdzone: bieżąca temperatura, aktualny cel i zezwolenie na
 grzanie; decyzja sterownika nie zastępuje tych danych. R04 uwzględnia ograniczony
