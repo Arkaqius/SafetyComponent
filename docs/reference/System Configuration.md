@@ -402,6 +402,12 @@ are never localized.
 
 ## 7. Generated configuration
 
+The optional installation-owned `safety_routines` registry compiles into
+`user_config.safety_routines.routines`. It introduces no packaged calibration
+override or change to existing component bindings. See
+[Safety Routines](../features/Safety%20Routines%20-%20Architecture.md) for the
+closed schema, service limits, source-time qualification and event API.
+
 `backend/build_app_config.py` validates both closed source models, checks their
 versions, resolves them, and generates `apps.yaml`. SafetyFunctions then
 validates the complete generated runtime contract before starting mechanisms.

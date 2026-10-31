@@ -92,6 +92,7 @@ from components.recovery_manager.state_store import (
     InMemoryRecoveryStateStore,
 )
 from components.safetyhome_api import SafetyHomeApiGateway
+from components.safety_routines.runtime import SafetyRoutineRuntime
 from components.safetycomponents.core.safety_component import (
     get_registered_components,
 )
@@ -241,6 +242,7 @@ class SafetyFunctions(hass.Hass):
             "notification_state",
             "recovery_state",
             "fault_evidence_state",
+            "safety_routines",
         }
         indoor_monitor = self.sm_modules.get("InternalEnvironmentalHazardMonitorComponent")
         if indoor_monitor is not None:
@@ -521,6 +523,17 @@ class SafetyFunctions(hass.Hass):
             self,
             lambda: tuple(self.notify_man.notification_history),
         )
+        self.safety_routines = SafetyRoutineRuntime(
+            self,
+            self.runtime_config["user_config"].get("safety_routines", {}),
+            self.state_database.store(
+                "safety_routines",
+                self.state_database.path.with_name("safety_routines_state.json"),
+                max_bytes=8 * 1024 * 1024,
+            ),
+            self.runtime_config["user_config"].get("localization", {}),
+            diagnostics_observer=self.self_diagnostics.record_app_cause,
+        )
 
         # Create the recovery orchestration manager.
         recovery_persistence_cfg = (
@@ -586,6 +599,7 @@ class SafetyFunctions(hass.Hass):
         self.register_entities()
         self.notify_man.start()
         self.safetyhome_api.start()
+        self.safety_routines.start()
         self.reco_man.start()
         if entity_monitor is not None:
             entity_monitor.initialize_recovery_commands(
@@ -953,6 +967,9 @@ class SafetyFunctions(hass.Hass):
 
     def terminate(self) -> None:
         """Publish offline availability during a clean AppDaemon shutdown."""
+        routines = getattr(self, "safety_routines", None)
+        if routines is not None:
+            routines.stop()
         startup_handle = getattr(self, "_startup_grace_handle", None)
         if startup_handle is not None:
             cancel = getattr(self, "cancel_timer", None)

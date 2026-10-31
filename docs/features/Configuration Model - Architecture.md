@@ -58,6 +58,12 @@ destinations, and physical assets are prohibited from the system source.
 
 ## 3. Installation registry
 
+Optional `installation.safety_routines` defines advisory scenario checks and
+triggers. The compiler emits `user_config.safety_routines.routines`; existing
+configurations may omit the registry. The separate service does not change
+component enablement or continuous input dependencies. Limits and the exact
+schema are defined in [Safety Routines](Safety%20Routines%20-%20Architecture.md).
+
 The private `user_config.yml` selects enabled components, notification
 destinations, language, and one normalized `installation` registry:
 

@@ -2,6 +2,7 @@ import { type ReactNode } from 'react';
 import { useHass, type Store } from '@hakit/core';
 import { MOCK_ENTITIES } from './mockData';
 import { type EntityMap } from '../domain/safety';
+import { resetRoutineDemo, routineDemoResponse } from './mockSafetyRoutines';
 
 type MockMessage = { type: string; event_type?: string; event_data?: Record<string, unknown>; entity_ids?: string[] };
 const messages: MockMessage[] = [];
@@ -35,6 +36,13 @@ const connection = {
           })
         );
       });
+    }
+    if (message.event_type === 'safety_routine_request') {
+      queueMicrotask(() =>
+        eventListeners
+          .get('safety_routine_response')
+          ?.forEach(listener => listener({ data: routineDemoResponse(message.event_data ?? {}) }))
+      );
     }
     if (message.event_type === 'safety_notification_acknowledge') {
       const entities = structuredClone(useHass.getState().entities);
@@ -121,6 +129,7 @@ const mockControls = {
     historyResponses.set(entityId, payload);
   },
   reset: () => {
+    resetRoutineDemo();
     messages.length = 0;
     historyResponses.clear();
     failNext = false;

@@ -8,6 +8,31 @@ służy jako materiał techniczny. Pełny,
 fikcyjny [przykład domu](../docs/examples/example_house_user_config.yml)
 można obejrzeć lub wczytać do formularza.
 
+## Scenariusze bezpieczeństwa
+
+1. Otwórz **Scenariusze bezpieczeństwa** w konfiguracji i dodaj scenariusz.
+   Nowy wpis jest wyłączony. Nadaj mu nazwę, np. „Przed snem”.
+2. Dodaj sprawdzenia. Dla kontroli stanu wybierz encję i dokładne oczekiwane
+   stany HA. Dla poboru mocy wybierz zakres liczbowy, jednostkę identyczną jak
+   w źródle oraz minimum lub maksimum.
+3. Dla każdej wartości wskaż dokładnie jedno źródło oryginalnego czasu
+   obserwacji: encję czasu lub atrybut na źródle. Sam czas aktualizacji HA nie
+   potwierdza świeżości pomiaru. Ustaw dopuszczalny wiek obserwacji.
+4. Opcjonalnie dodaj warunek zastosowania z oddzielnymi stanami „sprawdź” i
+   „pomiń”. Nieznany stan warunku oznacza brak możliwości oceny.
+5. Wybierz opóźnienie (do 600 s) lub okno obserwacji (do 300 s). W oknie próbki
+   są odczytywane co najwyżej co 5 s; kolejne pozytywne próbki wymagają nowych
+   obserwacji źródła. Nie jest to potwierdzenie stanu pomiędzy próbkami.
+6. Dodaj wyzwalacz zdarzenia HA lub pełnej zmiany stanu, jeśli kontrola ma
+   uruchamiać się automatycznie. Ręczny przycisk działa również bez wyzwalaczy.
+7. Po sprawdzeniu powiązań włącz scenariusz, zapisz konfigurację i zastosuj ją
+   istniejącą procedurą restartu. Publiczne przykłady są celowo wyłączone.
+
+Przyciski sprawdzają stan bez wykonywania czynności naprawczych. Wyzwalacz
+„wychodzę” może potrzebować opóźnienia na zamknięcie drzwi. „Piec wyłączony”
+powinien wskazywać precyzyjnie wybraną wielkość, np. stan palnika, a nie
+domyślną interpretację całej instalacji ogrzewania.
+
 ## Pierwsze uruchomienie
 
 1. Otwórz **Safety Home → Konfiguracja**. Przy świeżej instalacji panel pokaże

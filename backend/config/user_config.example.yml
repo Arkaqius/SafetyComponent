@@ -35,6 +35,38 @@ user_config:
       enabled: true
 
   installation:
+    # Advisory scenarios; disabled examples never register automatic triggers.
+    # Enable only after binding real entities and original observation timestamps.
+    safety_routines:
+      Bedtime:
+        name: Przed snem
+        enabled: false
+        checks:
+          BedroomWindow:
+            name: Okno w sypialni zamknięte
+            entity_id: binary_sensor.example_bedroom_window
+            observed_at_entity_id: sensor.example_bedroom_window_last_seen
+            max_age_seconds: 300
+            expected_states: ["off"]
+      Leaving:
+        name: Wyjście z domu
+        enabled: false
+        delay_seconds: 30
+        observation_seconds: 30
+        triggers:
+          - kind: event
+            event: household_leaving
+        checks:
+          AppliancePower:
+            name: Pobór mocy wybranego urządzenia
+            kind: numeric_range
+            entity_id: sensor.example_appliance_power
+            observed_at_entity_id: sensor.example_appliance_last_seen
+            max_age_seconds: 60
+            minimum: 0.0
+            maximum: 5.0
+            unit: W
+
     # Enable HeatingSystemMonitorComponent and replace these generic bindings.
     # No controller product/integration is assumed. Literal maps are data only.
     # availability_only preserves uncertainty about physical observation age.

@@ -16,6 +16,7 @@ from pydantic import (
 )
 
 from components.safetycomponents.heating.schema import HeatingConfig, HeatingInstallation
+from components.safety_routines.schema import SafetyRoutine, SafetyRoutinesConfig
 
 from build_appdaemon_config import validated_number
 from components.core.pydantic_utils import StrictBaseModel
@@ -477,6 +478,7 @@ class InstallationConfig(SourceModel):
     detectors: dict[str, InternalDetectorConfig] = Field(default_factory=dict)
     monitored_entities: dict[str, ExplicitEntityConfig] = Field(default_factory=dict)
     heating_systems: dict[str, HeatingInstallation] = Field(default_factory=dict)
+    safety_routines: dict[str, SafetyRoutine] = Field(default_factory=dict, max_length=16)
     functional_safety: FunctionalSafetyBindings = Field(default_factory=FunctionalSafetyBindings)
 
     @model_validator(mode="after")
@@ -487,6 +489,7 @@ class InstallationConfig(SourceModel):
             "detectors": set(self.detectors),
             "monitored_entities": set(self.monitored_entities),
             "heating_systems": set(self.heating_systems),
+            "safety_routines": set(self.safety_routines),
         }
         for collection_name, collection in registries.items():
             invalid = [key for key in collection if not _STABLE_KEY.fullmatch(key)]
@@ -722,6 +725,9 @@ def compile_user_config_v2(
         runtime_defaults.get("api_components", {}), provider_overrides
     )
     compiled["common_entities"] = copy.deepcopy(installation.common_entities)
+    compiled["safety_routines"] = SafetyRoutinesConfig.model_validate(
+        {"routines": {key: value.model_dump() for key, value in installation.safety_routines.items()}}
+    ).model_dump()
     compiled["functional_safety"] = installation.functional_safety.model_dump(exclude_none=True)
     if installation.site is None:
         compiled.pop("site", None)
