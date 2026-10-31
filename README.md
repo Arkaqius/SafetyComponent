@@ -164,6 +164,12 @@ and deployment changes.
 
 ## Frontend
 
+Safety Routines provide read-only, timestamped check reports on request or an
+installation-configured HA transition. The Polish [operator guide](frontend/SAFETY_ROUTINES.md)
+walks through away and bedtime scenarios, original observation timestamps,
+inclusive power limits, and unknown results. Scenarios do not change heating
+settings, operate devices, or send phone notifications themselves.
+
 SafetyHome requires the Node.js version declared in `frontend/.nvmrc` (Node 20):
 
 ```powershell

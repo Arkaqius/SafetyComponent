@@ -106,8 +106,25 @@ export default function SafetyRoutines() {
           <Link className='text-link' to='/configuration/safety_routines'>
             Konfiguruj scenariusze
           </Link>
+          <p>
+            <Link className='text-link' to='/help'>
+              Jak ustawić wyzwalacze i czytać wyniki scenariuszy
+            </Link>
+          </p>
         </div>
       </section>
+      <details className='panel'>
+        <summary>Jak działa kontrola</summary>
+        <p>
+          „Sprawdź teraz” i automatyczny wyzwalacz stosują to samo opóźnienie. Kontrola tylko odczytuje dane: nie zmienia ogrzewania, nie
+          zamyka bram i sama nie wysyła powiadomień na telefon.
+        </p>
+        <p>
+          „Nie można ocenić” może oznaczać brak oryginalnego czasu obserwacji. Wpisanie nazwy atrybutu nie tworzy danych w czujniku.
+          Zapamiętane „zamknięte” lub niska moc bez potwierdzonej świeżości nie wystarczają do wyniku OK. Otwórz raport i przeczytaj
+          wyjaśnienie każdej kontroli.
+        </p>
+      </details>
       {!connected && <p role='status'>Brak połączenia. Widoczne raporty są zapisami wcześniejszych kontroli.</p>}
       {error && <p role='alert'>{error}</p>}
       {!storageAvailable && (
