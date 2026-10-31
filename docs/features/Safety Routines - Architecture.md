@@ -143,6 +143,11 @@ to resume durable writes.
 
 ## Verification
 
+The Polish [operator guide](../../frontend/SAFETY_ROUTINES.md) explains the
+away/bedtime configuration workflow and report interpretation. Installation
+bindings and commissioning evidence remain private; examples do not constitute
+default enabled scenarios or evidence of qualified live sources.
+
 [Backend contract tests](../../backend/tests/test_safety_routines.py) shall cover
 configuration, quality, numeric units, conditions, report aggregation, repetition,
 overlap, restart, timer/read/storage failures and no actuator calls.

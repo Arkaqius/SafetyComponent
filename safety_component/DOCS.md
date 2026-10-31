@@ -117,6 +117,16 @@ Do not trigger household routines, actuators, or synthetic safety alerts merely
 to verify the installation. Home Assistant acceptance of a notification request
 does not prove physical phone delivery.
 
+## Safety Routines
+
+Open **Scenariusze bezpieczeństwa** to run configured checks and read reports;
+edit definitions under **Konfiguracja → Scenariusze bezpieczeństwa**. Save and
+restart the App to apply configuration changes. See the Polish
+[away and bedtime operator guide](../frontend/SAFETY_ROUTINES.md) for exact
+trigger states, timestamp qualification and numeric limits. The App ships no
+enabled household scenario by default. Checks do not operate devices or send
+phone notifications; a completed report is evidence at the time of checking.
+
 ## Backup and recovery
 
 The App uses cold-backup mode when Supervisor backup is requested, so runtime
