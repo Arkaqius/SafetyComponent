@@ -31,6 +31,7 @@ PERSISTENCE_STORES = (
     "periodic_test_state", "detector_test_state", "fault_evidence_state",
     "battery_fault_catalog",
     "heating_monitor_state",
+    "safety_routines",
 )
 
 

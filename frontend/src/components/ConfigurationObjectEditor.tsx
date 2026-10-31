@@ -91,6 +91,10 @@ function ObjectFields({
     if (Object.prototype.hasOwnProperty.call(value, key)) return false;
     if (key === 'gas_identity' && value.hazard !== 'flammable_gas') return false;
     if (key === 'actuator_entity_id' && value.execution_policy !== 'user_confirmed') return false;
+    if (value.kind === 'state' && 'name' in value && ['minimum', 'maximum', 'unit'].includes(key)) return false;
+    if (value.kind === 'numeric_range' && ['expected_states', 'attribute'].includes(key)) return false;
+    if (value.kind === 'event' && ['entity_id', 'from_state', 'to_state'].includes(key)) return false;
+    if (value.kind === 'state' && !('name' in value) && key === 'event') return false;
     return true;
   });
   const updateField = (key: string, next: unknown) => onChange(updateObjectField(value, key, next));
@@ -169,6 +173,47 @@ function ObjectFields({
 }
 
 function SchemaField({ field, value, onChange }: { field: FieldSpec; value: unknown; onChange: (value: unknown) => void }) {
+  if (field.kind === 'registry') {
+    return (
+      <ConfigurationObjectEditor
+        label={field.label}
+        description={field.help ?? ''}
+        schema={field.fields ?? {}}
+        value={asMap(value)}
+        onChange={onChange}
+      />
+    );
+  }
+  if (field.kind === 'object_list') {
+    const entries = Array.isArray(value) ? value : [];
+    return (
+      <div className='configuration-nested-fields'>
+        <strong>{field.label}</strong>
+        {entries.map((entry, index) => (
+          <fieldset key={index}>
+            <legend>
+              {field.label} {index + 1}
+            </legend>
+            <ObjectFields
+              schema={field.fields ?? {}}
+              value={asMap(entry)}
+              onChange={next => onChange(entries.map((item, position) => (position === index ? next : item)))}
+            />
+            <button
+              className='secondary-button'
+              type='button'
+              onClick={() => onChange(entries.filter((_, position) => position !== index))}
+            >
+              Usuń wyzwalacz
+            </button>
+          </fieldset>
+        ))}
+        <button className='secondary-button' type='button' onClick={() => onChange([...entries, initialObject(field.fields ?? {})])}>
+          Dodaj wyzwalacz
+        </button>
+      </div>
+    );
+  }
   if (field.kind === 'object') {
     return (
       <fieldset className='configuration-fieldset'>

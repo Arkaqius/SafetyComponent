@@ -45,6 +45,7 @@ The implementation assumes:
 | Element | Responsibility |
 | --- | --- |
 | `SafetyFunctions` | Validate configuration, create managers/components, wire events, start and stop MQTT reporting. |
+| `SafetyRoutineRuntime` (C-ROUTINE) | Execute bounded advisory check sessions and persist timestamped reports independently of household fault/recovery state. |
 | `AppCfgValidator` | Validate the complete Pydantic configuration model, component schemas, entity syntax/existence, and Home Assistant areas. |
 | `SafetyComponent` | Common safety-mechanism lifecycle, listeners, reevaluation, and debounce handling. |
 | `TemperatureComponent` | Direct and forecast low/high temperature evaluation and window recovery proposals. |
@@ -482,6 +483,23 @@ Tests shall cover unchanged old battery reports with fresh contact, selected
 contact loss or ambiguity with fresh native timestamps, absence of contact
 capability, malformed values, binary assertions, and active-fault preservation.
 
+### 4.13 Safety Routines
+
+| ID | Requirement |
+| --- | --- |
+| SWR-ROUTINE-001 | The source compiler and startup schema shall validate optional scenario definitions, complete triggers, check expectations, explicit source-time selectors and bounded capacities. |
+| SWR-ROUTINE-002 | Evaluation shall reject unavailable/malformed values, stale/future/missing timestamps, invalid numbers and incompatible units; unknown applicability shall remain unknown. |
+| SWR-ROUTINE-003 | The runtime shall allocate independent run IDs, reject overlap, deduplicate retained request IDs, sample within bounded windows and retain problems/evidence gaps across samples. Cached timestamps shall not qualify successive passing observations. |
+| SWR-ROUTINE-004 | Reports shall preserve names, expectations, observations, result counts and timestamps; an all-skipped run shall return not_applicable. Pending/interrupted/cancelled runs shall remain unknown. |
+| SWR-ROUTINE-005 | The runtime shall persist bounded history in an independent SQLite store, interrupt unfinished runs at restart, reject stale callbacks and report storage failure separately from check results. |
+| SWR-ROUTINE-006 | The event API shall correlate bounded list/report/run/cancel responses; completion events shall contain summaries without full installation configuration. |
+| SWR-ROUTINE-007 | SafetyHome shall support scenario editing, explicit execution/cancellation and historical reports; transport errors, incomplete evidence and disconnected state shall remain visible. Runtime result/reason labels shall have EN/PL/DE parity. |
+| SWR-ROUTINE-008 | The routine service shall not dispatch actuators, mutate household fault/recovery state, or enroll optional check inputs as continuous coverage dependencies. |
+
+See [Safety Routines architecture](../features/Safety%20Routines%20-%20Architecture.md)
+for exact interfaces and limits. These advisory requirements do not allocate a
+new safety goal or detection FTTI.
+
 ## 5. Non-functional requirements
 
 | ID | Requirement |
@@ -515,6 +533,7 @@ valid measure of safety-logic verification.
 
 | Safety scope | SYS requirements | Software requirements |
 | --- | --- | --- |
+| Advisory contextual checks; no independent safety-goal credit | `SYS-SR-ROUTINE-001..006` | `SWR-ROUTINE-001..008` |
 | SG-001 Unsafe Cold Exposure | `SYS-SR-TEMP-001/002/004/005/007/008/009/010` | `SWR-TEMP-*` |
 | SG-002 Temperature Prediction | `SYS-SR-TEMP-001/003/004/005/006/009/010` | `SWR-TEMP-*` |
 | SG-003 Sensor/Communication Fault Detection | `SYS-SR-ENT-001..009/012/014` plus component-specific unavailable-input requirements | `SWR-ENT-*`, `SWR-TEMP-004`, `SWR-DOOR-004/006`, `SWR-EXT-009` |
@@ -532,6 +551,7 @@ valid measure of safety-logic verification.
 
 | Requirement group | Primary tests |
 | --- | --- |
+| SWR-ROUTINE-* | `test_safety_routines.py`, `test_safetyFunctions.py`, `test_localization.py`, frontend `safetyRoutines.test.ts` and `safety-routines.spec.ts` |
 | SWR-CFG-* | `test_app_cfg_validator.py`, `test_component_schema_validation.py` |
 | SWR-TEMP-* | `test_temperatureComponent.py`, `test_derivative_monitor.py`, `test_safetyFunctions.py` |
 | SWR-DOOR-* | `test_safety_doors_component.py`, `test_app_cfg_validator.py` |

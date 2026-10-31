@@ -15,6 +15,7 @@ from components.safetycomponents.external_hazard.schema import (
     SiteConfig,
 )
 from components.safetycomponents.entity_monitor.schema import EntityMonitorCalibration
+from components.safety_routines.schema import SafetyRoutinesConfig
 
 
 class ValidationSettings(StrictBaseModel):
@@ -82,6 +83,7 @@ class UserConfig(StrictBaseModel):
     site: SiteConfig | None = None
     api_components: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
     functional_safety: Dict[str, Any] = Field(default_factory=dict)
+    safety_routines: SafetyRoutinesConfig = Field(default_factory=SafetyRoutinesConfig)
 
     def enabled_components(self) -> Dict[str, Dict[str, Any]]:
         if not self.components_enabled:

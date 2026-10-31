@@ -1563,6 +1563,21 @@ claim that user response is guaranteed within a fault-tolerant time interval.
 
 ---
 
+### 8.11 Safety Routines (C-ROUTINE)
+
+Safety Routines shall support contextual user checks independently of continuous
+hazard detection. The [feature architecture](../features/Safety%20Routines%20-%20Architecture.md)
+defines configuration, evidence, execution and report contracts.
+
+| ID | Requirement |
+| --- | --- |
+| SYS-SR-ROUTINE-001 | The system shall execute a configured set of advisory checks on an explicit request or configured HA event/state transition. |
+| SYS-SR-ROUTINE-002 | Checks shall qualify original source observation times and expected states or numeric units/bounds. Missing, stale, future or malformed evidence shall not count as a pass. |
+| SYS-SR-ROUTINE-003 | Known exclusion conditions shall be distinguished from unknown applicability; an entirely skipped run shall not count as a pass. |
+| SYS-SR-ROUTINE-004 | Each run shall produce an independently identifiable timestamped report preserving both detected problems and missing evidence. Later runs shall not rewrite completed reports. |
+| SYS-SR-ROUTINE-005 | Execution, history and publication shall be bounded. Restart and cancellation shall preserve incomplete execution as uncertainty without replay. |
+| SYS-SR-ROUTINE-006 | Routine results shall not set or clear household faults, dispatch actuators, substitute for continuous coverage or claim current safety from a historical result. Application storage failures shall remain visible separately. |
+
 ## 9 Non‑Functional Requirements (NFR)
 
 _Non‑functional constraints that apply across all components. IDs use `NFR‑xxx`._

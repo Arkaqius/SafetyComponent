@@ -7,6 +7,21 @@ Ten plik jest celowo prowadzony po polsku jako instrukcja operatorska frontendu.
 Dokumentacja systemowa i wymagania są po angielsku; komendy, ścieżki,
 identyfikatory i surowe stany pozostają wspólnym kontraktem technicznym.
 
+## Scenariusze bezpieczeństwa
+
+Widok **Scenariusze bezpieczeństwa** pozwala uruchomić wybrany zestaw kontroli,
+anulować trwające wykonanie i przeglądać ostatnie 20 raportów. Każde ponowienie
+tworzy nowy raport. Wynik OK dotyczy chwili kontroli, a brak danych jest widoczny
+oddzielnie od wykrytych problemów. Wykonania przerwane restartem nie są sukcesem.
+Przy braku połączenia raporty pozostają historyczne; po przekroczeniu czasu
+oczekiwania odśwież historię przed ponownym uruchomieniem.
+
+Scenariusze konfiguruje się w **Konfiguracja → Scenariusze bezpieczeństwa**,
+zgodnie z [instrukcją konfiguracji](CONFIGURATION.md). Kontrola nie steruje
+urządzeniami ani nie kasuje istniejących alarmów. Powiadomienia zewnętrzne można
+powiązać z wydarzeniem zakończenia opisanym w
+[architekturze](../docs/features/Safety%20Routines%20-%20Architecture.md).
+
 ## Uruchomienie lokalne
 
 Wymagany jest Node.js 20 zgodnie z `.nvmrc`.

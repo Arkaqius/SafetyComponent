@@ -20,6 +20,11 @@ import { canRestartConfiguration, configurationRestartMessage } from '../domain/
 
 const providerNames = ['OpenMeteoWeatherApiComponent', 'ImgwWarningsApiComponent', 'OpenMeteoAirQualityApiComponent'];
 const registrySections = [
+  {
+    key: 'safety_routines',
+    title: 'Scenariusze bezpieczeństwa',
+    description: 'Kontrole na żądanie, oczekiwane stany i automatyczne wyzwalacze. Nowe scenariusze są domyślnie wyłączone.',
+  },
   { key: 'rooms', title: 'Pomieszczenia', description: 'Czujniki temperatury, obszary i przypisane otwory.' },
   { key: 'openings', title: 'Drzwi, bramy i okna', description: 'Fizyczne otwory oraz ich role bezpieczeństwa.' },
   { key: 'detectors', title: 'Detektory zagrożeń', description: 'Czujniki dymu, gazu, tlenku węgla i zalania.' },
@@ -30,7 +35,9 @@ type SaveState = 'idle' | 'saving' | 'saved';
 export default function Configuration() {
   const location = useLocation();
   const requestedPage = location.pathname.split('/')[2];
-  const page = ['general', 'notifications', 'site', 'health', 'settings', 'rooms', 'openings', 'detectors'].includes(requestedPage)
+  const page = ['general', 'notifications', 'site', 'health', 'settings', 'rooms', 'openings', 'detectors', 'safety_routines'].includes(
+    requestedPage
+  )
     ? requestedPage
     : 'general';
   const [template, setTemplate] = useState<ConfigurationMap | null>(null);
@@ -311,6 +318,7 @@ export default function Configuration() {
             ['rooms', 'Pomieszczenia'],
             ['openings', 'Drzwi i okna'],
             ['detectors', 'Detektory'],
+            ['safety_routines', 'Scenariusze bezpieczeństwa'],
           ] as const
         ).map(([key, label]) => (
           <NavLink className={`secondary-button${page === key ? ' active' : ''}`} key={key} to={`/configuration/${key}`}>

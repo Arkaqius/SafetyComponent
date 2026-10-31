@@ -11,6 +11,7 @@ import SafetyDoors from './pages/SafetyDoors';
 import ExternalHazards from './pages/ExternalHazards';
 import InternalHazards from './pages/InternalHazards';
 import Heating from './pages/Heating';
+import SafetyRoutines from './pages/SafetyRoutines';
 import Configuration from './pages/Configuration';
 import FunctionalSafety from './pages/FunctionalSafety';
 import Help from './pages/Help';
@@ -37,6 +38,7 @@ export default function App() {
           <Route path='external-hazards' element={<ExternalHazards />} />
           <Route path='internal-hazards' element={<InternalHazards />} />
           <Route path='heating' element={<Heating />} />
+          <Route path='safety-routines' element={<SafetyRoutines />} />
           <Route path='entities' element={<Navigate replace to='/functional-safety' />} />
           <Route path='functional-safety' element={<FunctionalSafety />} />
           <Route path='fault-management' element={<FaultManagement />} />

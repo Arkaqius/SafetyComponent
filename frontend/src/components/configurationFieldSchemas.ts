@@ -2,7 +2,7 @@
 export type FieldSpec = {
   label: string;
   help?: string;
-  kind: 'text' | 'entity' | 'number' | 'boolean' | 'select' | 'list' | 'object';
+  kind: 'text' | 'entity' | 'number' | 'boolean' | 'select' | 'list' | 'object' | 'registry' | 'object_list';
   domains?: string[];
   required?: boolean;
   includeOnCreate?: boolean;
@@ -103,7 +103,76 @@ const hazardOptions: Array<[string, string]> = [
   ['outdoor_air_pollution', 'Zanieczyszczenie powietrza'],
 ];
 
+const routineReading: Record<string, FieldSpec> = {
+  entity_id: entity('Źródło odczytu', true),
+  attribute: text('Atrybut wartości (opcjonalny, dla kontroli stanu)'),
+  observed_at_entity_id: entity(
+    'Encja czasu obserwacji',
+    false,
+    [],
+    'Wskaż encję oryginalnego czasu raportu albo atrybut czasu poniżej. Samo last_updated nie potwierdza świeżości.'
+  ),
+  observed_at_attribute: text(
+    'Atrybut czasu obserwacji',
+    false,
+    'Oryginalny czas obserwacji w atrybutach źródła. Użyj dokładnie jednego źródła czasu.'
+  ),
+  max_age_seconds: { ...number('Maksymalny wiek obserwacji (s)'), initial: 300 },
+};
+
+export const routineCheckSchema: Record<string, FieldSpec> = {
+  name: text('Nazwa kontroli', true),
+  ...routineReading,
+  kind: select(
+    'Rodzaj kontroli',
+    [
+      ['state', 'Oczekiwany stan'],
+      ['numeric_range', 'Zakres liczbowy'],
+    ],
+    true
+  ),
+  expected_states: { ...list('Oczekiwane stany', 'Dokładne stany HA, np. off dla zamkniętego kontaktronu.'), includeOnCreate: true },
+  minimum: number('Wartość minimalna'),
+  maximum: number('Wartość maksymalna'),
+  unit: text('Jednostka', false, 'Dokładna jednostka źródła, np. W. Kontrola liczbowa wymaga jednostki i przynajmniej jednego progu.'),
+  condition: object(
+    'Warunek zastosowania',
+    {
+      ...routineReading,
+      pass_states: { ...list('Stany włączające kontrolę'), required: true },
+      skip_states: { ...list('Stany pomijające kontrolę'), required: true },
+    },
+    { entity_id: '', pass_states: [''], skip_states: [''] }
+  ),
+};
+
 export const registrySchemas: Record<string, Record<string, FieldSpec>> = {
+  safety_routines: {
+    name: text('Nazwa scenariusza', true),
+    enabled: { ...yesNo('Scenariusz włączony'), initial: false, includeOnCreate: true },
+    delay_seconds: number('Opóźnienie rozpoczęcia (s)', '0–600 s na dokończenie wyjścia lub zamknięcie drzwi.'),
+    observation_seconds: number('Okno obserwacji (s)', '0–300 s; próbki co 5 s. Problem lub brak danych w próbce pozostaje w raporcie.'),
+    checks: { label: 'Sprawdzenia', kind: 'registry', fields: routineCheckSchema, initial: {}, required: true },
+    triggers: {
+      label: 'Automatyczne wyzwalacze',
+      kind: 'object_list',
+      initial: [],
+      fields: {
+        kind: select(
+          'Rodzaj wyzwalacza',
+          [
+            ['event', 'Zdarzenie HA'],
+            ['state', 'Zmiana stanu'],
+          ],
+          true
+        ),
+        event: { ...text('Nazwa zdarzenia'), includeOnCreate: true },
+        entity_id: entity('Encja wyzwalacza'),
+        from_state: text('Stan początkowy'),
+        to_state: text('Stan docelowy'),
+      },
+    },
+  },
   rooms: {
     area_id: text('Obszar Home Assistant', true),
     temperature_sensor: entity('Czujnik temperatury', true, ['sensor'], 'Pełny identyfikator encji, np. sensor.temperatura.'),
@@ -202,6 +271,30 @@ export function initialObject(schema: Record<string, FieldSpec>): Record<string,
 
 export function updateObjectField(value: Record<string, unknown>, key: string, next: unknown): Record<string, unknown> {
   const updated = { ...value, [key]: next };
+  if (key === 'kind' && next === 'numeric_range') {
+    delete updated.expected_states;
+    delete updated.attribute;
+    updated.unit ??= '';
+    updated.maximum ??= 0;
+  }
+  if (key === 'kind' && next === 'state' && 'expected_states' in value === false && 'name' in value) {
+    delete updated.minimum;
+    delete updated.maximum;
+    delete updated.unit;
+    updated.expected_states = [''];
+  }
+  if (key === 'kind' && next === 'state' && !('name' in value)) {
+    delete updated.event;
+    updated.entity_id ??= '';
+    updated.from_state ??= '';
+    updated.to_state ??= '';
+  }
+  if (key === 'kind' && next === 'event') {
+    delete updated.entity_id;
+    delete updated.from_state;
+    delete updated.to_state;
+    updated.event ??= '';
+  }
   if (key === 'hazard') {
     if (next === 'flammable_gas' && !('gas_identity' in updated)) updated.gas_identity = '';
     if (next !== 'flammable_gas') delete updated.gas_identity;

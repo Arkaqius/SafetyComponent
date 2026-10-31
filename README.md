@@ -63,6 +63,7 @@ it does not display the complete Home Assistant entity/device inventory.
 - `docs/features` — feature-level architecture documents.
 
 Feature architecture documents include
+[`Safety Routines`](docs/features/Safety%20Routines%20-%20Architecture.md),
 [`Home Assistant App`](docs/features/Home%20Assistant%20App%20-%20Architecture.md),
 [`Configuration Model`](docs/features/Configuration%20Model%20-%20Architecture.md),
 [`Mobile Notification Delivery`](docs/features/Mobile%20Notification%20Delivery%20-%20Architecture.md),
