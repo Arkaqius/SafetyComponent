@@ -117,6 +117,70 @@ Po zapisaniu uruchom aplikację ponownie. Alarm jest zgłaszany jako L2 i nie
 zamyka automatycznie zaworu wody. Wynik fizycznego testu czujnika można zapisać
 w **Zdrowiu systemu → Testy czujników**; sam przycisk nie uruchamia testu.
 
+## Wejścia monitoringu ogrzewania
+
+Mapowanie wejść ogrzewania zapisuje się w prywatnym `user_config.yml`, pod
+`installation.heating_systems`. Włącz `HeatingSystemMonitorComponent` tylko
+po przypisaniu rzeczywistych źródeł. Każde wejście wybiera encję, opcjonalny
+atrybut i mapowanie surowych stanów, np. `on`/`off` na wartości logiczne.
+Nie trzeba wybierać producenta ani konkretnego sterownika.
+
+Profil `Diagnostic` obejmuje R01: utratę lub niepoprawność danych wejściowych.
+Pozostaje profilem domyślnym po aktualizacji. Osobno zweryfikowany profil może
+włączyć bieżącą usterkę urządzenia (R02), brak żądania mimo potrzeby ciepła
+(R03), brak odpowiedzi kotła (R04), niewystarczający wzrost temperatury zasilania
+(R05), nieosiąganie wartości zadanej (R06) i informację serwisową (R13). Każda reguła
+wymaga własnej polityki oraz kompletnych, świeżych danych. Dostępne są także
+kontrole pompy (R07), różnicy zasilania i powrotu (R08), dostarczania ciepła do
+pokoju (R09), temperatury w trybie pracy (R10), temperatury bezwzględnej (R11)
+i częstych uruchomień palnika (R12). Ich progi wymagają potwierdzenia dla konkretnej
+instalacji; nie mają uniwersalnych ustawień. Strona **Ogrzewanie** pokazuje
+rzeczywisty częściowy zakres również wtedy, gdy wszystkie wejścia są dostępne.
+
+Polityki `flow_rise` i `flow_tracking` wymagają jawnych progów, czasu rozruchu,
+dopuszczalnej przerwy, okna pomiarowego, minimalnej liczby próbek i maksymalnego
+odstępu między nimi. Dane muszą dotyczyć rzeczywistego grzania CO. CWU, obniżenie
+nastawy ani zakończenie żądania nie kasują aktywnej usterki. Po restarcie okno
+zbiera nowe pomiary, zachowując wcześniejszy alarm i całkowity czas oczekiwania.
+Wspólne pola i progi opisuje [kontrakt kontroli wydajności](../docs/HEATING_MONITOR_DELIVERY.md#flow-output-policies-and-observed-windows).
+
+`availability_only` oznacza wyłącznie dostępność odczytu. Jeśli urządzenie
+dostarcza rzeczywisty czas obserwacji, można jawnie przypisać go przez
+`observed_at_attribute` lub `observed_at_entity_id` z
+`freshness: source_timestamp`. Czas aktualizacji encji w HA nie zastępuje
+czasu pomiaru. Wartość „kocioł nieaktywny” nie oznacza niedostępnego wejścia.
+
+Każda wielkość musi zachować własny czas obserwacji, także gdy jej wartość się
+nie zmienia. Ponowna publikacja zestawu danych nie odświeża starych pomiarów.
+Producent danych powinien aktualizować czas dopiero po nowym, prawidłowym
+odczycie konkretnej wielkości. Techniczny opis i przykład mapowania zawiera
+[kwalifikacja pochodzenia danych](<../docs/features/Heating Input Provenance.md>).
+
+Sama aktualizacja aplikacji nie włącza nowych kontroli. Dla R03 potrzebne są
+niezależnie potwierdzone: bieżąca temperatura, aktualny cel i zezwolenie na
+grzanie; decyzja sterownika nie zastępuje tych danych. R04 uwzględnia ograniczony
+rozruch i priorytet CWU. Kolejne wstrzymanie lub restart nie daje nowego pełnego
+czasu oczekiwania. Reguły nie usuwają aktywnej usterki tylko dlatego, że żądanie
+zniknęło albo obniżono temperaturę zadaną. R13 jest informacją L4 o serwisie,
+nie potwierdzeniem awarii ogrzewania.
+
+R09 wymaga fizycznego potwierdzenia próby dostarczenia ciepła do pokoju przez
+`heat_delivery_active`; samo żądanie sterownika nie wystarcza. Opcjonalny
+`room_inhibited` opisuje uzgodnione wstrzymanie grzania, np. wietrzenie.
+R10/R11 wymagają limitów urządzenia i udokumentowanego czasu reakcji.
+R12 jest informacją L4: nie pogarsza ogólnego stanu systemu. Reset licznika lub
+postój kotła nie kasuje jej jako dowodu poprawy. Szczegółowe pola opisuje
+[kontrakt R07–R12](<../docs/features/Heating Additional Rule Policies.md>).
+
+Polityki, czasy kwalifikacji i dowody dopuszczenia należą do konfiguracji
+systemowej. Nie zastępuj ich przykładowymi wartościami bez weryfikacji instalacji.
+
+Dokładne pola i krótki przykład są w
+[opisie konfiguracji ogrzewania](../docs/HEATING_MONITOR_DELIVERY.md#generic-input-contract)
+oraz [szablonie YAML](../backend/config/user_config.example.yml).
+Po zastosowaniu konfiguracji sprawdź wejścia, ich jakość i wyłączone kontrole
+na stronie **Ogrzewanie**; sam dostępny odczyt nie potwierdza dostarczenia ciepła.
+
 ## Dodawanie obiektów i kontrole zdrowia
 
 W sekcji **Zdrowie systemu i konserwacja** para pamięć/PSI musi dotyczyć

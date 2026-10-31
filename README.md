@@ -189,6 +189,7 @@ the [frontend README](frontend/README.md).
 - [External Hazard Monitoring architecture](<docs/features/External Hazard Monitoring - Architecture.md>)
 - [Entity Health Monitoring architecture](<docs/features/Entity Health Monitoring - Architecture.md>)
 - [Heating System Monitoring architecture](<docs/features/Heating System Monitoring - Architecture.md>)
+- [Heating monitor delivery and verification](docs/HEATING_MONITOR_DELIVERY.md)
 - [Internal Environmental Hazard Monitoring architecture](<docs/features/Internal Environmental Hazard Monitoring - Architecture.md>)
 - [Safety monitoring responsibility boundaries](<docs/features/Safety Monitoring Responsibility Boundaries.md>)
 - [Fault state and priority policy](<docs/features/Fault State Policy - Architecture.md>)

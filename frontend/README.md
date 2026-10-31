@@ -56,6 +56,28 @@ wskazują funkcję oraz urządzenie zrozumiałymi nazwami. Surowe identyfikatory
 kody i zapis **Freeze frame** są dostępne w szczegółach diagnostycznych widoku
 rozszerzonego.
 
+## Ogrzewanie
+
+W widoku rozszerzonym strona **Ogrzewanie** pokazuje skonfigurowane wejścia,
+ich jakość, obserwowaną fazę pracy i zakres kontroli. Nazwy źródeł pochodzą
+z Home Assistanta, a brak wiarygodnych danych pozostaje widoczny.
+
+Domyślny zakres obejmuje diagnostykę dostępności i poprawności wejść (R01).
+Po dopuszczeniu odpowiedniego profilu dostępne są również: bieżąca usterka
+urządzenia (R02), brak żądania grzania (R03), brak odpowiedzi kotła (R04),
+niewystarczający wzrost temperatury zasilania (R05), nieosiąganie temperatury
+zadanej (R06) i
+informacja serwisowa (R13). Wymagają kompletnych, świeżych i właściwie opisanych
+wejść. R05/R06 wymagają historii nowych pomiarów i jawnych progów; powtarzanie
+starych odczytów nie potwierdza poprawy. Dostępne są także kontrole obiegu i
+dostarczania ciepła (R07–R09), temperatury kotła (R10–R11) i częstych uruchomień
+palnika (R12). Wymagają potwierdzonych pomiarów i progów dla danej instalacji.
+R12 pozostaje informacją L4 bez pogarszania ogólnego stanu systemu. Aktualizacja
+nie włącza żadnej nowej reguły automatycznie. Poprawny odczyt lub brak aktywnego alarmu nie
+potwierdza dostarczania ciepła ani bezpiecznej temperatury kotła.
+Mapowanie dowolnych urządzeń opisuje
+[konfiguracja wejść ogrzewania](CONFIGURATION.md#wejścia-monitoringu-ogrzewania).
+
 ## Zdrowie systemu: monitorowane encje i baterie
 
 Widok **Rozszerzony → Zdrowie systemu** ma cztery podzakładki:

@@ -19,6 +19,7 @@ const menuItems: Array<{ title: string; path: string; icon: IconName; descriptio
     icon: 'temperature',
     description: 'Odczyty i trendy pomiarów',
   },
+  { title: 'Ogrzewanie', path: '/heating', icon: 'temperature', description: 'Odczyty urządzeń i zakres nadzoru' },
   {
     title: 'Usterki i diagnostyka',
     path: '/fault-management',

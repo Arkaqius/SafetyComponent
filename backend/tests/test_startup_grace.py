@@ -26,6 +26,18 @@ def test_validated_default_is_ten_minutes_and_explicit_zero_remains_supported():
     assert EntityMonitorCalibration(startup_grace_seconds=0).startup_grace_seconds == 0
 
 
+def test_pending_qualification_obeys_diagnostic_startup_boundary():
+    now, bus, grace, delivered, unavailable = gate()
+    pending = []
+    bus.subscribe("qualified_evaluation_pending", lambda **data: pending.append(data))
+    bus.publish("evaluation_pending", symptom_id="input", violation=True)
+    assert not pending and unavailable == [{"symptom_id": "input"}]
+    now[0] = 600
+    grace.finish()
+    bus.publish("evaluation_pending", symptom_id="input", violation=True)
+    assert pending == [{"symptom_id": "input", "violation": True}]
+
+
 def test_transient_failures_do_not_activate_or_replay_after_recovery():
     now, bus, grace, delivered, unavailable = gate()
     bus.publish("symptom", symptom_id="input", state=FaultState.SET)

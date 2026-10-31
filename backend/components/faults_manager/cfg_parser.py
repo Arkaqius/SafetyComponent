@@ -26,6 +26,7 @@ KNOWN_OPTIONAL_SMS = frozenset(
         "sm_iehm_carbon_monoxide",
         "sm_iehm_water_leak",
         "sm_iehm_detector_health",
+        "sm_provider_adapter_health",
     }
 )
 

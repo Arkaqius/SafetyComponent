@@ -96,6 +96,7 @@ from components.safetycomponents.core.safety_component import (
     get_registered_components,
 )
 import components.safetycomponents.temperature.temperature_component  # noqa: F401 - component registration
+import components.safetycomponents.heating.heating_system_monitor_component  # noqa: F401 - component registration
 import components.safetycomponents.safety_doors.safety_doors_component  # noqa: F401 - component registration
 import components.safetycomponents.external_hazard.external_hazard_component  # noqa: F401 - component registration
 import components.safetycomponents.entity_monitor.entity_monitor_component  # noqa: F401 - component registration
@@ -244,6 +245,8 @@ class SafetyFunctions(hass.Hass):
         indoor_monitor = self.sm_modules.get("InternalEnvironmentalHazardMonitorComponent")
         if indoor_monitor is not None:
             persistence_stores.add("internal_environment_state")
+        if "HeatingSystemMonitorComponent" in self.sm_modules:
+            persistence_stores.add("heating_monitor_state")
         functional_policy = self.runtime_config["app_config"]["calibration"].get(
             "functional_safety"
         )
@@ -361,6 +364,8 @@ class SafetyFunctions(hass.Hass):
             expected_intervals["EntityMonitorComponent"] = max(
                 15, 3 * int(monitor_cfg["evaluation_interval_seconds"])
             )
+        if "HeatingSystemMonitorComponent" in expected_intervals and self.safety_components_cfg["HeatingSystemMonitorComponent"].get("systems"):
+            expected_intervals["HeatingSystemMonitorComponent"] = max(15, 3 * int(self.safety_components_cfg["HeatingSystemMonitorComponent"]["evaluation_interval_seconds"]))
         if self.functional_safety_monitor is not None:
             expected_intervals["FunctionalSafetyMonitor"] = max(
                 15, 3 * int(functional_policy["evaluation_interval_seconds"])
@@ -568,6 +573,7 @@ class SafetyFunctions(hass.Hass):
             "qualified_evaluation_unavailable", self.degradation.mark_unavailable, priority=-1
         )
         self.event_bus.subscribe("qualified_symptom", self.fm.handle_symptom_event, priority=0)
+        self.event_bus.subscribe("qualified_evaluation_pending", self.fm.mark_evaluation_pending, priority=0)
         self.event_bus.subscribe(
             "qualified_evaluation_unavailable", self.fm.mark_evaluation_unavailable, priority=0
         )

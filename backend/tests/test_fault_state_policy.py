@@ -242,3 +242,16 @@ def test_shadowing_withdraws_every_active_recovery_contributor() -> None:
     assert recovery._recovery_clear.call_count == 2
     recovery._recovery_clear.assert_any_call(first)
     recovery._recovery_clear.assert_any_call(second)
+
+def test_component_qualification_retains_activation_and_other_contributors() -> None:
+    evaluation = FaultEvaluation({"a", "b"})
+    evaluation.observe("b", False)
+    assert evaluation.mark_pending("a", True) == Status.PENDING_FAILURE
+    assert not evaluation.active
+    evaluation.observe("a", True)
+    assert evaluation.mark_pending("a", False) == Status.PENDING_RECOVERY
+    assert evaluation.active
+    evaluation.observe("b", True)
+    assert evaluation.mark_pending("a", False) == Status.FAIL
+    evaluation.mark_unavailable("b")
+    assert evaluation.mark_pending("a", False) == Status.UNEVALUABLE

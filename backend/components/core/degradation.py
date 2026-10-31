@@ -464,6 +464,11 @@ def compile_runtime_bindings(
                 )
                 and (
                     cause != "persistence"
+                    or symptom.parameters.get("store") != "heating_monitor_state"
+                    or target.sm_name.startswith("sm_hsm_")
+                )
+                and (
+                    cause != "persistence"
                     or symptom.parameters.get("store") not in {
                         "periodic_test_state", "detector_test_state"
                     }
@@ -542,6 +547,23 @@ def compile_runtime_bindings(
                     RestrictionEffect.EVALUATION,
                 ),
             )))
+        elif symptom.sm_name == "sm_hsm_supervision_loss":
+            installation = symptom.parameters.get("installation_key")
+            targets = tuple(
+                DegradationTarget(
+                    target_id, "HeatingSupervision", str(installation),
+                    RestrictionEffect.EVALUATION,
+                )
+                for target_id, target in symptoms.items()
+                if target_id in hazard_owners and target.sm_name.startswith("sm_hsm_")
+                and target.sm_name != "sm_hsm_absolute_overtemperature"
+                and target.parameters.get("installation_key") == installation
+            )
+            bindings.append(DiagnosticBinding(
+                symptom_id, targets, external_only=not targets
+            ))
+        elif symptom.sm_name in {"sm_hsm_maintenance", "sm_hsm_short_cycling"}:
+            bindings.append(DiagnosticBinding(symptom_id, (), external_only=True))
         elif symptom.sm_name.startswith("sm_fsm_"):
             bindings.append(DiagnosticBinding(symptom_id, (), external_only=True))
     return tuple(bindings)

@@ -1334,10 +1334,22 @@ The detailed contract is defined in the
 
 C-HVAC shall consume normalized IR-008 measurements, room need/controller
 demand evidence, and C-ENT quality for its declared Group B dependencies.
-The EMS-ESP adapter shall own provider/model interpretation and communication
-health; C-HVAC shall own household policy and incidents. SmartHeating and the
-boiler controller shall retain normal control. C-TEMP shall retain existing
+Installation mappings shall normalize configured entity/attribute values,
+units, source availability and observation freshness. C-HVAC shall own
+product-neutral household policy and incidents without selecting device
+integrations. The
+heating controller shall retain normal control. C-TEMP shall retain existing
 room-temperature mechanisms and faults.
+
+Controller telemetry shall use configurable read-only entity/attribute, value,
+unit and freshness mappings into a normalized model. No controller product,
+release or entity prefix shall be required by the safety engine. Controller
+intent, command confirmation and publication contact shall remain
+separate from independently evidenced room need and physical boiler response.
+The controller's reported no-demand state shall not suppress the independent
+need check. Controller-only schedule/permission or unverified measurement
+freshness shall expose limited coverage rather than establish a complete
+need-to-delivery safety path.
 
 C-HVAC shall publish per-installation phase, supervision coverage, rule
 results, heating faults and bounded diagnostic evidence through the existing
@@ -1351,7 +1363,7 @@ and service actions under §8.10 using the reported equipment-specific evidence.
 | --- | --- |
 | SYS-SR-HSM-001 | C-HVAC shall distinguish independent room heat need, controller request, boiler response, and room heat delivery; a failed controller request shall not gate off need-to-request monitoring. |
 | SYS-SR-HSM-002 | C-HVAC shall register all enabled-rule inputs as component dependencies with entity identity, owner, purpose, units, quality, freshness source where trustworthy, and failure ownership. Shared inputs shall retain every consumer and its applicable contract. |
-| SYS-SR-HSM-003 | The adapter shall normalize telemetry and model-specific current codes separately from historical errors; unknown code meanings and inconsistent signals shall produce explicit interpretation/coverage diagnostics rather than a fabricated healthy or faulty boiler state. |
+| SYS-SR-HSM-003 | Configured input normalization shall keep telemetry and model-specific current codes separate from historical errors; unknown code meanings and inconsistent signals shall produce explicit interpretation/coverage diagnostics rather than a fabricated healthy or faulty boiler state. |
 | SYS-SR-HSM-004 | Operating phase shall be one of `idle`, `starting`, `heating`, `dhw`, `pump_overrun`, `inhibited`, or `unknown`, separate from supervision health and fault lifecycle; phase transitions shall use fresh coherent evidence and bounded mode-specific delays. |
 | SYS-SR-HSM-005 | Communication loss, invalid required measurements, or unavailable phase interpretation shall diagnose loss of supervision. C-HVAC-owned failures shall not create duplicate C-ENT faults; only dependent performance checks shall become unevaluable. |
 | SYS-SR-HSM-006 | C-HVAC shall detect permitted room heating need without controller demand, and controller demand without boiler response, accounting for effective targets, explicit schedule/inhibition and bounded DHW priority and anti-cycle delays. |
@@ -1365,7 +1377,7 @@ and service actions under §8.10 using the reported equipment-specific evidence.
 | SYS-SR-HSM-014 | Each incident shall use stable fault/mechanism identities, retain all contributing symptoms and distinguish observations from inferred causes. Communication recovery shall not clear performance faults; independent room-temperature alarms shall remain eligible. |
 | SYS-SR-HSM-015 | SET and HEAL shall include dated evidence, installation/room identity, phase, demand, relevant measurements, thresholds, elapsed duration, code interpretation and recovery evidence. Notification attempts shall preserve configured target/result semantics, quiet updates and bounded history; acceptance by HA shall not be represented as confirmed phone delivery. |
 | SYS-SR-HSM-016 | SafetyHome shall display phase, coverage, active faults, failed and unevaluable checks, evidence ages and reason-specific inhibition. History shall correlate SET/HEAL evidence with actual notification attempts. EN/PL/DE presentation shall preserve language-independent raw codes and IDs. |
-| SYS-SR-HSM-017 | Software calibration shall own thresholds, timings, code profiles, severities and rule enablement; installation configuration shall own entity/area bindings and equipment identity. Validation shall reject incomplete enabled rules, ambiguous hydraulics/code profiles, invalid recovery bands and timing combinations outside allocated budgets. |
+| SYS-SR-HSM-017 | Software calibration shall own thresholds, timings, code profiles, severities and rule enablement; installation configuration shall own entity/attribute/area bindings, value/state mappings, units, freshness provenance and equipment identity. Validation shall reject incomplete enabled rules, ambiguous signal semantics or hydraulics/code profiles, unproven required independence/freshness, invalid recovery bands and timing combinations outside allocated budgets. Explicitly excluded or shadow rules shall remain visible and shall not count as active safety coverage. |
 | SYS-SR-HSM-018 | C-HVAC shall provide deterministic bounded observation and manual inspection/service recovery under §8.10, with no boiler reset, heating setpoint writes, pump forcing or safety interlock bypass. Any backup/failover function shall require its own allocation and authorization. |
 
 #### 8.6.3 Severity, timing and safe-state contribution

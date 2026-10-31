@@ -35,6 +35,49 @@ async function openMock(page: Page, route = '/', viewMode: 'basic' | 'advanced' 
   await page.waitForFunction(() => Boolean(window.__safetyHomeMock));
 }
 
+test('generic heating inputs stay readable and retained values lose current status on disconnect', async ({ page }) => {
+  await openMock(page, '/heating');
+  await page.evaluate(() =>
+    window.__safetyHomeMock.update({
+      entities: {
+        'sensor.heating_system_main': {
+          state: 'degraded',
+          attributes: {
+            friendly_name: 'Kotłownia',
+            phase_label: 'Nieznana faza pracy',
+            coverage_label: 'Częściowe pokrycie',
+            inputs: [
+              {
+                label: 'Temperatura zasilania',
+                source_name: 'Kocioł — zasilanie',
+                value_label: '35 °C',
+                quality_label: 'Wiek pomiaru niepotwierdzony',
+              },
+            ],
+            rules: [
+              { label: 'Odpowiedź kotła', status: 'INHIBITED', active: false, reasons: ['Trwa podgrzewanie CWU'] },
+              { label: 'Żądanie grzania', status: 'NOT_APPLICABLE', active: false, reasons: ['Brak potrzeby grzania'] },
+              { label: 'Przegląd ogrzewania', level: 4, status: 'FAIL', active: true, reasons: ['Wymagany przegląd'] },
+            ],
+          },
+        },
+      },
+      connectionStatus: 'connected',
+      ready: true,
+    })
+  );
+  await expect(page.getByRole('heading', { name: 'Kotłownia' })).toBeVisible();
+  await expect(page.getByText('35 °C', { exact: true })).toBeVisible();
+  await expect(page.getByRole('cell', { name: 'Kocioł — zasilanie', exact: true })).toBeVisible();
+  await expect(page.getByText('Ocena wstrzymana', { exact: true })).toBeVisible();
+  await expect(page.getByText('Brak potrzeby tej kontroli', { exact: true })).toBeVisible();
+  await expect(page.getByText('Informacja nadal aktualna', { exact: false })).toBeVisible();
+  await expect(page.getByText('Wykryto nieprawidłowość', { exact: true })).toHaveCount(0);
+  await page.evaluate(() => window.__safetyHomeMock.update({ connectionStatus: 'disconnected', ready: false }));
+  await expect(page.getByText('35 °C', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Brak bieżących danych', { exact: true }).first()).toBeVisible();
+});
+
 test('large history inventories keep only one bounded page subscribed and reset filters', async ({ page }) => {
   await openMock(page, '/history');
   await page.evaluate(() => {

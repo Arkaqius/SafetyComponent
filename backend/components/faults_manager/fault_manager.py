@@ -228,6 +228,14 @@ class FaultManager:
         elif state == FaultState.CLEARED:
             self.clear_symptom(symptom_id, additional_info or {})
 
+    def mark_evaluation_pending(self, *, symptom_id: str, violation: bool) -> None:
+        """Publish component-owned qualification without changing activation."""
+        symptom = self.symptoms[symptom_id]
+        fault = self.found_mapped_fault(symptom_id, symptom.sm_name)
+        if fault is not None:
+            fault.evaluation.mark_pending(symptom_id, violation)
+            self._publish_fault(fault)
+
     def init_safety_mechanisms(self) -> None:
         """
         Initializes safety mechanisms for each symptom condition.
@@ -411,7 +419,7 @@ class FaultManager:
 
             # Determinate additional info
             info_to_send: dict | None
-            if sm_name.startswith(("sm_ext_", "sm_entity_health_", "sm_iehm_")):
+            if sm_name.startswith(("sm_ext_", "sm_entity_health_", "sm_iehm_", "sm_hsm_")):
                 info_to_send = self._aggregate_active_fault_info(fault)
             else:
                 info_to_send = self._determinate_info(
@@ -682,7 +690,7 @@ class FaultManager:
         )
 
         if has_active_related_symptoms:
-            if sm_name.startswith(("sm_ext_", "sm_entity_health_")):
+            if sm_name.startswith(("sm_ext_", "sm_entity_health_", "sm_hsm_")):
                 info_to_send = self._aggregate_active_fault_info(fault)
             else:
                 info_to_send = self._determinate_info(

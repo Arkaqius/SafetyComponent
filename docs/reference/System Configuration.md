@@ -233,6 +233,66 @@ workload; they are maintenance limits, not hardware shutdown protection. Backup
 creation and a successful separate-installation restore are different evidence.
 Operational-test records never trigger a notification or backup operation.
 
+### 4.7 Heating input supervision
+
+`calibration.heating_system_monitor` owns the generic input monitor's bounded
+schedule, persistence and rule qualification. It contains no controller product
+selection or device-specific entity names. `Diagnostic` remains the default R01
+profile; an application upgrade does not enable additional rules.
+
+| Field | Packaged default | Meaning | User override |
+| --- | --- | --- | --- |
+| `evaluation_interval_seconds` | `5` | Reconciliation cadence in seconds. | No |
+| `maximum_systems` | `8` | Maximum explicitly selected heating installations. | No |
+| `state_file` | `/config/appdaemon/heating_monitor_state.json` | Legacy import path for the `heating_monitor_state` store in the shared SQLite database, outside the deployed app tree. | No |
+| `profiles.Diagnostic.provenance` | Input availability diagnostics; excluded from thermal and SG-003 coverage | Describes the admitted diagnostic scope, not manufacturer or thermal evidence. | No |
+| `profiles.Diagnostic.enabled_rules` | `[R01]` | Input-source supervision only. Other profiles may select R02..R13 with complete reviewed policies and qualified mappings. | No |
+| `profiles.Diagnostic.failure_seconds` | `5` | Qualified input failure duration before activation, subject to shared diagnostic startup qualification. | No |
+| `profiles.Diagnostic.recovery_seconds` | `60` | Continuous valid input duration before clearing; missing evidence does not clear activation. | No |
+| `profiles.<key>.device_fault` | Absent | R02 current-status policy; required when R02 is enabled. | No |
+| `profiles.<key>.missing_demand` | Absent | R03 independent room-need/request policy; required when R03 is enabled. | No |
+| `profiles.<key>.no_response` | Absent | R04 request/response and bounded inhibition policy; required when R04 is enabled. | No |
+| `profiles.<key>.flow_rise` | Absent | R05 commissioned physical flow-rise windows, thresholds and timing. | No |
+| `profiles.<key>.flow_tracking` | Absent | R06 commissioned flow-target bands, observed windows and timing. | No |
+| `profiles.<key>.pump_response` | Absent | R07 topology-specific physical pump response and timing. | No |
+| `profiles.<key>.flow_return` | Absent | R08 loaded flow/return differential bands and covered windows. | No |
+| `profiles.<key>.room_delivery` | Absent | R09 room need, independently evidenced physical delivery and temperature response. | No |
+| `profiles.<key>.mode_temperature` | Absent | R10 reviewed per-phase envelopes and HSM-H05 equipment response allocation. | No |
+| `profiles.<key>.absolute_temperature` | Absent | R11 independent absolute flow limit and HSM-H05 equipment response allocation. | No |
+| `profiles.<key>.cycling` | Absent | R12 informational CH/DHW counters and bounded physical cycle observations. | No |
+| `profiles.<key>.maintenance` | Absent | R13 fresh maintenance-status policy; required when R13 is enabled. | No |
+
+The private configuration enables `HeatingSystemMonitorComponent` and selects
+`installation.heating_systems` with stable keys, friendly names and semantic
+input/room bindings. A binding supplies `entity_id`, optional literal
+`attribute`, `value_map`, units/conversion, required `evidence_kind` and
+`independence_group`, and explicit freshness selectors where supported.
+`availability_only` preserves uncertainty about original measurement age;
+`source_timestamp` requires `observed_at_attribute` or
+`observed_at_entity_id`. Neither source publication nor HA `last_updated` is
+silently substituted for measurement time.
+
+Each optional rule policy provides `evidence_reference`, `failure_seconds` and
+`recovery_seconds`. Demand/response policies additionally declare separate need
+bands or target recovery tolerance, explicit allowances, source-time skew and
+a total unresolved-need budget of at most 1800 seconds. `no_response` declares
+`inhibition_context: none` or `mapped_reason`; the latter requires a normalized
+`inhibition_reason` (`none`, `startup`, `anti_cycle`). The component derives its
+bounded expiry; a source `until` value is not assumed. Required inputs must have
+original observation timestamps, appropriate physical/intent meaning and a
+validated complete source-to-notification timing allocation. Unqualified
+availability-only bindings cannot activate those rules.
+
+The compiled component publishes partial coverage and explicit rule exclusions.
+R01 success does not prove physical heating response or SG-003 timing
+compliance. R12/R13 remain L4 maintenance information and do not restrict hazard
+checks. Input maps cannot write device setpoints. State-version migration
+preserves unchanged R01 incidents; new defaults do not authorize clearing old
+active evidence. See the exact policy fields, bounds and
+[generic input contract and example](../HEATING_MONITOR_DELIVERY.md#generic-input-contract)
+and [R07..R12 policy fields](<../features/Heating Additional Rule Policies.md>)
+and [installation template](../../backend/config/user_config.example.yml).
+
 ## 5. Runtime configuration
 
 ### 5.1 Faults

@@ -13,6 +13,18 @@ validation:
   validate_entity_existence: true
 
 calibration:
+  heating_system_monitor:
+    evaluation_interval_seconds: 5
+    state_file: /config/appdaemon/heating_monitor_state.json
+    maximum_systems: 8
+    maximum_clock_drift_seconds: 2
+    profiles:
+      Diagnostic:
+        provenance: Input availability diagnostics; excluded from thermal and SG-003 coverage
+        enabled_rules: [R01]
+        failure_seconds: 5
+        recovery_seconds: 60
+
   temperature:
     sm_tc_1_debounce_limit: 2
     sm_tc_1_reeval_delay_seconds: 30

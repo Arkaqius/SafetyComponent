@@ -167,6 +167,7 @@ def _build_runtime_defaults(
                 )
             },
             "InternalEnvironmentalHazardMonitorComponent": internal_hazard,
+            "HeatingSystemMonitorComponent": copy.deepcopy(calibration.get("heating_system_monitor", {})),
         },
     }
 

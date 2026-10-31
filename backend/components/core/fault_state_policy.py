@@ -104,6 +104,35 @@ class FaultEvaluation:
         self._results[contributor] = None
         return self._advance()
 
+    def mark_pending(self, contributor: str, violation: bool) -> FaultEvaluationStatus:
+        """Expose owner-qualified evidence still awaiting its time interval.
+
+        Pending evidence neither activates nor clears a fault. A valid failure
+        from another contributor continues to dominate the OR aggregate.
+        """
+        if not isinstance(violation, bool):
+            raise TypeError("Pending safety result must be bool")
+        self.mark_unavailable(contributor)
+        if (
+            self.disabled
+            or self.inhibited
+            or any(value is True for value in self._results.values())
+        ):
+            return self.status
+        if violation and not self.active:
+            self.status = FaultEvaluationStatus.PENDING_FAILURE
+        elif (
+            not violation
+            and self.active
+            and all(
+                value is False
+                for name, value in self._results.items()
+                if name != contributor
+            )
+        ):
+            self.status = FaultEvaluationStatus.PENDING_RECOVERY
+        return self.status
+
     def set_control(
         self, *, inhibited: bool = False, disabled: bool = False
     ) -> FaultEvaluationStatus:
@@ -146,7 +175,9 @@ class FaultEvaluation:
         elif any(value is None for value in values):
             self._reset_pending()
             self.status = FaultEvaluationStatus.UNEVALUABLE
-        elif self.active and not self._qualified("recovery", self.recovery_delay_seconds):
+        elif self.active and not self._qualified(
+            "recovery", self.recovery_delay_seconds
+        ):
             self.status = FaultEvaluationStatus.PENDING_RECOVERY
         else:
             self.active = False
