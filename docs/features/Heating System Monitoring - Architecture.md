@@ -89,7 +89,7 @@ calibrated tolerance shall be invalid.
 | Signal group | Semantic fields | Use |
 | --- | --- | --- |
 | Boiler thermal | `flow_temperature`, `return_temperature`, `requested_flow_temperature` | Rise, tracking, distribution and temperature limits |
-| Boiler operation | `boiler_active`, `power_percent`; explicitly evidenced pump/burner observations where required | Response, phase and hydraulic consistency; percentage fields have range 0..100; a generic active state shall not imply an unobserved pump or burner state |
+| Boiler operation | `boiler_active`, `power_percent`; explicitly evidenced pump/burner observations where required | Response, phase and hydraulic consistency; `power_percent` shall accept the inclusive range 0..200% without clipping or rescaling, including R08 percent-load thresholds; a generic active state shall not imply an unobserved pump or burner state |
 | Operating context | `heat_request`, `dhw_active`, mapped `inhibition_reason`, operating mode and bounded inhibition expiry | Separate eligible CH evaluation from DHW, overrun and permitted delay; distinguish any source-reported expiry from the component's policy-derived deadline |
 | Source supervision | source availability, boiler observation timestamp/sequence, normalized input quality | Detect unavailable or stale telemetry, including frozen streams |
 | Device codes | current service/fault code tuple, model/profile version, maintenance code, historical last error | Distinguish current operating condition, active fault, maintenance and history |
