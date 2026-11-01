@@ -10,6 +10,7 @@ from pydantic import ConfigDict, Field, field_validator, model_validator
 from components.core.pydantic_utils import StrictBaseModel
 
 COMPONENT_NAME = "HeatingSystemMonitorComponent"
+MAX_POWER_PERCENT = 200.0
 RuleKey = Literal[
     "R01",
     "R02",
@@ -207,7 +208,7 @@ class HeatingDifferentialPolicy(HeatingTrendPolicy):
             raise ValueError(
                 "distribution recovery bands must be narrower than failure"
             )
-        if self.load_role == "power_percent" and self.minimum_load > 100:
+        if self.load_role == "power_percent" and self.minimum_load > MAX_POWER_PERCENT:
             raise ValueError("percent load must fit the physical input range")
         return self
 

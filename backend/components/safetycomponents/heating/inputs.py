@@ -7,7 +7,13 @@ from datetime import datetime, timezone
 import math
 from typing import Any, Callable, Mapping
 
-from .schema import BOOLEAN_ROLES, TEMPERATURE_ROLES, TEXT_ROLES, HeatingInput
+from .schema import (
+    BOOLEAN_ROLES,
+    MAX_POWER_PERCENT,
+    TEMPERATURE_ROLES,
+    TEXT_ROLES,
+    HeatingInput,
+)
 
 
 @dataclass(frozen=True)
@@ -165,7 +171,7 @@ class HeatingInputReader:
                     role in TEMPERATURE_ROLES and not -273.15 < value < 1000
                 ):
                     return result(None, "invalid_value")
-                if role == "power_percent" and not 0 <= value <= 100:
+                if role == "power_percent" and not 0 <= value <= MAX_POWER_PERCENT:
                     return result(None, "invalid_value")
                 if role == "power_w" and value < 0:
                     return result(None, "invalid_value")

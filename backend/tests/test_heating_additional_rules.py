@@ -11,7 +11,11 @@ import pytest
 from components.safetycomponents.heating.engine import RULES
 from components.safetycomponents.heating.inputs import HeatingObservation
 from components.safetycomponents.heating.rules import HeatingRuleEngine
-from components.safetycomponents.heating.schema import HeatingConfig, HeatingProfile
+from components.safetycomponents.heating.schema import (
+    HeatingConfig,
+    HeatingDifferentialPolicy,
+    HeatingProfile,
+)
 from test_heating_monitor import build_component
 from test_heating_output import attach_fault_manager
 from test_heating_rules import config, observations, states, tick
@@ -147,6 +151,18 @@ def profile(*rules):
         provenance="fictional test evidence",
         **{POLICIES[rule][0]: deepcopy(POLICIES[rule][1]) for rule in rules},
     )
+
+
+@pytest.mark.parametrize("minimum_load", [131, 200])
+def test_distribution_percent_load_uses_extended_power_domain(minimum_load):
+    policy = {**deepcopy(POLICIES["R08"][1]), "minimum_load": minimum_load}
+    assert HeatingDifferentialPolicy.model_validate(policy).minimum_load == minimum_load
+
+
+def test_distribution_percent_load_rejects_above_power_domain():
+    policy = {**deepcopy(POLICIES["R08"][1]), "minimum_load": 200.001}
+    with pytest.raises(ValueError, match="percent load"):
+        HeatingDifferentialPolicy.model_validate(policy)
 
 
 def evaluate(engine, rule, now, *, source_at=None, active=False, **values):
