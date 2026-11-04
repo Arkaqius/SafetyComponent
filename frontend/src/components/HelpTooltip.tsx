@@ -43,13 +43,17 @@ export default function HelpTooltip({ label, text }: { label: string; text: stri
 
   useEffect(() => {
     const bubble = panel.current;
-    const onToggle = (event: Event) => {
-      const visible = (event as ToggleEvent).newState === 'open';
-      setOpen(visible);
-      if (!visible) pinned.current = false;
+    const onBeforeToggle = (event: Event) => {
+      // Native light dismissal can be followed by another click before the async toggle event.
+      if ((event as ToggleEvent).newState === 'closed') pinned.current = false;
     };
+    const onToggle = (event: Event) => {
+      setOpen((event as ToggleEvent).newState === 'open');
+    };
+    bubble?.addEventListener('beforetoggle', onBeforeToggle);
     bubble?.addEventListener('toggle', onToggle);
     return () => {
+      bubble?.removeEventListener('beforetoggle', onBeforeToggle);
       bubble?.removeEventListener('toggle', onToggle);
       window.clearTimeout(closeTimer.current);
     };
