@@ -51,6 +51,29 @@ const record = (value: unknown): Record<string, unknown> | null =>
 const date = (value: unknown) => typeof value === 'string' && Number.isFinite(Date.parse(value));
 const count = (value: unknown) => typeof value === 'number' && Number.isInteger(value) && value >= 0;
 
+function normalizeRoutineRun(value: unknown): unknown {
+  const run = record(value);
+  if (!run) return value;
+  // AppDaemon can omit null fields when forwarding events to Home Assistant.
+  const results =
+    Array.isArray(run.results) && run.results.length <= 24
+      ? run.results.map(value => {
+          const result = record(value);
+          if (!result) return value;
+          return {
+            ...result,
+            observed_at: result.observed_at ?? null,
+            value: result.value ?? null,
+            expected_states: result.expected_states ?? null,
+            minimum: result.minimum ?? null,
+            maximum: result.maximum ?? null,
+            unit: result.unit ?? null,
+          };
+        })
+      : run.results;
+  return { ...run, finished_at: run.finished_at ?? null, results };
+}
+
 function validRun(value: unknown, detail = false): value is RoutineRun {
   const run = record(value);
   if (!run || !['run_id', 'routine_id', 'name'].every(key => typeof run[key] === 'string')) return false;
@@ -95,8 +118,12 @@ export function parseRoutineResponse(value: unknown, requestId: string): Routine
   const data = record(value);
   if (!data || data.version !== 1 || data.request_id !== requestId || typeof data.storage_available !== 'boolean') return null;
   if (typeof data.error === 'string') return data as unknown as RoutineResponse;
-  if (data.run !== undefined) return validRun(data.run, true) ? (data as unknown as RoutineResponse) : null;
+  if (data.run !== undefined) {
+    const run = normalizeRoutineRun(data.run);
+    return validRun(run, true) ? ({ ...data, run } as unknown as RoutineResponse) : null;
+  }
   if (!Array.isArray(data.routines) || data.routines.length > 16 || !Array.isArray(data.runs) || data.runs.length > 20) return null;
+  const runs = data.runs.map(normalizeRoutineRun);
   if (
     !data.routines.every(value => {
       const item = record(value);
@@ -108,10 +135,10 @@ export function parseRoutineResponse(value: unknown, requestId: string): Routine
         count(item.check_count)
       );
     }) ||
-    !data.runs.every(run => validRun(run))
+    !runs.every(run => validRun(run))
   )
     return null;
-  return data as unknown as RoutineResponse;
+  return { ...data, runs } as unknown as RoutineResponse;
 }
 
 export function routineRequest(requestId: string, action: string, routineId?: string, runId?: string) {

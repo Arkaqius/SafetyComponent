@@ -62,6 +62,34 @@ test('pending, interrupted and all-skipped reports cannot claim success', () => 
   assert.equal(routineRunLabel(run), 'OK w chwili kontroli');
 });
 
+test('routine wire responses may omit null fields but still require completion evidence', () => {
+  const result = {
+    check_id: 'Window',
+    name: 'Okno',
+    entity_id: 'binary_sensor.window',
+    status: 'unknown',
+    reason_label: 'Brak czasu obserwacji',
+    expected_states: ['off'],
+  };
+  const detail = { ...run, status: 'unknown', counts: { pass: 0, problem: 0, unknown: 1, skipped: 0 }, results: [result] };
+  assert.deepEqual(parseRoutineResponse(envelope(detail), 'request')?.run?.results, [
+    { ...result, value: null, observed_at: null, minimum: null, maximum: null, unit: null },
+  ]);
+  assert.equal(parseRoutineResponse(envelope({ ...detail, finished_at: undefined }), 'request'), null);
+  assert.equal(parseRoutineResponse(envelope({ ...detail, results: [{ ...result, observed_at: 'bad' }] }), 'request'), null);
+  const waiting = {
+    ...detail,
+    state: 'waiting',
+    finished_at: undefined,
+    sample_count: 0,
+    counts: { pass: 0, problem: 0, unknown: 0, skipped: 0 },
+    results: [],
+  };
+  assert.equal(parseRoutineResponse(envelope(waiting), 'request')?.run?.finished_at, null);
+  const list = { version: 1, request_id: 'request', storage_available: true, routines: [], runs: [waiting] };
+  assert.equal(parseRoutineResponse(list, 'request')?.runs?.[0].finished_at, null);
+});
+
 test('manual commands use the separate correlated event API', () => {
   assert.deepEqual(routineRequest('request', 'run', 'Bedtime'), {
     type: 'fire_event',

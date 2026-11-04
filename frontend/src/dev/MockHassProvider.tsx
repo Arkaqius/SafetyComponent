@@ -38,11 +38,11 @@ const connection = {
       });
     }
     if (message.event_type === 'safety_routine_request') {
-      queueMicrotask(() =>
-        eventListeners
-          .get('safety_routine_response')
-          ?.forEach(listener => listener({ data: routineDemoResponse(message.event_data ?? {}) }))
-      );
+      queueMicrotask(() => {
+        const response = routineDemoResponse(message.event_data ?? {});
+        const data: unknown = JSON.parse(JSON.stringify(response, (_key, value) => value ?? undefined));
+        eventListeners.get('safety_routine_response')?.forEach(listener => listener({ data }));
+      });
     }
     if (message.event_type === 'safety_notification_acknowledge') {
       const entities = structuredClone(useHass.getState().entities);
