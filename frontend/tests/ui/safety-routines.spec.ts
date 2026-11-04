@@ -31,6 +31,8 @@ test('manual routines preserve reports and distinguish problems from unavailable
   await expect(page.getByRole('button', { name: 'Sprawdź teraz' })).toBeDisabled();
   await expect(page.getByText('Brak połączenia. Widoczne raporty są zapisami wcześniejszych kontroli.')).toBeVisible();
   await expect(page.getByRole('cell', { name: 'Źródło jest niedostępne' })).toBeVisible();
+  if (testInfo.project.name.startsWith('desktop')) await page.setViewportSize({ width: 1100, height: 900 });
+  expect(await page.locator('.topbar').evaluate(header => header.scrollWidth <= header.clientWidth)).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('safety-routines.png'), fullPage: true });
   expect(errors).toEqual([]);

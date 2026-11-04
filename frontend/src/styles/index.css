@@ -301,6 +301,7 @@ details summary:focus-visible {
   background: rgba(7, 16, 23, 0.82);
   border-bottom: 1px solid var(--border);
   display: flex;
+  flex-wrap: wrap;
   gap: 24px;
   justify-content: space-between;
   min-height: 90px;
@@ -358,6 +359,7 @@ details summary:focus-visible {
 .topbar-statuses {
   align-items: center;
   display: flex;
+  flex-wrap: wrap;
   gap: clamp(16px, 2.5vw, 32px);
 }
 
@@ -4796,7 +4798,6 @@ dialog.entity-dialog-backdrop::backdrop { background: rgba(0, 0, 0, 0.65); }
 }
 
 .topbar-with-overview {
-  flex-wrap: wrap;
   row-gap: 10px;
 }
 
