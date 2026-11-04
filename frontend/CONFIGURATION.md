@@ -10,6 +10,9 @@ można obejrzeć lub wczytać do formularza.
 
 ## Scenariusze bezpieczeństwa
 
+Zobacz [instrukcję „Poza domem” i „Przed snem”](SAFETY_ROUTINES.md), która
+wyjaśnia wyzwalacze, dobór źródeł, włączne limity i wyniki nieocenione.
+
 1. Otwórz **Scenariusze bezpieczeństwa** w konfiguracji i dodaj scenariusz.
    Nowy wpis jest wyłączony. Nadaj mu nazwę, np. „Przed snem”.
 2. Dodaj sprawdzenia. Dla kontroli stanu wybierz encję i dokładne oczekiwane

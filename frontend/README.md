@@ -9,6 +9,10 @@ identyfikatory i surowe stany pozostają wspólnym kontraktem technicznym.
 
 ## Scenariusze bezpieczeństwa
 
+[Instrukcja scenariuszy](SAFETY_ROUTINES.md) opisuje konfigurację „Poza domem”
+i „Przed snem”, wyzwalacze Home Monitor, limit mocy oraz odczyty bez
+potwierdzonego czasu obserwacji. W panelu skrót znajdziesz także w **Pomocy**.
+
 Widok **Scenariusze bezpieczeństwa** pozwala uruchomić wybrany zestaw kontroli,
 anulować trwające wykonanie i przeglądać ostatnie 20 raportów. Każde ponowienie
 tworzy nowy raport. Wynik OK dotyczy chwili kontroli, a brak danych jest widoczny

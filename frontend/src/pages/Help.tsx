@@ -47,6 +47,50 @@ export default function Help() {
         </section>
 
         <div className='help-topics'>
+          <section aria-labelledby='help-routines'>
+            <h3 id='help-routines'>Scenariusze bezpieczeństwa</h3>
+            <p>
+              <Link to='/safety-routines'>Uruchom kontrolę lub przeczytaj raport</Link> albo{' '}
+              <Link to='/configuration/safety_routines'>skonfiguruj scenariusz</Link>.
+            </p>
+            <details className='help-question'>
+              <summary>Jak sprawdzać dom po wyjściu lub przed snem?</summary>
+              <p>
+                W konfiguracji wybierz kontrole i pełną zmianę stanu. Dla instalacji z Home Monitor przykładowe wyzwalacze to
+                sensor.home_monitor_occupancy: occupied → empty oraz sensor.home_monitor_activity: awake → asleep. Użyj surowego stanu
+                asleep, nie sleep. Przykłady wymagają sprawdzenia encji w Twojej instalacji; nie są domyślnie włączone.
+              </p>
+              <p>
+                Opóźnienie 120 s pozwala dokończyć wyjście lub rutynę wieczorną. Okno obserwacji 0 s oznacza jedną ocenę po opóźnieniu.
+                „Sprawdź teraz” też stosuje opóźnienie. Restart nie uruchamia kontroli tylko dlatego, że dom jest już pusty lub śpi. Zmiana
+                stanu podczas oczekiwania sama nie anuluje wykonania; dodaj także kontrolę obecności lub snu.
+              </p>
+            </details>
+            <details className='help-question'>
+              <summary>Dlaczego przy zamkniętym oknie widzę „Nie można ocenić”?</summary>
+              <p>
+                Kontrola potrzebuje wartości i oryginalnego czasu jej obserwacji. Atrybut czasu musi rzeczywiście istnieć; samo wpisanie
+                observed_at w formularzu go nie tworzy. Czas zmiany lub odczytania encji w HA i samo last_seen urządzenia nie dowodzą
+                świeżości konkretnego pomiaru. Sprawdź wyjaśnienie w raporcie oraz źródło czasu i jego maksymalny wiek.
+              </p>
+              <p>
+                „Nie można ocenić” oznacza brak dowodu. „Pominięte” oznacza znany warunek wyłączający kontrolę. Żaden z tych wyników nie
+                jest OK. Raport zachowuje wykryte problemy i braki danych; wcześniejszy sukces dotyczy chwili kontroli.
+              </p>
+            </details>
+            <details className='help-question'>
+              <summary>Jak ustawić moc poniżej 500 W i kontrolę ogrzewania?</summary>
+              <p>
+                Wybierz czujnik mocy całego domu z jednostką W. Granice są włączne: maksimum 500 dopuszcza 500 W. Przykładowo przy
+                rozdzielczości 0,1 W maksimum 499.9 i minimum 0 realizują limit poniżej 500 W. Licznik energii w kWh nie jest mocą.
+              </p>
+              <p>
+                Sprawdź rzeczywisty tryb ogrzewania i jego surowe stany, np. away_short lub away_long. Nie zakładaj osobnego trybu sleep.
+                Scenariusz nie zmienia trybu ani nastaw, nie steruje urządzeniami i nie kasuje usterek. Sam nie wysyła powiadomień; osobna
+                automatyzacja może reagować na safety_routine_completed. Raporty znajdziesz w widoku scenariuszy.
+              </p>
+            </details>
+          </section>
           <section aria-labelledby='help-statuses'>
             <h3 id='help-statuses'>Ocena i jakość danych</h3>
             <details className='help-question'>

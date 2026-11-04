@@ -110,12 +110,12 @@ const routineReading: Record<string, FieldSpec> = {
     'Encja czasu obserwacji',
     false,
     [],
-    'Wskaż encję oryginalnego czasu raportu albo atrybut czasu poniżej. Samo last_updated nie potwierdza świeżości.'
+    'Stan tej encji musi być oryginalnym czasem obserwacji: ISO 8601 ze strefą albo liczbowy Unix w sekundach. Wybierz encję albo atrybut, nie oba. Czas HA i samo last_seen urządzenia nie wystarczają.'
   ),
   observed_at_attribute: text(
     'Atrybut czasu obserwacji',
     false,
-    'Oryginalny czas obserwacji w atrybutach źródła. Użyj dokładnie jednego źródła czasu.'
+    'Rzeczywisty atrybut oryginalnego czasu obserwacji na encji wartości. Wpisanie observed_at nie tworzy atrybutu; brak czasu daje „Nie można ocenić”. Wybierz atrybut albo encję czasu.'
   ),
   max_age_seconds: { ...number('Maksymalny wiek obserwacji (s)'), initial: 300 },
 };
@@ -132,8 +132,11 @@ export const routineCheckSchema: Record<string, FieldSpec> = {
     true
   ),
   expected_states: { ...list('Oczekiwane stany', 'Dokładne stany HA, np. off dla zamkniętego kontaktronu.'), includeOnCreate: true },
-  minimum: number('Wartość minimalna'),
-  maximum: number('Wartość maksymalna'),
+  minimum: number('Wartość minimalna', 'Granica włącznie: odczyt może być równy minimum.'),
+  maximum: number(
+    'Wartość maksymalna',
+    'Granica włącznie: 500 dopuszcza 500 W. Dla limitu poniżej 500 W przy rozdzielczości 0,1 W wybierz 499.9.'
+  ),
   unit: text('Jednostka', false, 'Dokładna jednostka źródła, np. W. Kontrola liczbowa wymaga jednostki i przynajmniej jednego progu.'),
   condition: object(
     'Warunek zastosowania',
@@ -150,8 +153,11 @@ export const registrySchemas: Record<string, Record<string, FieldSpec>> = {
   safety_routines: {
     name: text('Nazwa scenariusza', true),
     enabled: { ...yesNo('Scenariusz włączony'), initial: false, includeOnCreate: true },
-    delay_seconds: number('Opóźnienie rozpoczęcia (s)', '0–600 s na dokończenie wyjścia lub zamknięcie drzwi.'),
-    observation_seconds: number('Okno obserwacji (s)', '0–300 s; próbki co 5 s. Problem lub brak danych w próbce pozostaje w raporcie.'),
+    delay_seconds: number('Opóźnienie rozpoczęcia (s)', '0–600 s; np. 120 s na wyjście lub rutynę wieczorną. Dotyczy też „Sprawdź teraz”.'),
+    observation_seconds: number(
+      'Okno obserwacji (s)',
+      '0 s: jedna ocena po opóźnieniu. Do 300 s: próbki co 5 s i na końcu; problem lub brak danych pozostaje w raporcie.'
+    ),
     checks: { label: 'Sprawdzenia', kind: 'registry', fields: routineCheckSchema, initial: {}, required: true },
     triggers: {
       label: 'Automatyczne wyzwalacze',
@@ -167,9 +173,18 @@ export const registrySchemas: Record<string, Record<string, FieldSpec>> = {
           true
         ),
         event: { ...text('Nazwa zdarzenia'), includeOnCreate: true },
-        entity_id: entity('Encja wyzwalacza'),
-        from_state: text('Stan początkowy'),
-        to_state: text('Stan docelowy'),
+        entity_id: entity(
+          'Encja wyzwalacza',
+          false,
+          [],
+          'Np. sensor.home_monitor_occupancy przy wyjściu lub sensor.home_monitor_activity przed snem. Sprawdź encję w swojej instalacji.'
+        ),
+        from_state: text('Stan początkowy', false, 'Wyjście: occupied; sen: awake. Restart nie zastępuje zmiany stanu.'),
+        to_state: text(
+          'Stan docelowy',
+          false,
+          'Wyjście: empty; sen: asleep, nie sleep. Wymagana jest pełna zmiana od stanu początkowego do docelowego.'
+        ),
       },
     },
   },
