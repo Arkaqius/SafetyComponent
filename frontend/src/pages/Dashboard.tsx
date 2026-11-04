@@ -12,8 +12,6 @@ import HelpTooltip from '../components/HelpTooltip';
 import { formatNumeric, formatRelativeTime, type TemperatureView } from '../domain/safety';
 import { useSafetyEntities } from '../hooks/useSafetyEntities';
 import { NOTIFICATION_DELIVERY_HEALTH_ID, readAcknowledgedNotificationTags } from '../domain/notificationHistory';
-import { EVALUATION_PROGRESS_ENTITY_ID } from '../domain/functionalSafety';
-import { COVERAGE_ENTITY_ID, getCoverageView } from '../domain/coverage';
 import type { ViewModeContext } from '../components/ViewModeSwitch';
 import BasicDashboard from './BasicDashboard';
 import { basicDashboardItems } from '../domain/basicDashboard';
@@ -28,20 +26,8 @@ function AdvancedDashboard() {
   const [averageDialogOpen, setAverageDialogOpen] = useState(false);
   const closeEntityDetails = useCallback(() => setSelectedEntityId(null), []);
   const closeAverageDetails = useCallback(() => setAverageDialogOpen(false), []);
-  const {
-    connection,
-    entities,
-    entityMonitorSummary,
-    externalHazards,
-    airQuality,
-    faults,
-    internalEnvironment,
-    recoveries,
-    safetyDoors,
-    summary,
-    systemEntity,
-    temperatures,
-  } = useSafetyEntities();
+  const { connection, entities, entityMonitorSummary, faults, recoveries, safetyDoors, summary, systemEntity, temperatures } =
+    useSafetyEntities();
   const values = temperatures.filter((temperature): temperature is TemperatureView & { state: number } => temperature.state !== null);
   const average = values.length > 0 ? values.reduce((sum, temperature) => sum + temperature.state, 0) / values.length : null;
   const minimum = values.reduce<(TemperatureView & { state: number }) | null>(
@@ -55,20 +41,8 @@ function AdvancedDashboard() {
   const fastestRising = temperatures
     .filter(temperature => temperature.rate !== null && temperature.rate >= 0.005)
     .sort((left, right) => (right.rate ?? 0) - (left.rate ?? 0))[0];
-  const environmentalTone =
-    externalHazards.status === 'severe'
-      ? 'critical'
-      : externalHazards.status === 'warning'
-        ? 'danger'
-        : externalHazards.status === 'watch'
-          ? 'warning'
-          : externalHazards.status === 'clear'
-            ? 'safe'
-            : 'muted';
   const acknowledgedNotificationTags = new Set(readAcknowledgedNotificationTags(entities[NOTIFICATION_DELIVERY_HEALTH_ID]));
-  const progressState = entities[EVALUATION_PROGRESS_ENTITY_ID]?.state;
   const { primaryFault } = basicDashboardItems(faults, recoveries);
-  const coverage = getCoverageView(connection.cannotConnect || !connection.ready ? {} : entities);
 
   return (
     <div className='page-stack'>
@@ -92,11 +66,22 @@ function AdvancedDashboard() {
         </div>
         <div className='safety-hero-meta'>
           <small>
-            {connection.cannotConnect || !connection.ready ? 'Ostatni znany stan' : 'Ostatnia zmiana'}{' '}
+            {connection.cannotConnect || !connection.ready ? 'Ostatnia znana zmiana oceny' : 'Ostatnia zmiana oceny'}{' '}
             {formatRelativeTime(systemEntity?.last_changed)}
           </small>
         </div>
       </button>
+
+      <div className='dashboard-columns dashboard-events'>
+        <FaultSection
+          acknowledgedTags={acknowledgedNotificationTags}
+          compact
+          faults={faults}
+          recoveries={recoveries}
+          onSelectEntity={setSelectedEntityId}
+        />
+        <ActionsList onSelectEntity={setSelectedEntityId} recoveries={recoveries} />
+      </div>
 
       <section className='entity-monitor-overview'>
         <div>
@@ -138,49 +123,6 @@ function AdvancedDashboard() {
         </Link>
       </section>
 
-      <div className='dashboard-columns dashboard-events'>
-        <FaultSection
-          acknowledgedTags={acknowledgedNotificationTags}
-          compact
-          faults={faults}
-          recoveries={recoveries}
-          onSelectEntity={setSelectedEntityId}
-        />
-        <ActionsList onSelectEntity={setSelectedEntityId} recoveries={recoveries} />
-      </div>
-
-      <section className='entity-monitor-overview'>
-        <div>
-          <span className='section-kicker'>Functional safety</span>
-          <strong>Zdrowie funkcji bezpieczeństwa</strong>
-          <small>
-            {progressState === 'observed'
-              ? 'Wszystkie komponenty zakończyły ocenę; jakość wejść sprawdzaj osobno.'
-              : progressState === 'attention'
-                ? 'Przynajmniej jeden komponent wymaga uwagi.'
-                : 'Brak pełnego dowodu postępu ocen.'}
-          </small>
-        </div>
-        <StatusBadge tone={progressState === 'observed' ? 'info' : progressState === 'attention' ? 'danger' : 'muted'}>
-          {progressState === 'observed' ? 'Oceny wykonane' : progressState === 'attention' ? 'Wymaga uwagi' : 'Brak danych'}
-        </StatusBadge>
-        <Link className='text-link' to='/functional-safety'>
-          Szczegóły <Icon name='chevron' size={15} />
-        </Link>
-      </section>
-
-      <section className='entity-monitor-overview'>
-        <div>
-          <span className='section-kicker'>Pokrycie bezpieczeństwa</span>
-          <strong>{coverage.label}</strong>
-          <small>{coverage.detail}</small>
-        </div>
-        <StatusBadge tone={coverage.tone}>{coverage.label}</StatusBadge>
-        <button className='text-button' onClick={() => setSelectedEntityId(COVERAGE_ENTITY_ID)} type='button'>
-          Przyczyny i zakres <Icon name='history' size={15} />
-        </button>
-      </section>
-
       <section aria-label='Podsumowanie temperatur' className='summary-grid'>
         <SummaryCard
           detail={`${values.length}/${temperatures.length} dostępnych pomiarów`}
@@ -220,112 +162,15 @@ function AdvancedDashboard() {
         />
       </section>
 
-      <section className={`panel internal-overview-panel internal-overview-${internalEnvironment.status}`}>
-        <div className='panel-header'>
-          <div>
-            <span className='section-kicker'>Bezpieczeństwo wewnątrz domu</span>
-            <h2>Zagrożenia wewnętrzne</h2>
-          </div>
-          <Link className='text-link' to='/internal-hazards'>
-            Szczegóły <Icon name='chevron' size={15} />
-          </Link>
-        </div>
-        <div className='internal-overview-grid'>
-          <div>
-            <span>Aktywne alarmy</span>
-            <strong>{internalEnvironment.activeHazards}</strong>
-          </div>
-          <div>
-            <span>Dostępne czujniki</span>
-            <strong>
-              {internalEnvironment.monitoredDetectors - internalEnvironment.unavailableDetectors}/{internalEnvironment.monitoredDetectors}
-            </strong>
-          </div>
-          <div>
-            <span className='label-with-help'>
-              Ochrona przy gazie{' '}
-              <HelpTooltip
-                label='Ochrona przy gazie'
-                text='Informuje, czy system zgłasza blokadę przełączania urządzeń przy zagrożeniu gazem. Ten wskaźnik nie potwierdza zamknięcia zaworu gazowego.'
-              />
-            </span>
-            <strong>{internalEnvironment.gasSwitchingInhibited ? 'Aktywna' : 'Nieaktywna'}</strong>
-          </div>
-        </div>
-      </section>
-
       <div className='dashboard-columns dashboard-columns-secondary'>
-        <section className='panel environment-overview-panel'>
-          <div className='panel-header'>
-            <div>
-              <span className='section-kicker'>Warunki zewnętrzne</span>
-              <h2 className='label-with-help'>
-                Otoczenie domu{' '}
-                <HelpTooltip
-                  label='Jakość powietrza i ostrzeżenia'
-                  text='EAQI pochodzi z modelu Open-Meteo dla lokalizacji domu, a nie z czujnika wewnątrz pomieszczenia. Przeterminowany odczyt jest oznaczony jako ostatni znany. Ostrzeżenia IMGW dotyczą lokalizacji domu.'
-                />
-              </h2>
-            </div>
-            <Link className='text-link' to='/external-hazards'>
-              Szczegóły <Icon name='chevron' size={15} />
-            </Link>
-          </div>
-
-          <div className='environment-overview-grid'>
-            <button
-              className='environment-overview-item dashboard-entity-trigger'
-              disabled={!externalHazards.providers.find(provider => provider.provider === 'OpenMeteoAirQualityApiComponent')}
-              onClick={() =>
-                setSelectedEntityId(
-                  externalHazards.providers.find(provider => provider.provider === 'OpenMeteoAirQualityApiComponent')?.entityId ?? null
-                )
-              }
-              type='button'
-            >
-              <span>{airQuality.status === 'current' ? 'Jakość powietrza' : 'Ostatnia znana jakość powietrza'}</span>
-              <strong>{airQuality.label}</strong>
-              <small>
-                {airQuality.sourceName ? `${airQuality.sourceName} · ` : ''}
-                {airQuality.detail}
-              </small>
-              <StatusBadge tone={airQuality.tone}>
-                {airQuality.status === 'current' ? 'Aktualny odczyt' : airQuality.status === 'stale' ? 'Dane nieaktualne' : 'Brak danych'}
-              </StatusBadge>
-            </button>
-            <button
-              className='environment-overview-item dashboard-entity-trigger'
-              onClick={() => setSelectedEntityId(externalHazards.entityId)}
-              type='button'
-            >
-              <span>Ostrzeżenia dla domu</span>
-              <strong>{externalHazards.imgwWarnings.length}</strong>
-              <small>
-                {externalHazards.imgwWarnings.length > 0
-                  ? externalHazards.imgwWarnings.map(warning => warning.eventName).join(' · ')
-                  : 'Brak aktualnych ostrzeżeń IMGW dla lokalizacji domu'}
-              </small>
-              <StatusBadge tone={environmentalTone}>
-                {externalHazards.activeHazards.length > 0
-                  ? externalHazards.activeHazards.length === 1
-                    ? '1 aktywne zagrożenie'
-                    : externalHazards.activeHazards.length < 5
-                      ? `${externalHazards.activeHazards.length} aktywne zagrożenia`
-                      : `${externalHazards.activeHazards.length} aktywnych zagrożeń`
-                  : 'Brak ekspozycji'}
-              </StatusBadge>
-            </button>
-          </div>
-        </section>
-
         <section className='panel door-overview-panel'>
           <div className='panel-header'>
             <div>
-              <span className='section-kicker'>Wejścia</span>
+              <span className='section-kicker'>Drzwi i bramy</span>
               <h2>Ostatnie otwarcia</h2>
             </div>
             <Link className='text-link' to='/safety-doors'>
-              Wszystkie wejścia <Icon name='chevron' size={15} />
+              Drzwi i bramy <Icon name='chevron' size={15} />
             </Link>
           </div>
           {safetyDoors.length > 0 ? (

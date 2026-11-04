@@ -717,10 +717,63 @@ test('coverage remains unknown until retained entities are ready', async ({ page
   await expect(coverage).not.toHaveClass(/status-safe/);
 });
 
+test('legacy diagnostics link groups multiple coverage effects under one sensor', async ({ page }) => {
+  await openMock(page, '/fault-management');
+  await expect(page).toHaveURL(/functional-safety\?tab=faults$/);
+  await expect(page.getByRole('tab', { name: 'Usterki i pokrycie' })).toHaveAttribute('aria-selected', 'true');
+  await page.evaluate(() => {
+    const entities = window.__safetyHomeMock.snapshot();
+    entities['binary_sensor.example_window'] = { state: 'unavailable', attributes: { friendly_name: 'Okno testowe' } };
+    entities['sensor.entity_health_testwindow'] = {
+      state: 'unavailable',
+      attributes: { entity_key: 'TestWindow', source_entity_id: 'binary_sensor.example_window' },
+    };
+    entities['sensor.safety_coverage_state'].attributes.affected = ['Frost', 'Wind', 'Rain', 'Storm'].map(kind => ({
+      cause: 'EntityHealthFailureTestWindowAvailability',
+      cause_state: 'active',
+      fault: 'ExternalWeatherExposure',
+      symptom: `ExternalWeatherExposure${kind}TestWindow`,
+      capability: 'external_exposure',
+      subject: 'TestWindow',
+      effect: 'evaluation',
+    }));
+    window.__safetyHomeMock.update({ entities });
+  });
+  const group = page.locator('.coverage-source-group');
+  await expect(group).toHaveCount(1);
+  await expect(group.locator(':scope > summary')).toContainText('Problem z odczytem: Okno testowe');
+  await expect(group.locator(':scope > summary')).toContainText('Powiązania (4)');
+  await group.locator(':scope > summary').click();
+  await expect(group.locator('.coverage-effect:visible')).toHaveCount(4);
+  await page.getByRole('tab', { name: /Baterie/ }).click();
+  await expect(group).toBeHidden();
+  await page.getByRole('tab', { name: 'Usterki i pokrycie' }).click();
+  await expect(group).toHaveAttribute('open', '');
+});
+
+test('configuration fits a narrow phone with nested scenario fields open', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 760 });
+  await openMock(page, '/configuration/safety_routines');
+  const section = page.locator('.configuration-section:visible');
+  const key = 'TestBardzoDlugiejNazwyScenariuszaBezSpacji';
+  await section.getByLabel('Nowy identyfikator: Scenariusze bezpieczeństwa').fill(key);
+  await section.getByRole('button', { name: '+ Dodaj obiekt', exact: true }).click();
+  const scenarioSummary = section.locator('summary').filter({ hasText: key });
+  await scenarioSummary.click();
+  const scenario = scenarioSummary.locator('..');
+  await scenario.getByLabel('Nowy identyfikator: Sprawdzenia').fill('KontrolaOkna');
+  await scenario.getByRole('button', { name: '+ Dodaj obiekt', exact: true }).click();
+  await scenario.locator('summary').filter({ hasText: 'KontrolaOkna' }).click();
+  await expect(scenario.getByLabel('Nazwa kontroli')).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
+});
+
 test('dashboard puts readable incident and instructions before temperature statistics', async ({ page }, testInfo) => {
   await openMock(page);
   const instruction = page.locator('.dashboard-events > .recovery-panel .recovery-card-copy p').first();
   await expect(page.locator('.hero-incident')).toBeVisible();
+  await expect(page.locator('.dashboard-events .fault-card[open]')).toHaveCount(0);
+  await expect(page.getByRole('navigation', { name: 'Skrót monitoringu' }).getByRole('link')).toHaveCount(4);
   await expect(instruction).toBeVisible();
   const instructionBox = await instruction.boundingBox();
   const statisticsBox = await page.locator('.summary-grid').boundingBox();
@@ -739,6 +792,7 @@ test('dashboard puts readable incident and instructions before temperature stati
 test('acknowledgement retries an event failure and never clears the fault', async ({ page }) => {
   await openMock(page);
   const fault = page.locator('.fault-card[data-entity-id="sensor.fault_riskytemperature"]');
+  await fault.locator(':scope > summary').click();
   const button = fault.getByRole('button', { name: 'Potwierdź powiadomienie', exact: true });
   await page.evaluate(() => window.__safetyHomeMock.failNextMessage());
   await button.click();
@@ -930,10 +984,9 @@ test('switching entities starts a new history stream without another entity past
   const dialog = page.getByRole('dialog');
   await expect(dialog).toContainText('historical-only-system');
   await page.keyboard.press('Escape');
-  await page
-    .locator('.fault-card[data-entity-id="sensor.fault_riskytemperature"]')
-    .getByRole('button', { name: /Pełne szczegóły/ })
-    .click();
+  const fault = page.locator('.fault-card[data-entity-id="sensor.fault_riskytemperature"]');
+  await fault.locator(':scope > summary').click();
+  await fault.getByRole('button', { name: /Pełne szczegóły/ }).click();
   await expect(dialog.locator('.history-empty')).toBeVisible();
   await expect(dialog).not.toContainText('historical-only-system');
   await expect(dialog.locator('.entity-history-segment')).toHaveCount(0);

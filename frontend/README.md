@@ -97,15 +97,20 @@ potwierdza dostarczania ciepła ani bezpiecznej temperatury kotła.
 Mapowanie dowolnych urządzeń opisuje
 [konfiguracja wejść ogrzewania](CONFIGURATION.md#wejścia-monitoringu-ogrzewania).
 
-## Zdrowie systemu: monitorowane encje i baterie
+## Zdrowie systemu
 
-Widok **Rozszerzony → Zdrowie systemu** ma cztery podzakładki:
-**Monitorowane encje**, **Baterie**, **Platforma** oraz **Testy i powiadomienia**.
+Widok **Rozszerzony → Zdrowie systemu** ma pięć podzakładek.
+**Monitorowane encje** i **Baterie** pokazują stan źródeł.
+**Platforma** pokazuje postęp ocen oraz stan usług.
+**Testy i powiadomienia** pokazują wyniki testów i stan wysyłki.
+**Usterki i pokrycie** grupują zagrożenia, usterki diagnostyczne i ograniczenia monitorowania.
 Wybrana podzakładka jest zapisana w adresie strony, więc można wrócić do niej
 po odświeżeniu, użyciu Wstecz/Dalej lub udostępnić bezpośredni odnośnik.
 Fragment adresu po `#` to `/functional-safety?tab=entities` (domyślna),
-`/functional-safety?tab=batteries`, `/functional-safety?tab=platform`
-lub `/functional-safety?tab=tests`. Przełączenie podzakładki zachowuje filtry i wybór
+`/functional-safety?tab=batteries`, `/functional-safety?tab=platform`,
+`/functional-safety?tab=tests` lub `/functional-safety?tab=faults`.
+Starszy odnośnik `/fault-management` prowadzi do zakładki **Usterki i pokrycie**.
+Przełączenie podzakładki zachowuje filtry i wybór
 wiersza do czasu przeładowania strony. Gdy fokus jest na podzakładce,
 strzałki lewo/prawo zmieniają wybór, a Home/End przechodzą do pierwszej/ostatniej.
 
@@ -150,8 +155,8 @@ pozostaje sprawdzanie czasu raportu baterii (`last_reported`, a przy jego braku
 
 Komunikat **oceny wymagają weryfikacji** dotyczy nieznanych ocen usterek,
 stanów działań lub poziomu systemu, a nie liczby monitorowanych encji.
-Podsumowanie pokazuje ten podział. W **Usterki i diagnostyka → Zdarzenia i stan
-oceny** domyślny filtr **Wymagające uwagi** obejmuje również nieocenione
+Podsumowanie pokazuje ten podział. W **Zdrowie systemu → Usterki i pokrycie**
+domyślny filtr **Wymagające uwagi** obejmuje również nieocenione
 (`NOT_EVALUATED`) i niewiarygodne oceny; nie oznaczają one potwierdzonej awarii.
 
 ## Kontakt czujników i dane alarmowe
@@ -215,8 +220,8 @@ wartość jest zachowana, a `0` wyłącza to opóźnienie.
 
 ## Freeze frame
 
-Przełącz widok na **Rozszerzony**, otwórz **Usterki i diagnostyka**, a potem
-rozwiń kartę w sekcji **Zdarzenia i stan oceny**. Jedna sekcja **Freeze frame**
+Przełącz widok na **Rozszerzony**, otwórz **Zdrowie systemu → Usterki i pokrycie**,
+a potem rozwiń kartę w sekcji **Zdarzenia i stan oceny**. Sekcja **Freeze frame**
 pokazuje zapis aktywacji, ostatnią przyczynę, liczniki, czasy i niepewność
 pomiaru czasu z jednego obiektu
 `freeze_frame` w atrybutach encji usterki (API/MQTT).

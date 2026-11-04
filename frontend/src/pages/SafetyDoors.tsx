@@ -15,8 +15,13 @@ export default function SafetyDoors() {
     <div className='page-stack'>
       <section className='page-introduction'>
         <div>
-          <span className='section-kicker'>Wejścia</span>
-          <h2>Monitorowane drzwi i bramy</h2>
+          <h2 className='label-with-help'>
+            Drzwi i bramy
+            <HelpTooltip
+              label='Otwarcie i limit czasu'
+              text='Pozycja drzwi pochodzi z czujnika. Przekroczenie limitu otwarcia jest osobną oceną dla każdego monitorowanego wejścia.'
+            />
+          </h2>
           <p>
             Lista zawiera wyłącznie wejścia skonfigurowane w SafetyComponent. Alarm staje się aktywny po ciągłym otwarciu dłuższym niż
             indywidualny limit czasu.
@@ -126,7 +131,7 @@ function SafetyDoorCard({ door }: { door: SafetyDoorView }) {
         ) : null}
       </dl>
 
-      <span className='card-updated'>Aktualizacja {formatRelativeTime(door.lastUpdated)}</span>
+      <span className='card-updated'>Ostatni zapis stanu {formatRelativeTime(door.lastUpdated)}</span>
     </article>
   );
 }

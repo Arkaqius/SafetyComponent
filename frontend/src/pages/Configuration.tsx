@@ -4,6 +4,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import ConfigurationObjectEditor from '../components/ConfigurationObjectEditor';
 import BatteryDiscovery from '../components/BatteryDiscovery';
 import EntityInput from '../components/EntityInput';
+import HelpTooltip from '../components/HelpTooltip';
 import { ConfigurationEntityContext } from '../components/configurationEntityContext';
 import { configurationEntityOptions } from '../domain/configurationEntities';
 import type { EntityMap } from '../domain/safety';
@@ -234,11 +235,17 @@ export default function Configuration() {
   const timezones = supportedTimezones(stringValue(site.timezone));
 
   const pageContent = (
-    <div className='page-stack'>
+    <div className='page-stack configuration-page'>
       <section className='page-introduction configuration-introduction'>
         <div>
           <span className='section-kicker'>Konfiguracja instalacji</span>
-          <h2>Ustawienia SafetyComponent</h2>
+          <h2 className='label-with-help'>
+            Ustawienia SafetyComponent
+            <HelpTooltip
+              label='Zapis i zastosowanie konfiguracji'
+              text='Formularz jest szkicem do czasu zapisu. Zapis obejmuje wszystkie podstrony. Uruchom ponownie aplikację, aby zastosować zapisane ustawienia.'
+            />
+          </h2>
           <p>
             Edytujesz wyłącznie prywatny <code>user_config.yml</code>. Polityka, kalibracja i parametry wykonawcze z{' '}
             <code>system_config.yml</code> są dostarczane razem z aplikacją. Wybrane progi i czasy można nadpisać dla instalacji w sekcji

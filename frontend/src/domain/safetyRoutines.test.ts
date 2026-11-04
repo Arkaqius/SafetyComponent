@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { parseRoutineResponse, routineRequest, routineRunLabel, type RoutineRun } from './safetyRoutines.js';
+import type { Connection, HassEvent } from 'home-assistant-js-websocket';
+import { parseRoutineResponse, requestRoutine, routineRequest, routineRunLabel, type RoutineRun } from './safetyRoutines.js';
 import { initialObject, registrySchemas, routineCheckSchema, updateObjectField } from '../components/configurationFieldSchemas.js';
 
 const run: RoutineRun = {
@@ -33,6 +34,13 @@ const run: RoutineRun = {
   ],
 };
 const envelope = (value: unknown) => ({ version: 1, request_id: 'request', storage_available: true, run: value });
+const responseEvent = (value: unknown, requestId: string): HassEvent => ({
+  event_type: 'safety_routine_response',
+  origin: 'LOCAL',
+  time_fired: run.started_at,
+  context: { id: requestId, parent_id: null, user_id: null },
+  data: { ...envelope(value), request_id: requestId },
+});
 
 test('routine reports require correlation, complete evidence and consistent counts', () => {
   assert.ok(parseRoutineResponse(envelope(run), 'request'));
@@ -75,4 +83,84 @@ test('configuration editor starts disabled and switches mutually exclusive contr
   const trigger = updateObjectField({ kind: 'event', event: 'bedtime' }, 'kind', 'state');
   assert.equal(trigger.event, undefined);
   assert.equal(trigger.from_state, '');
+});
+
+test('a received report resolves even when subscription cleanup throws', async t => {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: { setTimeout, clearTimeout } });
+  t.after(() => (previous ? Object.defineProperty(globalThis, 'window', previous) : Reflect.deleteProperty(globalThis, 'window')));
+  let listener: (event: HassEvent) => void = () => {};
+  let cleaned = false;
+  const connection = {
+    async subscribeEvents(callback: (event: HassEvent) => void) {
+      listener = callback;
+      return () => {
+        cleaned = true;
+        throw new Error('closed connection');
+      };
+    },
+    async sendMessagePromise(message: ReturnType<typeof routineRequest>) {
+      listener(responseEvent(run, message.event_data.request_id));
+    },
+  } as unknown as Connection;
+  const result = await requestRoutine(connection, 'report', new AbortController().signal, 'Bedtime', 'one');
+  assert.equal(result.run?.run_id, 'one');
+  await Promise.resolve();
+  assert.equal(cleaned, true);
+});
+
+test('correlated malformed and wrong-run reports fail explicitly instead of timing out', async t => {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: { setTimeout, clearTimeout } });
+  t.after(() => (previous ? Object.defineProperty(globalThis, 'window', previous) : Reflect.deleteProperty(globalThis, 'window')));
+  for (const bad of [
+    { ...run, results: [] },
+    { ...run, run_id: 'another' },
+  ]) {
+    let listener: (event: HassEvent) => void = () => {};
+    let cleaned = 0;
+    const connection = {
+      async subscribeEvents(callback: (event: HassEvent) => void) {
+        listener = callback;
+        return () => {
+          cleaned += 1;
+        };
+      },
+      async sendMessagePromise(message: ReturnType<typeof routineRequest>) {
+        listener(responseEvent(bad, message.event_data.request_id));
+      },
+    } as unknown as Connection;
+    await assert.rejects(requestRoutine(connection, 'report', new AbortController().signal, 'Bedtime', 'one'), /invalid_response/);
+    assert.equal(cleaned, 1);
+  }
+});
+
+test('aborting before subscription completes releases it without sending a command', async t => {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: { setTimeout, clearTimeout } });
+  t.after(() => (previous ? Object.defineProperty(globalThis, 'window', previous) : Reflect.deleteProperty(globalThis, 'window')));
+  let subscribe: (cleanup: () => void) => void = () => {};
+  let sent = 0;
+  let cleaned = 0;
+  const connection = {
+    subscribeEvents: () =>
+      new Promise<() => void>(resolve => {
+        subscribe = resolve;
+      }),
+    sendMessagePromise: async () => {
+      sent += 1;
+    },
+  } as unknown as Connection;
+  const controller = new AbortController();
+  const pending = requestRoutine(connection, 'run', controller.signal, 'Bedtime');
+  await Promise.resolve();
+  controller.abort();
+  await assert.rejects(pending, /disconnected/);
+  subscribe(() => {
+    cleaned += 1;
+  });
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(sent, 0);
+  assert.equal(cleaned, 1);
 });

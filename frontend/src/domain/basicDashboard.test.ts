@@ -46,6 +46,10 @@ test('brief keeps failed and uncertain recommendations visible, excluding comple
   const recoveries = getRecoveries({
     'sensor.recovery_done': { state: 'CONFIRMED', attributes: {} },
     'sensor.recovery_none': { state: 'DO_NOT_PERFORM', attributes: {} },
+    'sensor.recovery_dormant': {
+      state: 'DO_NOT_PERFORM',
+      attributes: { proposals: [{ proposal_id: 'dormant', status: 'DO_NOT_PERFORM' }] },
+    },
     'sensor.recovery_failed': { state: 'FAILED', attributes: {} },
     'sensor.recovery_missing': { state: 'unavailable', attributes: {} },
   });

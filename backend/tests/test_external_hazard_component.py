@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from typing import Any
+
+import pytest
 
 from components.core.event_bus import EventBus
 from components.core.localization import Localizer
@@ -26,18 +29,35 @@ class FakeHass:
         self.localizer = Localizer({"language": "pl"})
         self.service_calls: list[tuple[str, dict[str, Any]]] = []
         self.logs: list[tuple[str, str]] = []
+        self.listeners: list[tuple[Any, str, dict[str, Any]]] = []
+        self.timers: list[tuple[Any, int, dict[str, Any]]] = []
 
     def get_state(self, entity_id: str, **_: Any) -> Any:
         return self.states.get(entity_id)
 
     def listen_state(self, callback: Any, entity: str, **kwargs: Any) -> Any:
-        return callback, entity, kwargs
+        listener = (callback, entity, kwargs)
+        self.listeners.append(listener)
+        return listener
+
+    def cancel_listen_state(self, handle: Any) -> None:
+        self.listeners.remove(handle)
 
     def run_in(self, callback: Any, delay: int, **kwargs: Any) -> Any:
-        return callback, delay, kwargs
+        timer = (callback, delay, kwargs)
+        self.timers.append(timer)
+        return timer
 
     def cancel_timer(self, _: Any) -> None:
         return None
+
+    def change_contact(self, state: str, *, readback: str | None = None) -> None:
+        entity = "binary_sensor.office_window"
+        old = self.states[entity]
+        self.states[entity] = state if readback is None else readback
+        for callback, listened_entity, kwargs in self.listeners:
+            if listened_entity == entity:
+                callback(entity, "state", old, state, **kwargs)
 
     def call_service(self, service: str, **kwargs: Any) -> None:
         self.service_calls.append((service, kwargs))
@@ -136,7 +156,9 @@ def _observation(
     )
 
 
-def _component() -> tuple[ExternalHazardComponent, FakeHass, FakeMqtt, list[dict[str, Any]]]:
+def _component(
+    kind: str = "window",
+) -> tuple[ExternalHazardComponent, FakeHass, FakeMqtt, list[dict[str, Any]]]:
     hass = FakeHass()
     mqtt = FakeMqtt()
     bus = EventBus()
@@ -151,7 +173,7 @@ def _component() -> tuple[ExternalHazardComponent, FakeHass, FakeMqtt, list[dict
                 "area_name": "Biuro",
                 "entity_id": "binary_sensor.office_window",
                 "friendly_name": "Okno biura",
-                "kind": "window",
+                "kind": kind,
                 "hazards": ["frost", "wind", "rain", "storm", "outdoor_air_pollution"],
             }
         },
@@ -166,6 +188,118 @@ def _component() -> tuple[ExternalHazardComponent, FakeHass, FakeMqtt, list[dict
         )
         assert component.enable_safety_mechanism(symptom.name, SMState.ENABLED)
     return component, hass, mqtt, events
+
+
+@pytest.fixture
+def opening_clock(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    elapsed = [0.0]
+    monkeypatch.setattr(
+        "components.safetycomponents.external_hazard.external_hazard_component.monotonic",
+        lambda: elapsed[0],
+    )
+    return elapsed
+
+
+def _wind_result() -> ApiResult:
+    wind = _observation(
+        "OpenMeteoWeatherApiComponent",
+        HazardType.WIND,
+        {
+            "current_wind_gust": Measurement(22.0, "m/s"),
+            "forecast_max_wind_gust": Measurement(22.0, "m/s"),
+        },
+    )
+    return ApiResult(wind.provider, (wind,), _health(wind.provider))
+
+
+@pytest.mark.parametrize("kind", ["door", "garage_door", "gate"])
+def test_external_door_and_gate_qualify_after_one_minute_without_new_poll(
+    kind: str, opening_clock: list[float]
+) -> None:
+    component, hass, _, events = _component(kind)
+    hass.states["binary_sensor.office_window"] = "off"
+    result = _wind_result()
+    component.handle_external_api_result(result=result)
+    events.clear()
+    hass.change_contact("on")
+    callback, delay, kwargs = hass.timers[-1]
+    assert delay == 60
+    opening_clock[0] = 59.0
+    component.handle_external_api_result(result=result)
+    assert len(hass.timers) == 1
+    assert not any(event["state"] == FaultState.SET for event in events)
+    opening_clock[0] = 60.0
+    callback(**kwargs)
+    assert any(event["state"] == FaultState.SET for event in events)
+    assert hass.service_calls == []
+
+
+@pytest.mark.parametrize("interruption", ["off", "unavailable"])
+def test_opening_qualification_restarts_on_close_or_unknown_edge(
+    interruption: str, opening_clock: list[float]
+) -> None:
+    component, hass, _, events = _component("door")
+    component.handle_external_api_result(result=_wind_result())
+    obsolete_callback, _, obsolete_kwargs = hass.timers[-1]
+    opening_clock[0] = 10.0
+    # The readback has already changed by the time HA delivers the old edge.
+    hass.change_contact(interruption, readback="on")
+    fresh_callback, delay, fresh_kwargs = hass.timers[-1]
+    assert delay == 60
+    opening_clock[0] = 60.0
+    obsolete_callback(**obsolete_kwargs)
+    assert not any(event["state"] == FaultState.SET for event in events)
+    opening_clock[0] = 70.0
+    fresh_callback(**fresh_kwargs)
+    assert any(event["state"] == FaultState.SET for event in events)
+
+
+@pytest.mark.parametrize("source_expired", [True, False])
+def test_qualification_timer_rejects_unusable_provider_evidence(
+    source_expired: bool, opening_clock: list[float], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    component, hass, _, events = _component("door")
+    result = _wind_result()
+    observation = result.observations[0]
+    now = result.health.last_success_at
+    assert now is not None
+    monkeypatch.setattr(component, "_now", lambda: now + timedelta(seconds=opening_clock[0]))
+    if source_expired:
+        result = replace(result, observations=(replace(observation, valid_to=now + timedelta(seconds=30)),))
+    else:
+        result = replace(result, health=replace(result.health, stale_after_seconds=30))
+    component.handle_external_api_result(result=result)
+    callback, _, kwargs = hass.timers[-1]
+    opening_clock[0] = 60.0
+    callback(**kwargs)
+    assert not any(event["state"] == FaultState.SET for event in events)
+
+
+def test_valid_imgw_degree_three_bypasses_door_qualification() -> None:
+    component, _, _, events = _component("door")
+    wind = replace(
+        _observation("ImgwWarningsApiComponent", HazardType.WIND, {}, confirmed=True),
+        provider_level="3",
+    )
+    component.handle_external_api_result(result=ApiResult(wind.provider, (wind,), _health(wind.provider)))
+    assert any(event["state"] == FaultState.SET for event in events)
+
+
+def test_clear_timer_requires_current_positive_evidence() -> None:
+    component, hass, _, events = _component()
+    component.policy["clear_delay_seconds"] = 120
+    component.handle_external_api_result(result=_wind_result())
+    symptom_id = "ExternalWeatherExposureWindOfficeWindow"
+    assert component.symptom_states[symptom_id] == FaultState.SET
+    hass.change_contact("off")
+    callback, _, kwargs = hass.timers[-1]
+    hass.states["binary_sensor.office_window"] = "unavailable"
+    callback(**kwargs)
+    assert component.symptom_states[symptom_id] == FaultState.SET
+    hass.change_contact("off")
+    callback, _, kwargs = hass.timers[-1]
+    callback(**kwargs)
+    assert component.symptom_states[symptom_id] == FaultState.CLEARED
 
 
 def test_active_wind_and_open_window_sets_exposure_and_never_calls_actuator() -> None:

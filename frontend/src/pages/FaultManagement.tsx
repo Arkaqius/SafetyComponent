@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import EntityDetailsDialog from '../components/EntityDetailsDialog';
 import FaultSection from '../components/FaultSection';
 import Icon from '../components/Icon';
+import HelpTooltip from '../components/HelpTooltip';
 import StatusBadge from '../components/StatusBadge';
 import SummaryCard from '../components/SummaryCard';
 import {
@@ -14,7 +15,7 @@ import {
 import { NOTIFICATION_DELIVERY_HEALTH_ID, readAcknowledgedNotificationTags } from '../domain/notificationHistory';
 import type { FaultView, StatusTone } from '../domain/safety';
 import type { EntityMap } from '../domain/safety';
-import { coverageCauseLabel, coverageSubjectName, operatorCodeLabel } from '../domain/operatorLabels';
+import { coverageBinding, coverageCauseLabel, coverageSubjectName, operatorCodeLabel } from '../domain/operatorLabels';
 import { useSafetyEntities } from '../hooks/useSafetyEntities';
 
 export default function FaultManagement() {
@@ -34,11 +35,10 @@ export default function FaultManagement() {
     <div className='page-stack fault-management-page'>
       <section className='panel fault-management-intro'>
         <div>
-          <span className='section-kicker'>Usterki i diagnostyka</span>
-          <h2>Usterki, diagnostyka i pokrycie</h2>
+          <h2>Usterki i pokrycie</h2>
           <p>
-            Warunki zagrożenia kategorii H są prezentowane oddzielnie od usterek diagnostycznych kategorii D. Utrata kanału powiadomień nie
-            oznacza automatycznie utraty wykrywania zagrożenia.
+            Zagrożenie dotyczy warunków w domu lub wokół niego. Usterka diagnostyczna dotyczy sprawności czujnika, usługi albo kanału
+            powiadomień. Pokrycie pokazuje, które funkcje system nadal może ocenić.
           </p>
         </div>
         <StatusBadge tone={coverage.tone}>{coverage.label}</StatusBadge>
@@ -111,13 +111,26 @@ function CoverageDetails({
     coverage.exclusions.length > 0 ||
     coverage.bindingErrors.length > 0 ||
     coverage.unresolvedSymptoms.length > 0;
+  const bySource = new Map<string, CoverageRestriction[]>();
+  for (const restriction of coverage.restrictions) {
+    const key = coverageBinding(restriction.cause, entities) ?? restriction.cause;
+    const group = bySource.get(key);
+    if (group) group.push(restriction);
+    else bySource.set(key, [restriction]);
+  }
 
   return (
     <section className='panel coverage-details-panel'>
       <div className='panel-header'>
         <div>
           <span className='section-kicker'>Pokrycie monitorowania</span>
-          <h2>Wpływ diagnostyki na funkcje bezpieczeństwa</h2>
+          <h2 className='label-with-help'>
+            Co ogranicza monitorowanie
+            <HelpTooltip
+              label='Przyczyny ograniczeń'
+              text='Jedno źródło może wpływać na kilka kontroli. Rozwiń jego wpis, aby zobaczyć wszystkie opublikowane powiązania i ich stan.'
+            />
+          </h2>
         </div>
         <button className='text-button' onClick={() => onSelectEntity(COVERAGE_ENTITY_ID)} type='button'>
           Surowa encja <Icon name='history' size={15} />
@@ -130,13 +143,28 @@ function CoverageDetails({
 
       {coverage.restrictions.length > 0 && (
         <div className='coverage-restriction-list'>
-          {coverage.restrictions.map((restriction, index) => (
-            <RestrictionRow
-              faults={faults}
-              entities={entities}
-              key={`${restriction.cause}-${restriction.symptom}-${restriction.effect}-${index}`}
-              restriction={restriction}
-            />
+          {[...bySource].map(([source, restrictions]) => (
+            <details className='coverage-restriction-row coverage-source-group' key={source}>
+              <summary>
+                <strong>{coverageCauseLabel(restrictions[0].cause, entities)}</strong>
+                <span>{restrictions.length === 1 ? '1 powiązanie' : `Powiązania (${restrictions.length})`}</span>
+                {[...new Set(restrictions.map(item => item.causeState))].map(state => (
+                  <StatusBadge key={state} tone={state === 'active' ? 'danger' : state === 'invalid_binding' ? 'critical' : 'warning'}>
+                    {coverageCauseStateLabel(state)}
+                  </StatusBadge>
+                ))}
+              </summary>
+              <div className='coverage-source-effects'>
+                {restrictions.map((restriction, index) => (
+                  <RestrictionRow
+                    key={`${restriction.symptom}-${restriction.effect}-${index}`}
+                    faults={faults}
+                    entities={entities}
+                    restriction={restriction}
+                  />
+                ))}
+              </div>
+            </details>
           ))}
           {coverage.restrictionsOmitted > 0 && <small>Pominięto dalszych ograniczeń: {coverage.restrictionsOmitted}.</small>}
         </div>
@@ -192,13 +220,11 @@ function RestrictionRow({ restriction, faults, entities }: { restriction: Covera
   const tone: StatusTone =
     restriction.causeState === 'active' ? 'danger' : restriction.causeState === 'invalid_binding' ? 'critical' : 'warning';
   return (
-    <article className='coverage-restriction-row'>
+    <article className='coverage-effect'>
       <div className='coverage-restriction-heading'>
         <div>
-          <strong title={restriction.cause}>{coverageCauseLabel(restriction.cause, entities)}</strong>
-          <small>
-            wpływa na {fault?.name ?? 'funkcję bezpieczeństwa'} · {coverageEffectLabel(restriction.effect)}
-          </small>
+          <strong>{fault?.name ?? operatorCodeLabel(restriction.capability)}</strong>
+          <small>{coverageEffectLabel(restriction.effect)}</small>
         </div>
         <StatusBadge tone={tone}>{coverageCauseStateLabel(restriction.causeState)}</StatusBadge>
       </div>

@@ -27,7 +27,6 @@ export function useSafetyEntities() {
   const connectionStatus = useHass(store => store.connectionStatus);
   const ready = useHass(store => store.ready);
   const cannotConnect = connectionStatus !== 'connected';
-  const lastUpdated = useMemo(() => latestEntityUpdate(rawEntities), [rawEntities]);
   const entities = rawEntities as unknown as EntityMap;
 
   return useMemo(() => {
@@ -84,18 +83,7 @@ export function useSafetyEntities() {
         cannotConnect,
         status: connectionStatus,
         ready,
-        lastUpdated,
       },
     };
-  }, [cannotConnect, clock, connectionStatus, entities, lastUpdated, ready]);
-}
-
-function latestEntityUpdate(entities: ReturnType<typeof useHass.getState>['entities']): Date | undefined {
-  let latestTimestamp = 0;
-  for (const [entityId, entity] of Object.entries(entities)) {
-    if (entityId !== HEALTH_ENTITY_ID && entityId !== SYSTEM_STATE_ENTITY_ID) continue;
-    const timestamp = Date.parse(entity.last_updated);
-    if (Number.isFinite(timestamp)) latestTimestamp = Math.max(latestTimestamp, timestamp);
-  }
-  return latestTimestamp > 0 ? new Date(latestTimestamp) : undefined;
+  }, [cannotConnect, clock, connectionStatus, entities, ready]);
 }

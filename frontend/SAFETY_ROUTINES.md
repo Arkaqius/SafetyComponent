@@ -1,8 +1,10 @@
 # Scenariusze bezpieczeństwa
 
 Scenariusz zbiera raport z wybranych kontroli przed snem lub po wyjściu z domu.
-Otwórz **Scenariusze bezpieczeństwa**, wybierz **Sprawdź teraz**, a następnie
-**Pokaż raport** przy wykonaniu. Przycisk respektuje skonfigurowane opóźnienie.
+Otwórz **Scenariusze bezpieczeństwa** i wybierz **Sprawdź teraz**. Karta pokaże
+uruchamianie i przebieg kontroli. W **Ostatnich wykonaniach** wybierz **Pokaż
+raport**, aby sprawdzić odczyty i wyjaśnienia. Kontrola uwzględnia
+skonfigurowane opóźnienie.
 Scenariusz odczytuje dane: nie zmienia nastaw pieca ani ogrzewania, nie zamyka
 bram i nie wyłącza urządzeń. Sam nie wysyła powiadomień na telefon.
 

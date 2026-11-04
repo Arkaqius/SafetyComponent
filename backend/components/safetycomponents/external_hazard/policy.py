@@ -19,6 +19,7 @@ class HazardAssessment:
     threshold: str
     evidence_kind: str
     inhibits_opening_advice: bool = False
+    immediate_exposure: bool = False
 
 
 def evaluate_observation(
@@ -39,6 +40,7 @@ def evaluate_observation(
             f"IMGW degree {observation.provider_level or 'unspecified'}",
             "official_warning",
             observation.hazard_type in {HazardType.WIND, HazardType.STORM},
+            immediate_exposure=observation.provider_level == "3",
         )
     if observation.hazard_type == HazardType.FROST:
         current = _number(values, "current_temperature")

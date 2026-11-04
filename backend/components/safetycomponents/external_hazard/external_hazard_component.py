@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timezone
+from math import ceil
+from time import monotonic
 from typing import Any, Mapping
 
 import appdaemon.plugins.hass.hassapi as hass  # type: ignore
@@ -12,7 +14,7 @@ from components.core.common_entities import CommonEntities
 from components.core.event_bus import EventBus
 from components.core.mqtt_entity_manager import MqttEntityManager
 from components.core.types_common import FaultState, RecoveryAction, RecoveryResult, SMState, Symptom
-from components.external_apis.core.models import ApiResult, ExternalObservation, HazardType, ProviderHealthState
+from components.external_apis.core.models import ApiResult, ExternalObservation, HazardType, ProviderHealth, ProviderHealthState
 from components.recovery_manager.policy import RecoveryPolicyDecision
 from components.recovery_manager.manual_actions import manual_action
 from components.safetycomponents.core.safety_component import SafetyComponent, register_safety_component
@@ -27,6 +29,8 @@ SM_PROVIDER_UNAVAILABLE = "sm_ext_provider_unavailable"
 OPEN_STATES = frozenset({"on", "open", "opening", "true", "1"})
 CLOSED_STATES = frozenset({"off", "closed", "false", "0"})
 MAX_DIAGNOSTIC_OBSERVATIONS = 64
+DOOR_OPEN_QUALIFICATION_SECONDS = 60
+DEBOUNCED_OPENING_KINDS = frozenset({"door", "garage_door", "gate"})
 
 _HAZARD_PROVIDER_GROUPS: dict[HazardType, tuple[str, ...]] = {
     HazardType.FROST: ("OpenMeteoWeatherApiComponent", "ImgwWarningsApiComponent"),
@@ -157,11 +161,15 @@ class ExternalHazardComponent(SafetyComponent):
         self.policy: dict[str, Any] = {}
         self.openings: dict[str, dict[str, Any]] = {}
         self._observations: dict[str, dict[str, ExternalObservation]] = {}
-        self._health: dict[str, Any] = {}
+        self._health: dict[str, ProviderHealth] = {}
         self._provider_seen: set[str] = set()
         self._provider_failure_since: dict[str, datetime] = {}
         self._listened_openings: set[str] = set()
-        self._clear_handles: dict[str, Any] = {}
+        self._opening_listeners: dict[str, Any] = {}
+        self._opened_since: dict[str, float] = {}
+        self._opening_timers: dict[str, tuple[object, Any]] = {}
+        self._clear_handles: dict[str, tuple[object, Any]] = {}
+        self._stopped = False
         self._last_context: dict[str, dict[str, str]] = {}
         self._provider_entity_ids: dict[str, str] = {}
         self.enabled_providers: set[str] = set(_EXPECTED_PROVIDERS)
@@ -340,7 +348,14 @@ class ExternalHazardComponent(SafetyComponent):
         opening_name = parameters.get("opening_name")
         monitored_entities: list[str] = []
         if isinstance(opening_name, str) and opening_name not in self._listened_openings:
-            monitored_entities = [str(self.openings[opening_name]["entity_id"])]
+            opening = self.openings[opening_name]
+            entity_id = str(opening["entity_id"])
+            if opening["kind"] in DEBOUNCED_OPENING_KINDS:
+                self._opening_listeners[opening_name] = self.hass_app.listen_state(
+                    self._opening_contact_changed, entity_id, opening_name=opening_name
+                )
+            else:
+                monitored_entities = [entity_id]
             self._listened_openings.add(opening_name)
         mechanism = SafetyMechanism(
             hass_app=self.hass_app,
@@ -399,7 +414,7 @@ class ExternalHazardComponent(SafetyComponent):
         """Accept one complete provider snapshot and re-evaluate policy."""
 
         provider = result.provider
-        if provider not in self.enabled_providers:
+        if self._stopped or provider not in self.enabled_providers:
             return
         self._provider_seen.add(provider)
         self._health[provider] = result.health
@@ -417,7 +432,24 @@ class ExternalHazardComponent(SafetyComponent):
     def _opening_changed(self, _: SafetyMechanism) -> None:
         self._evaluate_all()
 
+    def _opening_contact_changed(
+        self, _entity: str, _attribute: str, old: Any, new: Any, **kwargs: Any
+    ) -> None:
+        opening_name = str(kwargs["opening_name"])
+        # Consume the edge even if a close/reopen burst has already changed readback.
+        old_state = self._normalize_opening(old)
+        new_state = self._normalize_opening(new)
+        if old_state != "open" or new_state != "open":
+            self._reset_opening_qualification(opening_name)
+        if old_state != new_state and new_state != "closed":
+            for mechanism in self.safety_mechanisms.values():
+                if mechanism.sm_args.get("opening_name") == opening_name:
+                    self._cancel_clear(mechanism.name)
+        self._evaluate_all()
+
     def _evaluate_all(self) -> None:
+        if self._stopped:
+            return
         for mechanism in self.safety_mechanisms.values():
             if not mechanism.isEnabled:
                 continue
@@ -443,32 +475,93 @@ class ExternalHazardComponent(SafetyComponent):
         if entities_changes is not None and opening_entity not in entities_changes:
             return False
         opening_state = self._opening_state(opening_name, entities_changes)
-        if opening_state == "closed":
-            status, context = "clear", self._opening_context(opening_name, hazard)
-        elif opening_state == "unavailable":
-            status, context = "unknown", self._opening_context(opening_name, hazard)
-        else:
-            status, context, _ = self._hazard_evidence(hazard)
-            context = {**self._opening_context(opening_name, hazard), **context}
+        status, context, assessment = self._exposure_evidence(opening_name, hazard, opening_state)
         if entities_changes is None and mechanism.isEnabled:
+            qualified = self._opening_qualified(opening_name, opening_state)
+            if (
+                status == "active"
+                and not qualified
+                and self.symptom_states.get(mechanism.name) != FaultState.SET
+                and not (assessment and assessment.immediate_exposure)
+            ):
+                return False
             self._apply_state(mechanism.name, status, context)
         return status == "active"
+
+    def _exposure_evidence(
+        self, opening_name: str, hazard: HazardType, opening_state: str
+    ) -> tuple[str, dict[str, str], HazardAssessment | None]:
+        context = self._opening_context(opening_name, hazard)
+        if opening_state == "closed":
+            return "clear", context, None
+        if opening_state == "unavailable":
+            return "unknown", context, None
+        status, hazard_context, assessment = self._hazard_evidence(hazard)
+        return status, {**context, **hazard_context}, assessment
+
+    def _opening_qualified(self, opening_name: str, opening_state: str) -> bool:
+        if self.openings[opening_name]["kind"] not in DEBOUNCED_OPENING_KINDS:
+            return True
+        if opening_state != "open":
+            self._reset_opening_qualification(opening_name)
+            return False
+        now = monotonic()
+        started = self._opened_since.setdefault(opening_name, now)
+        remaining = DOOR_OPEN_QUALIFICATION_SECONDS - (now - started)
+        if remaining <= 0:
+            return True
+        if opening_name not in self._opening_timers:
+            token = object()
+            handle = self.hass_app.run_in(
+                self._finish_opening_qualification,
+                ceil(remaining),
+                opening_name=opening_name,
+                token=token,
+            )
+            self._opening_timers[opening_name] = (token, handle)
+        return False
+
+    def _finish_opening_qualification(self, **kwargs: Any) -> None:
+        opening_name = str(kwargs["opening_name"])
+        timer = self._opening_timers.get(opening_name)
+        if timer is None or timer[0] is not kwargs["token"]:
+            return
+        self._opening_timers.pop(opening_name)
+        self._evaluate_all()
+
+    def _reset_opening_qualification(self, opening_name: str) -> None:
+        self._opened_since.pop(opening_name, None)
+        timer = self._opening_timers.pop(opening_name, None)
+        if timer is not None:
+            self._cancel_timer(timer[1])
 
     def _hazard_evidence(
         self, hazard: HazardType
     ) -> tuple[str, dict[str, str], HazardAssessment | None]:
         now = self._now()
-        applicable = [
+        applicable = (
             observation
             for provider_observations in self._observations.values()
             for observation in provider_observations.values()
-            if observation.hazard_type == hazard and observation.valid_to >= now
-        ]
+            if observation.hazard_type == hazard and observation.valid_from <= now
+        )
         active: list[tuple[ExternalObservation, HazardAssessment]] = []
+        unusable = False
         for observation in applicable:
+            official_warning = (
+                observation.authority_confirmed
+                and observation.provider == "ImgwWarningsApiComponent"
+            )
+            if observation.valid_to < now:
+                unusable |= not official_warning
+                continue
+            if not official_warning and not self._provider_snapshot_is_fresh(observation.provider, now):
+                unusable = True
+                continue
             try:
                 assessment = evaluate_observation(observation, self.policy, now)
             except ValueError as exc:
+                unusable = True
                 self.hass_app.log(
                     f"External hazard policy rejected {observation.provider}/{observation.observation_id}: {exc}",
                     level="WARNING",
@@ -479,7 +572,10 @@ class ExternalHazardComponent(SafetyComponent):
         if active:
             observation, assessment = max(
                 active,
-                key=lambda item: {"watch": 1, "warning": 2, "severe": 3}.get(item[1].severity, 0),
+                key=lambda item: (
+                    item[1].immediate_exposure,
+                    {"watch": 1, "warning": 2, "severe": 3}.get(item[1].severity, 0),
+                ),
             )
             context = self._evidence_context(observation, assessment)
             if assessment.inhibits_opening_advice:
@@ -496,13 +592,21 @@ class ExternalHazardComponent(SafetyComponent):
             for provider in _HAZARD_PROVIDER_GROUPS[hazard]
             if provider in self.enabled_providers
         )
-        explicit_clear = all(
+        explicit_clear = not unusable and all(
             provider in self._provider_seen
             and self._health.get(provider) is not None
             and self._health[provider].state == ProviderHealthState.OK
+            and self._provider_snapshot_is_fresh(provider, now)
             for provider in providers
         )
         return ("clear" if explicit_clear else "unknown"), {}, None
+
+    def _provider_snapshot_is_fresh(self, provider: str, now: datetime) -> bool:
+        health = self._health.get(provider)
+        if health is None or health.last_success_at is None:
+            return False
+        age = (now - health.last_success_at).total_seconds()
+        return age >= 0 and (health.stale_after_seconds <= 0 or age <= health.stale_after_seconds)
 
     def _capability_health(self, capability: str) -> tuple[str, dict[str, str]]:
         providers = tuple(
@@ -542,6 +646,7 @@ class ExternalHazardComponent(SafetyComponent):
         self, symptom_id: str, status: str, context: dict[str, str]
     ) -> None:
         if status == "unknown":
+            self._cancel_clear(symptom_id)
             return
         current = self.symptom_states.get(symptom_id, FaultState.NOT_TESTED)
         if status == "active":
@@ -560,30 +665,38 @@ class ExternalHazardComponent(SafetyComponent):
             return
         if current == FaultState.SET and int(self.policy.get("clear_delay_seconds", 0)) > 0:
             if symptom_id not in self._clear_handles:
-                self._clear_handles[symptom_id] = self.hass_app.run_in(
+                token = object()
+                handle = self.hass_app.run_in(
                     self._finish_clear,
                     int(self.policy["clear_delay_seconds"]),
                     symptom_id=symptom_id,
+                    token=token,
                 )
+                self._clear_handles[symptom_id] = (token, handle)
             return
         self._publish_clear(symptom_id, context)
 
     def _finish_clear(self, **kwargs: Any) -> None:
         symptom_id = str(kwargs["symptom_id"])
-        self._clear_handles.pop(symptom_id, None)
+        timer = self._clear_handles.get(symptom_id)
+        if timer is None or timer[0] is not kwargs["token"]:
+            return
+        self._clear_handles.pop(symptom_id)
         mechanism = self.safety_mechanisms.get(symptom_id)
-        if mechanism is None or not mechanism.isEnabled:
+        if self._stopped or mechanism is None or not mechanism.isEnabled:
             return
-        if self._would_be_active(mechanism):
-            return
-        self._publish_clear(symptom_id, self._last_context.get(symptom_id, {}))
-        self._publish_aggregate()
-
-    def _would_be_active(self, mechanism: SafetyMechanism) -> bool:
-        sm_name = self._sm_name_for(mechanism.name)
-        if sm_name in {SM_WEATHER, SM_AIR_QUALITY}:
-            return self._evaluate_exposure(mechanism, {})
-        return self._capability_health(str(mechanism.sm_args["capability"]))[0] == "active"
+        opening_name = mechanism.sm_args.get("opening_name")
+        if isinstance(opening_name, str):
+            status, context, _ = self._exposure_evidence(
+                opening_name,
+                HazardType(str(mechanism.sm_args["hazard"])),
+                self._opening_state(opening_name, None),
+            )
+        else:
+            status, context = self._capability_health(str(mechanism.sm_args["capability"]))
+        if status == "clear":
+            self._publish_clear(symptom_id, context)
+            self._publish_aggregate()
 
     def _publish_clear(self, symptom_id: str, context: dict[str, str]) -> None:
         if self.symptom_states.get(symptom_id) == FaultState.CLEARED:
@@ -599,19 +712,25 @@ class ExternalHazardComponent(SafetyComponent):
         )
 
     def _cancel_clear(self, symptom_id: str) -> None:
-        handle = self._clear_handles.pop(symptom_id, None)
-        if handle is None:
-            return
+        timer = self._clear_handles.pop(symptom_id, None)
+        if timer is not None:
+            self._cancel_timer(timer[1])
+
+    def _cancel_timer(self, handle: Any) -> None:
         try:
             self.hass_app.cancel_timer(handle)
         except Exception as exc:
-            self.hass_app.log(f"Unable to cancel external hazard clear timer: {exc}", level="WARNING")
+            self.hass_app.log(f"Unable to cancel external hazard timer: {exc}", level="WARNING")
 
     def _opening_state(
         self, opening_name: str, entities_changes: Mapping[str, str] | None
     ) -> str:
         entity_id = str(self.openings[opening_name]["entity_id"])
         raw = entities_changes.get(entity_id) if entities_changes and entity_id in entities_changes else self.hass_app.get_state(entity_id)
+        return self._normalize_opening(raw)
+
+    @staticmethod
+    def _normalize_opening(raw: Any) -> str:
         normalized = str(raw or "").strip().lower()
         if normalized in OPEN_STATES:
             return "open"
@@ -797,10 +916,19 @@ class ExternalHazardComponent(SafetyComponent):
         return RecoveryPolicyDecision(False, f"open_external_opening inhibited by {reasons}")
 
     def stop(self) -> None:
-        """Cancel component-owned clear timers during application shutdown."""
+        """Discard pending opening qualification and cancel component timers."""
 
+        self._stopped = True
         for symptom_id in list(self._clear_handles):
             self._cancel_clear(symptom_id)
+        for opening_name in list(self._opened_since):
+            self._reset_opening_qualification(opening_name)
+        for handle in self._opening_listeners.values():
+            try:
+                self.hass_app.cancel_listen_state(handle)
+            except Exception as exc:
+                self.hass_app.log(f"Unable to cancel external opening listener: {exc}", level="WARNING")
+        self._opening_listeners.clear()
 
     def _label(self, key: str) -> str:
         language = getattr(getattr(self.hass_app, "localizer", None), "language", "en")

@@ -22,13 +22,7 @@ const menuItems: Array<{ title: string; path: string; icon: IconName; descriptio
   { title: 'Ogrzewanie', path: '/heating', icon: 'temperature', description: 'Odczyty urządzeń i zakres nadzoru' },
   { title: 'Scenariusze bezpieczeństwa', path: '/safety-routines', icon: 'activity', description: 'Kontrole przed snem i wyjściem' },
   {
-    title: 'Usterki i diagnostyka',
-    path: '/fault-management',
-    icon: 'alert',
-    description: 'Usterki, diagnostyka i pokrycie',
-  },
-  {
-    title: 'Wejścia',
+    title: 'Drzwi i bramy',
     path: '/safety-doors',
     icon: 'door',
     description: 'Czas otwarcia drzwi i bram',
@@ -49,7 +43,7 @@ const menuItems: Array<{ title: string; path: string; icon: IconName; descriptio
     title: 'Zdrowie systemu',
     path: '/functional-safety',
     icon: 'activity',
-    description: 'Monitorowane encje, baterie i diagnostyka',
+    description: 'Usterki, pokrycie, baterie i źródła',
   },
   {
     title: 'Historia',
@@ -215,7 +209,6 @@ export default function Layout() {
         <div className='sidebar-footer'>
           <span>{currentTime.toLocaleDateString('pl-PL', { weekday: 'long', day: 'numeric', month: 'long' })}</span>
           <strong>{currentTime.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}</strong>
-          <small>Dane aktualizują się automatycznie</small>
         </div>
       </aside>
 

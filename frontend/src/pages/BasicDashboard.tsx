@@ -6,7 +6,6 @@ import ModalDialog from '../components/ModalDialog';
 import { basicDashboardItems } from '../domain/basicDashboard';
 import { getCoverageView } from '../domain/coverage';
 import RecoveryActionCard from '../components/RecoveryActionCard';
-import { formatRelativeTime } from '../domain/safety';
 import { useSafetyEntities } from '../hooks/useSafetyEntities';
 
 export default function BasicDashboard({ onExpand }: { onExpand: () => void }) {
@@ -84,9 +83,7 @@ export default function BasicDashboard({ onExpand }: { onExpand: () => void }) {
       </section>
 
       <footer className='basic-dashboard-footer'>
-        <span>
-          {connected ? `Aktualizacja ${formatRelativeTime(connection.lastUpdated?.toISOString())}` : 'Oczekiwanie na bieżące dane'}
-        </span>
+        <span>{connected ? 'Połączono z Home Assistant' : 'Oczekiwanie na bieżące dane'}</span>
         <button className='text-button' onClick={onExpand} type='button'>
           {activeFaultCount > 1 ? `Wszystkie zdarzenia (${activeFaultCount})` : 'Szczegóły i monitoring'}
         </button>

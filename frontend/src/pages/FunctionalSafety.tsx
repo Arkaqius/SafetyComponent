@@ -21,12 +21,15 @@ import { fetchFunctionalSafetyDiagnostics, type FunctionalSafetyDiagnosticsPaylo
 import type { StatusTone } from '../domain/safety';
 import { useSafetyEntities } from '../hooks/useSafetyEntities';
 import { componentLabel } from '../domain/operatorLabels';
+import HelpTooltip from '../components/HelpTooltip';
+import FaultManagement from './FaultManagement';
 
 const healthTabs = [
   ['entities', 'Monitorowane encje'],
   ['batteries', 'Baterie'],
   ['platform', 'Platforma'],
   ['tests', 'Testy i powiadomienia'],
+  ['faults', 'Usterki i pokrycie'],
 ] as const;
 
 const progressLabels = {
@@ -207,7 +210,13 @@ export default function FunctionalSafety() {
   return (
     <div className='page-stack functional-safety-page'>
       <header className='system-health-intro'>
-        <p>Brak alarmów nie potwierdza pełnej sprawności. Wybierz zakres diagnostyki.</p>
+        <p className='label-with-help'>
+          Sprawdź dostępność czujników, stan baterii i usług oraz wpływ usterek na monitorowanie.
+          <HelpTooltip
+            label='Zakres zdrowia systemu'
+            text='Monitorowane encje i Baterie pokazują poszczególne źródła. Platforma pokazuje pracę komponentów, a Usterki i pokrycie pokazują zgłoszone zdarzenia i ich wpływ na funkcje.'
+          />
+        </p>
       </header>
 
       {periodicMessage && (
@@ -260,6 +269,15 @@ export default function FunctionalSafety() {
           </button>
         ))}
       </div>
+      <section
+        role='tabpanel'
+        id='system-health-panel-faults'
+        aria-labelledby='system-health-tab-faults'
+        className='page-stack system-health-panel'
+        hidden={activeTab !== 'faults'}
+      >
+        <FaultManagement />
+      </section>
       <section
         role='tabpanel'
         id='system-health-panel-entities'

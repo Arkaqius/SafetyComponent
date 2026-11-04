@@ -930,9 +930,17 @@ distinct; one failed adapter shall not disable independently supplied evidence.
 **Weather and opening correlation**
 
 - **SYS-SR-EXT-010:** When a configured frost, wind, rain, or storm policy is
-  active and a relevant opening is open, C-EXT shall raise or update
+  active and a relevant opening is qualified, C-EXT shall raise or update
   `ExternalWeatherExposure{HazardId}{OpeningId}` through
-  `sm_ext_weather_exposure` within `T_ext_decision`.
+  `sm_ext_weather_exposure` within `T_ext_decision`. A new exposure at an
+  external door, garage door, or gate shall require a known-open state for
+  `T_ext_door_open`, timed independently for each opening. A closed or unknown
+  contact shall reset this interval. An open window shall qualify immediately.
+  A valid, locally applicable IMGW degree-3 warning shall also qualify an open
+  aperture configured for the warning's hazard.
+  C-EXT shall re-evaluate the contact and applicable evidence when the
+  interval elapses. An existing exposure shall follow the clear policy in
+  SYS-SR-EXT-013 and SYS-SR-EXT-043.
 - **SYS-SR-EXT-011:** Official IMGW warnings shall be applicable only when at
   least one configured TERYT code is present in the warning region set and the
   current time is within its validity interval.
@@ -955,7 +963,7 @@ distinct; one failed adapter shall not disable independently supplied evidence.
   household exposure policy. Unavailable, malformed, or stale provider data
   shall not be interpreted as positive clear evidence.
 - **SYS-SR-EXT-022:** When outdoor AQ policy is active and a relevant opening
-  is open, C-EXT shall raise or update
+  is qualified under SYS-SR-EXT-010, C-EXT shall raise or update
   `OutdoorAirQualityExposure{OpeningId}` through
   `sm_ext_outdoor_air_quality_exposure` and identify the controlling
   AQI/pollutant input.
@@ -1702,7 +1710,8 @@ _Non‑functional constraints that apply across all components. IDs use `NFR‑x
 | **SMS_enabled**          | Enable SMS/cellular fallback                 | false            |
 | **SMS_max_retries**      | Max SMS send retries                         | 3                |
 | **SMS_cooldown_s**       | Cooldown between SMS retries                 | 60 s             |
-| **T_ext_decision**       | External observation/contact decision budget | ≤ 1 s            |
+| **T_ext_door_open**      | Continuous known-open duration before a new exposure through an external door, garage door, or gate | 60 s |
+| **T_ext_decision**       | Decision budget after the applicable evidence and opening qualification are available | ≤ 1 s |
 | **T_ext_clear**          | Stable positive evidence before exposure clear | 2–10 min       |
 | **T_api_block_max**      | Maximum blocking time of one provider call   | ≤ 10 s           |
 | **T_poll_weather**       | Open-Meteo weather poll interval             | 10 min           |

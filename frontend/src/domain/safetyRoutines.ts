@@ -134,7 +134,8 @@ export function requestRoutine(
   routineId?: string,
   runId?: string
 ): Promise<RoutineResponse> {
-  const requestId = crypto.randomUUID();
+  const requestId =
+    typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `routine-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   return new Promise((resolve, reject) => {
     let finished = false;
     let unsubscribe: (() => Promise<void>) | undefined;
@@ -143,7 +144,11 @@ export function requestRoutine(
       finished = true;
       window.clearTimeout(timer);
       signal.removeEventListener('abort', abort);
-      if (unsubscribe) void Promise.resolve(unsubscribe()).catch(() => {});
+      // A transport cleanup failure must never swallow an already received report.
+      if (unsubscribe)
+        void Promise.resolve()
+          .then(unsubscribe)
+          .catch(() => {});
       if (response) resolve(response);
       else reject(new Error(error));
     };
@@ -154,11 +159,27 @@ export function requestRoutine(
       abort();
       return;
     }
-    void connection
-      .subscribeEvents<HassEvent>(event => {
-        const response = parseRoutineResponse(event.data, requestId);
-        if (response) finish(response);
-      }, 'safety_routine_response')
+    void Promise.resolve()
+      .then(() =>
+        connection.subscribeEvents<HassEvent>(event => {
+          if (record(event.data)?.request_id !== requestId) return;
+          const response = parseRoutineResponse(event.data, requestId);
+          if (!response) {
+            finish(undefined, 'invalid_response');
+            return;
+          }
+          if (
+            !response.error &&
+            ((action === 'list' && !response.routines) ||
+              (action !== 'list' &&
+                (!response.run || response.run.routine_id !== routineId || (runId !== undefined && response.run.run_id !== runId))))
+          ) {
+            finish(undefined, 'invalid_response');
+            return;
+          }
+          finish(response);
+        }, 'safety_routine_response')
+      )
       .then(async cancel => {
         if (finished) {
           await cancel();

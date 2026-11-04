@@ -322,10 +322,23 @@ other direct sensor path.
 
 | Hazard | Hazard evidence | Exposure condition | System response |
 | --- | --- | --- | --- |
-| Frost | Current or forecast external temperature crosses configured policy | Relevant opening is open | Warn with opening and temperature/forecast context |
-| Wind | Gust threshold or applicable IMGW warning | Relevant opening is open | Warn with opening, gust or warning degree |
-| Rain/storm | Precipitation policy or applicable IMGW warning | Relevant opening is open | Warn with opening and validity/source |
-| Outdoor pollution | Current Open-Meteo European AQI crosses configured policy | Relevant opening is open | Warn and inhibit advice to open external openings |
+| Frost | Current or forecast external temperature crosses configured policy | Relevant opening is qualified | Warn with opening and temperature/forecast context |
+| Wind | Gust threshold or applicable IMGW warning | Relevant opening is qualified | Warn with opening, gust or warning degree |
+| Rain/storm | Precipitation policy or applicable IMGW warning | Relevant opening is qualified | Warn with opening and validity/source |
+| Outdoor pollution | Current Open-Meteo European AQI crosses configured policy | Relevant opening is qualified | Warn and inhibit advice to open external openings |
+
+**Opening qualification**
+
+A new exposure through an external door, garage door, or gate shall qualify
+after 60 seconds of continuously known-open state. C-EXT shall measure the
+interval per opening with a monotonic clock, starting at the first known-open
+observation. Closing the contact or losing its state shall reset qualification.
+The deadline shall re-read the contact and re-evaluate the applicable hazard
+evidence without waiting for the next provider poll. An open window shall
+qualify immediately. A valid, locally applicable IMGW degree-3 warning shall
+also qualify an open aperture configured for the warning's hazard. Provider
+diagnostics and advice inhibition shall operate independently of the opening
+delay. Existing exposures shall follow the clearing policy.
 
 ### 9.1 Multiple providers
 
@@ -610,7 +623,15 @@ Each API Component requires fixtures for:
 
 ### 15.2 Safety-policy tests
 
-- Hazard active + opening open -> symptom set.
+- Applicable hazard active + qualified open aperture -> symptom set.
+- For hazards subject to the opening delay, a brief door or gate opening
+  produces no new exposure. A continuous 60-second opening qualifies when the
+  contact and hazard evidence are still valid at the deadline.
+- A closed or unknown contact restarts qualification. An obsolete timer cannot
+  complete a later opening interval, and expired model evidence cannot start a
+  new exposure at the deadline.
+- Open windows qualify immediately. A valid, locally applicable IMGW degree-3
+  warning also qualifies an open aperture configured for the warning's hazard.
 - Hazard active + opening closed -> no exposure symptom.
 - One of several openings closes -> fault remains with reduced context.
 - Weather forecast is labeled forecast.

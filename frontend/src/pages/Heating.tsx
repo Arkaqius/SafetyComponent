@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import EntityDetailsDialog from '../components/EntityDetailsDialog';
+import HelpTooltip from '../components/HelpTooltip';
 import StatusBadge from '../components/StatusBadge';
 import { getHeatingSystems } from '../domain/heating';
 import { type StatusTone } from '../domain/safety';
@@ -27,8 +28,14 @@ export default function Heating() {
       <section className='page-introduction'>
         <div>
           <span className='section-kicker'>Nadzór ogrzewania</span>
-          <h2>Ogrzewanie</h2>
-          <p>Odczyty urządzeń, faza pracy i zakres kontroli. Dostępność danych nie potwierdza, że ciepło dociera do pomieszczeń.</p>
+          <h2 className='label-with-help'>
+            Ogrzewanie
+            <HelpTooltip
+              label='Zakres nadzoru ogrzewania'
+              text='Lista reguł pokazuje, które kontrole są włączone i które mają dane do oceny. Ocena dostępności wejść jest odrębna od kontroli pracy ogrzewania.'
+            />
+          </h2>
+          <p>Nadzór ogrzewania jest w rozbudowie. Tutaj sprawdzisz odczyty, fazę pracy i wyniki włączonych kontroli.</p>
         </div>
       </section>
       {systems.length === 0 && (

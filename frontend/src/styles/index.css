@@ -4688,7 +4688,7 @@ dialog.entity-dialog-backdrop::backdrop { background: rgba(0, 0, 0, 0.65); }
 .system-health-panel .panel-header p { color: var(--text-soft); margin: 6px 0 0; line-height: 1.5; }
 .system-health-provenance { color: var(--text-muted); font-size: 0.85rem; line-height: 1.5; }
 .system-health-provenance p { margin-bottom: 0; }
-.system-health-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; padding: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
+.system-health-tabs { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; padding: 6px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
 .system-health-tabs button { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 54px; padding: 12px 16px; background: transparent; border-radius: 8px; color: var(--text-soft); text-align: left; cursor: pointer; }
 .system-health-tabs button[aria-selected='true'] { background: var(--accent-soft); color: var(--accent); }
 .system-health-tabs small { font-variant-numeric: tabular-nums; color: var(--text-muted); }
@@ -4718,4 +4718,74 @@ dialog.entity-dialog-backdrop::backdrop { background: rgba(0, 0, 0, 0.65); }
   .battery-table td[data-label]:not(:first-child)::before { content: attr(data-label); display: block; color: var(--text-muted); font-size: 0.75rem; margin-bottom: 6px; }
   .battery-table .battery-details-row { display: block; border-top: 0; padding-top: 0; }
   .battery-table .battery-details-row[hidden] { display: none; }
+}
+
+.topbar-with-overview {
+  flex-wrap: wrap;
+  row-gap: 10px;
+}
+
+.topbar-overview {
+  border-top: 1px solid var(--border);
+  display: grid;
+  flex: 1 0 100%;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding-top: 7px;
+}
+
+.topbar-overview a {
+  align-items: center;
+  border-radius: 6px;
+  color: var(--text-soft);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.8rem;
+  gap: 3px 8px;
+  min-width: 0;
+  padding: 3px 6px;
+  text-decoration: none;
+}
+
+.topbar-overview a:hover { background: var(--surface); }
+.topbar-overview a:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.topbar-overview .status-badge { white-space: normal; }
+
+.temperature-reading { flex-wrap: wrap; }
+.temperature-reading .temperature-trend {
+  align-self: center;
+  font-size: clamp(1rem, 2.2vw, 1.2rem);
+  line-height: 1.25;
+  margin-inline-start: auto;
+  padding: 7px 10px;
+}
+
+.coverage-source-group > summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+.coverage-source-group > summary::before { content: '▸'; color: var(--accent); }
+.coverage-source-group[open] > summary::before { content: '▾'; }
+.coverage-source-effects { margin-top: 12px; }
+.coverage-effect { border-top: 1px solid var(--border); padding: 12px 0; overflow-wrap: anywhere; }
+.coverage-effect:last-child { padding-bottom: 0; }
+.recovery-catalog-note { color: var(--text-muted); font-size: 0.9rem; }
+
+.configuration-page :where(section, fieldset, details, legend, .configuration-field, .configuration-object-editor, .configuration-nested-fields) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.configuration-page :where(input, select, textarea, button, .configuration-subpages a) { max-width: 100%; }
+.configuration-page .configuration-actions :is(button, a),
+.configuration-page .configuration-subpages a { white-space: normal; }
+
+@media (max-width: 700px) {
+  .topbar-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .topbar-overview a { font-size: 0.72rem; }
+  .configuration-page :is(.configuration-columns, .configuration-grid) { grid-template-columns: minmax(0, 1fr); }
+  .configuration-page :is(.configuration-object-entry, .configuration-fieldset) { padding: 10px; }
+  .configuration-page :is(.configuration-actions, .configuration-subpages) { min-width: 0; }
+  .configuration-page .configuration-object-add > input { min-width: 0; width: 100%; }
 }
