@@ -7,6 +7,17 @@ Ten plik jest celowo prowadzony po polsku jako instrukcja operatorska frontendu.
 Dokumentacja systemowa i wymagania są po angielsku; komendy, ścieżki,
 identyfikatory i surowe stany pozostają wspólnym kontraktem technicznym.
 
+## Pomoc w aplikacji
+
+W menu **Pomoc** wyszukaj nazwę karty, pojęcie lub ustawienie. Spis prowadzi
+do objaśnień ekranów monitorowania, zakładek zdrowia systemu, historii oraz
+formularzy konfiguracji. Pod spisem znajdziesz poradniki z przykładami.
+
+Przycisk **Pomoc** w nagłówku widoku rozszerzonego otwiera objaśnienia
+bieżącej strony lub zakładki. Zamknij okno przyciskiem lub klawiszem
+Escape, aby wrócić do pracy w tym samym miejscu. Podczas edycji
+konfiguracji możesz w ten sposób zajrzeć do pomocy, zachowując szkic.
+
 ## Scenariusze bezpieczeństwa
 
 [Instrukcja scenariuszy](SAFETY_ROUTINES.md) opisuje konfigurację „Poza domem”

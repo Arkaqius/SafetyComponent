@@ -202,7 +202,7 @@ export default function SafetyRoutines() {
             <Link className='text-link' to='/configuration/safety_routines'>
               Konfiguruj scenariusze
             </Link>
-            <Link className='text-link' to='/help'>
+            <Link className='text-link' to='/help?temat=scenarios'>
               Wyzwalacze i wyniki kontroli
             </Link>
           </div>

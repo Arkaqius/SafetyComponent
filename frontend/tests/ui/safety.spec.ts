@@ -484,6 +484,8 @@ test('help is reachable from navigation and explains confirmations without sendi
   await expect(page.getByRole('heading', { name: 'Pomoc i objaśnienia', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Poziomy pilności', exact: true })).toBeVisible();
   await expect(page.locator('.help-demo-note')).toContainText('lokalnych danych testowych');
+  await page.getByRole('button', { name: 'Przejdź do poradników krok po kroku' }).click();
+  await expect(page.getByRole('heading', { name: 'Od czego zacząć' })).toBeFocused();
   const question = page
     .locator('.help-question')
     .filter({ has: page.locator('summary', { hasText: 'Co robi „Potwierdź powiadomienie”?' }) });
@@ -497,6 +499,46 @@ test('help is reachable from navigation and explains confirmations without sendi
   await page.screenshot({ path: testInfo.outputPath('help.png'), scale: 'css', fullPage: true });
   await page.getByRole('link', { name: 'Sprawdź źródła danych' }).click();
   await expect(page.getByRole('heading', { name: 'Zdrowie systemu', exact: true, level: 1 })).toBeVisible();
+});
+
+test('help finds cards without Polish diacritics and links to the corresponding tab', async ({ page }) => {
+  await openMock(page, '/help');
+  const search = page.getByRole('searchbox', { name: 'Szukaj w pomocy' });
+  await search.fill('biezaca ocena');
+  await expect(page.getByRole('heading', { name: 'Bieżąca ocena domu', exact: true })).toBeVisible();
+  await search.fill('usterki pokrycie');
+  const topic = page.getByRole('link', { name: 'Pozostałe karty w temacie Usterki i pokrycie' }).first();
+  await expect(topic).toBeVisible();
+  await topic.click();
+  await expect(page.getByRole('heading', { name: 'Usterki i pokrycie', exact: true })).toBeFocused();
+  await page.getByRole('link', { name: 'Przejdź do widoku' }).click();
+  await expect(page.getByRole('tab', { name: 'Usterki i pokrycie' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('.system-health-tab-intro')).toContainText('Oddziel potwierdzone zagrożenia');
+  await page.getByRole('tab', { name: /Baterie/ }).click();
+  await expect(page.locator('.system-health-tab-intro')).toContainText('niską baterią');
+  await page.getByRole('button', { name: 'Pomoc dla widoku Baterie' }).click();
+  await expect(page.getByRole('dialog', { name: 'Pomoc · Baterie' })).toBeVisible();
+});
+
+test('contextual help preserves an unsaved configuration draft and restores keyboard focus', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 760 });
+  await openMock(page, '/configuration/safety_routines');
+  const input = page.getByRole('textbox', { name: 'Nowy identyfikator: Scenariusze bezpieczeństwa' });
+  await input.fill('TestPrzedSnem');
+  await page.getByRole('button', { name: '+ Dodaj obiekt', exact: true }).click();
+  const draft = page.locator('.configuration-section:visible summary').filter({ hasText: 'TestPrzedSnem' });
+  await draft.click();
+  await page.getByLabel('Nazwa scenariusza').fill('Szkic kontroli');
+  const help = page.getByRole('button', { name: 'Pomoc dla widoku Scenariusze bezpieczeństwa' });
+  await help.click();
+  await expect(page.getByRole('dialog', { name: 'Pomoc · Scenariusze bezpieczeństwa' })).toBeVisible();
+  expect(await page.locator('.entity-dialog-scroll').evaluate(element => element.scrollWidth - element.clientWidth)).toBe(0);
+  await expect(page.getByRole('button', { name: 'Zamknij pomoc' })).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(help).toBeFocused();
+  await expect(draft.locator('..')).toHaveAttribute('open', '');
+  await expect(page.getByLabel('Nazwa scenariusza')).toHaveValue('Szkic kontroli');
+  expect(await page.evaluate(() => window.__safetyHomeMock.messages.filter(message => message.type === 'fire_event'))).toEqual([]);
 });
 
 test('system health contains monitored entities and batteries without a general HA inventory', async ({ page, isMobile }, testInfo) => {

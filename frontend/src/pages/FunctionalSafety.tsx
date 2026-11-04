@@ -21,6 +21,7 @@ import { fetchFunctionalSafetyDiagnostics, type FunctionalSafetyDiagnosticsPaylo
 import type { StatusTone } from '../domain/safety';
 import { useSafetyEntities } from '../hooks/useSafetyEntities';
 import { componentLabel } from '../domain/operatorLabels';
+import { getHelpTopic } from '../domain/operatorHelp';
 import HelpTooltip from '../components/HelpTooltip';
 import FaultManagement from './FaultManagement';
 
@@ -76,6 +77,7 @@ export default function FunctionalSafety() {
   const { entities, monitoredEntities, entityMonitorSummary, connection: safetyConnection } = useSafetyEntities();
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = healthTabs.find(([key]) => key === searchParams.get('tab'))?.[0] ?? 'entities';
+  const tabIntro = getHelpTopic(`health-${activeTab}`)?.intro;
   const selectTab = (key: string) =>
     setSearchParams(current => {
       const next = new URLSearchParams(current);
@@ -269,6 +271,7 @@ export default function FunctionalSafety() {
           </button>
         ))}
       </div>
+      {tabIntro && <p className='system-health-tab-intro'>{tabIntro}</p>}
       <section
         role='tabpanel'
         id='system-health-panel-faults'

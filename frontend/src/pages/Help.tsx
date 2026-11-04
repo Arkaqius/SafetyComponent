@@ -1,19 +1,126 @@
-import { Link } from 'react-router-dom';
+import { useEffect, useRef, useState, type RefObject } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { HelpEntries } from '../components/ContextHelp';
 import Icon from '../components/Icon';
 import StatusBadge from '../components/StatusBadge';
 import { LEVEL_PRESENTATION } from '../domain/safety';
 import { MOCK_MODE } from '../config';
+import { findHelpEntries, getHelpTopic, helpGroups } from '../domain/operatorHelp';
 
 export default function Help() {
+  const [params] = useSearchParams();
+  const [query, setQuery] = useState('');
+  const topic = getHelpTopic(params.get('temat'));
+  const topicHeading = useRef<HTMLHeadingElement>(null);
+  const guideHeading = useRef<HTMLHeadingElement>(null);
+  const searching = query.trim().length > 0;
+  const results = searching ? findHelpEntries(query) : [];
+
+  useEffect(() => {
+    if (!topic) return;
+    topicHeading.current?.focus();
+    topicHeading.current?.scrollIntoView({ block: 'start' });
+  }, [topic]);
+
+  if (topic) {
+    return (
+      <div className='page-stack help-page'>
+        <div className='help-topic-links'>
+          <Link className='text-link' to='/help'>
+            Spis pomocy
+          </Link>
+          <Link className='text-link' to={topic.route}>
+            Przejdź do widoku
+          </Link>
+        </div>
+        <section className='help-introduction' aria-labelledby='help-topic-title'>
+          <h2 id='help-topic-title' ref={topicHeading} tabIndex={-1}>
+            {topic.title}
+          </h2>
+          <p>{topic.intro}</p>
+          <HelpEntries topic={topic} />
+        </section>
+      </div>
+    );
+  }
+
   return (
     <div className='page-stack help-page'>
       <section className='help-introduction'>
         <h2>Jak korzystać z SafetyHome</h2>
-        <p>Znajdź właściwy widok, odczytaj wynik kontroli i sprawdź, które działania wymagają Twojej uwagi.</p>
+        <p>Wyszukaj nazwę karty lub ustawienia albo wybierz temat ze spisu.</p>
+        {!searching && (
+          <button className='text-button' type='button' onClick={() => guideHeading.current?.focus()}>
+            Przejdź do poradników krok po kroku
+          </button>
+        )}
       </section>
 
+      <section aria-labelledby='help-directory-title'>
+        <h3 id='help-directory-title'>Spis kart i ustawień</h3>
+        <div className='help-search'>
+          <label htmlFor='help-search'>Szukaj w pomocy</label>
+          <div>
+            <input
+              id='help-search'
+              type='search'
+              value={query}
+              onChange={event => setQuery(event.target.value)}
+              placeholder='Np. bateria, pokrycie, raport'
+            />
+            {searching && (
+              <button className='secondary-button' type='button' onClick={() => setQuery('')}>
+                Wyczyść
+              </button>
+            )}
+          </div>
+        </div>
+        <p role='status' className={searching ? undefined : 'sr-only'}>
+          {searching &&
+            (results.length === 0
+              ? 'Brak wyników. Spróbuj krótszego hasła lub wyczyść wyszukiwanie.'
+              : `Liczba wyników: ${results.length}`)}
+        </p>
+        {searching ? (
+          <div className='help-results'>
+            {results.map(({ topic, entry }) => (
+              <article key={`${topic.id}-${entry.title}`}>
+                <h4>{entry.title}</h4>
+                <p>{entry.text}</p>
+                <Link to={`/help?temat=${topic.id}`}>Pozostałe karty w temacie {topic.title}</Link>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <nav aria-label='Tematy pomocy' className='help-directory'>
+            {helpGroups.map(group => (
+              <section key={group.title}>
+                <h4>{group.title}</h4>
+                <ul>
+                  {group.topics.map(topic => (
+                    <li key={topic.id}>
+                      <Link to={`/help?temat=${topic.id}`}>{topic.title}</Link>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </nav>
+        )}
+      </section>
+
+      {!searching && <HelpGuides headingRef={guideHeading} />}
+    </div>
+  );
+}
+
+function HelpGuides({ headingRef }: { headingRef: RefObject<HTMLHeadingElement | null> }) {
+  return (
+    <div className='page-stack'>
       <section className='help-quickstart' aria-labelledby='help-start'>
-        <h3 id='help-start'>Od czego zacząć</h3>
+        <h3 id='help-start' ref={headingRef} tabIndex={-1}>
+          Od czego zacząć
+        </h3>
         <ol>
           <li>
             Zacznij od oceny domu i stanu połączenia w nagłówku. Przy aktywnym zdarzeniu odczytaj nazwę, lokalizację i pilność.{' '}

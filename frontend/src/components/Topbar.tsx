@@ -4,7 +4,9 @@ import { MOCK_MODE } from '../config';
 import { normalizeState, type StatusTone } from '../domain/safety';
 import { getCoverageView } from '../domain/coverage';
 import { EVALUATION_PROGRESS_ENTITY_ID } from '../domain/functionalSafety';
+import { getViewHelp } from '../domain/operatorHelp';
 import { useSafetyEntities } from '../hooks/useSafetyEntities';
+import ContextHelp from './ContextHelp';
 import Icon from './Icon';
 import StatusBadge from './StatusBadge';
 import HelpTooltip from './HelpTooltip';
@@ -36,6 +38,7 @@ export default function Topbar({ menuButtonRef, navigationOpen, onMenuClick, vie
   const pagePath = location.pathname.startsWith('/configuration/') ? '/configuration' : location.pathname;
   const page = pageLabels[pagePath] ?? pageLabels['/'];
   const basic = viewMode === 'basic';
+  const help = basic ? undefined : getViewHelp(location.pathname, location.search);
   const healthState = normalizeState(healthEntity?.state);
   const isConnected = connection.ready && !connection.cannotConnect;
   const coverage = getCoverageView(isConnected ? entities : {});
@@ -109,6 +112,7 @@ export default function Topbar({ menuButtonRef, navigationOpen, onMenuClick, vie
 
       <div className='topbar-view-controls'>
         <ViewModeSwitch viewMode={viewMode} onViewModeChange={onViewModeChange} />
+        {help && <ContextHelp key={help.id} topic={help} />}
         {basic && (
           <Link className='basic-help-link' to={location.pathname === '/help' ? '/' : '/help'}>
             {location.pathname === '/help' ? 'Dom' : 'Pomoc'}
