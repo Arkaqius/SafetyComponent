@@ -1,5 +1,15 @@
 import { useEffect, useId, useRef, useState } from 'react';
 
+function positionTooltip(button: HTMLButtonElement, bubble: HTMLSpanElement) {
+  const anchor = button.getBoundingClientRect();
+  const box = bubble.getBoundingClientRect();
+  const left = Math.max(12, Math.min(anchor.left, window.innerWidth - box.width - 12));
+  const below = anchor.bottom + 8;
+  const top = below + box.height <= window.innerHeight - 12 ? below : Math.max(12, anchor.top - box.height - 8);
+  bubble.style.left = `${left}px`;
+  bubble.style.top = `${top}px`;
+}
+
 /** Explanatory help on hover, keyboard focus or tap, without activating the adjacent control. */
 export default function HelpTooltip({ label, text }: { label: string; text: string }) {
   const id = useId();
@@ -23,13 +33,7 @@ export default function HelpTooltip({ label, text }: { label: string; text: stri
     if (!button || !bubble) return;
     bubble.style.width = `${Math.min(320, window.innerWidth - 24)}px`;
     bubble.showPopover();
-    const anchor = button.getBoundingClientRect();
-    const box = bubble.getBoundingClientRect();
-    const left = Math.max(12, Math.min(anchor.left, window.innerWidth - box.width - 12));
-    const below = anchor.bottom + 8;
-    const top = below + box.height <= window.innerHeight - 12 ? below : Math.max(12, anchor.top - box.height - 8);
-    bubble.style.left = `${left}px`;
-    bubble.style.top = `${top}px`;
+    positionTooltip(button, bubble);
   };
   const scheduleClose = () => {
     if (pinned.current || document.activeElement === trigger.current) return;
@@ -58,11 +62,24 @@ export default function HelpTooltip({ label, text }: { label: string; text: stri
       pinned.current = false;
       panel.current?.hidePopover();
     };
+    const onScroll = (event: Event) => {
+      const button = trigger.current;
+      const bubble = panel.current;
+      if (!pinned.current && button && bubble && document.activeElement === button) {
+        // Keyboard focus can scroll the trigger into view after opening the popover.
+        const bounds = button.getBoundingClientRect();
+        if (bounds.bottom > 0 && bounds.top < window.innerHeight) {
+          positionTooltip(button, bubble);
+          return;
+        }
+      }
+      dismiss(event);
+    };
     window.addEventListener('resize', dismiss);
-    document.addEventListener('scroll', dismiss, true);
+    document.addEventListener('scroll', onScroll, true);
     return () => {
       window.removeEventListener('resize', dismiss);
-      document.removeEventListener('scroll', dismiss, true);
+      document.removeEventListener('scroll', onScroll, true);
     };
   }, [open]);
 
