@@ -156,6 +156,69 @@ def test_power_units_and_impossible_timestamps():
     assert timestamp(float("inf")) is None
 
 
+@pytest.mark.parametrize("freshness", ["availability_only", "source_timestamp"])
+@pytest.mark.parametrize("raw", ["0", "100", "131", "200"])
+def test_burner_power_accepts_inclusive_zero_to_two_hundred(raw, freshness):
+    reader = HeatingInputReader(
+        lambda _: {"state": raw, "attributes": {"unit_of_measurement": "%", "at": 100}}
+    )
+    source = binding(
+        freshness=freshness,
+        **({"observed_at_attribute": "at"} if freshness == "source_timestamp" else {}),
+    )
+    result = reader.read("power_percent", source, 100)
+    assert result.value == float(raw)
+    assert result.quality == (
+        "valid" if freshness == "source_timestamp" else "availability_only"
+    )
+    assert result.qualified == (freshness == "source_timestamp")
+
+
+@pytest.mark.parametrize("raw", ["-0.1", "200.001", "201", "nan", "inf"])
+def test_burner_power_outside_domain_remains_invalid(raw):
+    result = HeatingInputReader(
+        lambda _: {"state": raw, "attributes": {"unit_of_measurement": "%"}}
+    ).read("power_percent", binding(), 100)
+    assert result.value is None
+    assert result.quality == "invalid_value"
+    assert not result.qualified
+
+
+def test_supervision_recovers_at_131_percent_and_rejects_above_200(tmp_path):
+    states = {"sensor.power": {"state": "201", "attributes": {}}}
+    configuration = {
+        "systems": {
+            "Main": {
+                "friendly_name": "Heating test fixture",
+                "inputs": {
+                    "power_percent": binding("sensor.power", unit="%").model_dump(),
+                },
+            },
+        },
+    }
+    monitor, _app, events, clock = build_component(
+        tmp_path, states, configuration=configuration
+    )
+    monitor._tick()
+    clock[0] += 5
+    monitor._tick()
+    assert events[-1]["state"] == FaultState.SET
+    states["sensor.power"]["state"] = "131"
+    for _ in range(13):
+        clock[0] += 5
+        monitor._tick()
+    assert events[-1]["state"] == FaultState.CLEARED
+    states["sensor.power"]["state"] = "200"
+    clock[0] += 5
+    monitor._tick()
+    assert events[-1]["state"] == FaultState.CLEARED
+    states["sensor.power"]["state"] = "201"
+    for _ in range(2):
+        clock[0] += 5
+        monitor._tick()
+    assert events[-1]["state"] == FaultState.SET
+
+
 def observation(value, *, at=100, group="device", kind="measurement", quality="valid"):
     return HeatingObservation(value, quality, at, "sensor.test", group, kind)
 
