@@ -29,6 +29,12 @@ CHECK = {
     "observed_at_attribute": "observed_at",
     "expected_states": ["off"],
 }
+LAST_KNOWN_CHECK = {
+    "name": "Window closed",
+    "entity_id": "binary_sensor.window",
+    "last_known_value": True,
+    "expected_states": ["off"],
+}
 
 
 def source(value="off", **attributes):
@@ -82,14 +88,130 @@ def test_state_evidence(value, status, reason):
     ],
 )
 def test_no_clear_from_unqualified_time(observed, reason):
+    value_source = source(observed_at=observed, last_seen=NOW.isoformat())
+    value_source["last_reported"] = NOW.isoformat()
     result = evaluate_check(
         "Window",
         RoutineCheck(**CHECK),
-        {"binary_sensor.window": source(observed_at=observed)},
+        {"binary_sensor.window": value_source},
         NOW,
     )
     assert result["status"] == "unknown"
     assert result["reason"] == reason
+
+
+@pytest.mark.parametrize(
+    "value,status,reason",
+    [
+        ("off", "pass", "last_known_expected"),
+        ("on", "problem", "last_known_unexpected"),
+        ("unavailable", "unknown", "unavailable"),
+        ("unknown", "unknown", "unavailable"),
+        ("stale", "unknown", "stale"),
+        (False, "unknown", "malformed"),
+    ],
+)
+def test_last_known_state_compares_available_entity_state(value, status, reason):
+    result = evaluate_check(
+        "Window",
+        RoutineCheck(**LAST_KNOWN_CHECK),
+        {"binary_sensor.window": source(value, observed_at=None)},
+        NOW,
+    )
+
+    assert (result["status"], result["reason"]) == (status, reason)
+    assert result["observed_at"] is None
+
+
+@pytest.mark.parametrize(
+    "override",
+    [
+        {"observed_at_attribute": "observed_at"},
+        {"observed_at_entity_id": "sensor.window_observed_at"},
+        {"attribute": "contact"},
+    ],
+)
+def test_last_known_value_requires_entity_state_without_timestamp_selectors(override):
+    with pytest.raises(ValidationError, match="last_known_value"):
+        RoutineCheck(**{**LAST_KNOWN_CHECK, **override})
+
+
+def test_last_known_value_cannot_qualify_an_observation_window():
+    with pytest.raises(ValidationError, match="last_known_value requires observation_seconds: 0"):
+        SafetyRoutine(name="Bedtime", observation_seconds=5, checks={"Window": LAST_KNOWN_CHECK})
+
+
+def test_last_known_state_condition_still_requires_original_time():
+    condition = {
+        "entity_id": "sensor.activity",
+        "observed_at_attribute": "observed_at",
+        "pass_states": ["asleep"],
+        "skip_states": ["awake"],
+    }
+    result = evaluate_check(
+        "Window",
+        RoutineCheck(**LAST_KNOWN_CHECK, condition=condition),
+        {
+            "binary_sensor.window": source(observed_at=None),
+            "sensor.activity": source("asleep", observed_at=None),
+        },
+        NOW,
+    )
+
+    assert (result["status"], result["reason"]) == ("unknown", "condition_timestamp_missing")
+
+
+@pytest.mark.parametrize(
+    "value,unit,status,reason",
+    [
+        ("499.9", "W", "pass", "last_known_expected"),
+        ("500", "W", "problem", "last_known_unexpected"),
+        ("-1", "W", "problem", "last_known_unexpected"),
+        ("150", "kW", "unknown", "unit_mismatch"),
+        ("x", "W", "unknown", "not_numeric"),
+        ("1e999", "W", "unknown", "not_numeric"),
+        ("unavailable", "W", "unknown", "unavailable"),
+    ],
+)
+def test_last_known_power_checks_value_and_unit(value, unit, status, reason):
+    check = RoutineCheck(
+        name="House power",
+        entity_id="sensor.house_power",
+        kind="numeric_range",
+        last_known_value=True,
+        minimum=0.0,
+        maximum=499.9,
+        unit="W",
+    )
+    states = {check.entity_id: source(value, observed_at=None, unit_of_measurement=unit)}
+    result = evaluate_check("HousePower", check, states, NOW)
+
+    assert (result["status"], result["reason"]) == (status, reason)
+    assert result["observed_at"] is None
+
+
+@pytest.mark.parametrize(
+    "observed,status,reason",
+    [
+        (str(NOW.timestamp() - 0.5), "pass", "expected"),
+        (str(int(NOW.timestamp() - 301)), "unknown", "stale"),
+        (str(int(NOW.timestamp() + 1)), "unknown", "future_timestamp"),
+        (str(int(NOW.timestamp() * 1000)), "unknown", "timestamp_missing"),
+        ("unavailable", "unknown", "timestamp_missing"),
+    ],
+)
+def test_observation_entity_reports_epoch_seconds_as_ha_state(observed, status, reason):
+    binding = {**CHECK, "observed_at_entity_id": "sensor.window_observed_at"}
+    del binding["observed_at_attribute"]
+    check = RoutineCheck(**binding)
+    states = {
+        "binary_sensor.window": source(observed_at=None),
+        "sensor.window_observed_at": {"state": observed},
+    }
+
+    result = evaluate_check("Window", check, states, NOW)
+
+    assert (result["status"], result["reason"]) == (status, reason)
 
 
 @pytest.mark.parametrize(

@@ -46,12 +46,16 @@ informacje; żadna z tych kontroli nie wysyła poleceń do ogrzewania.
    całego domu. Minimum i maksimum są włączne: maksimum `500` dopuszcza 500 W.
    Dla przykładowego wymagania „poniżej 500 W” przy rozdzielczości 0,1 W wybierz
    maksimum `499.9` i minimum `0`. Dobierz limit do instalacji.
-4. Każdej kontroli przypisz dokładnie jedno źródło oryginalnego czasu obserwacji:
-   encję, której stan jest tym czasem, albo rzeczywisty atrybut czasu na encji
+4. Przy oknie 0 s możesz wybrać **Użyj ostatniego znanego odczytu** dla stanu
+   lub liczby i usunąć oba pola czasu obserwacji dla tej kontroli.
+   Dla pozostałych kontroli i warunków zastosowania
+   przypisz źródło oryginalnego czasu obserwacji. Wybierz encję, której stan
+   jest tym czasem, albo rzeczywisty atrybut czasu na encji
    wartości. Obsługiwany jest ISO 8601 ze strefą lub liczbowy Unix w sekundach.
    `last_changed`, `last_updated`, czas odebrania wiadomości i samo `last_seen`
    urządzenia nie dowodzą czasu pomiaru konkretnej wartości.
-5. Ustaw maksymalny wiek obserwacji zgodnie z częstotliwością pomiarów źródła.
+5. Przy kontroli z czasem obserwacji ustaw maksymalny wiek zgodnie z
+   częstotliwością pomiarów źródła.
    Wpisanie nazwy `observed_at` w formularzu nie tworzy takiego atrybutu.
    Jeżeli źródło nie dostarcza wymaganego czasu, kontrola pozostanie nieoceniona;
    sam poprawnie zapisany formularz nie potwierdza gotowości danych.
@@ -70,9 +74,9 @@ rejestru instalacji nie dodaje automatycznie kontroli do istniejących scenarius
 
 | Wynik | Co oznacza | Co zrobić |
 | --- | --- | --- |
-| OK | Świeża, zakwalifikowana obserwacja spełniła oczekiwanie. | Sprawdź czas raportu; wynik jest historyczny. |
-| Problem | Zakwalifikowana obserwacja naruszyła oczekiwanie. | Sprawdź wskazane źródło i sytuację w domu. |
-| Nie można ocenić | Brakuje wartości, wiarygodnego czasu, właściwej jednostki lub znanego warunku. | Odczytaj wyjaśnienie; sprawdź źródło i jego powiązanie. |
+| OK | Odczyt spełnił oczekiwanie. Wyjaśnienie wskazuje, czy porównano ostatni znany odczyt encji. | Sprawdź czas i podstawę oceny. |
+| Problem | Odczyt różnił się od oczekiwania. | Sprawdź wskazane źródło i sytuację w domu. |
+| Nie można ocenić | Brakuje wartości, wymaganego czasu, właściwej jednostki lub znanego warunku. | Odczytaj wyjaśnienie i sprawdź źródło. |
 | Pominięte | Znany, świeży warunek wybrał skonfigurowany stan pomijania. | Sprawdź, czy wyłączenie ma zastosowanie. |
 
 „Brak potwierdzenia” to brak dowodu, nawet jeśli w kolumnie odczytu widać

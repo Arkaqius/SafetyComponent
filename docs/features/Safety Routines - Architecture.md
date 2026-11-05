@@ -38,12 +38,14 @@ form shall default to disabled. Installation names shall be shown as supplied.
 | `expected_states` | Exact, case-sensitive HA state strings for a state check. |
 | `attribute` | Optional value attribute for state checks only. |
 | `minimum`, `maximum`, `unit` | Inclusive numeric bounds, at least one bound, and the exact HA `unit_of_measurement`. No implicit conversion. |
+| `last_known_value` | Optional, default false. A true value compares the available HA entity state in a single sample (`observation_seconds: 0`). It supports state and numeric checks and requires omitting the value attribute and observation time selectors on the check. |
 | `observed_at_entity_id` | Entity whose state is the original observation timestamp. |
-| `observed_at_attribute` | Original observation timestamp attribute on the value source. Exactly one timestamp selector is required. |
-| `max_age_seconds` | Maximum observation age, 1–86400 seconds, default 300. |
-| `condition` | Optional reading with the same source/time fields and disjoint `pass_states` and `skip_states`. |
+| `observed_at_attribute` | Original observation timestamp attribute on the value source. Timestamp-qualified readings require exactly one timestamp selector. |
+| `max_age_seconds` | Maximum age of a timestamp-qualified observation, 1–86400 seconds, default 300. |
+| `condition` | Optional timestamp-qualified reading with disjoint `pass_states` and `skip_states`. |
 
-Original timestamps shall be timezone-aware ISO 8601 or numeric Unix seconds.
+Original timestamps shall be timezone-aware ISO 8601 or Unix seconds. A Home
+Assistant entity state may carry Unix seconds as decimal text.
 HA acquisition time, `last_changed`, and `last_updated` shall not be substituted.
 The installer shall bind an actual original observation time, not a cached-value
 publication timestamp. State checks shall compare actual sensor state codes;
@@ -71,6 +73,11 @@ source timestamps. Re-reading a cached observation shall not prove sustained
 normal behavior. More than ten seconds between callbacks or backward clock
 movement during sampling shall interrupt the run. These are sampled observations,
 not proof of physical conditions between samples.
+
+Last-known-value results shall identify whether the available HA reading matches
+the expectation and leave the source observation time empty. The run time
+records when the comparison occurred. An unavailable, explicitly stale, or
+invalid state shall yield `unknown`.
 
 | Result | Meaning |
 | --- | --- |

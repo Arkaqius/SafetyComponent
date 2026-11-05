@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import math
+import re
 from datetime import datetime, timezone
 from typing import Any, Mapping
 
 from .schema import Reading, RoutineCheck
 
 INVALID_STATES = {"", "unknown", "unavailable", "none", "null", "nan", "inf", "-inf"}
+EPOCH_SECONDS = re.compile(r"[+-]?[0-9]+(?:\.[0-9]+)?")
 
 
 def timestamp(value: Any) -> datetime | None:
@@ -18,16 +20,24 @@ def timestamp(value: Any) -> datetime | None:
             return None
         if isinstance(value, (int, float)):
             return datetime.fromtimestamp(value, timezone.utc)
-        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        if not isinstance(value, str):
+            return None
+        if EPOCH_SECONDS.fullmatch(value):
+            return datetime.fromtimestamp(float(value), timezone.utc)
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
         return parsed.astimezone(timezone.utc) if parsed.tzinfo else None
     except (TypeError, ValueError, OverflowError, OSError):
         return None
 
 
 def read_value(
-    binding: Reading, states: Mapping[str, Any], now: datetime
+    binding: Reading,
+    states: Mapping[str, Any],
+    now: datetime,
+    *,
+    require_timestamp: bool = True,
 ) -> tuple[Any, str | None, str | None]:
-    """Read a value only when its source and original timestamp are usable."""
+    """Validate the source value and qualify its timestamp when required."""
     source = states.get(binding.entity_id)
     if (
         not isinstance(source, dict)
@@ -49,6 +59,12 @@ def read_value(
         return None, None, "malformed"
     if isinstance(value, float) and not math.isfinite(value):
         return None, None, "malformed"
+    if not require_timestamp:
+        if not isinstance(value, str):
+            return None, None, "malformed"
+        if value.strip().lower() == "stale":
+            return None, None, "stale"
+        return value, None, None
     if binding.observed_at_entity_id:
         time_source = states.get(binding.observed_at_entity_id)
         raw_time = time_source.get("state") if isinstance(time_source, dict) else None
@@ -97,7 +113,9 @@ def evaluate_check(
         if str(condition_value) not in check.condition.pass_states:
             result["reason"] = "condition_unrecognized"
             return result
-    value, observed_at, error = read_value(check, states, now)
+    value, observed_at, error = read_value(
+        check, states, now, require_timestamp=not check.last_known_value
+    )
     result.update(value=value, observed_at=observed_at)
     if error:
         result["reason"] = error
@@ -120,10 +138,10 @@ def evaluate_check(
         passed = (check.minimum is None or number >= check.minimum) and (
             check.maximum is None or number <= check.maximum
         )
-    result.update(
-        status="pass" if passed else "problem",
-        reason="expected" if passed else "unexpected",
-    )
+    reason = "expected" if passed else "unexpected"
+    if check.last_known_value:
+        reason = "last_known_" + reason
+    result.update(status="pass" if passed else "problem", reason=reason)
     return result
 
 

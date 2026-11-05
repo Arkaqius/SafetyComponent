@@ -1580,7 +1580,7 @@ defines configuration, evidence, execution and report contracts.
 | ID | Requirement |
 | --- | --- |
 | SYS-SR-ROUTINE-001 | The system shall execute a configured set of advisory checks on an explicit request or configured HA event/state transition. |
-| SYS-SR-ROUTINE-002 | Checks shall qualify original source observation times and expected states or numeric units/bounds. Missing, stale, future or malformed evidence shall not count as a pass. |
+| SYS-SR-ROUTINE-002 | Checks shall qualify original observation times and expected states or numeric units and bounds. An explicitly configured single-sample check may compare the last known entity value against those expectations without qualifying its age. Its report shall identify that basis. Unavailable or malformed values and observations that fail a required freshness check shall remain unevaluable. |
 | SYS-SR-ROUTINE-003 | Known exclusion conditions shall be distinguished from unknown applicability; an entirely skipped run shall not count as a pass. |
 | SYS-SR-ROUTINE-004 | Each run shall produce an independently identifiable timestamped report preserving both detected problems and missing evidence. Later runs shall not rewrite completed reports. |
 | SYS-SR-ROUTINE-005 | Execution, history and publication shall be bounded. Restart and cancellation shall preserve incomplete execution as uncertainty without replay. |

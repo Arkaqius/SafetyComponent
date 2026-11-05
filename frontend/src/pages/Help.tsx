@@ -227,9 +227,9 @@ function HelpGuides({ headingRef }: { headingRef: RefObject<HTMLHeadingElement |
             <details className='help-question'>
               <summary>Dlaczego przy zamkniętym oknie widzę „Nie można ocenić”?</summary>
               <p>
-                Kontrola potrzebuje wartości i oryginalnego czasu jej obserwacji. Atrybut czasu musi rzeczywiście istnieć; samo wpisanie
-                observed_at w formularzu go nie tworzy. Czas zmiany lub odczytania encji w HA i samo last_seen urządzenia nie dowodzą
-                świeżości konkretnego pomiaru. Sprawdź wyjaśnienie w raporcie oraz źródło czasu i jego maksymalny wiek.
+                Domyślnie kontrola potrzebuje wartości i czasu jej obserwacji. Wpisanie observed_at w formularzu nie tworzy atrybutu.
+                Przy oknie 0 s możesz włączyć „Użyj ostatniego znanego odczytu” dla kontroli stanu lub mocy. Raport opisuje zgodność
+                odczytu, a źródło niedostępne daje wynik „Nie można ocenić”.
               </p>
               <p>
                 „Nie można ocenić” oznacza brak dowodu. „Pominięte” oznacza znany warunek wyłączający kontrolę. Żaden z tych wyników nie
