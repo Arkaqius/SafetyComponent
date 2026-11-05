@@ -6,6 +6,7 @@ import {
   formatRelativeTime,
   localizedEntityState,
   recoveriesForFault,
+  recoveryNeedsAttention,
   type FaultStatus,
   type FaultView,
   type RecoveryView,
@@ -130,8 +131,9 @@ export default function FaultSection({
           filteredFaults.map(fault => (
             <FaultCard
               acknowledged={acknowledgedTags.has(fault.notificationTag)}
+              compact={compact}
               fault={fault}
-              recoveries={recoveriesForFault(fault, recoveries)}
+              recoveries={recoveriesForFault(fault, recoveries).filter(recoveryNeedsAttention)}
               key={fault.entityId}
               onSelectEntity={onSelectEntity}
             />
@@ -156,11 +158,13 @@ export default function FaultSection({
 
 function FaultCard({
   acknowledged,
+  compact,
   fault,
   recoveries,
   onSelectEntity,
 }: {
   acknowledged: boolean;
+  compact: boolean;
   fault: FaultView;
   recoveries: RecoveryView[];
   onSelectEntity?: (entityId: string) => void;
@@ -175,9 +179,13 @@ function FaultCard({
               : statusPresentation[fault.status].label.replace('zagrożenia', 'informacji'),
           tone: 'info' as const,
         }
-      : fault.level === 3 && fault.status === 'fail'
-        ? { label: 'Ostrzeżenie potwierdzone', tone: 'warning' as const }
-        : statusPresentation[fault.status];
+      : fault.category === 'D' && fault.status === 'fail'
+        ? { label: 'Usterka potwierdzona', tone: 'warning' as const }
+        : fault.category === 'D' && fault.status === 'pending_failure'
+          ? { label: 'Potwierdzanie usterki', tone: 'warning' as const }
+          : fault.level === 3 && fault.status === 'fail'
+            ? { label: 'Ostrzeżenie potwierdzone', tone: 'warning' as const }
+            : statusPresentation[fault.status];
   const cardTone = fault.active === true || fault.latched === true ? (level?.tone ?? 'danger') : status.tone;
   const connection = useHass(store => store.connection);
   const connected = useHass(store => store.connectionStatus === 'connected' && store.ready);
@@ -212,7 +220,7 @@ function FaultCard({
     <details
       className={`fault-card fault-${cardTone}`}
       data-entity-id={fault.entityId}
-      open={fault.active === true || fault.latched === true}
+      open={compact ? undefined : fault.active === true || fault.latched === true}
     >
       <summary>
         <span className='fault-card-icon'>

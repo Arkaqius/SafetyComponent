@@ -141,14 +141,14 @@ function TemperatureCard({ temperature }: { temperature: TemperatureView }) {
         <div>
           <h3 title={`${temperature.name} · ${temperature.entityId}`}>{temperature.roomName}</h3>
         </div>
-        <span className={`trend-chip ${trend.className}`}>
-          {trend.symbol} {trend.label}
-        </span>
       </div>
 
       <div className='temperature-reading'>
         <strong>{formatNumeric(temperature.state, 2)}</strong>
         <span>{temperature.unit}</span>
+        <span className={`trend-chip temperature-trend ${trend.className}`}>
+          {trend.symbol} {trend.label}
+        </span>
       </div>
 
       <Sparkline
@@ -217,7 +217,7 @@ function TemperatureCard({ temperature }: { temperature: TemperatureView }) {
       <ForecastDetails forecast={temperature.lowForecast} label='Prognoza dolnej granicy' />
       <ForecastDetails forecast={temperature.highForecast} label='Prognoza górnej granicy' />
 
-      <span className='card-updated'>Aktualizacja {formatRelativeTime(temperature.lastUpdated)}</span>
+      <span className='card-updated'>Ostatni zapis odczytu {formatRelativeTime(temperature.lastUpdated)}</span>
     </article>
   );
 }

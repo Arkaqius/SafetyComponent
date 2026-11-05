@@ -68,7 +68,7 @@ export function coverageSubjectName(cause: string, subject: string, entities: En
   return boundEntityName(coverageBinding(cause, entities) ?? subject, entities);
 }
 
-function coverageBinding(cause: string, entities: EntityMap): string | undefined {
+export function coverageBinding(cause: string, entities: EntityMap): string | undefined {
   return Object.values(entities)
     .map(entity => entity.attributes.entity_key)
     .filter((key): key is string => typeof key === 'string' && cause.startsWith(`EntityHealthFailure${key}`))

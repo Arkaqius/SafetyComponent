@@ -1,28 +1,140 @@
-import { Link } from 'react-router-dom';
+import { useEffect, useRef, useState, type RefObject } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { HelpEntries } from '../components/ContextHelp';
 import Icon from '../components/Icon';
 import StatusBadge from '../components/StatusBadge';
 import { LEVEL_PRESENTATION } from '../domain/safety';
 import { MOCK_MODE } from '../config';
+import { findHelpEntries, getHelpTopic, helpGroups } from '../domain/operatorHelp';
 
 export default function Help() {
+  const [params] = useSearchParams();
+  const [query, setQuery] = useState('');
+  const topic = getHelpTopic(params.get('temat'));
+  const topicHeading = useRef<HTMLHeadingElement>(null);
+  const guideHeading = useRef<HTMLHeadingElement>(null);
+  const searching = query.trim().length > 0;
+  const results = searching ? findHelpEntries(query) : [];
+
+  useEffect(() => {
+    if (!topic) return;
+    topicHeading.current?.focus();
+    topicHeading.current?.scrollIntoView({ block: 'start' });
+  }, [topic]);
+
+  if (topic) {
+    return (
+      <div className='page-stack help-page'>
+        <div className='help-topic-links'>
+          <Link className='text-link' to='/help'>
+            Spis pomocy
+          </Link>
+          <Link className='text-link' to={topic.route}>
+            Przejdź do widoku
+          </Link>
+        </div>
+        <section className='help-introduction' aria-labelledby='help-topic-title'>
+          <h2 id='help-topic-title' ref={topicHeading} tabIndex={-1}>
+            {topic.title}
+          </h2>
+          <p>{topic.intro}</p>
+          <HelpEntries topic={topic} />
+        </section>
+      </div>
+    );
+  }
+
   return (
     <div className='page-stack help-page'>
       <section className='help-introduction'>
         <h2>Jak korzystać z SafetyHome</h2>
-        <p>Znaczenie komunikatów, ograniczenia odczytów i różnica między potwierdzeniem powiadomienia a zgodą na działanie.</p>
+        <p>Wyszukaj nazwę karty lub ustawienia albo wybierz temat ze spisu.</p>
+        {!searching && (
+          <button className='text-button' type='button' onClick={() => guideHeading.current?.focus()}>
+            Przejdź do poradników krok po kroku
+          </button>
+        )}
       </section>
 
+      <section aria-labelledby='help-directory-title'>
+        <h3 id='help-directory-title'>Spis kart i ustawień</h3>
+        <div className='help-search'>
+          <label htmlFor='help-search'>Szukaj w pomocy</label>
+          <div>
+            <input
+              id='help-search'
+              type='search'
+              value={query}
+              onChange={event => setQuery(event.target.value)}
+              placeholder='Np. bateria, pokrycie, raport'
+            />
+            {searching && (
+              <button className='secondary-button' type='button' onClick={() => setQuery('')}>
+                Wyczyść
+              </button>
+            )}
+          </div>
+        </div>
+        <p role='status' className={searching ? undefined : 'sr-only'}>
+          {searching &&
+            (results.length === 0
+              ? 'Brak wyników. Spróbuj krótszego hasła lub wyczyść wyszukiwanie.'
+              : `Liczba wyników: ${results.length}`)}
+        </p>
+        {searching ? (
+          <div className='help-results'>
+            {results.map(({ topic, entry }) => (
+              <article key={`${topic.id}-${entry.title}`}>
+                <h4>{entry.title}</h4>
+                <p>{entry.text}</p>
+                <Link to={`/help?temat=${topic.id}`}>Pozostałe karty w temacie {topic.title}</Link>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <nav aria-label='Tematy pomocy' className='help-directory'>
+            {helpGroups.map(group => (
+              <section key={group.title}>
+                <h4>{group.title}</h4>
+                <ul>
+                  {group.topics.map(topic => (
+                    <li key={topic.id}>
+                      <Link to={`/help?temat=${topic.id}`}>{topic.title}</Link>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </nav>
+        )}
+      </section>
+
+      {!searching && <HelpGuides headingRef={guideHeading} />}
+    </div>
+  );
+}
+
+function HelpGuides({ headingRef }: { headingRef: RefObject<HTMLHeadingElement | null> }) {
+  return (
+    <div className='page-stack'>
       <section className='help-quickstart' aria-labelledby='help-start'>
-        <h3 id='help-start'>Od czego zacząć</h3>
+        <h3 id='help-start' ref={headingRef} tabIndex={-1}>
+          Od czego zacząć
+        </h3>
         <ol>
           <li>
-            Na <Link to='/'>pulpicie</Link> sprawdź bieżącą ocenę oraz informację o połączeniu i dostępności źródeł.
+            Zacznij od oceny domu i stanu połączenia w nagłówku. Przy aktywnym zdarzeniu odczytaj nazwę, lokalizację i pilność.{' '}
+            <Link to='/'>Otwórz Przegląd</Link>.
           </li>
           <li>
             Widok podstawowy pokazuje najpilniejsze zdarzenie. Użyj „Szczegóły i monitoring” lub „Wszystkie zdarzenia”, aby zobaczyć
             pozostałe informacje.
           </li>
-          <li>Przeczytaj zalecenie i jego bieżący status. Potwierdź działanie dopiero po sprawdzeniu, czego dotyczy.</li>
+          <li>Przeczytaj zalecenie i sprawdź jego status oraz wykonawcę. Przed wysłaniem zgody przeczytaj nazwę i oczekiwany rezultat.</li>
+          <li>
+            Przy braku danych sprawdź ograniczoną funkcję, a następnie odszukaj jej źródło w diagnostyce.{' '}
+            <Link to='/functional-safety?tab=faults'>Otwórz Usterki i pokrycie</Link>.
+          </li>
         </ol>
       </section>
 
@@ -47,6 +159,40 @@ export default function Help() {
         </section>
 
         <div className='help-topics'>
+          <section aria-labelledby='help-overview'>
+            <h3 id='help-overview'>Przegląd domu</h3>
+            <details className='help-question'>
+              <summary>Jak czytać karty na pulpicie?</summary>
+              <p>
+                Zacznij od bieżącej oceny i najpilniejszego zdarzenia. W widoku rozszerzonym lista zdarzeń pokazuje poziom, lokalizację i
+                status oceny, a sąsiednia lista grupuje zalecenia wymagające uwagi. Szczegóły zdarzenia pozwalają sprawdzić jego przyczyny i
+                powiązane zalecenia.
+              </p>
+              <p>
+                Licznik sprawnych źródeł dotyczy encji objętych diagnostyką. Karta zdrowia funkcji opisuje postęp ich ocen. Pokrycie
+                bezpieczeństwa określa, które wymagane funkcje można ocenić i co ogranicza ich działanie.
+              </p>
+              <p>
+                Karty temperatur pokazują średnią, skrajne odczyty i największy wzrost. Podsumowania zagrożeń prowadzą do detektorów,
+                warunków zewnętrznych i ostrzeżeń. Ostatnie otwarcia prowadzą do monitorowanych drzwi i bram. Zwiń mniej potrzebne sekcje na
+                pulpicie, aby szybciej wracać do bieżącego zdarzenia u góry. <Link to='/'>Otwórz Przegląd</Link>.
+              </p>
+            </details>
+            <details className='help-question'>
+              <summary>Jak rozpoznać aktualność stanu po utracie połączenia lub restarcie?</summary>
+              <p>
+                Stan połączenia w nagłówku dotyczy przeglądarki i Home Assistanta. „Ostatnia zmiana” przy odczycie oznacza moment zmiany
+                konkretnego stanu. Na przykład zamknięty od wczoraj kontaktron może mieć starszą datę zmiany mimo bieżącego połączenia. Po
+                utracie połączenia odczyty z etykietą „Ostatni znany stan” traktuj jako zapis z przeszłości.
+              </p>
+              <p>
+                W rozruchu system zbiera dane i odkłada zgłaszanie nowych alarmów diagnostycznych. Ocenę zagrożeń wykonuje od razu.
+                Zakończenie rozruchu potwierdza aplikacja. Prognozy temperatury mogą nadal czekać na własną historię pomiarów.{' '}
+                <Link to='/functional-safety?tab=platform'>Sprawdź postęp funkcji</Link>.
+              </p>
+            </details>
+          </section>
+
           <section aria-labelledby='help-routines'>
             <h3 id='help-routines'>Scenariusze bezpieczeństwa</h3>
             <p>
@@ -64,6 +210,18 @@ export default function Help() {
                 Opóźnienie 120 s pozwala dokończyć wyjście lub rutynę wieczorną. Okno obserwacji 0 s oznacza jedną ocenę po opóźnieniu.
                 „Sprawdź teraz” też stosuje opóźnienie. Restart nie uruchamia kontroli tylko dlatego, że dom jest już pusty lub śpi. Zmiana
                 stanu podczas oczekiwania sama nie anuluje wykonania; dodaj także kontrolę obecności lub snu.
+              </p>
+            </details>
+            <details className='help-question'>
+              <summary>Gdzie sprawdzić, co wykazał scenariusz?</summary>
+              <p>
+                Wybierz „Pokaż raport” przy wykonaniu. Porównaj odczyt i oczekiwanie, a przy problemie lub luce przeczytaj wyjaśnienie i
+                czas obserwacji. W historii znajdziesz ostatnie 20 wykonań. „OK w chwili kontroli” dotyczy czasu tego raportu.
+              </p>
+              <p>
+                Jeśli ręczne uruchomienie nie otrzymało odpowiedzi, odśwież historię przed kolejną próbą. Kontrolę oczekującą lub trwającą
+                możesz anulować w raporcie. Anulowanie i przerwanie po restarcie zachowują niepełny wynik.{' '}
+                <Link to='/safety-routines'>Przejdź do scenariuszy</Link>.
               </p>
             </details>
             <details className='help-question'>
@@ -94,6 +252,20 @@ export default function Help() {
           <section aria-labelledby='help-statuses'>
             <h3 id='help-statuses'>Ocena i jakość danych</h3>
             <details className='help-question'>
+              <summary>Czym różnią się zagrożenie, usterka diagnostyczna i pokrycie?</summary>
+              <p>
+                Zagrożenie (H) opisuje wykryty warunek, na przykład alarm dymu. Usterka diagnostyczna (D) opisuje problem techniczny, na
+                przykład brak danych z czujnika lub niedostępność kanału powiadomień. Dym może zostać wykryty również podczas awarii
+                wysyłki, jeśli detektor i ścieżka oceny działają.
+              </p>
+              <p>
+                Pokrycie opisuje zakres możliwej oceny. Pełne pokrycie oznacza wykonanie wymaganych ocen, które mogą wykazać zagrożenie.
+                Pokrycie częściowe wskazuje wyłączenia zakresu, zdegradowane oznacza znane ograniczenia techniczne, a nieustalone brak
+                rozstrzygających danych. Rozwiń przyczynę, aby zobaczyć dotkniętą funkcję, urządzenie i rodzaj wpływu.{' '}
+                <Link to='/functional-safety?tab=faults'>Otwórz Usterki i pokrycie</Link>.
+              </p>
+            </details>
+            <details className='help-question'>
               <summary>Czy „Usługa działa” oznacza, że dom jest bezpieczny?</summary>
               <p>
                 To informacja o działaniu SafetyComponent. Osobna ocena bezpieczeństwa uwzględnia stan systemu, usterki i dostępność danych.
@@ -116,6 +288,49 @@ export default function Help() {
               <p>
                 Inne aktywne zdarzenie ma pierwszeństwo zgodnie z konfiguracją systemu. Przesłonięcie nie oznacza ustąpienia tej usterki. W
                 sekcji zdarzeń użyj „Pokaż wszystkie”, aby zobaczyć pozostałe stany.
+              </p>
+            </details>
+            <details className='help-question'>
+              <summary>Gdzie znaleźć przyczynę techniczną?</summary>
+              <p>
+                Zacznij od zakładki „Usterki i pokrycie”. Filtr „Wymagające uwagi” uwzględnia również nieocenione i niewiarygodne stany.
+                Rozwiń wpis, sprawdź dowody oceny i powiązane działanie. Przy alarmie podtrzymanym sprawdź osobno stan warunku i informację
+                o podtrzymaniu. W szczegółach technicznych znajdziesz zapis danych z chwili zdarzenia (Freeze frame), jeśli jest dostępny.
+              </p>
+              <p>
+                Jeśli przyczyną jest brak odczytu, wyszukaj jego źródło w zakładce „Monitorowane encje”. Szczegóły wiersza pokazują wynik
+                poszczególnych kontroli, przyczynę i dostępne czasy. Lista obejmuje źródła przypisane do diagnostyki SafetyComponent.{' '}
+                <Link to='/functional-safety?tab=entities'>Otwórz Monitorowane encje</Link>.
+              </p>
+            </details>
+          </section>
+
+          <section aria-labelledby='help-health'>
+            <h3 id='help-health'>Zdrowie systemu</h3>
+            <details className='help-question'>
+              <summary>W której zakładce szukać informacji?</summary>
+              <p>
+                <strong>Usterki i pokrycie</strong> gromadzi zdarzenia, stan ocen oraz wpływ diagnostyki na poszczególne funkcje.{' '}
+                <strong>Monitorowane encje</strong> pozwalają znaleźć problematyczne źródło po nazwie, ocenie lub obszarze.{' '}
+                <strong>Baterie</strong> grupują obsługę urządzeń bateryjnych. Rozwiń wiersz baterii, aby odróżnić procent, jakość źródła i
+                ostatni kontakt. Brak wiarygodnego procentu jest osobną oceną.
+              </p>
+              <p>
+                <strong>Platforma</strong> pokazuje postęp ocen komponentów oraz stan skonfigurowanych źródeł hosta i konserwacji, takich
+                jak miejsce na dysku, kopie zapasowe i aktualizacje. <strong>Testy i powiadomienia</strong> zawierają stan wysyłki, kolejkę,
+                terminy oraz zapisane wyniki testów. <Link to='/functional-safety'>Otwórz Zdrowie systemu</Link>.
+              </p>
+            </details>
+            <details className='help-question'>
+              <summary>Jak sprawdzić powiadomienia i zapisać wynik testu?</summary>
+              <p>
+                W sekcji testów sprawdź, czego dotyczy termin. Po fizycznym teście detektora zapisz jego rzeczywisty wynik. Przy teście
+                powiadomień sprawdź odbiór we wszystkich wymaganych kanałach. Przy teście kopii sprawdź odtworzone dane na osobnym systemie
+                testowym. Zapis wyniku jest oświadczeniem operatora, a wysłanie próbnego powiadomienia to osobna czynność.
+              </p>
+              <p>
+                Gdy wiadomość nie dotarła, porównaj stan kolejki i ostatnie próby wysyłki. Szczegóły próby znajdziesz w Historii.{' '}
+                <Link to='/functional-safety?tab=tests'>Otwórz Testy i powiadomienia</Link>.
               </p>
             </details>
           </section>
@@ -141,6 +356,20 @@ export default function Help() {
               </p>
             </details>
             <details className='help-question'>
+              <summary>Co oznacza nieaktywne zalecenie lub „Brak potrzeby”?</summary>
+              <p>
+                „Brak potrzeby” w katalogu oznacza, że system nie wymaga obecnie wykonania tej czynności. Katalog pokazuje także znane,
+                nieaktywne pozycje. Do codziennej pracy użyj listy zaleceń wymagających uwagi. Jeżeli w szczegółach widzisz ostatni wynik i
+                datę, czytaj je jako historię danego działania.
+              </p>
+              <p>
+                „Wstrzymane” oznacza, że propozycja jest zablokowana lub wygasła. Przeczytaj powód. „W trakcie” oznacza oczekiwanie na
+                wynik. „Potwierdzone” opisuje wynik dla danego działania i jego warunku ukończenia. Przy pracy ręcznej „Zgłoś wykonanie”
+                zapisuje Twoje zgłoszenie, a gdy system wymaga odczytu urządzenia, nadal czeka na dowód rezultatu.{' '}
+                <Link to='/'>Otwórz Zalecenia i działania na pulpicie</Link>.
+              </p>
+            </details>
+            <details className='help-question'>
               <summary>Czy „Wysłane” w historii oznacza odbiór na telefonie?</summary>
               <p>
                 Oznacza przyjęcie próby wysyłki przez Home Assistant. System nie potwierdza odbioru na telefonie. W{' '}
@@ -149,8 +378,47 @@ export default function Help() {
             </details>
           </section>
 
+          <section aria-labelledby='help-hazards'>
+            <h3 id='help-hazards'>Drzwi, bramy i zagrożenia</h3>
+            <details className='help-question'>
+              <summary>Dlaczego otwarte drzwi jeszcze nie wywołały alarmu?</summary>
+              <p>
+                Na karcie drzwi lub bramy porównaj czas otwarcia, limit i pole „Pozostało”. Przy odliczaniu monitoring czeka na
+                przekroczenie limitu ciągłego otwarcia. Gdy widzisz „Wstrzymane”, sprawdź warunek monitorowania, ponieważ w tym stanie
+                system nie odlicza limitu. „Brak danych” oznacza, że aktualnego położenia nie udało się potwierdzić.{' '}
+                <Link to='/safety-doors'>Otwórz Drzwi i bramy</Link>.
+              </p>
+            </details>
+            <details className='help-question'>
+              <summary>Jak czytać kartę detektora?</summary>
+              <p>
+                Odczytaj „Alarm zagrożenia”, „Stan techniczny” i lokalizację. „Ostatni kontakt urządzenia” może oznaczać raport baterii lub
+                inną wiadomość. Stan alarmowy może być niedostępny mimo świeżego kontaktu. Przy gazie karta pokazuje także stan ochrony
+                wyjść lokalnych. Użyj przycisku „Diagnostyka” lub „Encja źródłowa”, aby zobaczyć szczegóły.{' '}
+                <Link to='/internal-hazards'>Otwórz Zagrożenia wewnętrzne</Link>.
+              </p>
+            </details>
+            <details className='help-question'>
+              <summary>Gdzie sprawdzić pogodę, ostrzeżenia IMGW i narażone wejścia?</summary>
+              <p>
+                W widoku zagrożeń zewnętrznych sprawdź warunki wymagające uwagi, narażone okna, drzwi lub bramy oraz blokady porad otwarcia.
+                Karta ostrzeżenia IMGW pokazuje jego treść i zasięg. Przy braku aktualnej oceny sprawdź stan każdego źródła, czas odczytu i
+                błędy pobierania. <Link to='/external-hazards'>Otwórz Zagrożenia zewnętrzne</Link>.
+              </p>
+              <p>
+                Nowe zgłoszenie ekspozycji na pogodę lub zanieczyszczone powietrze przy drzwiach lub bramie wymaga minuty ciągłego otwarcia.
+                Otwarte okna oraz lokalne ostrzeżenie IMGW trzeciego stopnia dla danego zagrożenia są uwzględniane od razu. Limit otwarcia
+                widoczny w „Drzwiach i bramach” dotyczy osobnej kontroli.
+              </p>
+              <p>
+                EAQI na pulpicie pochodzi z modelu Open-Meteo dla lokalizacji domu. Do oceny powietrza wewnątrz potrzebujesz odpowiedniego
+                pomiaru z pomieszczenia.
+              </p>
+            </details>
+          </section>
+
           <section aria-labelledby='help-readings'>
-            <h3 id='help-readings'>Pomiary i historia</h3>
+            <h3 id='help-readings'>Temperatury, ogrzewanie i historia</h3>
             <details className='help-question'>
               <summary>Jak czytać temperaturę i jej trend?</summary>
               <p>
@@ -158,8 +426,9 @@ export default function Help() {
                 tego tempa. Progi są skonfigurowane dla konkretnego źródła.
               </p>
               <p>
-                Średnia obejmuje dostępne monitorowane odczyty. Nie zastępuje pomiaru w pomieszczeniu. Kliknij jej kartę na pulpicie albo
-                otwórz <Link to='/temperature'>Temperatury</Link>, aby sprawdzić pomiary składowe.
+                Średnia obejmuje dostępne monitorowane odczyty. Wybierz konkretne pomieszczenie, aby zobaczyć wykres z ostatnich 24 godzin i
+                porównać odczyt z jego progami. Przy prognozie sprawdź horyzont, czas oceny i gotowość próbek. Wynik prognozy i potwierdzony
+                alarm mają osobne statusy. <Link to='/temperature'>Otwórz Temperatury</Link>.
               </p>
             </details>
             <details className='help-question'>
@@ -174,11 +443,37 @@ export default function Help() {
               </p>
             </details>
             <details className='help-question'>
-              <summary>Skąd pochodzi jakość powietrza na pulpicie?</summary>
+              <summary>Co sprawdza nadzór ogrzewania?</summary>
               <p>
-                EAQI pochodzi z modelu Open-Meteo dla lokalizacji domu. Nie jest odczytem czujnika wewnątrz pomieszczenia. Nieaktualna
-                wartość jest oznaczona jako ostatnia znana. Więcej informacji znajdziesz w{' '}
-                <Link to='/external-hazards'>Zagrożeniach zewnętrznych</Link>.
+                „Wejścia” pokazują wartości, źródła i jakość danych. „Zakres kontroli” pokazuje włączone reguły i wyjaśnienia. Zacznij od
+                zakresu, gdy widzisz częściowe pokrycie. Jeżeli działa tylko R01, pozytywny wynik potwierdza dostępność i poprawność
+                wymaganych odczytów. Kontrole pracy kotła i dostarczania ciepła mają własne wyniki po włączeniu odpowiednich reguł.{' '}
+                <Link to='/heating'>Otwórz Ogrzewanie</Link>.
+              </p>
+            </details>
+            <details className='help-question'>
+              <summary>Jak odtworzyć kolejność zdarzeń?</summary>
+              <p>
+                W Historii wybierz kategorię „System”, „Usterki” lub „Działania” i zakres czasu. Rozwiń encję, aby porównać jej zmiany stanu
+                z czasem zdarzenia. W historii powiadomień sprawdzisz osobno próby wysyłki, treść i potwierdzenia. Raporty kontroli po
+                wyjściu i przed snem są dostępne w historii wykonań scenariuszy. <Link to='/history'>Otwórz Historię</Link>.
+              </p>
+            </details>
+          </section>
+
+          <section aria-labelledby='help-configuration'>
+            <h3 id='help-configuration'>Konfiguracja instalacji</h3>
+            <details className='help-question'>
+              <summary>Jak zmienić encję lub próg i zastosować zmianę?</summary>
+              <p>
+                Wybierz podstronę konfiguracji. „Ogólne” zawiera język i wybór funkcji, „Powiadomienia” ich adresatów, a „Instalacja HA”
+                ustawienia lokalizacji. Progi i czasy zmienisz w „Ustawieniach komponentów”. Pomieszczenia, drzwi i okna, detektory oraz
+                scenariusze mają osobne formularze. Ustawienia źródeł technicznych są w podstronie „Zdrowie systemu”.
+              </p>
+              <p>
+                Wyszukaj właściwą encję, sprawdź jednostkę lub surowe stany i zapisz cały szkic. Import YAML oraz reset do szablonu najpierw
+                zmieniają szkic. Po sprawdzeniu zapisanego pliku użyj „Uruchom ponownie aplikację”, aby wczytać ustawienia. Polecenie wymaga
+                odpowiednich uprawnień i restartuje SafetyComponent. <Link to='/configuration'>Otwórz Konfigurację</Link>.
               </p>
             </details>
           </section>
@@ -204,8 +499,8 @@ export default function Help() {
                 kliknięcie, dotknięcie poza nią lub Escape ją zamyka.
               </p>
               <p>
-                Kliknij kartę z odczytem, aby otworzyć dostępne szczegóły. Okno zamkniesz przyciskiem zamknięcia lub Escape. Na telefonie w
-                widoku rozszerzonym nawigacja jest pod ikoną menu.
+                Ikona „i” wyświetla objaśnienie. Jeśli karta ma przycisk szczegółów, użyj go, aby otworzyć odczyty i historię. Okno
+                zamkniesz przyciskiem zamknięcia lub Escape. Na telefonie przejdź do widoku rozszerzonego, a potem użyj „Otwórz nawigację”.
               </p>
             </details>
           </section>

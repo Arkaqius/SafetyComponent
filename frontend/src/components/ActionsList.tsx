@@ -41,10 +41,14 @@ export default function ActionsList({ recoveries, onSelectEntity }: ActionsListP
       <div className='panel-toolbar'>
         {recoveries.length > 0 && (
           <button className='text-button' onClick={() => setShowAll(value => !value)} type='button'>
-            {showAll ? 'Pokaż wymagające uwagi' : `Pokaż wszystkie (${recoveries.length})`}
+            {showAll ? 'Wróć do bieżących zaleceń' : `Katalog zaleceń (${recoveries.length})`}
           </button>
         )}
       </div>
+
+      {showAll && (
+        <p className='recovery-catalog-note'>„Brak potrzeby” oznacza, że system przechowuje zalecenie na wypadek przyszłego zdarzenia.</p>
+      )}
 
       <div aria-live='polite' className='recovery-list'>
         {visibleRecoveries.length > 0 ? (

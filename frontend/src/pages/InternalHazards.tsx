@@ -66,7 +66,7 @@ export default function InternalHazards() {
           <StatusBadge pulse={internalEnvironment.status === 'active_hazard'} tone={presentation.tone}>
             {presentation.label}
           </StatusBadge>
-          <small>Aktualizacja {formatRelativeTime(internalEnvironment.lastUpdated)}</small>
+          <small>Ostatni zapis podsumowania {formatRelativeTime(internalEnvironment.lastUpdated)}</small>
         </div>
       </section>
 
