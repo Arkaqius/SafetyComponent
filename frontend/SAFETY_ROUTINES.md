@@ -72,6 +72,11 @@ rejestru instalacji nie dodaje automatycznie kontroli do istniejących scenarius
 
 ## Jak czytać raport
 
+Na górze raportu znajdziesz wynik i liczbę kontroli w każdej grupie. Sekcje
+**Wymaga uwagi** i **Brak oceny** są widoczne od razu. Rozwiń wybraną pozycję,
+aby zobaczyć odczyt źródłowy, oczekiwanie, encję i czas obserwacji. Sekcja
+**Czas i przebieg** zawiera czasy wykonania i informacje o próbkach.
+
 | Wynik | Co oznacza | Co zrobić |
 | --- | --- | --- |
 | OK | Odczyt spełnił oczekiwanie. Wyjaśnienie wskazuje, czy porównano ostatni znany odczyt encji. | Sprawdź czas i podstawę oceny. |
@@ -79,10 +84,10 @@ rejestru instalacji nie dodaje automatycznie kontroli do istniejących scenarius
 | Nie można ocenić | Brakuje wartości, wymaganego czasu, właściwej jednostki lub znanego warunku. | Odczytaj wyjaśnienie i sprawdź źródło. |
 | Pominięte | Znany, świeży warunek wybrał skonfigurowany stan pomijania. | Sprawdź, czy wyłączenie ma zastosowanie. |
 
-„Brak potwierdzenia” to brak dowodu, nawet jeśli w kolumnie odczytu widać
-zapamiętane `off` lub niską moc. Nie oznacza ani potwierdzonego problemu, ani OK.
-Problem ma pierwszeństwo w podsumowaniu, ale liczba nieocenionych kontroli nadal
-pokazuje luki. Wykonanie ze wszystkimi kontrolami pominiętymi nie jest sukcesem.
+Szczegóły nieocenionej kontroli mogą zawierać zapamiętane `off` lub niską moc.
+Wyjaśnienie wskazuje, jakich danych brakuje do oceny. Problem ma pierwszeństwo
+w podsumowaniu, a grupa **Brak oceny** pokazuje luki w danych. Przy pominięciu
+wszystkich pozycji raport pokazuje „Brak kontroli mających zastosowanie”.
 
 **Anuluj kontrolę** zatrzymuje oczekiwanie lub próbkowanie. Restart przerywa
 niedokończone wykonania. Żaden z tych stanów nie oznacza OK. Historia obejmuje

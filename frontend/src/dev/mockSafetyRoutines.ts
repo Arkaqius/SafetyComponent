@@ -11,7 +11,7 @@ export function routineDemoResponse(data: Record<string, unknown>) {
   if (data.action === 'list')
     return {
       ...envelope,
-      routines: [{ routine_id: 'Bedtime', name: 'Przed snem', enabled: true, check_count: 2 }],
+      routines: [{ routine_id: 'Bedtime', name: 'Przed snem', enabled: true, check_count: 3 }],
       runs: [...runs].reverse().map(run => ({ ...run, results: undefined })),
     };
   if (data.action === 'run' && data.routine_id === 'Bedtime') {
@@ -28,17 +28,17 @@ export function routineDemoResponse(data: Record<string, unknown>) {
       sample_count: 1,
       observation_seconds: 0,
       evidence_incomplete: true,
-      counts: { pass: 0, problem: 1, unknown: 1, skipped: 0 },
+      counts: { pass: 1, problem: 1, unknown: 1, skipped: 0 },
       results: [
         {
-          check_id: 'Window',
-          name: 'Okno w kuchni',
-          entity_id: 'binary_sensor.demo_window',
+          check_id: 'HouseAsleep',
+          name: 'Domownicy śpią',
+          entity_id: 'sensor.demo_activity',
           status: 'problem',
           reason_label: 'Odczyt nie spełnia oczekiwania',
-          value: 'on',
+          value: 'awake',
           observed_at: now,
-          expected_states: ['off'],
+          expected_states: ['asleep'],
           minimum: null,
           maximum: null,
           unit: null,
@@ -55,6 +55,19 @@ export function routineDemoResponse(data: Record<string, unknown>) {
           minimum: null,
           maximum: null,
           unit: null,
+        },
+        {
+          check_id: 'HousePower',
+          name: 'Moc całego domu',
+          entity_id: 'sensor.demo_house_power',
+          status: 'pass',
+          reason_label: 'Ostatni znany odczyt jest zgodny z oczekiwaniem',
+          value: 499,
+          observed_at: null,
+          expected_states: null,
+          minimum: 0,
+          maximum: 499.9,
+          unit: 'W',
         },
       ],
     };
