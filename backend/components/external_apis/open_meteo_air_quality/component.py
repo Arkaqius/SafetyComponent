@@ -52,7 +52,7 @@ class OpenMeteoAirQualityApiComponent(ExternalApiComponent):
         current = payload.get("current")
         if not isinstance(current, dict):
             raise ValueError("Open-Meteo AQ current section is required")
-        observed_at = parse_datetime(current.get("time"), default=retrieved_at)
+        observed_at = parse_datetime(current.get("time"))
         values: dict[str, Measurement] = {}
         for field in self._FIELDS:
             values[f"current_{field}"] = Measurement(self._number(current, field), self._unit(field))

@@ -51,7 +51,7 @@ The system shall:
 | --- | --- | --- | --- | --- |
 | `OpenMeteoWeatherApiComponent` | Open-Meteo `/v1/forecast` | Current/model temperature, frost forecast, precipitation, weather code, wind and gusts | 10 min | Forecast/model input |
 | `ImgwWarningsApiComponent` | IMGW `/api/data/warningsmeteo` | Current official weather warnings matching configured TERYT codes | 5 min | Authoritative weather warning |
-| `OpenMeteoAirQualityApiComponent` | Open-Meteo `/v1/air-quality` | Current CAMS-model European AQI and pollutant values | 30 min | Current model input |
+| `OpenMeteoAirQualityApiComponent` | Open-Meteo `/v1/air-quality` | Current CAMS-model European AQI and pollutant values | 5 min | Current model input |
 
 Provider references:
 
@@ -270,6 +270,11 @@ CAMS model values for the configured home coordinates. Required fields:
 - PM2.5, PM10, NO2, O3, and SO2;
 - current/model values;
 - grid coordinates, model/source time, validity, and retrieval time.
+
+The plugin polls every five minutes by default. For an hourly CAMS sample, the
+default 70-minute validity window covers the model hour and allows two poll
+intervals for the next sample to arrive. Validity starts at the source timestamp.
+A response without that timestamp is invalid.
 
 ### 7.6 `ExternalHazardComponent`
 
@@ -491,10 +496,10 @@ runtime_cfg:
     OpenMeteoAirQualityApiComponent:
       enabled: true
       base_url: "https://air-quality-api.open-meteo.com/v1/air-quality"
-      poll_interval_seconds: 1800
+      poll_interval_seconds: 300
       request_timeout_seconds: 10
       max_retries: 2
-      stale_after_seconds: 2700
+      stale_after_seconds: 4200
 
   faults:
     ExternalWeatherExposure:
