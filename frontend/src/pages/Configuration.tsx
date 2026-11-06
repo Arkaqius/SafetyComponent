@@ -19,7 +19,6 @@ import {
 } from '../userConfigurationApi';
 import { canRestartConfiguration, configurationRestartMessage } from '../domain/configurationRestart';
 
-const providerNames = ['OpenMeteoWeatherApiComponent', 'ImgwWarningsApiComponent', 'OpenMeteoAirQualityApiComponent'];
 const registrySections = [
   {
     key: 'safety_routines',
@@ -209,6 +208,12 @@ export default function Configuration() {
   const safetyDoorSystem = asMap(systemDefaults.safety_door);
   const entityMonitorSystem = asMap(systemDefaults.entity_monitor);
   const externalHazardSystem = asMap(systemDefaults.external_hazard);
+  const providerPlugins = asMap(externalHazardSystem.provider_plugins);
+  const country = stringValue(site.country_code).trim().toUpperCase();
+  const providerNames = [...new Set([...Object.keys(providerPlugins), ...Object.keys(providers)])].filter(name => {
+    const countries = stringList(asMap(providerPlugins[name]).countries);
+    return countries.length === 0 || countries.includes(country);
+  });
   const weatherSystem = asMap(externalHazardSystem.weather);
   const airQualitySystem = asMap(externalHazardSystem.outdoor_air_quality);
   const detectorProfiles = stringList(systemDefaults.detector_profiles);
@@ -380,10 +385,10 @@ export default function Configuration() {
             ))}
           </fieldset>
           <fieldset className='configuration-fieldset'>
-            <legend>Providery API</legend>
+            <legend>Dostawcy danych zewnętrznych</legend>
             {providerNames.map(name => (
               <ToggleField
-                checked={asMap(providers[name]).enabled !== false}
+                checked={(asMap(providers[name]).enabled ?? asMap(providerPlugins[name]).enabled) !== false}
                 key={name}
                 label={friendlyName(name, 'ApiComponent')}
                 onChange={value => update(['providers', name, 'enabled'], value)}
@@ -470,12 +475,14 @@ export default function Configuration() {
             value={stringValue(site.country_code)}
             onChange={value => update(['installation', 'site', 'country_code'], value.toUpperCase())}
           />
-          <TextAreaField
-            label='Kody TERYT (jeden w wierszu)'
-            help='Czterocyfrowe kody powiatów używane przez ostrzeżenia IMGW.'
-            value={stringList(site.teryt_codes).join('\n')}
-            onChange={value => update(['installation', 'site', 'teryt_codes'], splitLines(value))}
-          />
+          {country === 'PL' && (
+            <TextAreaField
+              label='Kody TERYT dla IMGW (jeden w wierszu)'
+              help='Podaj czterocyfrowe kody powiatów, jeśli włączasz ostrzeżenia IMGW.'
+              value={stringList(site.teryt_codes).join('\n')}
+              onChange={value => update(['installation', 'site', 'teryt_codes'], splitLines(value))}
+            />
+          )}
           <TextField
             label='Encja temperatury zewnętrznej'
             entityDomains={['sensor']}

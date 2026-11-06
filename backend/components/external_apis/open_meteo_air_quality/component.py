@@ -6,8 +6,10 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from components.external_apis.core.api_component import ExternalApiComponent
-from components.external_apis.core.models import ExternalObservation, HazardType, Measurement, parse_datetime
+from components.external_apis.core.models import ExternalObservation, HazardType, Measurement, ProviderCapability, parse_datetime
 from components.external_apis.core.registry import register_api_component
+
+from .schema import OpenMeteoAirQualityConfig
 
 
 @register_api_component
@@ -15,6 +17,8 @@ class OpenMeteoAirQualityApiComponent(ExternalApiComponent):
     """Normalize current European AQI model values for the configured home."""
 
     component_name = "OpenMeteoAirQualityApiComponent"
+    config_model = OpenMeteoAirQualityConfig
+    capability = ProviderCapability.AIR_QUALITY
     _FIELDS = (
         "european_aqi",
         "european_aqi_pm2_5",
@@ -35,7 +39,8 @@ class OpenMeteoAirQualityApiComponent(ExternalApiComponent):
             params={
                 "latitude": self.site_config["latitude"],
                 "longitude": self.site_config["longitude"],
-                "timezone": self.site_config["timezone"],
+                # Open-Meteo omits offsets from ISO timestamps in the response.
+                "timezone": "GMT",
                 "current": ",".join(self._FIELDS),
             },
             timeout_seconds=self.request_timeout_seconds,

@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import ConfigDict, Field, ValidationError, model_validator
+from pydantic import ConfigDict, Field, RootModel, ValidationError, model_validator
 
 from components.core.mqtt_entity_manager import MqttSettings
 from components.core.pydantic_utils import StrictBaseModel
+from components.external_apis.core.registry import describe_provider_keys, validate_provider_keys
 from components.faults_manager.schema import FaultEntry, FaultEvidenceConfig
 from components.notification_manager.schema import (
     LevelOneRepeatPolicy,
@@ -209,12 +210,15 @@ class ProviderRuntimeSource(SystemSourceModel):
     stale_after_seconds: int = Field(ge=1)
 
 
-class ProviderRuntimeSet(SystemSourceModel):
-    """Exact provider set supported by this release."""
+class ProviderRuntimeSet(RootModel[dict[str, ProviderRuntimeSource]]):
+    """Packaged lifecycle configuration keyed by registered plugin ID."""
 
-    OpenMeteoWeatherApiComponent: ProviderRuntimeSource
-    ImgwWarningsApiComponent: ProviderRuntimeSource
-    OpenMeteoAirQualityApiComponent: ProviderRuntimeSource
+    model_config = ConfigDict(json_schema_extra=describe_provider_keys)
+
+    @model_validator(mode="after")
+    def _registered_plugins(self) -> "ProviderRuntimeSet":
+        validate_provider_keys(self.root)
+        return self
 
 
 class NotificationMobileSource(SystemSourceModel):

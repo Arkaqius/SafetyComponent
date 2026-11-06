@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import Any, Mapping
 
 from components.external_apis.core.api_component import ExternalApiComponent
 from components.external_apis.core.http_json_client import HttpJsonError
-from components.external_apis.core.models import ExternalObservation, HazardType, Measurement, parse_datetime
+from components.external_apis.core.models import (
+    ExternalObservation, HazardType, Measurement, ProviderCapability, WarningUrgency, parse_datetime,
+)
 from components.external_apis.core.registry import register_api_component
+
+from .schema import ImgwWarningsConfig
 
 
 @register_api_component
@@ -16,6 +21,18 @@ class ImgwWarningsApiComponent(ExternalApiComponent):
     """Normalize official IMGW warnings applicable to configured TERYT areas."""
 
     component_name = "ImgwWarningsApiComponent"
+    config_model = ImgwWarningsConfig
+    capability = ProviderCapability.OFFICIAL_WARNINGS
+    countries = frozenset({"PL"})
+
+    @classmethod
+    def validate_site(cls, site: Mapping[str, Any]) -> None:
+        """Require applicable Polish county codes when IMGW is selected."""
+        codes = site.get("teryt_codes", [])
+        if not codes:
+            raise ValueError("IMGW requires site.teryt_codes for a Polish installation")
+        if any(not re.fullmatch(r"[0-9]{4}", code) for code in codes) or len(codes) != len(set(codes)):
+            raise ValueError("IMGW requires unique four-digit codes in site.teryt_codes")
 
     def fetch_payload(self) -> Any:
         try:
@@ -32,11 +49,12 @@ class ImgwWarningsApiComponent(ExternalApiComponent):
             raise
 
     def normalize(self, payload: Any, retrieved_at: datetime) -> tuple[ExternalObservation, ...]:
+        self.validate_site(self.site_config)
         configured_teryt = {str(code) for code in self.site_config.get("teryt_codes", [])}
         observations: list[ExternalObservation] = []
         for warning in self._current_warnings(payload, retrieved_at):
             regions = tuple(warning["regions"])
-            if configured_teryt and not configured_teryt.intersection(regions):
+            if not configured_teryt.intersection(regions):
                 continue
             event_name = str(warning["event_name"])
             hazard_type = self._hazard_type(event_name)
@@ -54,6 +72,7 @@ class ImgwWarningsApiComponent(ExternalApiComponent):
                         "content": Measurement(str(warning["content"])),
                         "comment": Measurement(str(warning["comment"])),
                         "office": Measurement(str(warning["office"])),
+                        "level_label": Measurement(f"IMGW degree {warning['degree'] or 'unspecified'}"),
                     },
                     observed_at=parse_datetime(warning["published_at"]),
                     valid_from=parse_datetime(warning["valid_from"]),
@@ -62,6 +81,7 @@ class ImgwWarningsApiComponent(ExternalApiComponent):
                     region_codes=regions,
                     authority_confirmed=True,
                     source_reference=self.provider_config["base_url"],
+                    warning_urgency=WarningUrgency.IMMEDIATE if warning["degree"] == "3" else WarningUrgency.STANDARD,
                 )
             )
         return tuple(observations)

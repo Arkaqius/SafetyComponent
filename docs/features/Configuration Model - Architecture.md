@@ -135,7 +135,7 @@ Unknown keys are rejected. The complete editable `user_config` root is:
 | `components_enabled` | Yes | Contains exactly the five supported component keys, each with a boolean value, and enables at least one component. |
 | `localization` | No | Selects `language` as `en`, `pl`, or `de`; names are resolved from locale files, not from user configuration. Defaults to English. |
 | `notification` | Yes | Installation-owned notification destinations described below. Retry, delivery, profile, persistence, and detail policy remain system-owned. |
-| `providers` | No | Contains only the three supported provider keys, each with `enabled: true/false`; omitted providers inherit enabled system defaults. |
+| `providers` | No | Map of registered provider IDs to `enabled: true/false`. Omitted plugins inherit system defaults. Country applicability is checked for each plugin. |
 | `installation` | Yes | Physical installation registry described below. |
 
 The five required `components_enabled` keys are
@@ -153,10 +153,10 @@ The five required `components_enabled` keys are
 | `local.alarm_entity` | No | Valid Home Assistant entity ID for an approved local alarm output. |
 | `wan_entity` | No | Valid Home Assistant entity ID used as WAN reachability evidence, or `null`. |
 
-`providers` accepts only `OpenMeteoWeatherApiComponent`,
-`ImgwWarningsApiComponent`, and `OpenMeteoAirQualityApiComponent`. Their URLs,
-polling, timeouts, retry bounds, staleness, and schemas remain in
-`system_config.yml`.
+The bundled provider IDs are `OpenMeteoWeatherApiComponent`,
+`ImgwWarningsApiComponent`, and `OpenMeteoAirQualityApiComponent`. The
+packaged system configuration supplies URLs and transport parameters. Each
+registered plugin supplies its validation schema.
 
 MQTT transport and publication policy are entirely system-owned. The user
 configuration has no MQTT section or retired-discovery cleanup list.
@@ -165,7 +165,7 @@ configuration has no MQTT section or retired-discovery cleanup list.
 
 | Field | Required | Contract |
 | --- | --- | --- |
-| `site` | When External Hazard is enabled | Valid IANA `timezone`, two-letter `country_code`, and a non-empty unique list of four-digit `teryt_codes`. Latitude and longitude are never stored here; they come from current Home Assistant Core configuration on every App start. |
+| `site` | When External Hazard is enabled | Valid IANA `timezone` and two-letter `country_code`. Active IMGW in Poland additionally requires a non-empty, unique list of four-digit `teryt_codes`. Latitude and longitude come from current Home Assistant Core configuration on every App start. |
 | `common_entities` | No | Map of stable semantic keys to Home Assistant entity IDs. |
 | `component_settings` | No | Installation-wide overrides grouped by Temperature, Safety Doors, External Hazard, and Entity Monitor. |
 | `rooms` | No | Stable room registry used to generate Temperature bindings. |

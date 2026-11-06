@@ -1,0 +1,28 @@
+# Example for a Home Assistant installation in Berlin. Set the location in
+# Home Assistant and replace the example entities and notification service.
+user_config:
+  model_version: 2
+  components_enabled:
+    TemperatureComponent: false
+    SafetyDoorsComponent: false
+    ExternalHazardComponent: true
+    EntityMonitorComponent: true
+    InternalEnvironmentalHazardMonitorComponent: false
+  localization:
+    language: en
+  notification:
+    mobile:
+      services: [notify/mobile_app_example_phone]
+  installation:
+    site:
+      timezone: Europe/Berlin
+      country_code: DE
+    common_entities:
+      outside_temp: sensor.outdoor_temperature
+    openings:
+      LivingRoomWindow:
+        area_id: living_room
+        entity_id: binary_sensor.living_room_window
+        friendly_name: Wohnzimmerfenster
+        kind: window
+        external_hazard: {}

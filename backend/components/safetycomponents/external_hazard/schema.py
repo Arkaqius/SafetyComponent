@@ -21,7 +21,7 @@ class SiteConfig(StrictBaseModel):
     longitude: float = Field(ge=-180, le=180)
     timezone: str
     country_code: str
-    teryt_codes: list[str] = Field(min_length=1)
+    teryt_codes: list[str] = Field(default_factory=list)
 
     @field_validator("country_code")
     @classmethod
@@ -44,12 +44,7 @@ class SiteConfig(StrictBaseModel):
     @field_validator("teryt_codes")
     @classmethod
     def _teryt_codes(cls, value: list[str]) -> list[str]:
-        normalized = [str(code).strip() for code in value]
-        if any(not re.fullmatch(r"\d{4}", code) for code in normalized):
-            raise ValueError("site.teryt_codes must contain four-digit powiat codes")
-        if len(normalized) != len(set(normalized)):
-            raise ValueError("site.teryt_codes must not contain duplicates")
-        return normalized
+        return [code.strip() for code in value]
 
 
 class WeatherPolicy(StrictBaseModel):

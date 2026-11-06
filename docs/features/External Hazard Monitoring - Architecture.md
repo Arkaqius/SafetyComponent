@@ -146,35 +146,49 @@ separate API Component registry:
 - the EventBus is the only provider-to-C-EXT data path, so the existing
   four-argument `SafetyComponent` constructor does not need provider-specific
   dependencies;
-- explicit imports register each API Component in the API registry, matching the
-  existing Safety Component registration pattern;
+- explicit imports register bundled provider plugins in the API registry. Each
+  plugin declares its stable ID, configuration schema, capability and applicable
+  countries;
 - `SafetyFunctions.terminate()` stops the external runtime before publishing
   application availability offline.
 
 `AppCfgValidator` validates the generated runtime schemas for
 `user_config.site`, generated provider bindings, and
 `ExternalHazardComponent`. Its entity and area collection will include every
-configured opening. Enabling C-EXT while a required API Component or site field
-is absent is a startup configuration error.
+configured opening. C-EXT requires a site when enabled. The compiler validates
+the configuration of registered plugins and selects only the enabled plugins
+applicable to that country. A configured hazard without an enabled source for
+its capability remains unevaluable.
 
 ## 7. Component roles
 
 ### 7.1 `ExternalApiComponent`
 
-This is a protocol/base contract for remote API adapters. It is deliberately
-not a subclass of `SafetyComponent`.
+This base class is the internal SafetyComponent API for provider plugins.
+It owns the common polling and cache lifecycle. C-EXT consumes `ApiResult`
+through the EventBus.
 
 Required operations:
 
 ```python
-class ExternalApiComponent(Protocol):
+class ExternalApiComponent(ABC):
     component_name: str
+    config_model: type[BaseModel]
+    capability: ProviderCapability
+    countries: frozenset[str]
 
-    def start(self) -> None: ...
-    def stop(self) -> None: ...
-    def request_poll(self) -> None: ...
-    def normalize(self, payload: object, retrieved_at: datetime) -> ApiResult: ...
+    @classmethod
+    def validate_site(cls, site: Mapping[str, Any]) -> None: ...
+    def fetch_payload(self) -> Any: ...
+    def normalize(self, payload: Any, retrieved_at: datetime) -> tuple[ExternalObservation, ...]: ...
+    def poll(self) -> ApiResult: ...
 ```
+
+Capability values are `WeatherPointModel`, `OfficialWeatherWarnings` and
+`OutdoorAirQuality`. An empty country set allows all installation countries.
+Bundled plugins are registered at import and enabled through their system
+defaults and installation overrides. A plugin implementing a supported
+capability supplies the existing normalized measurements and units for it.
 
 Each implementation owns:
 
@@ -229,11 +243,13 @@ It emits model values and validity timestamps. It shall never use words such as
 
 ### 7.4 `ImgwWarningsApiComponent`
 
-The IMGW component maps:
+The IMGW plugin applies in `PL` and requires a non-empty, unique list of
+four-digit TERYT codes when enabled. It maps:
 
 - `id` -> stable provider observation ID;
 - `nazwa_zdarzenia` -> normalized hazard type while preserving original text;
-- `stopien` -> provider warning degree, not directly a Safety System level;
+- `stopien` -> raw warning degree and normalized urgency. Degree 3 maps to
+  `immediate` and the other degrees map to `standard`;
 - `prawdopodobienstwo` -> provider probability;
 - `obowiazuje_od`, `obowiazuje_do`, `opublikowano` -> source times;
 - `teryt` -> applicable configured administrative areas;
@@ -247,7 +263,7 @@ An updated warning with the same ID replaces the previous provider observation.
 
 ### 7.5 `OpenMeteoAirQualityApiComponent`
 
-This component is the sole outdoor-air-quality provider and returns current
+This bundled outdoor-air-quality plugin returns current
 CAMS model values for the configured home coordinates. Required fields:
 
 - `european_aqi` and contributing sub-indices;
@@ -294,6 +310,7 @@ class ExternalObservation:
     confidence: float | None
     authority_confirmed: bool
     source_reference: str
+    warning_urgency: WarningUrgency | None
 
 @dataclass(frozen=True)
 class ProviderHealth:
@@ -323,9 +340,9 @@ other direct sensor path.
 | Hazard | Hazard evidence | Exposure condition | System response |
 | --- | --- | --- | --- |
 | Frost | Current or forecast external temperature crosses configured policy | Relevant opening is qualified | Warn with opening and temperature/forecast context |
-| Wind | Gust threshold or applicable IMGW warning | Relevant opening is qualified | Warn with opening, gust or warning degree |
-| Rain/storm | Precipitation policy or applicable IMGW warning | Relevant opening is qualified | Warn with opening and validity/source |
-| Outdoor pollution | Current Open-Meteo European AQI crosses configured policy | Relevant opening is qualified | Warn and inhibit advice to open external openings |
+| Wind | Gust threshold or applicable official warning | Relevant opening is qualified | Warn with opening, gust or warning level |
+| Rain/storm | Precipitation policy or applicable official warning | Relevant opening is qualified | Warn with opening and validity/source |
+| Outdoor pollution | Current European AQI crosses configured policy | Relevant opening is qualified | Warn and inhibit advice to open external openings |
 
 **Opening qualification**
 
@@ -335,18 +352,17 @@ interval per opening with a monotonic clock, starting at the first known-open
 observation. Closing the contact or losing its state shall reset qualification.
 The deadline shall re-read the contact and re-evaluate the applicable hazard
 evidence without waiting for the next provider poll. An open window shall
-qualify immediately. A valid, locally applicable IMGW degree-3 warning shall
-also qualify an open aperture configured for the warning's hazard. Provider
+qualify immediately. A valid, locally applicable official warning normalized
+as `immediate` shall qualify an open aperture configured for its hazard. Provider
 diagnostics and advice inhibition shall operate independently of the opening
 delay. Existing exposures shall follow the clearing policy.
 
 ### 9.1 Multiple providers
 
-- IMGW warning validity is authoritative for the warning itself.
-- Open-Meteo weather supplies point-model detail and forecast but does not
-  replace an IMGW warning.
-- Open-Meteo is the sole outdoor-air-quality provider and supplies the current
-  European AQI for the configured home coordinates.
+- A registered official warning plugin supplies authoritative validity for its
+  warnings. The point weather model supplies independent forecast evidence.
+- The outdoor-air-quality capability supplies European AQI for the home
+  coordinates.
 - Individual provider failure degrades only capabilities that require it.
 
 ### 9.2 Clearing
@@ -359,8 +375,9 @@ An active condition clears only when one of these is true:
 - fresh valid evidence remains below the policy threshold for the configured
   hysteresis/clear period.
 
-Timeout, HTTP failure, parse failure, and stale data do not constitute clearing
-evidence.
+Clearing from provider evidence requires at least one applicable enabled
+source and fresh results from the enabled sources for the hazard. Timeout,
+HTTP failure, parse failure, and stale data leave that evaluation unevaluable.
 
 ## 10. Fault and notification model
 
@@ -555,7 +572,7 @@ or invalid.
 ### 12.1 Provider diagnostics and operator presentation
 
 Each `sensor.external_provider_<provider>` diagnostic entity publishes provider
-health together with `observation_count` and an `observations` list bounded to
+health and `capability` together with `observation_count` and an `observations` list bounded to
 64 summaries. Each observation summary contains:
 
 - `id`: stable normalized observation ID;
@@ -567,9 +584,12 @@ health together with `observation_count` and an `observations` list bounded to
 
 The summary does not replace the immutable normalized provider result used by
 the safety policy and does not expose raw provider payloads. User interfaces
-translate stable hazard codes into localized names. Current air-quality
-presentation uses the current Open-Meteo European AQI model value for the
-configured home coordinates.
+translate stable hazard codes into localized names. The official warning view
+lists warnings from plugins with `OfficialWeatherWarnings` capability and
+distinguishes a healthy empty feed, unavailable data and an unconfigured feed.
+The [Berlin example](../examples/berlin_user_config.yml) illustrates a site
+using point weather and outdoor-air-quality capabilities without a configured
+official warning feed.
 
 ## 13. Startup and shutdown sequence
 

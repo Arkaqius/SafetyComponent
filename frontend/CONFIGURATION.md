@@ -88,6 +88,10 @@ Sam import niczego nie zapisuje. Przed zapisem zastąp każde przykładowe
 `entity_id`, `area_id`, usługę `notify/*` i kod TERYT wartościami z własnej
 instalacji. Przykładowe progi nie są zaleceniem bezpieczeństwa.
 
+[Przykład dla Berlina](../docs/examples/berlin_user_config.yml) pokazuje
+instalację z prognozą i jakością powietrza Open-Meteo. Dla kraju `DE` konfiguracja
+lokalizacji używa `Europe/Berlin` oraz współrzędnych ustawionych w Home Assistant.
+
 1. W **Funkcjach i integracjach** włącz pięć komponentów domu. Wybierz język
    polski i rzeczywistą usługę powiadomień, np. własne `notify/mobile_app_*`.
 2. W **Instalacji Home Assistant** wybierz `Europe/Warsaw`, kraj `PL`, własne
@@ -129,7 +133,7 @@ budżecie wykrycia.
 | Funkcje i integracje | Włącz tylko komponenty, dla których masz rzeczywiste źródła danych. Providery API można osobno włączać i wyłączać; ich adresy i harmonogramy są ustawieniami systemowymi. |
 | Język | Wybierz polski, angielski lub niemiecki. Nazw encji nie edytuje się w tym formularzu — pochodzą z plików lokalizacji. |
 | Powiadomienia | Wpisz konkretne usługi `notify/<nazwa>`, po jednej w wierszu. `notify/notify` jest niejednoznaczne. Adres po kliknięciu powinien być ścieżką w HA, np. `/`. Encja WAN i lokalne urządzenia sygnalizacji są opcjonalne. |
-| Instalacja Home Assistant | Wybierz strefę czasową z listy, podaj dwuliterowy kod kraju, kody powiatów TERYT i — gdy komponent temperatury jest włączony — czujnik temperatury zewnętrznej. Współrzędne są pobierane z HA przy każdym starcie, nie wpisuje się ich w formularzu. |
+| Instalacja Home Assistant | Wybierz strefę czasową i podaj dwuliterowy kod kraju. Dla włączonego IMGW w Polsce podaj kody powiatów TERYT. Gdy używasz komponentu temperatury, wybierz czujnik temperatury zewnętrznej. Współrzędne pochodzą z HA. |
 | Zdrowie systemu i konserwacja | Wskaż źródła pamięci i PSI, CPU, wolnego miejsca, temperatury hosta, kopii i aktualizacji. Urządzenia bateryjne pobierane są automatycznie; wybierz, które monitorować. Włącz potrzebne testy okresowe. Progi i interwały można nadpisać w Ustawieniach komponentów; puste pola dziedziczą defaulty. Brak źródła oznacza brak pokrycia, nie stan prawidłowy. |
 | Ustawienia komponentów | Opcjonalnie zmień progi temperatury, czas drzwi/bram, czasy monitoringu, progi pogody i jakości powietrza oraz progi i harmonogramy Functional Safety. Puste pole oznacza wartość systemową pokazaną pod polem. Lista domyślnych zagrożeń i horyzont prognozy pozostają w konfiguracji systemowej. |
 | Pomieszczenia | Dodaj wpis dla każdego monitorowanego pomieszczenia. Wskaż obszar HA i czujnik temperatury. Opcjonalnie wybierz otwór z sekcji „Drzwi, bramy i okna”, osłonę `cover.*` i indywidualne progi. |

@@ -551,12 +551,45 @@ test('normalizes external hazard aggregate and independent provider diagnostics'
     external.providers.find(provider => provider.provider === 'OpenMeteoWeatherApiComponent')?.observations[0].hazardType,
     'wind'
   );
-  assert.equal(external.imgwWarnings.length, 1);
-  assert.equal(external.imgwWarnings[0].eventName, 'Burze');
-  assert.equal(external.imgwWarnings[0].locallyApplicable, true);
+  assert.equal(external.officialWarnings.length, 1);
+  assert.equal(external.officialWarnings[0].eventName, 'Burze');
+  assert.equal(external.officialWarnings[0].locallyApplicable, true);
   assert.equal(
-    external.imgwWarnings.some(warning => warning.id === 'imgw-outside-home'),
+    external.officialWarnings.some(warning => warning.id === 'imgw-outside-home'),
     false
+  );
+});
+
+test('filters out a retained official feed after a country change and accepts a replacement plugin', () => {
+  const aggregate = (enabled_providers: string[]) => entity('clear', { enabled_providers });
+  const staleImgw = entity('ok', {
+    provider: 'ImgwWarningsApiComponent',
+    capability: 'OfficialWeatherWarnings',
+    warnings: [{ id: 'alert', event_name: 'Burze', locally_applicable: true }],
+  });
+  const replacement = entity('ok', {
+    provider: 'BerlinWarningsApiComponent',
+    capability: 'OfficialWeatherWarnings',
+    warnings: [{ id: 'alert', event_name: 'Sturm', locally_applicable: true }],
+  });
+  const base = {
+    'sensor.external_provider_imgw_warnings': staleImgw,
+    'sensor.external_provider_berlin_warnings': replacement,
+  };
+  const berlin = getExternalHazardMonitoring({
+    ...base,
+    'sensor.external_hazard_state': aggregate(['OpenMeteoWeatherApiComponent']),
+  });
+  assert.equal(berlin.officialWarningsConfigured, false);
+  assert.deepEqual(berlin.officialWarnings, []);
+  const withAlerts = getExternalHazardMonitoring({
+    ...base,
+    'sensor.external_hazard_state': aggregate(['OpenMeteoWeatherApiComponent', 'BerlinWarningsApiComponent']),
+  });
+  assert.equal(withAlerts.officialWarningsConfigured, true);
+  assert.deepEqual(
+    withAlerts.officialWarnings.map(warning => warning.eventName),
+    ['Sturm']
   );
 });
 

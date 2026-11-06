@@ -14,7 +14,8 @@ from components.core.common_entities import CommonEntities
 from components.core.event_bus import EventBus
 from components.core.mqtt_entity_manager import MqttEntityManager
 from components.core.types_common import FaultState, RecoveryAction, RecoveryResult, SMState, Symptom
-from components.external_apis.core.models import ApiResult, ExternalObservation, HazardType, ProviderHealth, ProviderHealthState
+from components.external_apis import get_registered_api_components
+from components.external_apis.core.models import ApiResult, ExternalObservation, HazardType, ProviderCapability, ProviderHealth, ProviderHealthState
 from components.recovery_manager.policy import RecoveryPolicyDecision
 from components.recovery_manager.manual_actions import manual_action
 from components.safetycomponents.core.safety_component import SafetyComponent, register_safety_component
@@ -32,25 +33,11 @@ MAX_DIAGNOSTIC_OBSERVATIONS = 64
 DOOR_OPEN_QUALIFICATION_SECONDS = 60
 DEBOUNCED_OPENING_KINDS = frozenset({"door", "garage_door", "gate"})
 
-_HAZARD_PROVIDER_GROUPS: dict[HazardType, tuple[str, ...]] = {
-    HazardType.FROST: ("OpenMeteoWeatherApiComponent", "ImgwWarningsApiComponent"),
-    HazardType.WIND: ("OpenMeteoWeatherApiComponent", "ImgwWarningsApiComponent"),
-    HazardType.RAIN: ("OpenMeteoWeatherApiComponent", "ImgwWarningsApiComponent"),
-    HazardType.STORM: ("OpenMeteoWeatherApiComponent", "ImgwWarningsApiComponent"),
-    HazardType.OUTDOOR_AIR_POLLUTION: ("OpenMeteoAirQualityApiComponent",),
+_WEATHER_CAPABILITIES = (ProviderCapability.WEATHER_MODEL, ProviderCapability.OFFICIAL_WARNINGS)
+_HAZARD_CAPABILITIES = {
+    hazard: (ProviderCapability.AIR_QUALITY,) if hazard == HazardType.OUTDOOR_AIR_POLLUTION else _WEATHER_CAPABILITIES
+    for hazard in HazardType
 }
-
-_CAPABILITIES: dict[str, tuple[str, ...]] = {
-    "WeatherPointModel": ("OpenMeteoWeatherApiComponent",),
-    "OfficialWeatherWarnings": ("ImgwWarningsApiComponent",),
-    "OutdoorAirQuality": ("OpenMeteoAirQualityApiComponent",),
-}
-
-_EXPECTED_PROVIDERS = frozenset(
-    provider
-    for providers in _CAPABILITIES.values()
-    for provider in providers
-)
 
 _LABELS = {
     "en": {
@@ -172,7 +159,8 @@ class ExternalHazardComponent(SafetyComponent):
         self._stopped = False
         self._last_context: dict[str, dict[str, str]] = {}
         self._provider_entity_ids: dict[str, str] = {}
-        self.enabled_providers: set[str] = set(_EXPECTED_PROVIDERS)
+        self._provider_plugins = get_registered_api_components()
+        self.enabled_providers: set[str] = set(self._provider_plugins)
         self._aggregate_entity_id: str | None = None
         self._inhibited_reasons: dict[str, dict[str, str]] = {}
         self.event_bus.subscribe("external_api_result", self.handle_external_api_result)
@@ -186,7 +174,7 @@ class ExternalHazardComponent(SafetyComponent):
 
         self.policy = dict(component_cfg["policy"])
         self.enabled_providers = set(
-            component_cfg.get("enabled_providers", _EXPECTED_PROVIDERS)
+            component_cfg.get("enabled_providers", self._provider_plugins)
         )
         self.openings = {
             name: dict(config) for name, config in component_cfg["openings"].items()
@@ -222,19 +210,20 @@ class ExternalHazardComponent(SafetyComponent):
                     symptom_id, opening_name, opening
                 )
 
-        for capability, providers in _CAPABILITIES.items():
-            if not self.enabled_providers.intersection(providers):
+        for capability in ProviderCapability:
+            providers = self._providers_for((capability,))
+            if not providers:
                 continue
-            symptom_id = f"ExternalHazardDataUnavailable{capability}"
+            symptom_id = f"ExternalHazardDataUnavailable{capability.value}"
             symptoms[symptom_id] = self._symptom(
                 modules,
                 symptom_id,
                 SM_PROVIDER_UNAVAILABLE,
-                capability=capability,
+                capability=capability.value,
             )
             recoveries[symptom_id] = manual_action(
-                f"InspectExternalData{capability}",
-                subject=f"{capability}: {', '.join(sorted(self.enabled_providers.intersection(providers)))}",
+                f"InspectExternalData{capability.value}",
+                subject=f"{capability.value}: {', '.join(providers)}",
                 instruction_key="recovery.inspect_external_data",
                 result_key="recovery.result_external_data",
                 manual_report_allowed=True,
@@ -539,19 +528,20 @@ class ExternalHazardComponent(SafetyComponent):
         self, hazard: HazardType
     ) -> tuple[str, dict[str, str], HazardAssessment | None]:
         now = self._now()
+        providers = self._providers_for(_HAZARD_CAPABILITIES[hazard])
         applicable = (
-            observation
-            for provider_observations in self._observations.values()
-            for observation in provider_observations.values()
+            (provider, observation)
+            for provider in providers
+            for observation in self._observations.get(provider, {}).values()
             if observation.hazard_type == hazard and observation.valid_from <= now
         )
         active: list[tuple[ExternalObservation, HazardAssessment]] = []
         unusable = False
-        for observation in applicable:
-            official_warning = (
-                observation.authority_confirmed
-                and observation.provider == "ImgwWarningsApiComponent"
-            )
+        for provider, observation in applicable:
+            official_warning = self._provider_plugins[provider].capability == ProviderCapability.OFFICIAL_WARNINGS
+            if observation.provider != provider or observation.authority_confirmed != official_warning:
+                unusable = True
+                continue
             if observation.valid_to < now:
                 unusable |= not official_warning
                 continue
@@ -587,12 +577,7 @@ class ExternalHazardComponent(SafetyComponent):
             return "active", context, assessment
 
         self._inhibited_reasons.pop(hazard.value, None)
-        providers = tuple(
-            provider
-            for provider in _HAZARD_PROVIDER_GROUPS[hazard]
-            if provider in self.enabled_providers
-        )
-        explicit_clear = not unusable and all(
+        explicit_clear = bool(providers) and not unusable and all(
             provider in self._provider_seen
             and self._health.get(provider) is not None
             and self._health[provider].state == ProviderHealthState.OK
@@ -600,6 +585,12 @@ class ExternalHazardComponent(SafetyComponent):
             for provider in providers
         )
         return ("clear" if explicit_clear else "unknown"), {}, None
+
+    def _providers_for(self, capabilities: tuple[ProviderCapability, ...]) -> tuple[str, ...]:
+        return tuple(sorted(
+            name for name, plugin in self._provider_plugins.items()
+            if name in self.enabled_providers and plugin.capability in capabilities
+        ))
 
     def _provider_snapshot_is_fresh(self, provider: str, now: datetime) -> bool:
         health = self._health.get(provider)
@@ -609,11 +600,9 @@ class ExternalHazardComponent(SafetyComponent):
         return age >= 0 and (health.stale_after_seconds <= 0 or age <= health.stale_after_seconds)
 
     def _capability_health(self, capability: str) -> tuple[str, dict[str, str]]:
-        providers = tuple(
-            provider
-            for provider in _CAPABILITIES[capability]
-            if provider in self.enabled_providers
-        )
+        providers = self._providers_for((ProviderCapability(capability),))
+        if not providers:
+            return "unknown", {}
         now = self._now()
         degraded: list[str] = []
         for provider in providers:
@@ -637,6 +626,7 @@ class ExternalHazardComponent(SafetyComponent):
             provider in self._provider_seen
             and self._health.get(provider) is not None
             and self._health[provider].state == ProviderHealthState.OK
+            and self._provider_snapshot_is_fresh(provider, now)
             for provider in providers
         ):
             return "clear", {"capability": capability, "providers": ", ".join(providers)}
@@ -780,6 +770,7 @@ class ExternalHazardComponent(SafetyComponent):
         health = result.health
         attributes: dict[str, Any] = {
             "provider": provider,
+            "capability": self._provider_plugins[provider].capability.value,
             "last_attempt_at": health.last_attempt_at.isoformat() if health.last_attempt_at else None,
             "last_success_at": health.last_success_at.isoformat() if health.last_success_at else None,
             "consecutive_failures": health.consecutive_failures,
@@ -793,15 +784,33 @@ class ExternalHazardComponent(SafetyComponent):
                 ]
             ],
         }
-        if provider == "ImgwWarningsApiComponent":
-            warnings = result.evidence.get("warnings", [])
-            attributes["warnings"] = warnings if isinstance(warnings, list) else []
+        if self._provider_plugins[provider].capability == ProviderCapability.OFFICIAL_WARNINGS:
+            warnings = result.evidence.get("warnings")
+            if not isinstance(warnings, list):
+                warnings = [
+                    self._warning_summary(observation)
+                    for observation in result.observations
+                    if observation.provider == provider and observation.authority_confirmed
+                ]
+            attributes["warnings"] = warnings[:MAX_DIAGNOSTIC_OBSERVATIONS]
             attributes["warning_count"] = len(attributes["warnings"])
         self.mqtt_entities.publish_sensor_state(
             entity_id,
             health.state.value,
             attributes=attributes,
         )
+
+    def _warning_summary(self, observation: ExternalObservation) -> dict[str, Any]:
+        """Present a normalized official alert without provider-specific fields."""
+        title = observation.values.get("event_name")
+        return {
+            "id": observation.observation_id,
+            "event_name": str(title.value)[:200] if title is not None else self._label(observation.hazard_type.value),
+            "degree": observation.provider_level,
+            "valid_from": observation.valid_from.isoformat(),
+            "valid_to": observation.valid_to.isoformat(),
+            "locally_applicable": True,
+        }
 
     @staticmethod
     def _observation_summary(observation: ExternalObservation) -> dict[str, Any]:
@@ -849,12 +858,20 @@ class ExternalHazardComponent(SafetyComponent):
         ]
         external_active = [item for item in active if not item[0].startswith("ExternalHazardDataUnavailable")]
         unavailable_active = [item for item in active if item[0].startswith("ExternalHazardDataUnavailable")]
+        now = self._now()
         provider_data_incomplete = (
-            not self.enabled_providers.issubset(self._provider_seen)
+            not self.enabled_providers
+            or not self.enabled_providers.issubset(self._provider_seen)
             or any(
                 self._health.get(provider) is None
                 or self._health[provider].state != ProviderHealthState.OK
+                or not self._provider_snapshot_is_fresh(provider, now)
                 for provider in self.enabled_providers
+            )
+            or any(
+                not self._providers_for(_HAZARD_CAPABILITIES[HazardType(hazard)])
+                for opening in self.openings.values()
+                for hazard in opening["hazards"]
             )
         )
         severities = []
@@ -883,6 +900,7 @@ class ExternalHazardComponent(SafetyComponent):
                 "affected_openings": sorted({context.get("openings", "") for _, context in external_active if context.get("openings")}),
                 "providers": providers,
                 "enabled_providers": sorted(self.enabled_providers),
+                "official_warnings_configured": bool(self._providers_for((ProviderCapability.OFFICIAL_WARNINGS,))),
                 "advice_inhibition": list(self._inhibited_reasons.values()),
                 "last_evaluated_at": self._now().isoformat(),
                 "actuation_mode": self.policy.get(

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Mapping
 
-from components.external_apis.core.models import ExternalObservation, HazardType
+from components.external_apis.core.models import ExternalObservation, HazardType, WarningUrgency
 
 
 @dataclass(frozen=True)
@@ -32,15 +32,15 @@ def evaluate_observation(
     if observation.valid_to < now:
         return HazardAssessment(False, "unknown", "stale", "fresh data", "stale")
     values = observation.values
-    if observation.authority_confirmed and observation.provider == "ImgwWarningsApiComponent":
+    if observation.authority_confirmed:
         return HazardAssessment(
             True,
             "warning",
-            _measurement(values, "event_name", observation.provider_level or "IMGW warning"),
-            f"IMGW degree {observation.provider_level or 'unspecified'}",
+            _measurement(values, "event_name", "Official weather warning"),
+            _measurement(values, "level_label", observation.provider_level or "Official weather warning"),
             "official_warning",
             observation.hazard_type in {HazardType.WIND, HazardType.STORM},
-            immediate_exposure=observation.provider_level == "3",
+            immediate_exposure=observation.warning_urgency == WarningUrgency.IMMEDIATE,
         )
     if observation.hazard_type == HazardType.FROST:
         current = _number(values, "current_temperature")
