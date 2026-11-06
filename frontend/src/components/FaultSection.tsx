@@ -62,6 +62,10 @@ export default function FaultSection({
   const filteredFaults = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase('pl');
     return faults.filter(fault => {
+      // Battery readings without an active alarm belong in System Health.
+      if (fault.entityId.startsWith('sensor.fault_remotebatterylow') && fault.active !== true && fault.latched !== true) {
+        return false;
+      }
       const matchesFilter =
         filter === 'all' ||
         (filter === 'active' && fault.active) ||

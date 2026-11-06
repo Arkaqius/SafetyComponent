@@ -21,12 +21,12 @@ import {
 
 const timestamp = '2026-07-29T08:00:00+02:00';
 
-test('not evaluated battery faults are counted as assessments and visible in the attention filter', () => {
+test('not evaluated diagnostic faults are counted as assessments and require attention', () => {
   const faults = getFaults({
-    'sensor.fault_battery': entity('NOT_EVALUATED', { active: false, fault_category: 'D' }),
+    'sensor.fault_diagnostic': entity('NOT_EVALUATED', { active: false, fault_category: 'D' }),
     'sensor.fault_clear': entity('PASS', { active: false }),
   });
-  const pending = faults.find(fault => fault.entityId === 'sensor.fault_battery')!;
+  const pending = faults.find(fault => fault.entityId === 'sensor.fault_diagnostic')!;
   assert.equal(faultNeedsVerification(pending), true);
   assert.deepEqual(faults.filter(faultNeedsAttention), [pending]);
   const summary = getSafetySummary(entity('running'), entity('no_faults'), faults, []);

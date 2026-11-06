@@ -78,6 +78,34 @@ test('generic heating inputs stay readable and retained values lose current stat
   await expect(page.getByText('Brak bieżących danych', { exact: true }).first()).toBeVisible();
 });
 
+test('the event list shows active battery alarms and keeps missing battery readings out', async ({ page }) => {
+  await openMock(page, '/fault-management');
+  await page.evaluate(() => {
+    const entities = window.__safetyHomeMock.snapshot();
+    entities['sensor.fault_remotebatterylowbatteryentrance'] = {
+      state: 'NOT_EVALUATED',
+      attributes: { friendly_name: 'Niska bateria: Czujnik drzwi wejściowych', active: false, level: 4 },
+    };
+    entities['sensor.fault_remotebatterylowbatteryremote'] = {
+      state: 'FAIL',
+      attributes: { friendly_name: 'Niska bateria: Pilot', active: true, level: 4 },
+    };
+    entities['sensor.fault_unassessed_diagnostic'] = {
+      state: 'NOT_EVALUATED',
+      attributes: { friendly_name: 'Inna kontrola diagnostyczna', active: false, level: 3 },
+    };
+    window.__safetyHomeMock.update({ entities, connectionStatus: 'connected', ready: true });
+  });
+
+  await expect(page.getByText('Niska bateria: Pilot', { exact: true })).toBeVisible();
+  await expect(page.getByText('Inna kontrola diagnostyczna', { exact: true })).toBeVisible();
+  await expect(page.getByText('Niska bateria: Czujnik drzwi wejściowych', { exact: true })).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Wszystkie', exact: true }).click();
+  await expect(page.getByText('Niska bateria: Czujnik drzwi wejściowych', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Niska bateria: Pilot', { exact: true })).toBeVisible();
+});
+
 test('large history inventories keep only one bounded page subscribed and reset filters', async ({ page }) => {
   await openMock(page, '/history');
   await page.evaluate(() => {
