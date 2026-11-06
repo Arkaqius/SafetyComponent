@@ -96,14 +96,19 @@ pytest backend/tests
 ```
 
 Copy `backend/config/user_config.example.yml` to the ignored
-`backend/config/user_config.yml`, replace the installation-specific values,
-and compile the deployable file:
+`backend/config/user_config.yml` and replace the installation-specific values.
+Save the current Home Assistant Core `/api/config` response to a private
+`ha-config.json` file for compilation with site coordinates.
 
 ```powershell
 Copy-Item backend/config/user_config.example.yml backend/config/user_config.yml
-python backend/build_app_config.py
-python backend/build_app_config.py --check
+python backend/build_app_config.py --home-assistant-config ha-config.json
+python backend/build_app_config.py --home-assistant-config ha-config.json --check
 ```
+
+The [Berlin configuration](docs/examples/berlin_user_config.yml) shows how to
+use external hazard monitoring with the weather and air quality plugins for
+a location outside Poland.
 
 Deploy `backend/SafetyFunctions.py` and `backend/components/`, then merge the
 generated `SafetyFunctions` block from `backend/app_cfg.yaml` into AppDaemon

@@ -26,6 +26,7 @@ user_config:
 
   # Optional provider enablement overrides. Endpoints, polling, retry, timeout,
   # and staleness policy remain in system_config.yml.
+  # IMGW is selected only for PL. The Berlin example omits TERYT entirely.
   providers:
     OpenMeteoWeatherApiComponent:
       enabled: true

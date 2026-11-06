@@ -214,10 +214,10 @@ runtime_cfg:
     OpenMeteoAirQualityApiComponent:
       enabled: true
       base_url: https://air-quality-api.open-meteo.com/v1/air-quality
-      poll_interval_seconds: 1800
+      poll_interval_seconds: 300
       request_timeout_seconds: 10
       max_retries: 2
-      stale_after_seconds: 2700
+      stale_after_seconds: 4200
 
   notification:
     mobile:

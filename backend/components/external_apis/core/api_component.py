@@ -5,12 +5,15 @@ from __future__ import annotations
 import time
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Any, Mapping
+from typing import Any, ClassVar, Mapping
+
+from pydantic import BaseModel
 
 from .http_json_client import HttpJsonClient, HttpJsonError
 from .models import (
     ApiResult,
     ExternalObservation,
+    ProviderCapability,
     ProviderHealth,
     ProviderHealthState,
     utc_now,
@@ -21,6 +24,14 @@ class ExternalApiComponent(ABC):
     """Provider adapter contract; deliberately separate from SafetyComponent."""
 
     component_name = ""
+    config_model: ClassVar[type[BaseModel]]
+    capability: ClassVar[ProviderCapability]
+    countries: ClassVar[frozenset[str]] = frozenset()
+
+    @classmethod
+    def validate_site(cls, site: Mapping[str, Any]) -> None:
+        """Validate additional location requirements for an enabled plugin."""
+        return None
 
     def __init__(
         self,

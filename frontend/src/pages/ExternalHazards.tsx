@@ -6,7 +6,7 @@ import {
   observationDisplayName,
   type ExternalHazardStatus,
   type ExternalProviderView,
-  type ImgwWarningView,
+  type OfficialWarningView,
 } from '../domain/safety';
 import { useSafetyEntities } from '../hooks/useSafetyEntities';
 
@@ -14,6 +14,8 @@ export default function ExternalHazards() {
   const { externalHazards } = useSafetyEntities();
   const presentation = hazardPresentation(externalHazards.status);
   const healthyProviders = externalHazards.providers.filter(provider => provider.status === 'ok').length;
+  const officialProviders = externalHazards.providers.filter(provider => provider.capability === 'OfficialWeatherWarnings');
+  const officialFeedHealthy = officialProviders.length > 0 && officialProviders.every(provider => provider.status === 'ok');
 
   return (
     <div className='page-stack'>
@@ -22,9 +24,9 @@ export default function ExternalHazards() {
           <span className='section-kicker'>Warunki zewnętrzne</span>
           <h2>Ochrona domu przed warunkami zewnętrznymi</h2>
           <p>
-            System łączy dane pogodowe, bieżącą jakość powietrza i oficjalne ostrzeżenia IMGW ze stanem skonfigurowanych okien i drzwi. Ten
-            moduł wskazuje potrzebne zamknięcia. Okna i drzwi pozostają czynnością ręczną, a zamknięcie bramy garażowej lub zewnętrznej jest
-            wykonywane wyłącznie po jawnym potwierdzeniu użytkownika w tym interfejsie.
+            System łączy dane pogodowe, bieżącą jakość powietrza i dostępne oficjalne ostrzeżenia ze stanem skonfigurowanych okien i drzwi.
+            Ten moduł wskazuje potrzebne zamknięcia. Okna i drzwi pozostają czynnością ręczną, a zamknięcie bramy garażowej lub zewnętrznej
+            jest wykonywane wyłącznie po jawnym potwierdzeniu użytkownika w tym interfejsie.
           </p>
         </div>
         <div className='external-current-state'>
@@ -94,7 +96,8 @@ export default function ExternalHazards() {
               <li key={`${item.reason}-${item.source}`}>
                 <strong>{humanizeReason(item.reason)}</strong>
                 <span>
-                  Źródło: {providerDisplayName(item.source)}
+                  Źródło:{' '}
+                  {externalHazards.providers.find(provider => provider.provider === item.source)?.name ?? providerDisplayName(item.source)}
                   {item.validUntil ? ` · ważne do ${new Date(item.validUntil).toLocaleString('pl-PL')}` : ''}
                 </span>
               </li>
@@ -107,19 +110,25 @@ export default function ExternalHazards() {
         <div className='panel-header'>
           <div>
             <span className='section-kicker'>Oficjalne komunikaty</span>
-            <h2>Ostrzeżenia IMGW</h2>
-            <p>Aktualne ostrzeżenia IMGW dotyczące lokalizacji domu.</p>
+            <h2>Oficjalne ostrzeżenia pogodowe</h2>
+            <p>Komunikaty właściwe dla lokalizacji domu.</p>
           </div>
-          <strong className='imgw-warning-count'>{externalHazards.imgwWarnings.length}</strong>
+          <strong className='imgw-warning-count'>{externalHazards.officialWarnings.length}</strong>
         </div>
-        {externalHazards.imgwWarnings.length > 0 ? (
+        {externalHazards.officialWarnings.length > 0 ? (
           <div className='imgw-warning-list'>
-            {externalHazards.imgwWarnings.map(warning => (
-              <ImgwWarning key={warning.id} warning={warning} />
+            {externalHazards.officialWarnings.map(warning => (
+              <OfficialWarning key={`${warning.provider}:${warning.id}`} warning={warning} />
             ))}
           </div>
         ) : (
-          <p className='imgw-warning-empty'>IMGW nie zwrócił aktualnych ostrzeżeń.</p>
+          <p className='imgw-warning-empty'>
+            {!externalHazards.officialWarningsConfigured
+              ? 'Brak dostawcy oficjalnych ostrzeżeń dla tej lokalizacji.'
+              : officialFeedHealthy
+                ? 'Źródła nie zgłaszają ostrzeżeń dla tej lokalizacji.'
+                : 'Nie można potwierdzić, czy są aktywne ostrzeżenia.'}
+          </p>
         )}
       </section>
 
@@ -140,17 +149,17 @@ export default function ExternalHazards() {
   );
 }
 
-function ImgwWarning({ warning }: { warning: ImgwWarningView }) {
+function OfficialWarning({ warning }: { warning: OfficialWarningView }) {
   return (
     <article className={`imgw-warning-card${warning.locallyApplicable ? ' imgw-warning-local' : ''}`}>
       <header>
         <div>
           <h3>{warning.eventName}</h3>
-          <small>{warning.office || 'IMGW-PIB'}</small>
+          <small>{warning.office || warning.sourceName}</small>
         </div>
         <div className='imgw-warning-badges'>
           {warning.locallyApplicable && <span className='imgw-local-badge'>Dotyczy domu</span>}
-          {warning.degree && <span className='imgw-degree-badge'>Stopień {warning.degree}</span>}
+          {warning.degree && <span className='imgw-degree-badge'>Poziom {warning.degree}</span>}
         </div>
       </header>
       <p>{warning.content || 'Brak opisu ostrzeżenia.'}</p>
@@ -213,7 +222,7 @@ function ProviderCard({ provider }: { provider: ExternalProviderView }) {
         </span>
         <div>
           <h3>{provider.name}</h3>
-          <small>{providerDescription(provider.provider)}</small>
+          <small>{providerDescription(provider.capability)}</small>
         </div>
         <StatusBadge tone={tone}>{label}</StatusBadge>
       </header>
@@ -292,13 +301,13 @@ function providerDisplayName(provider: string): string {
   return names[provider] ?? 'Inne źródło danych';
 }
 
-function providerDescription(provider: string): string {
+function providerDescription(capability: string): string {
   const descriptions: Record<string, string> = {
-    OpenMeteoWeatherApiComponent: 'temperatura, wiatr, opady i burze',
-    ImgwWarningsApiComponent: 'oficjalne komunikaty dla lokalizacji domu',
-    OpenMeteoAirQualityApiComponent: 'model dla współrzędnych domu',
+    WeatherPointModel: 'temperatura, wiatr, opady i burze',
+    OfficialWeatherWarnings: 'oficjalne komunikaty dla lokalizacji domu',
+    OutdoorAirQuality: 'model dla współrzędnych domu',
   };
-  return descriptions[provider] ?? 'zewnętrzne źródło danych';
+  return descriptions[capability] ?? 'zewnętrzne źródło danych';
 }
 
 function humanizeReason(reason: string): string {

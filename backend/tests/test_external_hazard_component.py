@@ -11,6 +11,7 @@ import pytest
 from components.core.event_bus import EventBus
 from components.core.localization import Localizer
 from components.core.types_common import Fault, FaultState, RecoveryResult, SMState, Symptom
+from components.external_apis import get_registered_api_components
 from components.external_apis.core.models import (
     ApiResult,
     ExternalObservation,
@@ -18,6 +19,7 @@ from components.external_apis.core.models import (
     Measurement,
     ProviderHealth,
     ProviderHealthState,
+    WarningUrgency,
 )
 from components.safetycomponents.external_hazard.external_hazard_component import ExternalHazardComponent
 from components.faults_manager.fault_manager import FaultManager
@@ -280,9 +282,44 @@ def test_valid_imgw_degree_three_bypasses_door_qualification() -> None:
     wind = replace(
         _observation("ImgwWarningsApiComponent", HazardType.WIND, {}, confirmed=True),
         provider_level="3",
+        warning_urgency=WarningUrgency.IMMEDIATE,
     )
     component.handle_external_api_result(result=ApiResult(wind.provider, (wind,), _health(wind.provider)))
     assert any(event["state"] == FaultState.SET for event in events)
+
+
+def test_registered_non_imgw_warning_can_qualify_an_open_door(monkeypatch: pytest.MonkeyPatch) -> None:
+    plugins = get_registered_api_components()
+    name = "BerlinWarningsApiComponent"
+    plugins[name] = plugins["ImgwWarningsApiComponent"]
+    monkeypatch.setattr(
+        "components.safetycomponents.external_hazard.external_hazard_component.get_registered_api_components",
+        lambda: plugins,
+    )
+    component, _, mqtt, events = _component("door")
+    component.enabled_providers = {name}
+    warning = replace(
+        _observation(name, HazardType.WIND, {"event_name": Measurement("Wind warning")}, confirmed=True),
+        provider_level="critical",
+        warning_urgency=WarningUrgency.IMMEDIATE,
+    )
+    component.handle_external_api_result(result=ApiResult(name, (warning,), _health(name)))
+
+    assert any(event["state"] == FaultState.SET for event in events)
+    attributes = mqtt.states["sensor.external_provider_berlin_warnings"][1]
+    assert attributes["capability"] == "OfficialWeatherWarnings"
+    assert attributes["warnings"][0]["event_name"] == "Wind warning"
+
+
+def test_no_provider_cannot_supply_clear_evidence_for_an_open_window() -> None:
+    component, _, mqtt, events = _component()
+    component.enabled_providers.clear()
+
+    component._evaluate_all()
+
+    assert component._hazard_evidence(HazardType.WIND)[0] == "unknown"
+    assert mqtt.states["sensor.external_hazard_state"][0] == "unavailable"
+    assert not any(event["state"] == FaultState.CLEARED for event in events)
 
 
 def test_clear_timer_requires_current_positive_evidence() -> None:

@@ -10,6 +10,7 @@ from urllib.error import HTTPError
 
 import pytest
 
+from build_app_config import SYSTEM_CONFIG_PATH, load_mapping
 from components.external_apis.core.http_json_client import HttpJsonClient, HttpJsonError
 from components.external_apis.core.api_component import ExternalApiComponent
 from components.external_apis.core.models import (
@@ -173,6 +174,47 @@ def test_open_meteo_air_quality_keeps_european_aqi_model_identity() -> None:
     assert observation.values["current_european_aqi"].value == 65.0
     assert not any(name.startswith("forecast_") for name in observation.values)
     assert observation.values["current_european_aqi"].unit == "EAQI"
+
+
+@pytest.mark.parametrize(
+    ("minute", "expected_state", "expected_detail"),
+    [
+        (59, ProviderHealthState.OK, None),
+        (65, ProviderHealthState.OK, None),
+        (71, ProviderHealthState.STALE, "stale_source_time"),
+    ],
+)
+def test_air_quality_default_validity_covers_hourly_sample_and_poll_delay(
+    monkeypatch: pytest.MonkeyPatch,
+    minute: int,
+    expected_state: ProviderHealthState,
+    expected_detail: str | None,
+) -> None:
+    provider = OpenMeteoAirQualityApiComponent.component_name
+    settings = load_mapping(SYSTEM_CONFIG_PATH)["runtime_cfg"]["providers"][provider]
+    component = _component(OpenMeteoAirQualityApiComponent, **settings)
+    source_time = RETRIEVED_AT.replace(minute=0)
+    checked_at = source_time + timedelta(minutes=minute)
+    monkeypatch.setattr("components.external_apis.core.api_component.utc_now", lambda: checked_at)
+    monkeypatch.setattr(component, "fetch_payload", lambda: _payload("open_meteo_air_quality"))
+
+    result = component.poll()
+
+    assert result.health.state == expected_state
+    assert result.health.detail_code == expected_detail
+    if expected_state == ProviderHealthState.OK:
+        assert result.observations[0].observed_at == source_time
+    else:
+        assert result.observations == ()
+
+
+def test_open_meteo_air_quality_rejects_missing_source_timestamp() -> None:
+    component = _component(OpenMeteoAirQualityApiComponent)
+    payload = _payload("open_meteo_air_quality")
+    assert isinstance(payload, dict)
+    del payload["current"]["time"]
+    with pytest.raises(ValueError, match="Missing datetime"):
+        component.normalize(payload, RETRIEVED_AT)
 
 
 def test_http_json_shape_limits_reject_oversized_untrusted_values() -> None:

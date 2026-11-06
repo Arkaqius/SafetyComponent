@@ -280,7 +280,9 @@ def test_cli_prints_complete_system_schema(monkeypatch, capsys) -> None:
         "calibration",
         "runtime_cfg",
     }
-    assert schema["$defs"]["ProviderRuntimeSet"]["additionalProperties"] is False
+    assert schema["$defs"]["ProviderRuntimeSet"]["additionalProperties"] == {
+        "$ref": "#/$defs/ProviderRuntimeSource"
+    }
 
 
 def test_system_source_rejects_unknown_keys(tmp_path) -> None:

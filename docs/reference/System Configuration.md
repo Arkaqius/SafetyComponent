@@ -314,6 +314,12 @@ request timeout, retry count, and staleness limit. The private
 `user_config.providers.<name>.enabled` field may change enablement; it cannot
 replace endpoints or transport safety bounds.
 
+The provider registry defines available plugin IDs and their configuration
+schemas. The installation country controls applicability. IMGW is available
+for `PL` and uses `installation.site.teryt_codes` when enabled. The
+[Berlin example](../examples/berlin_user_config.yml) uses the weather and air
+quality plugins with coordinates from Home Assistant.
+
 Provider configuration is intentionally separate from external-hazard decision
 calibration: providers acquire evidence, while C-EXT decides what that evidence
 means for the installation.

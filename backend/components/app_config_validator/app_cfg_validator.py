@@ -12,18 +12,8 @@ from components.app_config_validator.schema import AppCfg
 from components.core.pydantic_utils import log_extra_keys
 from components.faults_manager.schema import validate_faults_config
 from components.notification_manager.schema import validate_notification_config
-from components.external_apis.imgw_warnings.schema import (
-    COMPONENT_NAME as IMGW_COMPONENT_NAME,
-    ImgwWarningsConfig,
-)
-from components.external_apis.open_meteo_air_quality.schema import (
-    COMPONENT_NAME as OPEN_METEO_AQ_COMPONENT_NAME,
-    OpenMeteoAirQualityConfig,
-)
-from components.external_apis.open_meteo_weather.schema import (
-    COMPONENT_NAME as OPEN_METEO_WEATHER_COMPONENT_NAME,
-    OpenMeteoWeatherConfig,
-)
+from components.external_apis import get_registered_api_components
+from components.external_apis.core.models import ProviderCapability
 from components.safetycomponents.external_hazard.schema import (
     COMPONENT_NAME as EXTERNAL_HAZARD_COMPONENT_NAME,
     validate_external_hazard_config,
@@ -52,11 +42,6 @@ class AppCfgValidationError(Exception):
 
 
 ENTITY_ID_PATTERN = re.compile(r"^[a-z0-9_]+\.[a-z0-9_]+$")
-REQUIRED_EXTERNAL_API_COMPONENTS = (
-    OPEN_METEO_WEATHER_COMPONENT_NAME,
-    IMGW_COMPONENT_NAME,
-    OPEN_METEO_AQ_COMPONENT_NAME,
-)
 
 
 def _log_warning(log: Callable[..., None] | None, message: str) -> None:
@@ -362,37 +347,36 @@ def _validate_api_components(
     """Merge provider policy and installation binding, then validate each adapter."""
 
     policy = cfg.app_config.external_hazard_policy
-    if policy is None:
+    site = cfg.user_config.site
+    if policy is None or site is None:
         return {}
     raw_api_components = cfg.user_config.api_components
-    validators = {
-        OPEN_METEO_WEATHER_COMPONENT_NAME: OpenMeteoWeatherConfig,
-        IMGW_COMPONENT_NAME: ImgwWarningsConfig,
-        OPEN_METEO_AQ_COMPONENT_NAME: OpenMeteoAirQualityConfig,
-    }
+    plugins = get_registered_api_components()
     normalized: Dict[str, Any] = {}
-    for name, schema in validators.items():
+    for name, provider_policy in policy.providers.items():
+        plugin = plugins.get(name)
+        if plugin is None:
+            continue
         user_binding = raw_api_components.get(name)
         if not isinstance(user_binding, dict):
             raise ValueError(f"Missing user_config.api_components.{name}")
-        provider_policy = policy.providers.get(name)
-        if not isinstance(provider_policy, dict):
-            raise ValueError(
-                f"Missing app_config.external_hazard_policy.providers.{name}"
-            )
         merged = {**provider_policy, **user_binding}
-        if name == OPEN_METEO_WEATHER_COMPONENT_NAME:
+        if plugin.countries and site.country_code not in plugin.countries:
+            merged["enabled"] = False
+        if plugin.capability == ProviderCapability.WEATHER_MODEL:
             merged["forecast_horizon_hours"] = policy.weather.forecast_horizon_hours
-        validated = schema.model_validate(
+        validated = plugin.config_model.model_validate(
             merged, context={"strict_validation": strict_validation}
         )
         normalized[name] = validated.model_dump()
-    unknown_policy = sorted(set(policy.providers) - set(validators))
+        if normalized[name].get("enabled", True):
+            plugin.validate_site(site.model_dump())
+    unknown_policy = sorted(set(policy.providers) - set(plugins))
     if strict_validation and unknown_policy:
         raise ValueError(
             "Unknown external hazard provider policies: " + ", ".join(unknown_policy)
         )
-    unknown = sorted(set(raw_api_components) - set(validators))
+    unknown = sorted(set(raw_api_components) - set(policy.providers))
     if strict_validation and unknown:
         raise ValueError(f"Unknown API components: {', '.join(unknown)}")
     return normalized

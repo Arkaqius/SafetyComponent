@@ -27,6 +27,21 @@ class ProviderHealthState(str, Enum):
     SCHEMA_ERROR = "schema_error"
 
 
+class ProviderCapability(str, Enum):
+    """Stable capabilities exposed by weather and air-quality plugins."""
+
+    WEATHER_MODEL = "WeatherPointModel"
+    OFFICIAL_WARNINGS = "OfficialWeatherWarnings"
+    AIR_QUALITY = "OutdoorAirQuality"
+
+
+class WarningUrgency(str, Enum):
+    """Source urgency normalized independently of the provider's raw scale."""
+
+    STANDARD = "standard"
+    IMMEDIATE = "immediate"
+
+
 @dataclass(frozen=True)
 class Measurement:
     """One provider value with its original unit and semantics."""
@@ -52,6 +67,7 @@ class ExternalObservation:
     confidence: float | None = None
     authority_confirmed: bool = False
     source_reference: str = ""
+    warning_urgency: WarningUrgency | None = None
 
     def __post_init__(self) -> None:
         for value in (self.observed_at, self.valid_from, self.valid_to, self.retrieved_at):

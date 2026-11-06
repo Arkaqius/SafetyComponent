@@ -206,6 +206,7 @@ export interface ExternalProviderView {
   entityId: string;
   name: string;
   provider: string;
+  capability: string;
   status: ExternalProviderStatus;
   state: string;
   lastAttemptAt?: string;
@@ -214,7 +215,7 @@ export interface ExternalProviderView {
   detailCode: string;
   observationCount: number;
   observations: ExternalObservationView[];
-  warnings: ImgwWarningView[];
+  warnings: OfficialWarningView[];
   lastUpdated?: string;
 }
 
@@ -236,8 +237,10 @@ export interface AirQualityPresentation {
   sourceName: string;
 }
 
-export interface ImgwWarningView {
+export interface OfficialWarningView {
   id: string;
+  provider: string;
+  sourceName: string;
   eventName: string;
   degree: string;
   probability: string;
@@ -269,7 +272,8 @@ export interface ExternalHazardView {
   lastEvaluatedAt?: string;
   lastUpdated?: string;
   providers: ExternalProviderView[];
-  imgwWarnings: ImgwWarningView[];
+  officialWarnings: OfficialWarningView[];
+  officialWarningsConfigured: boolean;
 }
 
 const UNAVAILABLE_STATES = new Set(['unavailable', 'unknown', 'none', '']);
@@ -693,12 +697,13 @@ export function getExternalHazardMonitoring(entities: EntityMap): ExternalHazard
       : normalizedState
         ? 'unknown'
         : 'unavailable';
-  const enabledProviders = new Set(stringArrayAttribute(aggregate, 'enabled_providers'));
+  const enabledProviders = Array.isArray(aggregate?.attributes.enabled_providers)
+    ? new Set(stringArrayAttribute(aggregate, 'enabled_providers'))
+    : null;
   const providers = Object.entries(entities)
     .filter(
       ([entityId, entity]) =>
-        entityId.startsWith(EXTERNAL_PROVIDER_PREFIX) &&
-        (enabledProviders.size === 0 || enabledProviders.has(stringAttribute(entity, 'provider')))
+        entityId.startsWith(EXTERNAL_PROVIDER_PREFIX) && (!enabledProviders || enabledProviders.has(stringAttribute(entity, 'provider')))
     )
     .map(([entityId, entity]) => {
       const providerState = normalizeState(entity.state);
@@ -706,10 +711,15 @@ export function getExternalHazardMonitoring(entities: EntityMap): ExternalHazard
         providerState === 'ok' || providerState === 'stale' || providerState === 'unavailable' || providerState === 'schema_error'
           ? providerState
           : 'unknown';
+      const provider = stringAttribute(entity, 'provider');
+      const name = friendlyEntityName(entityId, entity);
+      const capability =
+        stringAttribute(entity, 'capability') || (Array.isArray(entity.attributes.warnings) ? 'OfficialWeatherWarnings' : '');
       return {
         entityId,
-        name: friendlyEntityName(entityId, entity),
-        provider: stringAttribute(entity, 'provider'),
+        name,
+        provider,
+        capability,
         status: providerStatus,
         state: entity.state,
         lastAttemptAt: optionalStringAttribute(entity, 'last_attempt_at'),
@@ -718,13 +728,16 @@ export function getExternalHazardMonitoring(entities: EntityMap): ExternalHazard
         detailCode: stringAttribute(entity, 'detail_code'),
         observationCount: numericAttribute(entity, 'observation_count') ?? 0,
         observations: externalObservationsAttribute(entity),
-        warnings: imgwWarningsAttribute(entity),
+        warnings: officialWarningsAttribute(entity, provider, name),
         lastUpdated: entity.last_updated ?? entity.last_changed,
       };
     })
     .sort((left, right) => Number(left.status === 'ok') - Number(right.status === 'ok') || left.name.localeCompare(right.name, 'pl'));
 
-  const imgwWarnings = providers.flatMap(provider => provider.warnings).filter(warning => warning.locallyApplicable);
+  const officialWarnings = providers
+    .filter(provider => provider.capability === 'OfficialWeatherWarnings')
+    .flatMap(provider => provider.warnings)
+    .filter(warning => warning.locallyApplicable);
 
   return {
     entityId: EXTERNAL_HAZARD_ENTITY_ID,
@@ -738,12 +751,18 @@ export function getExternalHazardMonitoring(entities: EntityMap): ExternalHazard
     lastEvaluatedAt: optionalStringAttribute(aggregate, 'last_evaluated_at'),
     lastUpdated: aggregate?.last_updated ?? aggregate?.last_changed,
     providers,
-    imgwWarnings,
+    officialWarnings,
+    officialWarningsConfigured:
+      aggregate?.attributes.official_warnings_configured === true ||
+      providers.some(provider => provider.capability === 'OfficialWeatherWarnings'),
   };
 }
 
 export function getAirQualityPresentation(external: ExternalHazardView, now = Date.now()): AirQualityPresentation {
-  const openMeteo = external.providers.find(provider => provider.provider === 'OpenMeteoAirQualityApiComponent');
+  const openMeteo = external.providers.find(
+    provider =>
+      provider.capability === 'OutdoorAirQuality' || (!provider.capability && provider.provider === 'OpenMeteoAirQualityApiComponent')
+  );
   const openMeteoObservation = openMeteo?.observations.find(observation => observation.hazardType === 'outdoor_air_pollution');
 
   const value = numericState(openMeteoObservation?.displayValue);
@@ -1121,7 +1140,7 @@ function adviceInhibitionAttribute(entity: EntitySnapshot | undefined): AdviceIn
   });
 }
 
-function imgwWarningsAttribute(entity: EntitySnapshot | undefined): ImgwWarningView[] {
+function officialWarningsAttribute(entity: EntitySnapshot, provider: string, sourceName: string): OfficialWarningView[] {
   const value = entity?.attributes.warnings;
   if (!Array.isArray(value)) return [];
   return value.flatMap(item => {
@@ -1133,6 +1152,8 @@ function imgwWarningsAttribute(entity: EntitySnapshot | undefined): ImgwWarningV
     return [
       {
         id,
+        provider,
+        sourceName,
         eventName,
         degree: String(record.degree ?? '').trim(),
         probability: String(record.probability ?? '').trim(),

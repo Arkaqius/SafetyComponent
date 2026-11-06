@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from build_app_config import compile_config
 from SafetyFunctions import SafetyFunctions
 from components.core.functional_safety_diagnostics import JsonFunctionalSafetyDiagnosticsStore
@@ -28,15 +30,24 @@ class StubExternalRuntime:
         self.started = False
 
 
-def test_example_external_hazard_startup_is_wired_before_polling(tmp_path, monkeypatch) -> None:
+@pytest.mark.parametrize(
+    ("example", "location", "expected"),
+    [
+        ("backend/config/user_config.example.yml", {"latitude": 50.0, "longitude": 20.0},
+         ["ImgwWarningsApiComponent", "OpenMeteoAirQualityApiComponent", "OpenMeteoWeatherApiComponent"]),
+        ("docs/examples/berlin_user_config.yml", {"latitude": 52.52, "longitude": 13.405},
+         ["OpenMeteoAirQualityApiComponent", "OpenMeteoWeatherApiComponent"]),
+    ],
+)
+def test_example_external_hazard_startup_is_wired_before_polling(tmp_path, monkeypatch, example, location, expected) -> None:
     monkeypatch.setattr(
         "SafetyFunctions.JsonFunctionalSafetyDiagnosticsStore",
         lambda: JsonFunctionalSafetyDiagnosticsStore(tmp_path / "functional_safety.json"),
     )
-    backend_dir = Path(__file__).parents[1]
+    root = Path(__file__).parents[2]
     raw = compile_config(
-        user_path=backend_dir / "config" / "user_config.example.yml",
-        home_assistant_config={"latitude": 50.0, "longitude": 20.0},
+        user_path=root / example,
+        home_assistant_config=location,
     )["SafetyFunctions"]
     raw["app_config"]["calibration"]["functional_safety"][
         "battery_fault_catalog_file"
@@ -77,11 +88,7 @@ def test_example_external_hazard_startup_is_wired_before_polling(tmp_path, monke
 
     assert app.degradation.binding_errors == {}
 
-    assert sorted(app.api_modules) == [
-        "ImgwWarningsApiComponent",
-        "OpenMeteoAirQualityApiComponent",
-        "OpenMeteoWeatherApiComponent",
-    ]
+    assert sorted(app.api_modules) == expected
     assert "ExternalHazardComponent" in app.sm_modules
     assert "SelfDiagnosticsComponent" in app.sm_modules
     assert {

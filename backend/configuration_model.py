@@ -10,6 +10,7 @@ from typing import Any, Literal
 from pydantic import (
     ConfigDict,
     Field,
+    RootModel,
     ValidationError,
     field_validator,
     model_validator,
@@ -20,6 +21,7 @@ from components.safety_routines.schema import SafetyRoutine, SafetyRoutinesConfi
 
 from build_appdaemon_config import validated_number
 from components.core.pydantic_utils import StrictBaseModel
+from components.external_apis.core.registry import describe_provider_keys, validate_provider_keys
 from components.safetycomponents.entity_monitor.schema import (
     ComponentEntityOverride,
     ExplicitEntityConfig,
@@ -315,18 +317,16 @@ class ProviderSelection(SourceModel):
     enabled: bool = True
 
 
-class ProviderBindings(SourceModel):
-    """Installation selection of the supported external providers."""
+class ProviderBindings(RootModel[dict[str, ProviderSelection]]):
+    """Optional installation overrides for registered plugins."""
 
-    OpenMeteoWeatherApiComponent: ProviderSelection = Field(
-        default_factory=ProviderSelection
-    )
-    ImgwWarningsApiComponent: ProviderSelection = Field(
-        default_factory=ProviderSelection
-    )
-    OpenMeteoAirQualityApiComponent: ProviderSelection = Field(
-        default_factory=ProviderSelection
-    )
+    root: dict[str, ProviderSelection] = Field(default_factory=dict)
+    model_config = ConfigDict(json_schema_extra=describe_provider_keys)
+
+    @model_validator(mode="after")
+    def _registered_plugins(self) -> "ProviderBindings":
+        validate_provider_keys(self.root)
+        return self
 
 
 class InstallationSite(SourceModel):
@@ -334,7 +334,7 @@ class InstallationSite(SourceModel):
 
     timezone: str
     country_code: str
-    teryt_codes: list[str] = Field(min_length=1)
+    teryt_codes: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _validate_site(self) -> "InstallationSite":
