@@ -56,6 +56,7 @@ class RoutineCheck(Reading):
 
     name: Text
     kind: Literal["state", "numeric_range"] = "state"
+    last_known_value: bool = False
     expected_states: list[State] | None = Field(
         default=None, min_length=1, max_length=16
     )
@@ -63,6 +64,18 @@ class RoutineCheck(Reading):
     maximum: float | None = None
     unit: Text | None = None
     condition: RoutineCondition | None = None
+
+    @model_validator(mode="after")
+    def timestamp_required(self) -> RoutineCheck:
+        """Allow a state snapshot only when the installer explicitly selects it."""
+        if self.last_known_value:
+            if self.attribute is not None:
+                raise ValueError("last_known_value requires an entity state")
+            if self.observed_at_entity_id or self.observed_at_attribute:
+                raise ValueError("last_known_value cannot use an observation timestamp selector")
+        else:
+            super().timestamp_required()
+        return self
 
     @model_validator(mode="after")
     def check_contract(self) -> RoutineCheck:
@@ -141,6 +154,15 @@ class SafetyRoutine(RoutineModel):
     observation_seconds: int = Field(default=0, ge=0, le=300)
     triggers: list[RoutineTrigger] = Field(default_factory=list, max_length=4)
     checks: dict[StableId, RoutineCheck] = Field(min_length=1, max_length=24)
+
+    @model_validator(mode="after")
+    def observation_window_contract(self) -> SafetyRoutine:
+        """Require original observations to make claims over a sampling window."""
+        if self.observation_seconds and any(
+            check.last_known_value for check in self.checks.values()
+        ):
+            raise ValueError("last_known_value requires observation_seconds: 0")
+        return self
 
 
 class SafetyRoutinesConfig(RoutineModel):

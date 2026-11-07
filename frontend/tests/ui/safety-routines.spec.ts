@@ -20,21 +20,42 @@ test('manual routines preserve reports and distinguish problems from unavailable
   await page.goto('/#/safety-routines');
   await expect(page.getByRole('button', { name: 'Sprawdź teraz' })).toBeEnabled();
   await page.getByRole('button', { name: 'Sprawdź teraz' }).click();
-  await expect(page.getByRole('cell', { name: 'Źródło jest niedostępne' })).toBeVisible();
-  await expect(page.getByRole('cell', { name: 'Wykryto problem' })).toBeVisible();
+  const report = page.getByRole('region', { name: 'Przed snem' });
+  await expect(report.getByRole('heading', { name: 'Wykryto problem' })).toBeVisible();
+  const reportTitle = report.getByRole('heading', { name: 'Przed snem' });
+  await expect
+    .poll(() =>
+      reportTitle.evaluate(
+        title => title.getBoundingClientRect().top - (document.querySelector('.topbar')?.getBoundingClientRect().bottom ?? 0)
+      )
+    )
+    .toBeGreaterThanOrEqual(0);
+  await expect(report.getByText('Źródło jest niedostępne', { exact: true }).first()).toBeVisible();
+  await expect(report.getByText('Domownicy nie śpią', { exact: true })).toBeVisible();
+  const entityId = report.getByText('sensor.demo_activity', { exact: true });
+  await expect(entityId).toBeHidden();
+  const sleepCheck = report.locator('summary').filter({ hasText: 'Domownicy śpią' });
+  await sleepCheck.focus();
+  await sleepCheck.press('Enter');
+  await expect(entityId).toBeVisible();
+  await sleepCheck.press('Enter');
+  const power = report.locator('summary').getByText('499 W', { exact: true });
+  await expect(power).toBeHidden();
+  await report.locator('summary').filter({ hasText: 'Zgodne z oczekiwaniem' }).click();
+  await expect(power).toBeVisible();
   await expect(page.getByRole('button', { name: 'Pokaż raport' })).toHaveCount(1);
   await page.getByRole('button', { name: 'Sprawdź teraz' }).click();
   await expect(page.getByRole('button', { name: 'Pokaż raport' })).toHaveCount(2);
   await page.getByRole('button', { name: 'Pokaż raport' }).last().click();
-  await expect(page.getByRole('cell', { name: 'Źródło jest niedostępne' })).toBeVisible();
+  await expect(report.getByText('Źródło jest niedostępne', { exact: true }).first()).toBeVisible();
   await page.evaluate(() => window.__safetyHomeMock.update({ connectionStatus: 'disconnected', ready: false }));
   await expect(page.getByRole('button', { name: 'Sprawdź teraz' })).toBeDisabled();
   await expect(page.getByText('Brak połączenia. Widoczne raporty są zapisami wcześniejszych kontroli.')).toBeVisible();
-  await expect(page.getByRole('cell', { name: 'Źródło jest niedostępne' })).toBeVisible();
+  await expect(report.getByText('Źródło jest niedostępne', { exact: true }).first()).toBeVisible();
   if (testInfo.project.name.startsWith('desktop')) await page.setViewportSize({ width: 1100, height: 900 });
   expect(await page.locator('.topbar').evaluate(header => header.scrollWidth <= header.clientWidth)).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  await page.screenshot({ path: testInfo.outputPath('safety-routines.png'), fullPage: true });
+  await report.locator('.routine-report-results').screenshot({ path: testInfo.outputPath('safety-routines.png') });
   expect(errors).toEqual([]);
 });
 

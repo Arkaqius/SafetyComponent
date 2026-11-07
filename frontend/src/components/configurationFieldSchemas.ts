@@ -123,6 +123,11 @@ const routineReading: Record<string, FieldSpec> = {
 export const routineCheckSchema: Record<string, FieldSpec> = {
   name: text('Nazwa kontroli', true),
   ...routineReading,
+  last_known_value: {
+    ...yesNo('Użyj ostatniego znanego odczytu'),
+    initial: false,
+    help: 'Dla pojedynczej kontroli stanu lub liczby przy oknie 0 s. Usuń oba pola czasu obserwacji. Świeżość sprawdza osobny nadzór.',
+  },
   kind: select(
     'Rodzaj kontroli',
     [
