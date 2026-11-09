@@ -868,7 +868,8 @@ temperature.
 - Weather policy: frost watch/warning temperature, wind/gust thresholds,
   rain/precipitation policy, forecast horizon, hysteresis, persistence, and
   clear delay.
-- Outdoor AQ policy: European AQI standard and warning threshold.
+- Outdoor AQ policy: European AQI standard and warning threshold. Modeled
+  outdoor AQ and weather share the configured persistence interval.
 - Per-provider base URL, poll interval, request timeout, retry count, stale
   timeout, and enablement. Provider defaults belong to application policy;
   location and station selection belong to installation configuration.
@@ -939,6 +940,10 @@ distinct; one failed adapter shall not disable independently supplied evidence.
   C-EXT shall re-evaluate the contact and applicable evidence when the
   interval elapses. An existing exposure shall follow the clear policy in
   SYS-SR-EXT-013 and SYS-SR-EXT-043.
+  C-EXT shall qualify modeled hazards independently per provider and hazard
+  after continuous fresh threshold evidence for the configured persistence
+  interval. An interruption shall reset pending qualification. Applicable
+  official warnings shall follow their authoritative validity.
 - **SYS-SR-EXT-011:** Official IMGW warnings shall be applicable only when at
   least one configured TERYT code is present in the warning region set and the
   current time is within its validity interval.
@@ -982,7 +987,8 @@ distinct; one failed adapter shall not disable independently supplied evidence.
   openings without creating duplicate notification tags.
 - **SYS-SR-EXT-043:** Clearing shall require positive valid evidence or expiry
   according to provider semantics. Network failure, stale data, or parse error
-  shall not clear an active condition.
+  shall not clear an active condition. The configured frost and gust
+  hysteresis shall apply to the clear thresholds for modeled weather.
 - **SYS-SR-EXT-044:** Only explicitly configured `cover` entities, when bound
   to their configured closed contacts, may be commanded, and only with
   `cover.close_cover` after an authenticated SafetyHome user confirms a current

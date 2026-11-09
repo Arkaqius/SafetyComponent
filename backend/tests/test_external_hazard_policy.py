@@ -150,6 +150,16 @@ def test_open_meteo_air_quality_uses_current_european_aqi() -> None:
     assert model.evidence_kind == "current"
 
 
+def test_frost_hysteresis_only_applies_after_assertion() -> None:
+    policy = {**POLICY, "weather": {**POLICY["weather"], "hysteresis": {"temperature_c": 0.5}}}
+    observation = _observation(HazardType.FROST, {
+        "current_temperature": Measurement(3.0),
+        "forecast_min_temperature": Measurement(2.5),
+    })
+    assert not evaluate_observation(observation, policy, NOW).active
+    assert evaluate_observation(observation, policy, NOW, previously_active=True).active
+
+
 def test_stale_or_incomplete_normalized_data_cannot_be_positive_evidence() -> None:
     stale = evaluate_observation(
         _observation(

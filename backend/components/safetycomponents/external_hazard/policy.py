@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from math import isfinite
 from typing import Any, Mapping
 
 from components.external_apis.core.models import ExternalObservation, HazardType, WarningUrgency
@@ -26,6 +27,8 @@ def evaluate_observation(
     observation: ExternalObservation,
     policy: Mapping[str, Any],
     now: datetime,
+    *,
+    previously_active: bool = False,
 ) -> HazardAssessment:
     """Evaluate one fresh normalized observation against household policy."""
 
@@ -47,17 +50,23 @@ def evaluate_observation(
         forecast = _number(values, "forecast_min_temperature")
         measured = min(current, forecast)
         weather = policy["weather"]
-        active = measured <= float(weather["frost_watch_c"])
+        threshold = float(weather["frost_watch_c"])
+        if previously_active:
+            threshold += _hysteresis(weather, "temperature_c")
+        active = measured <= threshold
         severity = "warning" if measured <= float(weather["frost_warning_c"]) else "watch"
-        return HazardAssessment(active, severity, f"{measured:.1f} °C", f"≤ {weather['frost_watch_c']} °C", _evidence_kind(current, forecast, measured))
+        return HazardAssessment(active, severity, f"{measured:.1f} °C", f"≤ {threshold} °C", _evidence_kind(current, forecast, measured))
     if observation.hazard_type == HazardType.WIND:
         current = _number(values, "current_wind_gust")
         forecast = _number(values, "forecast_max_wind_gust")
         measured = max(current, forecast)
         weather = policy["weather"]
-        active = measured >= float(weather["gust_watch_m_s"])
+        threshold = float(weather["gust_watch_m_s"])
+        if previously_active:
+            threshold -= _hysteresis(weather, "gust_m_s")
+        active = measured >= threshold
         severity = "warning" if measured >= float(weather["gust_warning_m_s"]) else "watch"
-        return HazardAssessment(active, severity, f"{measured:.1f} m/s", f"≥ {weather['gust_watch_m_s']} m/s", _evidence_kind(current, forecast, measured), active)
+        return HazardAssessment(active, severity, f"{measured:.1f} m/s", f"≥ {threshold} m/s", _evidence_kind(current, forecast, measured), active)
     if observation.hazard_type == HazardType.RAIN:
         current = max(_number(values, "current_precipitation"), _number(values, "current_rain"))
         forecast = max(_number(values, "forecast_max_precipitation"), _number(values, "forecast_max_rain"))
@@ -88,9 +97,17 @@ def _measurement(values: Mapping[str, Any], name: str, default: str) -> str:
 def _number(values: Mapping[str, Any], name: str) -> float:
     measurement = values.get(name)
     try:
-        return float(measurement.value)
+        value = float(measurement.value)
     except (TypeError, ValueError, AttributeError) as exc:
         raise ValueError(f"Missing normalized measurement {name}") from exc
+    if not isfinite(value):
+        raise ValueError(f"Non-finite normalized measurement {name}")
+    return value
+
+
+def _hysteresis(weather: Mapping[str, Any], name: str) -> float:
+    value = float(weather.get("hysteresis", {}).get(name, 0))
+    return max(0.0, value) if isfinite(value) else 0.0
 
 
 def _evidence_kind(current: float, forecast: float, selected: float) -> str:

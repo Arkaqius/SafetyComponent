@@ -89,6 +89,7 @@ POLICY = {
     "actuation_mode": "manual_and_user_confirmed",
     "clear_delay_seconds": 0,
     "weather": {
+        "persistence_seconds": 0,
         "frost_watch_c": 2.0,
         "frost_warning_c": 0.0,
         "gust_watch_m_s": 15.0,
@@ -160,6 +161,8 @@ def _observation(
 
 def _component(
     kind: str = "window",
+    *,
+    persistence: int = 0,
 ) -> tuple[ExternalHazardComponent, FakeHass, FakeMqtt, list[dict[str, Any]]]:
     hass = FakeHass()
     mqtt = FakeMqtt()
@@ -168,7 +171,7 @@ def _component(
     bus.subscribe("symptom", lambda **payload: events.append(payload))
     component = ExternalHazardComponent(hass, object(), bus, mqtt)
     config = {
-        "policy": POLICY,
+        "policy": {**POLICY, "weather": {**POLICY["weather"], "persistence_seconds": persistence}},
         "openings": {
             "OfficeWindow": {
                 "area_id": "office",
@@ -212,6 +215,150 @@ def _wind_result() -> ApiResult:
         },
     )
     return ApiResult(wind.provider, (wind,), _health(wind.provider))
+
+
+def _pollution_result(aqi: float = 75) -> ApiResult:
+    observation = _observation(
+        "OpenMeteoAirQualityApiComponent",
+        HazardType.OUTDOOR_AIR_POLLUTION,
+        {"current_european_aqi": Measurement(aqi, "EAQI")},
+    )
+    return ApiResult(observation.provider, (observation,), _health(observation.provider))
+
+
+@pytest.mark.parametrize(
+    ("hazard", "values", "symptom_id"),
+    [
+        (HazardType.FROST, {"current_temperature": 1, "forecast_min_temperature": 0}, "ExternalWeatherExposureFrostOfficeWindow"),
+        (HazardType.WIND, {"current_wind_gust": 20, "forecast_max_wind_gust": 22}, "ExternalWeatherExposureWindOfficeWindow"),
+        (HazardType.RAIN, {"current_precipitation": 3, "current_rain": 3, "forecast_max_precipitation": 4, "forecast_max_rain": 4}, "ExternalWeatherExposureRainOfficeWindow"),
+        (HazardType.STORM, {"current_weather_code": 95}, "ExternalWeatherExposureStormOfficeWindow"),
+        (HazardType.OUTDOOR_AIR_POLLUTION, {"current_european_aqi": 75}, "OutdoorAirQualityExposureOfficeWindow"),
+    ],
+)
+def test_modeled_hazards_qualify_at_deadline_without_another_poll(
+    hazard: HazardType, values: dict[str, int], symptom_id: str, opening_clock: list[float],
+) -> None:
+    component, hass, _, _ = _component(persistence=120)
+    provider = "OpenMeteoAirQualityApiComponent" if hazard == HazardType.OUTDOOR_AIR_POLLUTION else "OpenMeteoWeatherApiComponent"
+    observation = _observation(provider, hazard, {name: Measurement(value) for name, value in values.items()})
+    result = ApiResult(provider, (observation,), _health(provider))
+    component.handle_external_api_result(result=result)
+    callback, delay, kwargs = hass.timers[-1]
+    assert delay == 120
+    opening_clock[0] = 119
+    component.handle_external_api_result(result=result)
+    assert len(hass.timers) == 1
+    assert component.symptom_states[symptom_id] != FaultState.SET
+
+    opening_clock[0] = 120
+    callback(**kwargs)
+    assert component.symptom_states[symptom_id] == FaultState.SET
+    assert hass.service_calls == []
+
+
+@pytest.mark.parametrize("interruption", ["normal", "failure", "malformed", "missing", "expired"])
+def test_aqi_interruption_restarts_debounce(
+    interruption: str, opening_clock: list[float], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    component, hass, _, _ = _component(persistence=120)
+    result = _pollution_result()
+    now = result.health.last_success_at
+    assert now is not None
+    monkeypatch.setattr(component, "_now", lambda: now + timedelta(seconds=opening_clock[0]))
+    first_result = result
+    if interruption == "expired":
+        first_result = replace(result, observations=(replace(result.observations[0], valid_to=now + timedelta(seconds=20)),))
+    component.handle_external_api_result(result=first_result)
+    obsolete, _, obsolete_kwargs = hass.timers[-1]
+
+    opening_clock[0] = 30
+    if interruption == "normal":
+        component.handle_external_api_result(result=_pollution_result(30))
+    elif interruption == "failure":
+        component.handle_external_api_result(result=ApiResult(result.provider, (), _health(result.provider, ProviderHealthState.UNAVAILABLE)))
+    elif interruption == "malformed":
+        component.handle_external_api_result(result=_pollution_result(float("nan")))
+    elif interruption == "missing":
+        component.handle_external_api_result(result=replace(result, observations=()))
+    component.handle_external_api_result(result=result)
+    callback, delay, kwargs = hass.timers[-1]
+    assert delay == 120
+
+    opening_clock[0] = 120
+    obsolete(**obsolete_kwargs)
+    symptom_id = "OutdoorAirQualityExposureOfficeWindow"
+    assert component.symptom_states[symptom_id] != FaultState.SET
+    opening_clock[0] = 150
+    callback(**kwargs)
+    assert component.symptom_states[symptom_id] == FaultState.SET
+
+
+def test_aqi_hazard_qualifies_independently_of_closed_contact_and_blocks_opening_advice(
+    opening_clock: list[float],
+) -> None:
+    component, hass, _, _ = _component("door", persistence=120)
+    hass.states["binary_sensor.office_window"] = "off"
+    component.handle_external_api_result(result=_pollution_result())
+    proposal = RecoveryResult(changed_sensors={"binary_sensor.office_window": "on"}, changed_actuators={}, notifications=[])
+    assert not component.evaluate_recovery_policy(proposal).allowed
+    model_callback, _, model_kwargs = hass.timers[-1]
+    opening_clock[0] = 30
+    hass.change_contact("on")
+    opening_callback, _, opening_kwargs = hass.timers[-1]
+    opening_clock[0] = 90
+    opening_callback(**opening_kwargs)
+    symptom_id = "OutdoorAirQualityExposureOfficeWindow"
+    assert component.symptom_states[symptom_id] != FaultState.SET
+    opening_clock[0] = 120
+    model_callback(**model_kwargs)
+    assert component.symptom_states[symptom_id] == FaultState.SET
+
+
+def test_wind_hysteresis_prevents_clear_when_value_returns_inside_band() -> None:
+    component, hass, _, _ = _component()
+    result = _wind_result()
+    component.enabled_providers = {result.provider}
+    component.policy["weather"]["hysteresis"] = {"gust_m_s": 1.0}
+    component.policy["clear_delay_seconds"] = 120
+    component.handle_external_api_result(result=result)
+
+    def gust(value: float) -> ApiResult:
+        observation = replace(result.observations[0], values={
+            "current_wind_gust": Measurement(value), "forecast_max_wind_gust": Measurement(value),
+        })
+        return replace(result, observations=(observation,))
+
+    symptom_id = "ExternalWeatherExposureWindOfficeWindow"
+    component.handle_external_api_result(result=gust(13.9))
+    obsolete, _, obsolete_kwargs = hass.timers[-1]
+    component.handle_external_api_result(result=gust(14.1))
+    obsolete(**obsolete_kwargs)
+    assert component.symptom_states[symptom_id] == FaultState.SET
+    component.handle_external_api_result(result=gust(13.9))
+    callback, delay, kwargs = hass.timers[-1]
+    assert delay == 120
+    callback(**kwargs)
+    assert component.symptom_states[symptom_id] == FaultState.CLEARED
+
+
+def test_aqi_requires_uninterrupted_positive_clear_evidence() -> None:
+    component, hass, _, _ = _component()
+    component.policy["clear_delay_seconds"] = 120
+    high = _pollution_result()
+    low = _pollution_result(50)
+    component.handle_external_api_result(result=high)
+    symptom_id = "OutdoorAirQualityExposureOfficeWindow"
+    component.handle_external_api_result(result=low)
+    obsolete, delay, obsolete_kwargs = hass.timers[-1]
+    assert delay == 120
+    component.handle_external_api_result(result=replace(low, observations=()))
+    obsolete(**obsolete_kwargs)
+    assert component.symptom_states[symptom_id] == FaultState.SET
+    component.handle_external_api_result(result=low)
+    callback, _, kwargs = hass.timers[-1]
+    callback(**kwargs)
+    assert component.symptom_states[symptom_id] == FaultState.CLEARED
 
 
 @pytest.mark.parametrize("kind", ["door", "garage_door", "gate"])
@@ -278,7 +425,7 @@ def test_qualification_timer_rejects_unusable_provider_evidence(
 
 
 def test_valid_imgw_degree_three_bypasses_door_qualification() -> None:
-    component, _, _, events = _component("door")
+    component, _, _, events = _component("door", persistence=120)
     wind = replace(
         _observation("ImgwWarningsApiComponent", HazardType.WIND, {}, confirmed=True),
         provider_level="3",
