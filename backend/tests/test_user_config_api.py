@@ -133,6 +133,9 @@ def test_read_returns_only_user_source_and_revision(tmp_path: Path) -> None:
     assert result["system_defaults"]["detector_profiles"] == [
         "home_assistant_binary_alarm"
     ]
+    assert result["system_defaults"]["external_hazard"]["provider_plugins"]["ImgwWarningsApiComponent"] == {
+        "countries": ["PL"], "enabled": True,
+    }
     assert "system_config" not in result
 
 

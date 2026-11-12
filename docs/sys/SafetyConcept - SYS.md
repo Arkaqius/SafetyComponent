@@ -486,8 +486,8 @@ _Interfaces turn §2 elements into **testable contracts**: freshness, latency, a
 - Provide stable warning ID, event name, authority severity/degree,
   probability, publication time, valid-from, valid-to, authoritative text,
   source, and affected administrative region codes.
-- Warnings shall be filtered by configured TERYT codes before entering the
-  hazard-decision path.
+- Official warning plugins shall filter warnings for the installation before
+  entering the hazard-decision path. IMGW uses the configured TERYT codes.
 - A warning update with the same stable ID shall patch the existing condition;
   expiry or explicit withdrawal shall clear it.
 - **Freshness:** poll interval `≤ 5 min`; late retrieval shall preserve the
@@ -831,7 +831,7 @@ temperature.
   transport, provider-schema validation, provider-specific unit mapping, and
   publication of normalized observations. They do not create symptoms, faults,
   notifications, or recovery actions.
-- The API Components are:
+- The bundled provider plugins implementing the internal observation and health API are:
   `OpenMeteoWeatherApiComponent`, `ImgwWarningsApiComponent`, and
   `OpenMeteoAirQualityApiComponent`.
 - API Components may share an injected HTTP transport and common immutable data
@@ -841,12 +841,9 @@ temperature.
 #### 8.3.2 Inputs (from §7)
 
 - **IR-001 Window/Door Contacts** for configured external apertures.
-- **IR-020 Weather (Current & Forecast)** from the dedicated Open-Meteo weather
-  API component.
-- **IR-022 Outdoor Air Quality** from the current Open-Meteo model API
-  component for the configured home coordinates.
-- **IR-025 Official Weather Warnings** from the dedicated IMGW warning API
-  component.
+- **IR-020 Weather (Current & Forecast)** from a plugin with point weather model capability.
+- **IR-022 Outdoor Air Quality** from a plugin with outdoor air quality capability for the configured home coordinates.
+- **IR-025 Official Weather Warnings** from a registered official warning plugin applicable to the installation country. IMGW supplies this capability in Poland.
 - **IR-027 External API Provider Health** from every API component.
 
 #### 8.3.3 Outputs (to §7)
@@ -863,14 +860,16 @@ temperature.
 #### 8.3.4 Parameters
 
 - Site identity: latitude and longitude from Home Assistant Core at each App
-  start, plus configured timezone, country, and TERYT codes.
+  start, plus configured timezone and country. Enabled IMGW in Poland requires
+  TERYT codes.
 - Opening registry: stable opening name, `entity_id`, `area_id`, opening kind,
   applicable hazard types, execution policy, and optional allowlisted
   `cover.*` actuator.
 - Weather policy: frost watch/warning temperature, wind/gust thresholds,
   rain/precipitation policy, forecast horizon, hysteresis, persistence, and
   clear delay.
-- Outdoor AQ policy: European AQI standard and warning threshold.
+- Outdoor AQ policy: European AQI standard and warning threshold. Modeled
+  outdoor AQ and weather share the configured persistence interval.
 - Per-provider base URL, poll interval, request timeout, retry count, stale
   timeout, and enablement. Provider defaults belong to application policy;
   location and station selection belong to installation configuration.
@@ -936,11 +935,15 @@ distinct; one failed adapter shall not disable independently supplied evidence.
   external door, garage door, or gate shall require a known-open state for
   `T_ext_door_open`, timed independently for each opening. A closed or unknown
   contact shall reset this interval. An open window shall qualify immediately.
-  A valid, locally applicable IMGW degree-3 warning shall also qualify an open
-  aperture configured for the warning's hazard.
+  A valid, locally applicable official warning normalized as `immediate`
+  shall also qualify an open aperture configured for its hazard.
   C-EXT shall re-evaluate the contact and applicable evidence when the
   interval elapses. An existing exposure shall follow the clear policy in
   SYS-SR-EXT-013 and SYS-SR-EXT-043.
+  C-EXT shall qualify modeled hazards independently per provider and hazard
+  after continuous fresh threshold evidence for the configured persistence
+  interval. An interruption shall reset pending qualification. Applicable
+  official warnings shall follow their authoritative validity.
 - **SYS-SR-EXT-011:** Official IMGW warnings shall be applicable only when at
   least one configured TERYT code is present in the warning region set and the
   current time is within its validity interval.
@@ -959,9 +962,9 @@ distinct; one failed adapter shall not disable independently supplied evidence.
 - **SYS-SR-EXT-020:** The Open-Meteo AQ component shall retain the current
   European AQI value, model timestamp, grid coordinates, units, validity, and
   retrieval time for the configured home coordinates.
-- **SYS-SR-EXT-021:** Open-Meteo shall be the sole outdoor-air-quality input to
-  household exposure policy. Unavailable, malformed, or stale provider data
-  shall not be interpreted as positive clear evidence.
+- **SYS-SR-EXT-021:** Household exposure policy shall use the European AQI
+  supplied by enabled outdoor-air-quality plugins. Unavailable, malformed, or
+  stale provider data shall not be interpreted as positive clear evidence.
 - **SYS-SR-EXT-022:** When outdoor AQ policy is active and a relevant opening
   is qualified under SYS-SR-EXT-010, C-EXT shall raise or update
   `OutdoorAirQualityExposure{OpeningId}` through
@@ -984,7 +987,8 @@ distinct; one failed adapter shall not disable independently supplied evidence.
   openings without creating duplicate notification tags.
 - **SYS-SR-EXT-043:** Clearing shall require positive valid evidence or expiry
   according to provider semantics. Network failure, stale data, or parse error
-  shall not clear an active condition.
+  shall not clear an active condition. The configured frost and gust
+  hysteresis shall apply to the clear thresholds for modeled weather.
 - **SYS-SR-EXT-044:** Only explicitly configured `cover` entities, when bound
   to their configured closed contacts, may be commanded, and only with
   `cover.close_cover` after an authenticated SafetyHome user confirms a current

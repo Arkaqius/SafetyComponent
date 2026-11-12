@@ -10,9 +10,12 @@ from components.external_apis.core.models import (
     ExternalObservation,
     HazardType,
     Measurement,
+    ProviderCapability,
     parse_datetime,
 )
 from components.external_apis.core.registry import register_api_component
+
+from .schema import OpenMeteoWeatherConfig
 
 
 @register_api_component
@@ -20,6 +23,8 @@ class OpenMeteoWeatherApiComponent(ExternalApiComponent):
     """Fetch current and 12-hour point weather observations and forecasts."""
 
     component_name = "OpenMeteoWeatherApiComponent"
+    config_model = OpenMeteoWeatherConfig
+    capability = ProviderCapability.WEATHER_MODEL
 
     def fetch_payload(self) -> Any:
         return self.http_client.get_json(
@@ -27,7 +32,8 @@ class OpenMeteoWeatherApiComponent(ExternalApiComponent):
             params={
                 "latitude": self.site_config["latitude"],
                 "longitude": self.site_config["longitude"],
-                "timezone": self.site_config["timezone"],
+                # Open-Meteo omits offsets from ISO timestamps in the response.
+                "timezone": "GMT",
                 "forecast_hours": int(self.provider_config.get("forecast_horizon_hours", 12)),
                 "wind_speed_unit": "ms",
                 "current": ",".join(

@@ -25,6 +25,7 @@ from components.core.functional_safety_diagnostics import (
     FunctionalSafetyDiagnosticsStore,
     JsonFunctionalSafetyDiagnosticsStore,
 )
+from components.external_apis import get_registered_api_components
 from components.external_apis.home_assistant_state import HomeAssistantStateProvider
 from components.external_apis.supervisor_app import own_app_slug
 
@@ -95,7 +96,9 @@ class UserConfigStore:
                 example = yaml.safe_load(self.example_path.read_text(encoding="utf-8"))
                 user_config = example["user_config"]
 
-        calibration = load_mapping(self.system_path).get("calibration", {})
+        system = load_mapping(self.system_path)
+        calibration = system.get("calibration", {})
+        provider_defaults = system.get("runtime_cfg", {}).get("providers", {})
         temperature = calibration.get("temperature", {})
         safety_door = calibration.get("safety_door", {})
         entity_monitor = calibration.get("entity_monitor", {})
@@ -124,6 +127,11 @@ class UserConfigStore:
                 if key in entity_monitor
             },
             "external_hazard": {
+                "provider_plugins": {
+                    name: {"countries": sorted(plugin.countries), "enabled": provider_defaults[name].get("enabled", True)}
+                    for name, plugin in get_registered_api_components().items()
+                    if name in provider_defaults
+                },
                 "weather": {
                     key: value
                     for key, value in external_hazard.get("weather", {}).items()

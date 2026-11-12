@@ -81,6 +81,11 @@ let mockDocument: UserConfigurationDocument = {
     safety_door: { default_timeout_seconds: 120 },
     entity_monitor: { default_startup_grace_seconds: 600, default_evaluation_interval_seconds: 5 },
     external_hazard: {
+      provider_plugins: {
+        OpenMeteoWeatherApiComponent: { enabled: true, countries: [] },
+        ImgwWarningsApiComponent: { enabled: true, countries: ['PL'] },
+        OpenMeteoAirQualityApiComponent: { enabled: true, countries: [] },
+      },
       weather: {
         default_frost_watch_c: 2,
         default_frost_warning_c: 0,

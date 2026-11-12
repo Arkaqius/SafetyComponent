@@ -21,12 +21,12 @@ import {
 
 const timestamp = '2026-07-29T08:00:00+02:00';
 
-test('not evaluated battery faults are counted as assessments and visible in the attention filter', () => {
+test('not evaluated diagnostic faults are counted as assessments and require attention', () => {
   const faults = getFaults({
-    'sensor.fault_battery': entity('NOT_EVALUATED', { active: false, fault_category: 'D' }),
+    'sensor.fault_diagnostic': entity('NOT_EVALUATED', { active: false, fault_category: 'D' }),
     'sensor.fault_clear': entity('PASS', { active: false }),
   });
-  const pending = faults.find(fault => fault.entityId === 'sensor.fault_battery')!;
+  const pending = faults.find(fault => fault.entityId === 'sensor.fault_diagnostic')!;
   assert.equal(faultNeedsVerification(pending), true);
   assert.deepEqual(faults.filter(faultNeedsAttention), [pending]);
   const summary = getSafetySummary(entity('running'), entity('no_faults'), faults, []);
@@ -551,12 +551,45 @@ test('normalizes external hazard aggregate and independent provider diagnostics'
     external.providers.find(provider => provider.provider === 'OpenMeteoWeatherApiComponent')?.observations[0].hazardType,
     'wind'
   );
-  assert.equal(external.imgwWarnings.length, 1);
-  assert.equal(external.imgwWarnings[0].eventName, 'Burze');
-  assert.equal(external.imgwWarnings[0].locallyApplicable, true);
+  assert.equal(external.officialWarnings.length, 1);
+  assert.equal(external.officialWarnings[0].eventName, 'Burze');
+  assert.equal(external.officialWarnings[0].locallyApplicable, true);
   assert.equal(
-    external.imgwWarnings.some(warning => warning.id === 'imgw-outside-home'),
+    external.officialWarnings.some(warning => warning.id === 'imgw-outside-home'),
     false
+  );
+});
+
+test('filters out a retained official feed after a country change and accepts a replacement plugin', () => {
+  const aggregate = (enabled_providers: string[]) => entity('clear', { enabled_providers });
+  const staleImgw = entity('ok', {
+    provider: 'ImgwWarningsApiComponent',
+    capability: 'OfficialWeatherWarnings',
+    warnings: [{ id: 'alert', event_name: 'Burze', locally_applicable: true }],
+  });
+  const replacement = entity('ok', {
+    provider: 'BerlinWarningsApiComponent',
+    capability: 'OfficialWeatherWarnings',
+    warnings: [{ id: 'alert', event_name: 'Sturm', locally_applicable: true }],
+  });
+  const base = {
+    'sensor.external_provider_imgw_warnings': staleImgw,
+    'sensor.external_provider_berlin_warnings': replacement,
+  };
+  const berlin = getExternalHazardMonitoring({
+    ...base,
+    'sensor.external_hazard_state': aggregate(['OpenMeteoWeatherApiComponent']),
+  });
+  assert.equal(berlin.officialWarningsConfigured, false);
+  assert.deepEqual(berlin.officialWarnings, []);
+  const withAlerts = getExternalHazardMonitoring({
+    ...base,
+    'sensor.external_hazard_state': aggregate(['OpenMeteoWeatherApiComponent', 'BerlinWarningsApiComponent']),
+  });
+  assert.equal(withAlerts.officialWarningsConfigured, true);
+  assert.deepEqual(
+    withAlerts.officialWarnings.map(warning => warning.eventName),
+    ['Sturm']
   );
 });
 
