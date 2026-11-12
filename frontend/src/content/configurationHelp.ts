@@ -203,7 +203,7 @@ export const configurationHelp: Array<{
       },
       {
         title: 'Czas obserwacji i warunek zastosowania',
-        text: 'Każdy odczyt wymaga rzeczywistego czasu obserwacji z encji lub atrybutu oraz maksymalnego wieku. Wpisanie nazwy atrybutu nie tworzy danych. Opcjonalny warunek ma oddzielne stany sprawdzania i pomijania. Nieznany warunek pozostawia kontrolę nieocenioną.',
+        text: 'Kontrole standardowo wymagają czasu obserwacji i maksymalnego wieku. Przy oknie 0 s możesz wybrać ostatni znany odczyt encji, także dla kontroli mocy. Opcjonalny warunek zastosowania zawsze wymaga własnego czasu obserwacji.',
       },
       {
         title: 'Wyzwalacz, opóźnienie i próbki',

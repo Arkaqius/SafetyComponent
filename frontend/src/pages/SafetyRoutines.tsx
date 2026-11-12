@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useHass } from '@hakit/core';
 import { Link } from 'react-router-dom';
+import RoutineReportResults from '../components/RoutineReportResults';
 import StatusBadge from '../components/StatusBadge';
-import { requestRoutine, routineRunLabel, routineStatusLabel, type RoutineRun, type RoutineSummary } from '../domain/safetyRoutines';
+import { requestRoutine, routineRunLabel, type RoutineRun, type RoutineSummary } from '../domain/safetyRoutines';
 import '../styles/safety-routines.css';
 
 const time = (value: string | null) => (value ? new Date(value).toLocaleString('pl-PL') : '—');
@@ -137,6 +138,8 @@ export default function SafetyRoutines() {
   useEffect(() => {
     if (selection && focusReport.current && reportPanel.current) {
       focusReport.current = false;
+      const headerHeight = document.querySelector('.topbar')?.getBoundingClientRect().height ?? 0;
+      reportPanel.current.style.setProperty('--routine-topbar-height', `${headerHeight}px`);
       reportPanel.current.focus({ preventScroll: true });
       reportPanel.current.scrollIntoView({ block: 'start', behavior: 'auto' });
     }
@@ -339,25 +342,13 @@ export default function SafetyRoutines() {
           {!connected && !selectedReport && <p>Połącz się z systemem, aby pobrać raport.</p>}
           {selectedReport && (
             <>
-              <StatusBadge tone={tone(selectedReport)}>{routineRunLabel(selectedReport)}</StatusBadge>
-              <dl className='routine-report-times'>
-                <div>
-                  <dt>Rozpoczęto</dt>
-                  <dd>{time(selectedReport.started_at)}</dd>
-                </div>
-                <div>
-                  <dt>Zakończono</dt>
-                  <dd>{time(selectedReport.finished_at)}</dd>
-                </div>
-              </dl>
               {isActive(selectedReport) && (
                 <div className='routine-progress'>
                   <p className='routine-activity' role='status'>
                     {connected && <Spinner />}
-                    {routineRunLabel(selectedReport)}
-                    {!connected && ' · brak bieżących danych'}
+                    {connected ? 'Oczekiwanie na wynik z systemu' : 'Brak bieżących danych'}
                   </p>
-                  <p>Planowany koniec tego etapu: {time(selectedReport.due_at)}. Oczekiwanie na wynik z systemu.</p>
+                  <p>Planowany koniec etapu {time(selectedReport.due_at)}.</p>
                   <button
                     className='secondary-button routine-action'
                     disabled={!connected || Boolean(busy)}
@@ -368,49 +359,35 @@ export default function SafetyRoutines() {
                   </button>
                 </div>
               )}
-              <RunCounts run={selectedReport} />
-              {selectedReport.observation_seconds > 0 && (
-                <p>
-                  Próbki: {selectedReport.sample_count}. Okno obserwacji: {selectedReport.observation_seconds} s. Wynik nie opisuje zmian
-                  pomiędzy próbkami.
-                </p>
-              )}
-              {selectedReport.evidence_incomplete && (
-                <p role='status'>
-                  Podczas kontroli wystąpiły braki danych. Wykryty problem pozostaje widoczny także przy niepełnej ocenie.
-                </p>
-              )}
-              <div className='table-scroll'>
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Kontrola</th>
-                      <th>Wynik</th>
-                      <th>Odczyt i oczekiwanie</th>
-                      <th>Wyjaśnienie</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {selectedReport.results?.map(result => (
-                      <tr key={result.check_id}>
-                        <td>
-                          {result.name}
-                          <small> · Obserwacja: {time(result.observed_at)}</small>
-                        </td>
-                        <td>{routineStatusLabel(result.status)}</td>
-                        <td>
-                          {result.value === null ? '—' : String(result.value)} {result.unit ?? ''}
-                          <br />
-                          Oczekiwano:{' '}
-                          {result.expected_states?.join(', ') ??
-                            `${result.minimum ?? '−∞'} – ${result.maximum ?? '+∞'} ${result.unit ?? ''}`}
-                        </td>
-                        <td>{result.reason_label}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <RoutineReportResults key={selectedReport.run_id} run={selectedReport} />
+              <details className='routine-run-timing'>
+                <summary>Czas i przebieg</summary>
+                <dl className='routine-report-times'>
+                  <div>
+                    <dt>Rozpoczęto</dt>
+                    <dd>{time(selectedReport.started_at)}</dd>
+                  </div>
+                  {selectedReport.finished_at && (
+                    <div>
+                      <dt>Zakończono</dt>
+                      <dd>{time(selectedReport.finished_at)}</dd>
+                    </div>
+                  )}
+                  {selectedReport.observation_seconds > 0 && (
+                    <>
+                      <div>
+                        <dt>Próbki</dt>
+                        <dd>{selectedReport.sample_count}</dd>
+                      </div>
+                      <div>
+                        <dt>Okno obserwacji</dt>
+                        <dd>{selectedReport.observation_seconds} s</dd>
+                      </div>
+                    </>
+                  )}
+                </dl>
+                {selectedReport.observation_seconds > 0 && <p>Wynik obejmuje chwile pobrania próbek.</p>}
+              </details>
             </>
           )}
         </section>

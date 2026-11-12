@@ -487,8 +487,8 @@ capability, malformed values, binary assertions, and active-fault preservation.
 
 | ID | Requirement |
 | --- | --- |
-| SWR-ROUTINE-001 | The source compiler and startup schema shall validate optional scenario definitions, complete triggers, check expectations, explicit source-time selectors and bounded capacities. |
-| SWR-ROUTINE-002 | Evaluation shall reject unavailable/malformed values, stale/future/missing timestamps, invalid numbers and incompatible units; unknown applicability shall remain unknown. |
+| SWR-ROUTINE-001 | The source compiler and startup schema shall validate optional scenario definitions, complete triggers, check expectations, explicit source-time selectors and bounded capacities. The last-known-value option shall be allowed only for a check of an entity state in a single-sample routine, with no observation time selector on that check. |
+| SWR-ROUTINE-002 | Evaluation shall reject unavailable or malformed values, invalid numbers and incompatible units. Timestamp-qualified checks and applicability conditions shall reject stale, future or missing timestamps. Last-known-value checks shall report whether the available reading matches the expectation, with a distinct reason and an empty source observation time. Unknown applicability shall remain unknown. |
 | SWR-ROUTINE-003 | The runtime shall allocate independent run IDs, reject overlap, deduplicate retained request IDs, sample within bounded windows and retain problems/evidence gaps across samples. Cached timestamps shall not qualify successive passing observations. |
 | SWR-ROUTINE-004 | Reports shall preserve names, expectations, observations, result counts and timestamps; an all-skipped run shall return not_applicable. Pending/interrupted/cancelled runs shall remain unknown. |
 | SWR-ROUTINE-005 | The runtime shall persist bounded history in an independent SQLite store, interrupt unfinished runs at restart, reject stale callbacks and report storage failure separately from check results. |

@@ -36,7 +36,7 @@ user_config:
 
   installation:
     # Advisory scenarios; disabled examples never register automatic triggers.
-    # Enable only after binding real entities and original observation timestamps.
+    # Bind real entities and original timestamps for checks that require freshness.
     safety_routines:
       Bedtime:
         name: Przed snem
@@ -45,8 +45,7 @@ user_config:
           BedroomWindow:
             name: Okno w sypialni zamknięte
             entity_id: binary_sensor.example_bedroom_window
-            observed_at_entity_id: sensor.example_bedroom_window_last_seen
-            max_age_seconds: 300
+            last_known_value: true
             expected_states: ["off"]
       Leaving:
         name: Wyjście z domu
@@ -61,7 +60,7 @@ user_config:
             name: Pobór mocy wybranego urządzenia
             kind: numeric_range
             entity_id: sensor.example_appliance_power
-            observed_at_entity_id: sensor.example_appliance_last_seen
+            observed_at_entity_id: sensor.example_appliance_power_observed_at
             max_age_seconds: 60
             minimum: 0.0
             maximum: 5.0
