@@ -201,6 +201,10 @@ def test_regional_plugin_import_save_startup_health_and_shutdown(tmp_path, monke
     component = app.sm_modules["ExternalHazardComponent"]
     from components.core.types_common import FaultState
     assert component.symptom_states["ExternalWeatherExposureWindLivingRoomWindow"] == FaultState.SET
+    recovered = ProviderHealth(peer, ProviderHealthState.OK, now, now, 0, stale_after_seconds=900)
+    app.event_bus.publish("external_api_result", result=ApiResult(peer, (), recovered))
+    assert app.self_diagnostics._observed[app.self_diagnostics._symptom_id(peer)] is False
+    assert component.symptom_states["ExternalWeatherExposureWindLivingRoomWindow"] == FaultState.SET
     app.terminate()
     assert not app.external_api_runtime.started
     assert all(service == "mqtt/publish" or service.startswith("notify/") for service in calls), calls

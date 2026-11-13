@@ -74,7 +74,8 @@ Schema field titles/help are localized presentation data derived from packaged
 plugin metadata. Use the same definitions for catalogue export, the root
 `--print-user-schema` result, and server parameter validation. Root JSON Schema
 must describe each known provider's closed parameter object, not just permitted
-provider keys. Namespace local definitions by provider to avoid collisions.
+provider keys. Inline controlled provider-local definitions into self-contained
+schemas so embedding one provider cannot collide with another provider's names.
 
 ### Bounded editor schema vocabulary
 

@@ -10,6 +10,8 @@ from typing import Any
 import pytest
 
 from components.core.event_bus import EventBus
+from components.core.degradation import CoverageState, DegradationRegistry, compile_runtime_bindings
+from components.core.fault_state_policy import FaultCategory
 from components.core.localization import Localizer
 from components.core.types_common import Fault, FaultState, RecoveryResult, SMState, Symptom
 from components.external_apis import get_registered_api_components
@@ -621,6 +623,64 @@ def test_pending_model_is_not_a_qualified_peer_reevaluation() -> None:
     warning = _observation(official, HazardType.WIND, {}, confirmed=True)
     component.handle_external_api_result(result=ApiResult(official, (warning,), _health(official)))
     assert component._hazard_evidence(HazardType.WIND)[1]["reevaluated_sources"] == [official]
+
+
+@pytest.mark.parametrize("peer_capability", [ProviderCapability.OFFICIAL_WARNINGS, ProviderCapability.WEATHER_MODEL])
+def test_fresh_empty_peer_restores_coverage_while_other_peer_keeps_hazard_active(
+    peer_capability: ProviderCapability,
+) -> None:
+    """Provider recovery removes its own pending coverage without clearing H."""
+    component, _, _, _ = _component()
+    names = ("RegionalApiComponent", "PeerApiComponent")
+    definitions = {name: SimpleNamespace(
+        capability=ProviderCapability.OFFICIAL_WARNINGS,
+        hazards=frozenset({HazardType.WIND}),
+    ) for name in names}
+    definitions[names[1]].capability = peer_capability
+    component._provider_plugins = definitions
+    component.enabled_providers = set(names)
+    hazard_id = "ExternalWeatherExposureWindOfficeWindow"
+    capability_id = "ExternalHazardDataUnavailableOfficialWeatherWarnings"
+    symptoms = {
+        hazard_id: SimpleNamespace(sm_name="sm_ext_weather_exposure", parameters={"opening_name": "OfficeWindow", "hazard": "wind"}),
+        capability_id: SimpleNamespace(sm_name="sm_ext_provider_unavailable", parameters={"capability": "OfficialWeatherWarnings"}),
+        **{name: SimpleNamespace(sm_name="sm_provider_adapter_health", parameters={"provider": name}) for name in names},
+    }
+    faults = {name: Fault(name, [symptom.sm_name], 3,
+        category=FaultCategory.H if name == hazard_id else FaultCategory.D,
+        related_symptom_ids=[name]) for name, symptom in symptoms.items()}
+    registry = DegradationRegistry(symptoms, faults, compile_runtime_bindings(
+        symptoms, (), faults=faults, provider_definitions=definitions
+    ), provider_definitions=definitions)
+    component.event_bus.subscribe("symptom", lambda **payload: registry.observe(**payload) if payload["symptom_id"] in symptoms else None)
+    component.event_bus.subscribe("symptom_observed", registry.observe_hazard)
+    registry.observe(symptom_id=names[0], state=FaultState.SET)
+    registry.observe(symptom_id=names[1], state=FaultState.CLEARED)
+    registry.observe(symptom_id=capability_id, state=FaultState.CLEARED)
+    warning = _observation(names[1], HazardType.WIND, {
+        "current_wind_gust": Measurement(22.0, "m/s"),
+        "forecast_max_wind_gust": Measurement(22.0, "m/s"),
+    }, confirmed=peer_capability == ProviderCapability.OFFICIAL_WARNINGS)
+    component.handle_external_api_result(result=ApiResult(names[1], (warning,), _health(names[1])))
+    assert registry.snapshot()["state"] == CoverageState.DEGRADED.value
+
+    registry.observe(symptom_id=names[0], state=FaultState.CLEARED)
+    component.handle_external_api_result(result=ApiResult(names[0], (), _health(names[0])))
+    assert registry.snapshot()["state"] == CoverageState.FULL.value
+    assert not registry.pending_reevaluations()
+    assert component.symptom_states[hazard_id] == FaultState.SET
+
+
+def test_closed_opening_clear_does_not_reuse_old_provider_reevaluation_list() -> None:
+    component, hass, _, events = _component()
+    component.handle_external_api_result(result=_wind_result())
+    symptom_id = "ExternalWeatherExposureWindOfficeWindow"
+    assert next(event for event in events if event["symptom_id"] == symptom_id)["additional_info"]["reevaluated_sources"]
+    hass.states["binary_sensor.office_window"] = "off"
+    component._evaluate_all()
+    clear = next(event for event in reversed(events) if event["symptom_id"] == symptom_id)
+    assert clear["state"] == FaultState.CLEARED
+    assert "reevaluated_sources" not in clear["additional_info"]
 
 
 def test_expired_warning_after_failure_does_not_clear_active_exposure(monkeypatch: pytest.MonkeyPatch) -> None:

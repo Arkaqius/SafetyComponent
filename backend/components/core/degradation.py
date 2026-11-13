@@ -204,24 +204,36 @@ class DegradationRegistry:
                 name for name in evaluated if isinstance(name, str)
             } if isinstance(evaluated, (list, tuple)) else set()
             for target_id, capability, provider in tuple(self._requires_reevaluation):
+                if target_id != symptom_id:
+                    continue
                 # A winning source does not stand in for an independent peer.
                 # C-EXT explicitly lists peers with fresh policy-valid evidence.
-                target_source = provider if provider in evaluated_sources else source
-                if target_id != symptom_id or not self._source_depends_on(capability, target_source, provider):
-                    continue
-                if any(
-                    self._evidence[d_source] is not False
-                    and any(
-                        target.symptom_id == symptom_id
-                        and target.capability == capability
-                        and self._source_depends_on(target.capability, target_source, target.provider)
-                        and target.effect == RestrictionEffect.EVALUATION
-                        for target in d_binding.targets
+                target_sources = [provider] if provider in evaluated_sources else [source]
+                if provider is None:
+                    # One qualified source can restore capability coverage even
+                    # when a different capability supplies the winning H evidence.
+                    target_sources.extend(
+                        name for name in sorted(evaluated_sources)
+                        if name in self._provider_definitions
+                        and self._provider_definitions[name].capability.value == capability
                     )
-                    for d_source, d_binding in self._bindings.items()
-                ):
-                    continue
-                self._requires_reevaluation.discard((target_id, capability, provider))
+                for target_source in target_sources:
+                    if not self._source_depends_on(capability, target_source, provider):
+                        continue
+                    if any(
+                        self._evidence[d_source] is not False
+                        and any(
+                            target.symptom_id == symptom_id
+                            and target.capability == capability
+                            and self._source_depends_on(target.capability, target_source, target.provider)
+                            and target.effect == RestrictionEffect.EVALUATION
+                            for target in d_binding.targets
+                        )
+                        for d_source, d_binding in self._bindings.items()
+                    ):
+                        continue
+                    self._requires_reevaluation.discard((target_id, capability, provider))
+                    break
         if self._on_change is not None and (
             previous != self._evidence[symptom_id]
             or pending_before != self._requires_reevaluation

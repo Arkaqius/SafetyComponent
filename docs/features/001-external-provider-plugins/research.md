@@ -105,8 +105,9 @@ breaks compatibility or hides a configuration conflict.
 
 **Decision:** Export provider-specific parameter schemas and field metadata from
 the same definitions used by validation. Preserve existing `provider_plugins`
-entries and their `countries`/`enabled` fields. Build deterministic namespaced
-local schema definitions; never cache a catalogue across registry changes.
+entries and their `countries`/`enabled` fields. Deterministically inline bounded
+provider-local schema definitions so exported schemas are self-contained and
+cannot collide; never cache a catalogue across registry changes.
 
 **Rationale:** The existing exported schema lists allowed provider IDs but not
 each provider's different parameters. Pydantic supports validation-mode JSON

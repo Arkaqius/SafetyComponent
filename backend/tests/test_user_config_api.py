@@ -123,6 +123,24 @@ def _store(tmp_path: Path) -> UserConfigStore:
     )
 
 
+def test_legacy_read_and_alias_conflict_save_import_preserve_bytes(tmp_path: Path) -> None:
+    """An operator must reconcile conflicting source paths before replacement."""
+    store = _store(tmp_path)
+    store.user_path.write_bytes((BACKEND_DIR / "tests/fixtures/external_apis/legacy_user_config.yml").read_bytes())
+    before = store.user_path.read_bytes()
+    document = store.read()
+    source = document["user_config"]
+    assert "parameters" not in source["providers"]["ImgwWarningsApiComponent"]
+    assert store.user_path.read_bytes() == before
+    source["providers"]["ImgwWarningsApiComponent"]["parameters"] = {"teryt_codes": ["0001"]}
+    with pytest.raises(ValueError, match="conflict"):
+        store.save(source, document["revision"])
+    with pytest.raises(ValueError, match="conflict"):
+        store.import_yaml(yaml.safe_dump({"user_config": source}))
+    assert store.user_path.read_bytes() == before
+    assert store.read()["revision"] == document["revision"]
+
+
 def test_provider_invalid_http_save_keeps_bytes_revision_and_structured_path(tmp_path: Path) -> None:
     store = _store(tmp_path)
     before = store.user_path.read_bytes()

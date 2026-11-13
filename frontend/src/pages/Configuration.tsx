@@ -19,7 +19,18 @@ import {
   type ConfigurationMap,
   ConfigurationApiError,
 } from '../userConfigurationApi';
-import { decodeProviderCatalogue, providerRows, readProviderParameters, reconcileProviderParameter, removeProviderSelection, setProviderIntent, setProviderParameter, validateProviderDraft, type ProviderFieldError, type ProviderIntent } from '../domain/providerConfiguration';
+import {
+  decodeProviderCatalogue,
+  providerRows,
+  readProviderParameters,
+  reconcileProviderParameter,
+  removeProviderSelection,
+  setProviderIntent,
+  setProviderParameter,
+  validateProviderDraft,
+  type ProviderFieldError,
+  type ProviderIntent,
+} from '../domain/providerConfiguration';
 import { canRestartConfiguration, configurationRestartMessage } from '../domain/configurationRestart';
 
 const registrySections = [
@@ -97,9 +108,11 @@ export default function Configuration() {
 
   const save = async () => {
     if (!draft || restarting) return;
-    const country = stringValue(asMap(asMap(draft.installation).site).country_code).trim().toUpperCase();
+    const country = stringValue(asMap(asMap(draft.installation).site).country_code)
+      .trim()
+      .toUpperCase();
     const providerErrors = validateProviderDraft(providerCatalogue, draft, country);
-    if (providerErrors.length || providerCatalogue.error && asMap(draft.components_enabled).ExternalHazardComponent === true) {
+    if (providerErrors.length || (providerCatalogue.error && asMap(draft.components_enabled).ExternalHazardComponent === true)) {
       setFieldErrors(providerErrors);
       setError('Sprawdź parametry źródeł danych.');
       return;
@@ -406,36 +419,112 @@ export default function Configuration() {
         </div>
         <div className='provider-configuration'>
           <h3>Dostawcy danych zewnętrznych</h3>
-          <p>Wybierz źródła właściwe dla kraju instalacji. Ustawienie domyślne jest dziedziczone; parametry dotyczą tylko wybranego źródła.</p>
-          {providerCatalogue.error ? <p className='configuration-message configuration-message-error' role='alert'>{providerCatalogue.error}</p> : null}
+          <p>
+            Wybierz źródła właściwe dla kraju instalacji. Ustawienie domyślne jest dziedziczone; parametry dotyczą tylko wybranego źródła.
+          </p>
+          {providerCatalogue.error ? (
+            <p className='configuration-message configuration-message-error' role='alert'>
+              {providerCatalogue.error}
+            </p>
+          ) : null}
           {providerChoices.map(row => {
             const plugin = row.plugin;
             const parameters = plugin ? readProviderParameters(draft, plugin) : null;
-            return <fieldset className='configuration-fieldset' key={row.id} data-provider-id={row.id} style={{ minWidth: 0, marginBottom: '1rem' }}>
-              <legend>{plugin?.displayName ?? 'Nieznane źródło'}</legend>
-              {plugin ? <>
-                <p>{plugin.description}</p>
-                <label className='configuration-field'>
-                  <span>Włączenie źródła</span>
-                  <select aria-label='Włączenie źródła' disabled={restarting} value={row.intent} onChange={event => changeProviderDraft(setProviderIntent(draft, row.id, event.target.value as ProviderIntent))}>
-                    <option value='inherit'>Domyślnie ({plugin.enabled ? 'włączone, gdy dostępne' : 'wyłączone'})</option>
-                    <option value='enabled'>Włączone</option>
-                    <option value='disabled'>Wyłączone</option>
-                  </select>
-                </label>
-                <small>Zakres: {plugin.hazards.map(hazard => ({ frost: 'mróz', wind: 'wiatr', rain: 'deszcz', storm: 'burza', outdoor_air_pollution: 'zanieczyszczenie powietrza' })[hazard] ?? hazard).join(', ')}.</small>
-              </> : <><code style={{ overflowWrap: 'anywhere' }}>{row.id}</code><button className='secondary-button' type='button' disabled={restarting} onClick={() => changeProviderDraft(removeProviderSelection(draft, row.id))}>Usuń wybór źródła</button></>}
-              {row.error ? <p className='configuration-message configuration-message-error' role='alert'>{row.error}</p> : null}
-              {parameters && plugin ? <>
-                {Object.entries(parameters.conflicts).map(([name, values]) => <div className='configuration-message configuration-message-error' role='alert' key={name}>
-                  <p>Uzgodnij sprzeczne wartości: {plugin.fields[name].title}.</p>
-                  <p style={{ overflowWrap: 'anywhere' }}>Parametr źródła: {JSON.stringify(values.canonical)}; starsze pole instalacji: {JSON.stringify(values.legacy)}.</p>
-                  <button className='secondary-button' type='button' onClick={() => changeProviderDraft(reconcileProviderParameter(draft, plugin, name, 'canonical'))}>Użyj wartości parametru źródła</button>
-                  <button className='secondary-button' type='button' onClick={() => changeProviderDraft(reconcileProviderParameter(draft, plugin, name, 'legacy'))}>Użyj wartości starszego pola</button>
-                </div>)}
-                <ProviderParameterEditor plugin={plugin} values={parameters.values} active={row.effectiveEnabled && components.ExternalHazardComponent !== false} disabled={restarting || Object.keys(parameters.conflicts).length > 0} errors={fieldErrors} onChange={(name, value) => changeProviderDraft(setProviderParameter(draft, plugin, name, value))} />
-              </> : null}
-            </fieldset>;
+            return (
+              <fieldset
+                className='configuration-fieldset'
+                key={row.id}
+                data-provider-id={row.id}
+                style={{ minWidth: 0, marginBottom: '1rem' }}
+              >
+                <legend>{plugin?.displayName ?? 'Nieznane źródło'}</legend>
+                {plugin ? (
+                  <>
+                    <p>{plugin.description}</p>
+                    <label className='configuration-field'>
+                      <span>Włączenie źródła</span>
+                      <select
+                        aria-label='Włączenie źródła'
+                        disabled={restarting}
+                        value={row.intent}
+                        onChange={event => changeProviderDraft(setProviderIntent(draft, row.id, event.target.value as ProviderIntent))}
+                      >
+                        <option value='inherit'>Domyślnie ({plugin.enabled ? 'włączone, gdy dostępne' : 'wyłączone'})</option>
+                        <option value='enabled'>Włączone</option>
+                        <option value='disabled'>Wyłączone</option>
+                      </select>
+                    </label>
+                    <small>
+                      Zakres:{' '}
+                      {plugin.hazards
+                        .map(
+                          hazard =>
+                            ({
+                              frost: 'mróz',
+                              wind: 'wiatr',
+                              rain: 'deszcz',
+                              storm: 'burza',
+                              outdoor_air_pollution: 'zanieczyszczenie powietrza',
+                            })[hazard] ?? hazard
+                        )
+                        .join(', ')}
+                      .
+                    </small>
+                  </>
+                ) : (
+                  <>
+                    <code style={{ overflowWrap: 'anywhere' }}>{row.id}</code>
+                    <button
+                      className='secondary-button'
+                      type='button'
+                      disabled={restarting}
+                      onClick={() => changeProviderDraft(removeProviderSelection(draft, row.id))}
+                    >
+                      Usuń wybór źródła
+                    </button>
+                  </>
+                )}
+                {row.error ? (
+                  <p className='configuration-message configuration-message-error' role='alert'>
+                    {row.error}
+                  </p>
+                ) : null}
+                {parameters && plugin ? (
+                  <>
+                    {Object.entries(parameters.conflicts).map(([name, values]) => (
+                      <div className='configuration-message configuration-message-error' role='alert' key={name}>
+                        <p>Uzgodnij sprzeczne wartości: {plugin.fields[name].title}.</p>
+                        <p style={{ overflowWrap: 'anywhere' }}>
+                          Parametr źródła: {JSON.stringify(values.canonical)}; starsze pole instalacji: {JSON.stringify(values.legacy)}.
+                        </p>
+                        <button
+                          className='secondary-button'
+                          type='button'
+                          onClick={() => changeProviderDraft(reconcileProviderParameter(draft, plugin, name, 'canonical'))}
+                        >
+                          Użyj wartości parametru źródła
+                        </button>
+                        <button
+                          className='secondary-button'
+                          type='button'
+                          onClick={() => changeProviderDraft(reconcileProviderParameter(draft, plugin, name, 'legacy'))}
+                        >
+                          Użyj wartości starszego pola
+                        </button>
+                      </div>
+                    ))}
+                    <ProviderParameterEditor
+                      plugin={plugin}
+                      values={parameters.values}
+                      active={row.effectiveEnabled && components.ExternalHazardComponent !== false}
+                      disabled={restarting || Object.keys(parameters.conflicts).length > 0}
+                      errors={fieldErrors}
+                      onChange={(name, value) => changeProviderDraft(setProviderParameter(draft, plugin, name, value))}
+                    />
+                  </>
+                ) : null}
+              </fieldset>
+            );
           })}
         </div>
       </section>

@@ -5,7 +5,9 @@ import { resolve } from 'node:path';
 import {
   decodeProviderCatalogue,
   decodeProviderFieldErrors,
+  providerFieldErrors,
   providerRows,
+  removeProviderSelection,
   readProviderParameters,
   reconcileProviderParameter,
   setProviderIntent,
@@ -85,7 +87,10 @@ test('displaying inherited defaults does not create an explicit override', () =>
   const disabled = setProviderIntent(draft, 'ImgwWarningsApiComponent', 'disabled');
   assert.deepEqual(disabled.providers, { ImgwWarningsApiComponent: { enabled: false } });
   const inherited = setProviderIntent(disabled, 'ImgwWarningsApiComponent', 'inherit');
-  assert.equal(Object.prototype.hasOwnProperty.call((inherited.providers as Record<string, object>)?.ImgwWarningsApiComponent ?? {}, 'enabled'), false);
+  assert.equal(
+    Object.prototype.hasOwnProperty.call((inherited.providers as Record<string, object>)?.ImgwWarningsApiComponent ?? {}, 'enabled'),
+    false
+  );
 });
 
 test('country changes keep explicit incompatible selections visible with their values', () => {
@@ -115,7 +120,9 @@ test('new canonical inputs and equal aliases update atomically while conflicts r
   const equal = { ...canonical, installation: { site: { teryt_codes: ['0001'] } } };
   const changed = setProviderParameter(equal, plugin, 'teryt_codes', ['0002']);
   assert.deepEqual((changed.installation as { site: object }).site, { teryt_codes: ['0002'] });
-  assert.deepEqual((changed.providers as Record<string, { parameters: object }>).ImgwWarningsApiComponent.parameters, { teryt_codes: ['0002'] });
+  assert.deepEqual((changed.providers as Record<string, { parameters: object }>).ImgwWarningsApiComponent.parameters, {
+    teryt_codes: ['0002'],
+  });
   const conflicting = { ...canonical, installation: { site: { teryt_codes: ['0002'] } } };
   assert.ok(readProviderParameters(conflicting, plugin).conflicts.teryt_codes);
   assert.throws(() => setProviderParameter(conflicting, plugin, 'teryt_codes', ['0003']), /uzgodnij/i);
@@ -130,10 +137,27 @@ test('required activation parameters are conditional but supplied malformed valu
   assert.ok(validateProviderDraft(catalogue(), enabled, 'DE').some(error => error.path.at(-1) === 'region_code'));
   const malformed = { providers: { RegionalWarningsApiComponent: { enabled: false, parameters: { region_code: 42 } } } };
   assert.ok(validateProviderDraft(catalogue(), malformed, 'DE').length);
+  for (const value of [null, '', []]) {
+    const missing = { providers: { RegionalWarningsApiComponent: { enabled: true, parameters: { region_code: value } } } };
+    assert.ok(validateProviderDraft(catalogue(), missing, 'DE').length);
+  }
+  for (const providers of [
+    [],
+    'malformed',
+    { RegionalWarningsApiComponent: [] },
+    { RegionalWarningsApiComponent: { parameters: [] } },
+    { RegionalWarningsApiComponent: { unsupported: true } },
+  ]) {
+    assert.ok(validateProviderDraft(catalogue(), { providers }, 'DE').length);
+  }
 });
 
 test('field error decoding is bounded and preserves source paths', () => {
-  const item = { path: ['user_config', 'providers', 'RegionalWarningsApiComponent', 'parameters', 'region_code'], code: 'required', message: 'Podaj region.' };
+  const item = {
+    path: ['user_config', 'providers', 'RegionalWarningsApiComponent', 'parameters', 'region_code'],
+    code: 'required',
+    message: 'Podaj region.',
+  };
   assert.deepEqual(decodeProviderFieldErrors([item]), [item]);
   assert.equal(decodeProviderFieldErrors(Array.from({ length: 33 }, () => item)).length, 32);
   assert.deepEqual(decodeProviderFieldErrors([{ ...item, path: Array(17).fill('x') }]), []);
@@ -142,7 +166,10 @@ test('field error decoding is bounded and preserves source paths', () => {
 
 test('rejects unsupported versions, cyclic/external references, malformed applicability and unsafe alias paths', () => {
   assert.ok(Object.keys(decodeProviderCatalogue({ provider_metadata_version: 2, provider_plugins: {} }).errors).length);
-  for (const schema of [{ $ref: 'https://example.invalid/schema' }, { type: 'object', additionalProperties: false, properties: { x: { $ref: '#/$defs/Loop' } }, $defs: { Loop: { $ref: '#/$defs/Loop' } } }]) {
+  for (const schema of [
+    { $ref: 'https://example.invalid/schema' },
+    { type: 'object', additionalProperties: false, properties: { x: { $ref: '#/$defs/Loop' } }, $defs: { Loop: { $ref: '#/$defs/Loop' } } },
+  ]) {
     assert.ok(catalogue({ Bad: { ...regional, parameter_schema: schema } }).errors.Bad);
   }
   assert.ok(catalogue({ Bad: { ...regional, countries: undefined } }).errors.Bad);
@@ -153,9 +180,27 @@ test('enforces metadata text/property/definition/depth/enum budgets', () => {
   const cases = [
     { display_name: 'x'.repeat(257) },
     { description: 'x'.repeat(2049) },
-    { parameter_schema: { type: 'object', additionalProperties: false, properties: Object.fromEntries(Array.from({ length: 65 }, (_, i) => [`p${i}`, { type: 'string' }])) } },
-    { parameter_schema: { type: 'object', additionalProperties: false, properties: { region_code: { type: 'string', enum: Array.from({ length: 1025 }, (_, i) => String(i)) } } } },
-    { parameter_schema: { type: 'object', additionalProperties: false, properties: { region_code: { type: 'string', pattern: 'x'.repeat(257) } } } },
+    {
+      parameter_schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: Object.fromEntries(Array.from({ length: 65 }, (_, i) => [`p${i}`, { type: 'string' }])),
+      },
+    },
+    {
+      parameter_schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { region_code: { type: 'string', enum: Array.from({ length: 1025 }, (_, i) => String(i)) } },
+      },
+    },
+    {
+      parameter_schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { region_code: { type: 'string', pattern: 'x'.repeat(257) } },
+      },
+    },
   ];
   for (const value of cases) assert.ok(catalogue({ Bad: { ...regional, ...value } }).errors.Bad);
 });
@@ -180,9 +225,20 @@ test('supports finite scalar constraints, nullable optional fields and controlle
     },
   });
   assert.equal(decoded.errors.Scalars, undefined);
-  const draft = { providers: { Scalars: { enabled: true, parameters: { count: 3, value: 1.5, label: null, enabled_option: false, region_code: 'BE' } } } };
+  const draft = {
+    providers: { Scalars: { enabled: true, parameters: { count: 3, value: 1.5, label: null, enabled_option: false, region_code: 'BE' } } },
+  };
   assert.deepEqual(validateProviderDraft(decoded, draft, 'DE'), []);
-  for (const [field, value] of [['count', 1.5], ['count', 6], ['value', Number.NaN], ['value', 0], ['value', 10], ['label', 'a'], ['enabled_option', 'false'], ['region_code', 'XX']]) {
+  for (const [field, value] of [
+    ['count', 1.5],
+    ['count', 6],
+    ['value', Number.NaN],
+    ['value', 0],
+    ['value', 10],
+    ['label', 'a'],
+    ['enabled_option', 'false'],
+    ['region_code', 'XX'],
+  ]) {
     const changed = structuredClone(draft);
     (changed.providers.Scalars.parameters as Record<string, unknown>)[field as string] = value;
     assert.ok(validateProviderDraft(decoded, changed, 'DE').length, String(field));
@@ -190,7 +246,10 @@ test('supports finite scalar constraints, nullable optional fields and controlle
 });
 
 test('applies requiredness only to an applicable enabled component and retains malformed disabled errors', () => {
-  const selected = { components_enabled: { ExternalHazardComponent: false }, providers: { RegionalWarningsApiComponent: { enabled: true } } };
+  const selected = {
+    components_enabled: { ExternalHazardComponent: false },
+    providers: { RegionalWarningsApiComponent: { enabled: true } },
+  };
   assert.deepEqual(validateProviderDraft(catalogue(), selected, 'DE'), []);
   const invalid = { ...selected, providers: { RegionalWarningsApiComponent: { enabled: false, parameters: { unknown_parameter: 'x' } } } };
   assert.ok(validateProviderDraft(catalogue(), invalid, 'DE').some(error => error.path.at(-1) === 'unknown_parameter'));
@@ -211,8 +270,14 @@ test('rejects unsafe schema shapes, derived unknown fields and source-path trave
     { type: 'object', additionalProperties: false, properties: { region_code: { type: 'object', properties: {} } } },
     { type: 'object', additionalProperties: false, properties: { region_code: { type: 'string', enum: [1] } } },
     { type: 'object', additionalProperties: false, properties: { region_code: { type: 'string', pattern: '(a+)+' } } },
-  ]) assert.ok(catalogue({ Bad: { ...regional, parameter_schema: schema } }).errors.Bad);
-  for (const path of [['installation', '__proto__', 'polluted'], ['installation', 'constructor', 'prototype'], ['runtime_cfg', 'providers'], Array.from({ length: 17 }, () => 'installation')]) {
+  ])
+    assert.ok(catalogue({ Bad: { ...regional, parameter_schema: schema } }).errors.Bad);
+  for (const path of [
+    ['installation', '__proto__', 'polluted'],
+    ['installation', 'constructor', 'prototype'],
+    ['runtime_cfg', 'providers'],
+    Array.from({ length: 17 }, () => 'installation'),
+  ]) {
     assert.ok(catalogue({ Bad: { ...regional, legacy_parameter_paths: { region_code: path } } }).errors.Bad);
   }
   const draft = { providers: { RegionalWarningsApiComponent: { enabled: true, parameters: { region_code: 'BE', unknown: 'value' } } } };
@@ -226,6 +291,107 @@ test('decodes the same sanitized catalogue fixture exported by the backend', () 
   assert.equal(Object.keys(decoded.providers).length, 5);
   assert.deepEqual(decoded.providers.RegionalWarningsApiComponent.hazards, ['wind']);
   assert.deepEqual(decoded.providers.ImgwWarningsApiComponent.legacyPaths.teryt_codes, ['installation', 'site', 'teryt_codes']);
-  const draft = { providers: { RegionalWarningsApiComponent: { enabled: true, parameters: { region_code: 'BE' } }, PeerRegionalWarningsApiComponent: { enabled: true, parameters: { region_code: 'BE' } } } };
+  const draft = {
+    providers: {
+      RegionalWarningsApiComponent: { enabled: true, parameters: { region_code: 'BE' } },
+      PeerRegionalWarningsApiComponent: { enabled: true, parameters: { region_code: 'BE' } },
+    },
+  };
   assert.deepEqual(validateProviderDraft(decoded, draft, 'DE'), []);
+});
+
+test('accepts exact schema text, enum, property and definition boundaries and rejects one over', () => {
+  const decode = (schema: object) =>
+    catalogue({
+      Boundary: { ...regional, required_when_enabled: [], parameter_schema: { type: 'object', additionalProperties: false, ...schema } },
+    });
+  for (const [name, size] of [
+    ['title', 256],
+    ['description', 2048],
+    ['pattern', 256],
+  ] as const) {
+    assert.ok(decode({ properties: { region_code: { type: 'string', [name]: 'x'.repeat(size) } } }).providers.Boundary);
+    assert.ok(decode({ properties: { region_code: { type: 'string', [name]: 'x'.repeat(size + 1) } } }).errors.Boundary);
+  }
+  for (const [name, count] of [
+    ['properties', 64],
+    ['$defs', 128],
+  ] as const) {
+    const entries = Object.fromEntries(Array.from({ length: count }, (_, index) => [`p${index}`, { type: 'string' }]));
+    assert.ok(decode({ [name]: entries }).providers.Boundary);
+    assert.ok(decode({ [name]: { ...entries, extra: { type: 'string' } } }).errors.Boundary);
+  }
+  const choices = Array.from({ length: 1024 }, (_, index) => `option${index}`);
+  assert.ok(decode({ properties: { region_code: { type: 'string', enum: choices } } }).providers.Boundary);
+  assert.ok(decode({ properties: { region_code: { type: 'string', enum: [...choices, 'extra'] } } }).errors.Boundary);
+  assert.ok(decode({ properties: { region_code: { type: 'string', enum: ['x'.repeat(256)] } } }).providers.Boundary);
+  assert.ok(decode({ properties: { region_code: { type: 'string', enum: ['x'.repeat(257)] } } }).errors.Boundary);
+});
+
+test('enforces exact UTF-8 byte, nesting and local-reference-hop budgets', () => {
+  const schema: Record<string, unknown> = { type: 'object', additionalProperties: false, properties: {}, 'x-extra': '' };
+  const schemaBytes = new TextEncoder().encode(JSON.stringify(schema)).length;
+  schema['x-extra'] = 'x'.repeat(65536 - schemaBytes);
+  const metadata = { ...regional, required_when_enabled: [], parameter_schema: schema };
+  assert.ok(catalogue({ Boundary: metadata }).providers.Boundary);
+  assert.ok(catalogue({ Boundary: { ...metadata, parameter_schema: { ...schema, 'x-extra': `${schema['x-extra']}x` } } }).errors.Boundary);
+  const plugins: Record<string, unknown> = { Boundary: { ...regional, padding: '' } };
+  const catalogueBytes = new TextEncoder().encode(JSON.stringify(plugins)).length;
+  (plugins.Boundary as Record<string, unknown>).padding = 'x'.repeat(1048576 - catalogueBytes);
+  assert.ok(decodeProviderCatalogue({ provider_metadata_version: 1, provider_plugins: plugins }).providers.Boundary);
+  (plugins.Boundary as Record<string, unknown>).padding += 'é';
+  assert.ok(decodeProviderCatalogue({ provider_metadata_version: 1, provider_plugins: plugins }).error);
+  let nested: object = {};
+  for (let index = 0; index < 7; index++) nested = { child: nested };
+  const bounded = { type: 'object', additionalProperties: false, properties: {}, 'x-extra': nested };
+  assert.ok(catalogue({ Boundary: { ...metadata, parameter_schema: bounded } }).providers.Boundary);
+  assert.ok(catalogue({ Boundary: { ...metadata, parameter_schema: { ...bounded, 'x-extra': { child: nested } } } }).errors.Boundary);
+  for (const count of [16, 17]) {
+    const definitions = Object.fromEntries(
+      Array.from({ length: count }, (_, index) => [
+        `R${index}`,
+        index === count - 1 ? { type: 'string' } : { $ref: `#/$defs/R${index + 1}` },
+      ])
+    );
+    const result = catalogue({
+      Boundary: {
+        ...regional,
+        parameter_schema: {
+          type: 'object',
+          additionalProperties: false,
+          properties: { region_code: { $ref: '#/$defs/R0' } },
+          $defs: definitions,
+        },
+      },
+    });
+    assert.equal(Boolean(result.providers.Boundary), count === 16);
+  }
+});
+
+test('maps both canonical and legacy structured errors to the displayed field', () => {
+  const plugin = catalogue().providers.ImgwWarningsApiComponent;
+  const canonical = {
+    path: ['user_config', 'providers', plugin.id, 'parameters', 'teryt_codes', 0],
+    code: 'invalid',
+    message: 'Kod źródła.',
+  };
+  const legacy = { path: ['user_config', 'installation', 'site', 'teryt_codes', 0], code: 'invalid', message: 'Starszy kod.' };
+  assert.deepEqual(providerFieldErrors([canonical, legacy], plugin, 'teryt_codes'), [canonical, legacy]);
+  assert.equal(
+    decodeProviderFieldErrors([{ path: Array(16).fill('x'.repeat(128)), code: 'x'.repeat(128), message: 'x'.repeat(512) }]).length,
+    1
+  );
+  assert.deepEqual(decodeProviderFieldErrors([{ ...canonical, path: ['x'.repeat(129)] }]), []);
+});
+
+test('prototype-like unknown IDs remain ineligible and removable without inherited metadata lookup', () => {
+  for (const id of ['__proto__', 'prototype', 'constructor']) {
+    const source = JSON.parse(`{"providers":{"${id}":{"enabled":true}}}`);
+    const metadata = decodeProviderCatalogue({ provider_metadata_version: 1, provider_plugins: JSON.parse(`{"${id}":{}}`) });
+    assert.ok(Object.prototype.hasOwnProperty.call(metadata.errors, id));
+    const row = providerRows(metadata, source, 'DE').find(item => item.id === id);
+    assert.equal(row?.effectiveEnabled, false);
+    assert.ok(row?.error);
+    assert.deepEqual(removeProviderSelection(source, id), { providers: {} });
+  }
 });

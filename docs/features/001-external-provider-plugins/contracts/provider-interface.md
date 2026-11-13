@@ -17,14 +17,17 @@ presentation metadata while retaining `component_name`, `config_model`,
 
 Registration validates declaration shape, unique raw and derived diagnostic IDs, capability/hazard
 compatibility, declared required parameter names, and supported presentation
-metadata. Generated JSON Schema uses deterministic namespaced local definitions;
-no external schema reference is fetched. New registration must not depend on
+metadata. Generated JSON Schema deterministically inlines controlled local
+definitions into self-contained provider schemas; no external schema reference
+is fetched. New registration must not depend on
 SelfDiagnostics or C-EXT importing a provider-specific class.
 
 Contributor names and MQTT entity slugs shall retain the existing derivation
-rules and be checked for collisions before activation. Distinct raw names such
-as `Foo` and `FooApiComponent` shall be rejected when their diagnostic identities
-collide; existing provider identities remain unchanged.
+rules and be checked independently for collisions before activation. Distinct raw
+names such as `Foo` and `FooApiComponent` shall be rejected when either derived
+identity collides. `FooBar` and `FooApiComponentBar` also collide in their MQTT
+slug despite different contributor names. Existing provider identities remain
+unchanged.
 
 The common infrastructure may enforce shared transport bounds, but the provider's
 own model validates its complete packaged schema. A synthetic provider may add a
@@ -37,7 +40,7 @@ and typed interfaces. The public operations have these responsibilities:
 
 | Operation | Inputs | Output and failure behavior |
 | --- | --- | --- |
-| Resolve source bindings | Registered definitions, packaged provider settings, raw/typed source selections, shared site, C-EXT enabled flag | Typed resolved bindings or structured source-path errors; no I/O. |
+| Resolve source bindings | Registered definitions, packaged provider settings, source-selection mappings, shared site, C-EXT enabled flag | Normalized generated binding mappings or structured source-path errors; no I/O. |
 | Validate generated bindings | Same definitions/policy plus generated effective bindings and provenance | Equivalent active parameters and transport constraints; no polling. |
 | Resolve provider parameters | Provider-owned raw parameters, shared site compatibility inputs, active flag | Normalized parameters or plugin-scoped errors; no source mutation. |
 | Export catalogue/schema | Registered definitions and packaged defaults | Closed per-provider source schema and bounded editor metadata. |
@@ -58,11 +61,12 @@ resolver rules rather than maintaining a second implementation.
    inactive. A disabled C-EXT does not require a fabricated active site.
 5. Validate supplied editable keys/types/constraints without yet requiring
    missing activation-only fields. Unknown fields always fail.
-6. Invoke provider-owned compatibility resolution, including IMGW alias handling
+6. Resolve compatibility paths declared by the provider, including the IMGW alias
    and conflict rejection. Then enforce activation-only requiredness against the
    resolved parameters for applicable active providers. A valid legacy-only
    binding must not fail because its canonical field was initially absent.
-7. Produce generated bindings and an immutable installed catalogue. Do not
+7. Produce generated bindings; startup snapshots active provider definitions
+   from the registry for installed consumers. Do not
    instantiate adapters or issue network requests during these steps.
 
 Generated `api_components.<id>` retains existing effective `enabled` and transport
@@ -83,7 +87,9 @@ does not compare or interpret TERYT itself.
 Retain the existing injected HTTPS transport and constructor boundary. Add
 normalized parameters as an optional keyword argument or equivalent typed binding
 input, preserving current constructor callers during transition. Site context
-contains shared location; only the IMGW compatibility hook reads the old alias.
+contains shared location; IMGW declares its old alias through
+`legacy_parameter_paths`, which the shared resolver reads without provider-name
+branches.
 
 No constructor performs polling. Preserve one in-flight call per provider,
 independent schedules/caches/counters, bounded workers and results, system-owned

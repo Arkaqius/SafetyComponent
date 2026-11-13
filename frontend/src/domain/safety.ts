@@ -778,8 +778,21 @@ function externalCoverageAttribute(entity: EntitySnapshot | undefined): External
   return raw.slice(0, 64).flatMap(value => {
     if (!value || typeof value !== 'object') return [];
     const item = value as Record<string, unknown>;
-    if (typeof item.capability !== 'string' || !capabilities.includes(item.capability) || typeof item.hazard !== 'string' || !hazards.includes(item.hazard) || typeof item.status !== 'string' || !statuses.includes(item.status) || !Array.isArray(item.providers) || item.providers.length > 64 || item.providers.some(provider => typeof provider !== 'string')) return [];
-    const status = (item.providers.length === 0 && ['available', 'no_current_warnings'].includes(item.status) ? 'unavailable' : item.status) as ExternalCoverageView['status'];
+    if (
+      typeof item.capability !== 'string' ||
+      !capabilities.includes(item.capability) ||
+      typeof item.hazard !== 'string' ||
+      !hazards.includes(item.hazard) ||
+      typeof item.status !== 'string' ||
+      !statuses.includes(item.status) ||
+      !Array.isArray(item.providers) ||
+      item.providers.length > 64 ||
+      item.providers.some(provider => typeof provider !== 'string')
+    )
+      return [];
+    const status = (
+      item.providers.length === 0 && ['available', 'no_current_warnings'].includes(item.status) ? 'unavailable' : item.status
+    ) as ExternalCoverageView['status'];
     return [{ capability: item.capability, hazard: item.hazard, providers: item.providers as string[], status }];
   });
 }

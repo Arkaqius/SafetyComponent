@@ -56,11 +56,42 @@ domyślną interpretację całej instalacji ogrzewania.
    sprawdza dostępność encji. Sprawdź logi oraz stany czujników SafetyComponent.
    Nie uruchamiaj alarmów ani urządzeń wykonawczych tylko dla testu formularza.
 
-## Podstrony i reset instalacji
+## Podstrony konfiguracji
 
 Formularz jest podzielony na podstrony tematyczne. Przechodzenie między nimi
 zachowuje wspólny szkic; **Zapisz konfigurację** zapisuje cały dokument, nie
 tylko widoczną podstronę.
+
+## Źródła zagrożeń zewnętrznych
+
+W **Instalacja HA** ustaw kraj i strefę czasową. Następnie w **Ogólne** wybierz
+źródła danych dla tej lokalizacji. Każde źródło pokazuje obsługiwane zagrożenia
+i własne pola. Dla IMGW są to kody powiatów TERYT, po jednym w wierszu.
+Współrzędne dla danych Open-Meteo pochodzą z Home Assistant.
+
+Wybór **Domyślnie** zachowuje ustawienie dostarczone
+z aplikacją. **Włączone** i **Wyłączone** zapisują Twój jawny wybór. Wyłączenie
+źródła zachowuje wpisane parametry; ponowne włączenie wymaga uzupełnienia
+wymaganych pól. Zmiana kraju zachowuje szkic. Jeżeli wcześniej wybrane źródło
+nie obsługuje nowego kraju, popraw jego wybór przed zapisem. Nieznane źródło
+pozostaje widoczne i można usunąć jego zapisany wybór.
+
+Starsze kody TERYT są widoczne w polach IMGW bez zmiany pliku podczas odczytu.
+Ich edycja zachowuje dotychczasowe miejsce zapisu. Gdy plik zawiera dwie
+sprzeczne wartości tego samego parametru, panel pokaże obie i poprosi o jawny
+wybór. Zapis sprawdza cały dokument; błąd pola lub konflikt rewizji zachowuje
+Twój szkic. Po zmianie pliku przez inną sesję wczytaj zapisane ustawienia
+przyciskiem **Odrzuć zmiany** i ponownie wprowadź potrzebne poprawki.
+
+Na stronie **Zagrożenia zewnętrzne** sprawdź **Zakres danych zewnętrznych**.
+Panel rozróżnia brak skonfigurowanego źródła, zagrożenie poza jego zakresem,
+oczekiwanie na dane, brak wiarygodnych danych, dane dostępne oraz brak bieżących
+ostrzeżeń w obsługiwanym zakresie. Dostępna pogoda modelowa nie zastępuje
+oficjalnych ostrzeżeń. Brak ostrzeżeń dotyczy tylko obsługiwanego zakresu
+zdrowego źródła. Zapis konfiguracji i restart aplikacji pozostają osobnymi
+czynnościami.
+
+## Reset i restart instalacji
 
 Przycisk resetu konfiguracji instalacji po potwierdzeniu zastępuje **szkic**
 publicznym szablonem. Usunie z formularza Twoje encje i nadpisania, ale nie
@@ -94,8 +125,9 @@ lokalizacji używa `Europe/Berlin` oraz współrzędnych ustawionych w Home Assi
 
 1. W **Funkcjach i integracjach** włącz pięć komponentów domu. Wybierz język
    polski i rzeczywistą usługę powiadomień, np. własne `notify/mobile_app_*`.
-2. W **Instalacji Home Assistant** wybierz `Europe/Warsaw`, kraj `PL`, własne
-   czterocyfrowe kody powiatów TERYT oraz czujnik temperatury zewnętrznej.
+2. W **Instalacji Home Assistant** wybierz `Europe/Warsaw`, kraj `PL` oraz
+   czujnik temperatury zewnętrznej. W **Ogólne** uzupełnij przy IMGW własne
+   czterocyfrowe kody powiatów TERYT.
    Nie wpisuj współrzędnych — aplikacja odczyta je z HA przy starcie.
 3. W **Ustawieniach komponentów** przykład ustawia górny próg temperatury
    całego domu na `27 °C` i czas drzwi na `180 s`. Sypialnia ma własny próg
@@ -133,7 +165,7 @@ budżecie wykrycia.
 | Funkcje i integracje | Włącz tylko komponenty, dla których masz rzeczywiste źródła danych. Providery API można osobno włączać i wyłączać; ich adresy i harmonogramy są ustawieniami systemowymi. |
 | Język | Wybierz polski, angielski lub niemiecki. Nazw encji nie edytuje się w tym formularzu — pochodzą z plików lokalizacji. |
 | Powiadomienia | Wpisz konkretne usługi `notify/<nazwa>`, po jednej w wierszu. `notify/notify` jest niejednoznaczne. Adres po kliknięciu powinien być ścieżką w HA, np. `/`. Encja WAN i lokalne urządzenia sygnalizacji są opcjonalne. |
-| Instalacja Home Assistant | Wybierz strefę czasową i podaj dwuliterowy kod kraju. Dla włączonego IMGW w Polsce podaj kody powiatów TERYT. Gdy używasz komponentu temperatury, wybierz czujnik temperatury zewnętrznej. Współrzędne pochodzą z HA. |
+| Instalacja Home Assistant | Wybierz strefę czasową i podaj dwuliterowy kod kraju. Parametry źródeł, w tym kody TERYT dla IMGW, ustaw w Ogólne. Gdy używasz komponentu temperatury, wybierz czujnik temperatury zewnętrznej. Współrzędne pochodzą z HA. |
 | Zdrowie systemu i konserwacja | Wskaż źródła pamięci i PSI, CPU, wolnego miejsca, temperatury hosta, kopii i aktualizacji. Urządzenia bateryjne pobierane są automatycznie; wybierz, które monitorować. Włącz potrzebne testy okresowe. Progi i interwały można nadpisać w Ustawieniach komponentów; puste pola dziedziczą defaulty. Brak źródła oznacza brak pokrycia, nie stan prawidłowy. |
 | Ustawienia komponentów | Opcjonalnie zmień progi temperatury, czas drzwi/bram, czasy monitoringu, progi pogody i jakości powietrza oraz progi i harmonogramy Functional Safety. Puste pole oznacza wartość systemową pokazaną pod polem. Lista domyślnych zagrożeń i horyzont prognozy pozostają w konfiguracji systemowej. |
 | Pomieszczenia | Dodaj wpis dla każdego monitorowanego pomieszczenia. Wskaż obszar HA i czujnik temperatury. Opcjonalnie wybierz otwór z sekcji „Drzwi, bramy i okna”, osłonę `cover.*` i indywidualne progi. |

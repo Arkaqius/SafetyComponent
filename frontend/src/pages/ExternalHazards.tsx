@@ -52,13 +52,22 @@ export default function ExternalHazards() {
         <Metric label='Blokady porad' value={externalHazards.adviceInhibition.length} detail='sprzeczne porady otwarcia' />
       </section>
 
-      {(externalHazards.coverageDetails?.length ?? 0) > 0 ? <section className='panel external-coverage-panel' aria-label='Zakres danych zewnętrznych'>
-        <h2>Zakres danych zewnętrznych</h2>
-        <p>Dostępność jednego źródła nie potwierdza pokrycia innego rodzaju danych ani zagrożenia.</p>
-        <ul>{externalHazards.coverageDetails?.map(item => <li key={`${item.capability}-${item.hazard}`}>
-          <strong>{providerDescription(item.capability)} — {hazardLabel(item.hazard)}</strong>: {coverageLabel(item.status)}
-        </li>)}</ul>
-      </section> : null}
+      {(externalHazards.coverageDetails?.length ?? 0) > 0 ? (
+        <section className='panel external-coverage-panel' aria-label='Zakres danych zewnętrznych'>
+          <h2>Zakres danych zewnętrznych</h2>
+          <p>Dostępność jednego źródła nie potwierdza pokrycia innego rodzaju danych ani zagrożenia.</p>
+          <ul>
+            {externalHazards.coverageDetails?.map(item => (
+              <li key={`${item.capability}-${item.hazard}`}>
+                <strong>
+                  {providerDescription(item.capability)} — {hazardLabel(item.hazard)}
+                </strong>
+                : {coverageLabel(item.status)}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {externalHazards.activeHazards.length > 0 ? (
         <section className='panel external-active-panel'>
@@ -287,11 +296,29 @@ function ProviderCard({ provider }: { provider: ExternalProviderView }) {
 }
 
 function hazardLabel(hazard: string): string {
-  return ({ frost: 'mróz', wind: 'wiatr', rain: 'deszcz', storm: 'burza', outdoor_air_pollution: 'zanieczyszczenie powietrza' } as Record<string, string>)[hazard] ?? 'nieznane zagrożenie';
+  return (
+    (
+      { frost: 'mróz', wind: 'wiatr', rain: 'deszcz', storm: 'burza', outdoor_air_pollution: 'zanieczyszczenie powietrza' } as Record<
+        string,
+        string
+      >
+    )[hazard] ?? 'nieznane zagrożenie'
+  );
 }
 
 function coverageLabel(status: string): string {
-  return ({ not_configured: 'Nie skonfigurowano źródła', unsupported: 'Zagrożenie poza zakresem źródła', awaiting_evidence: 'Oczekiwanie na dane', unavailable: 'Brak wiarygodnych danych', available: 'Dane dostępne', no_current_warnings: 'Brak bieżących ostrzeżeń w obsługiwanym zakresie' } as Record<string, string>)[status] ?? 'Stan pokrycia nieznany';
+  return (
+    (
+      {
+        not_configured: 'Nie skonfigurowano źródła',
+        unsupported: 'Zagrożenie poza zakresem źródła',
+        awaiting_evidence: 'Oczekiwanie na dane',
+        unavailable: 'Brak wiarygodnych danych',
+        available: 'Dane dostępne',
+        no_current_warnings: 'Brak bieżących ostrzeżeń w obsługiwanym zakresie',
+      } as Record<string, string>
+    )[status] ?? 'Stan pokrycia nieznany'
+  );
 }
 
 function hazardPresentation(status: ExternalHazardStatus): {

@@ -319,7 +319,7 @@ def test_unknown_local_warning_is_not_a_healthy_empty_feed() -> None:
         _component(ImgwWarningsApiComponent).normalize(payload, RETRIEVED_AT)
 
 
-@pytest.mark.parametrize("defect", ["identity", "duplicate", "hazard", "partial", "unit", "nonfinite", "source_time", "authority"])
+@pytest.mark.parametrize("defect", ["identity", "duplicate", "hazard", "partial", "unit", "nonfinite", "boolean", "source_time", "authority"])
 def test_invalid_snapshot_does_not_replace_accepted_evidence(monkeypatch, defect):
     component = _component(OpenMeteoWeatherApiComponent)
     monkeypatch.setattr("components.external_apis.core.api_component.utc_now", lambda: RETRIEVED_AT)
@@ -336,9 +336,11 @@ def test_invalid_snapshot_does_not_replace_accepted_evidence(monkeypatch, defect
         observations[0] = replace(first, hazard_type=HazardType.OUTDOOR_AIR_POLLUTION)
     elif defect == "partial":
         observations = observations[:1]
-    elif defect in {"unit", "nonfinite"}:
+    elif defect in {"unit", "nonfinite", "boolean"}:
         measurements = dict(first.values)
         measurements["current_temperature"] = Measurement(float("nan") if defect == "nonfinite" else 1.0, "F" if defect == "unit" else "°C")
+        if defect == "boolean":
+            measurements["current_temperature"] = Measurement(False, "°C")
         observations[0] = replace(first, values=measurements)
     elif defect == "source_time":
         observations[0] = replace(first, observed_at=None)

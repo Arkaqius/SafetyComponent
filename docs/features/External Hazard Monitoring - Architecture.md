@@ -299,6 +299,8 @@ Every current warning matching at least one configured TERYT code is sanitized,
 marked as locally applicable, and published in the IMGW provider diagnostic
 entity for operator presentation. Locally applicable warnings with recognized
 household hazard types are dispatched as safety observations.
+An unrecognized locally applicable warning type shall reject the replacement
+snapshot as `schema_error`; it shall not become a healthy empty result.
 An updated warning with the same ID replaces the previous provider observation.
 
 ### 7.5 `OpenMeteoAirQualityApiComponent`

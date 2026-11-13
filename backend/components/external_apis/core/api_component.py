@@ -228,6 +228,8 @@ class ExternalApiComponent(ABC):
                         raise ValueError(
                             f"Missing or invalid normalized measurement {name}"
                         )
+                    if isinstance(measurement.value, bool):
+                        raise ValueError(f"Boolean normalized measurement {name}")
                     values: list[Any] = [measurement.value]
                     if name == "forecast_weather_codes":
                         values = str(measurement.value).split(",")

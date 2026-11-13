@@ -22,7 +22,7 @@ import {
 const timestamp = '2026-07-29T08:00:00+02:00';
 
 test('external coverage preserves unsupported and unconfigured capabilities independently of healthy model data', () => {
-  const external = getExternalHazards({
+  const external = getExternalHazardMonitoring({
     'sensor.external_hazard_state': entity('clear', {
       enabled_providers: ['WeatherSource'],
       official_warnings_configured: false,
@@ -36,16 +36,61 @@ test('external coverage preserves unsupported and unconfigured capabilities inde
   });
   assert.equal(external.officialWarningsConfigured, false);
   assert.deepEqual(external.providers[0].hazards, ['wind']);
-  assert.deepEqual(external.coverageDetails?.map(item => item.status), ['available', 'not_configured', 'unsupported']);
+  assert.deepEqual(
+    external.coverageDetails?.map(item => item.status),
+    ['available', 'not_configured', 'unsupported']
+  );
 });
 
 test('empty or malformed coverage cannot masquerade as healthy authoritative evidence', () => {
-  const external = getExternalHazards({ 'sensor.external_hazard_state': entity('unavailable', { coverage_details: [
-    { capability: 'OfficialWeatherWarnings', hazard: 'wind', providers: [], status: 'no_current_warnings' },
-    { capability: 'OfficialWeatherWarnings', hazard: 'wind', providers: ['A'], status: 'made_up' },
-  ] }) });
-  assert.deepEqual(external.coverageDetails?.map(item => item.status), ['unavailable']);
-  assert.deepEqual(getExternalHazards({}).coverageDetails, []);
+  const external = getExternalHazardMonitoring({
+    'sensor.external_hazard_state': entity('unavailable', {
+      coverage_details: [
+        { capability: 'OfficialWeatherWarnings', hazard: 'wind', providers: [], status: 'no_current_warnings' },
+        { capability: 'OfficialWeatherWarnings', hazard: 'wind', providers: ['A'], status: 'made_up' },
+      ],
+    }),
+  });
+  assert.deepEqual(
+    external.coverageDetails?.map(item => item.status),
+    ['unavailable']
+  );
+  assert.deepEqual(getExternalHazardMonitoring({}).coverageDetails, []);
+});
+
+test('healthy-empty official coverage and a failed peer retain separate diagnostic states and exact projection', () => {
+  const details = [
+    { capability: 'OfficialWeatherWarnings', hazard: 'wind', providers: ['Regional', 'Peer'], status: 'available' },
+    { capability: 'OfficialWeatherWarnings', hazard: 'rain', providers: ['Regional'], status: 'no_current_warnings' },
+    { capability: 'OfficialWeatherWarnings', hazard: 'frost', providers: ['Regional'], status: 'awaiting_evidence' },
+    { capability: 'OfficialWeatherWarnings', hazard: 'storm', providers: ['Peer'], status: 'unavailable' },
+  ];
+  const external = getExternalHazardMonitoring({
+    'sensor.external_hazard_state': entity('warning', {
+      enabled_providers: ['Regional', 'Peer'],
+      active_hazards: ['wind'],
+      coverage_details: details,
+    }),
+    'sensor.external_provider_regional': entity('ok', {
+      provider: 'Regional',
+      capability: 'OfficialWeatherWarnings',
+      hazards: ['wind', 'rain'],
+      warnings: [],
+    }),
+    'sensor.external_provider_peer': entity('stale', {
+      provider: 'Peer',
+      capability: 'OfficialWeatherWarnings',
+      hazards: ['storm'],
+      last_success_at: timestamp,
+      warnings: [],
+    }),
+  });
+  assert.deepEqual(external.coverageDetails, details);
+  assert.equal(external.status, 'warning');
+  assert.equal(external.officialWarningsConfigured, true);
+  assert.deepEqual(external.officialWarnings, []);
+  assert.equal(external.providers.find(provider => provider.provider === 'Peer')?.status, 'stale');
+  assert.equal(external.providers.find(provider => provider.provider === 'Peer')?.lastSuccessAt, timestamp);
 });
 
 test('not evaluated diagnostic faults are counted as assessments and require attention', () => {

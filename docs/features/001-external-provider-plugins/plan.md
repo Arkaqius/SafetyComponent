@@ -136,7 +136,7 @@ frontend/
 
 **Structure Decision**: Extend existing provider/core seams and introduce only a
 small pure resolver and dedicated frontend provider editor. Keep provider-specific
-schemas and compatibility hooks inside each provider. No new top-level package,
+schemas and compatibility-path declarations inside each provider. No new top-level package,
 remote plugin service, transport stack, authentication route, or persistence layer.
 
 ## Phase 0: Research Decisions
@@ -146,7 +146,7 @@ remote plugin service, transport stack, authentication route, or persistence lay
 1. One shared pure resolver at compiler/save and runtime boundaries.
 2. Distinct provider-owned editable and runtime schemas with explicit-selection
    provenance retained before defaults merge.
-3. IMGW-owned legacy alias resolution without automatic source rewrite.
+3. Provider-declared IMGW legacy alias resolution without automatic source rewrite.
 4. Registry-driven health and hazard/source-specific degradation bindings.
 5. A bounded schema-derived editor using the existing configuration routes.
 6. Complete snapshots, explicit coverage, and conservative multi-source clearing.
@@ -186,7 +186,7 @@ service. Registration-only or isolated C-EXT tests cannot satisfy work package 5
 | FR-001..005 | Registry, parameter models, resolver, catalogue, editor | Applicable choices, strict fields, pre-save errors, shared location. |
 | FR-006..008 | Existing default adapters and normalized contract | Model/official provenance, units/time, responsibility separation. |
 | FR-009..014 | Installed catalogue, diagnostics, C-EXT, degradation | Hazard-specific coverage, active-source conflicts, no false clear, independent stalled provider. |
-| FR-015 | Alias hook and source serialization | Legacy/canonical/equal/conflicting TERYT; model 2 and identity parity. |
+| FR-015 | Provider-declared alias paths and source serialization | Legacy/canonical/equal/conflicting TERYT; model 2 and identity parity. |
 | FR-016..017 | Existing configuration store/routes, typed errors, locales | Atomic save/revision, explicit restart, Polish UI and EN/PL/DE runtime parity. |
 | FR-018..019 | Synthetic startup acceptance and release review | Complete extension path, unchanged HARA and actuator authority. |
 

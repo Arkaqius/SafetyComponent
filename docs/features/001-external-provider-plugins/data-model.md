@@ -20,7 +20,8 @@ One registered adapter class owns one immutable definition.
 | `config_model` | Closed provider-owned Pydantic model | System/runtime endpoint and lifecycle validation. |
 | `parameter_model` | Closed provider-owned Pydantic model | Supplied editable parameter values and activation-dependent validation. |
 | `required_when_enabled` | Set of declared parameter names | Activation-only requiredness, exported and enforced from the same declaration. |
-| `display_name`, `description`, field labels/help | Plain localized text resolved from packaged keys | Display metadata, never executable instructions or identity. |
+| `display_name`, `description`, field labels/help | Plain text from packaged provider declarations | Polish editor metadata, never executable instructions or identity; runtime display names and coverage text have EN/PL/DE translations. |
+| `legacy_parameter_paths` | Optional mapping from declared parameter names to source-path segments | Provider-owned compatibility inputs relative to `user_config`; IMGW declares `installation.site.teryt_codes`. |
 
 Model and warning providers declare frost/wind/rain/storm subsets; AQ declares
 outdoor air pollution. Open-Meteo weather retains the existing four weather
@@ -47,7 +48,7 @@ when C-EXT and the country-applicable provider are enabled.
 | `enabled` omitted, packaged true | No | Inactive inherited default; no adapter failure. |
 | Explicit true | No | Source-path validation error before persistence/activation. |
 | Explicit false | Either | Inactive, retained draft values, no polling or adapter contributor. |
-| Packaged default absent or false; enabled override omitted | Yes | Inactive unless explicitly enabled. |
+| Packaged default false; enabled override omitted | Yes | Inactive unless explicitly enabled. |
 
 Parameter-only entries inherit enablement. Source-map membership alone therefore
 does not establish an explicit enabled choice.
@@ -61,14 +62,17 @@ remains only as an IMGW compatibility input, not a universal regional selector.
 
 ## Resolved provider binding
 
-The pure resolver returns a typed internal binding per validated packaged provider:
+The pure resolver returns a mapping keyed by stable provider ID. Each generated
+binding contains the provider's validated system transport fields, effective
+`enabled`, normalized editable `parameters`, and `selection_origin` (`explicit`
+or `inherited`). Country applicability is used to resolve activation rather than
+stored as another generated field. Source-path errors retain the appropriate
+canonical or compatibility location during validation; alias provenance and
+shared site data are not duplicated into each generated binding.
 
-- stable provider ID and its definition;
-- effective enabled flag, country applicability, and whether an enabled override
-  was supplied;
-- normalized editable parameters and their legacy/canonical provenance;
-- validated system transport configuration, separate from editable parameters;
-- resolved site context and source-path mappings for validation errors.
+Provider definitions remain in the registry's class mapping. Startup snapshots
+the definitions of installed active adapters for diagnostics, C-EXT, and
+degradation rather than serializing classes into generated configuration.
 
 Generated `api_components` retains its keys and effective `enabled` behavior.
 Any new parameter/provenance fields are additive and are separated before the
