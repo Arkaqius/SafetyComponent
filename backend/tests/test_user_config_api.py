@@ -123,6 +123,45 @@ def _store(tmp_path: Path) -> UserConfigStore:
     )
 
 
+def test_provider_invalid_http_save_keeps_bytes_revision_and_structured_path(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    before = store.user_path.read_bytes()
+    document = store.read()
+    config = document["user_config"]
+    config["providers"]["ImgwWarningsApiComponent"]["parameters"] = {"teryt_codes": ["bad"]}
+    UserConfigRequestHandler.store = store
+    server = ConfigurationHttpServer(("127.0.0.1", 0), UserConfigRequestHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        request = Request(f"http://127.0.0.1:{server.server_port}/api/config", data=json.dumps({"user_config": config, "revision": document["revision"]}).encode(), headers={"Content-Type": "application/json"}, method="PUT")
+        with pytest.raises(HTTPError) as caught:
+            urlopen(request)
+        assert caught.value.code == 422
+        error = json.load(caught.value)
+        assert error["error"] == "invalid_configuration"
+        assert error["field_errors"][0]["path"][:4] == ["user_config", "providers", "ImgwWarningsApiComponent", "parameters"]
+        assert store.user_path.read_bytes() == before
+        assert store.read()["revision"] == document["revision"]
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def test_invalid_saved_provider_source_remains_readable_without_rewrite(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    document = yaml.safe_load(store.user_path.read_text(encoding="utf-8"))
+    document["user_config"]["providers"]["ImgwWarningsApiComponent"]["parameters"] = {"teryt_codes": ["bad"]}
+    store.user_path.write_text(yaml.safe_dump(document), encoding="utf-8")
+    before = store.user_path.read_bytes()
+    result = store.read()
+    assert result["validation_error"]
+    assert result["user_config"]["providers"]["ImgwWarningsApiComponent"]["parameters"]["teryt_codes"] == ["bad"]
+    assert result["system_defaults"]["external_hazard"]["provider_metadata_version"] == 1
+    assert store.user_path.read_bytes() == before
+
+
 def test_read_returns_only_user_source_and_revision(tmp_path: Path) -> None:
     result = _store(tmp_path).read()
 
@@ -133,9 +172,10 @@ def test_read_returns_only_user_source_and_revision(tmp_path: Path) -> None:
     assert result["system_defaults"]["detector_profiles"] == [
         "home_assistant_binary_alarm"
     ]
-    assert result["system_defaults"]["external_hazard"]["provider_plugins"]["ImgwWarningsApiComponent"] == {
-        "countries": ["PL"], "enabled": True,
-    }
+    plugin = result["system_defaults"]["external_hazard"]["provider_plugins"]["ImgwWarningsApiComponent"]
+    assert plugin["countries"] == ["PL"] and plugin["enabled"] is True
+    assert plugin["required_when_enabled"] == ["teryt_codes"]
+    assert plugin["parameter_schema"]["additionalProperties"] is False
     assert "system_config" not in result
 
 

@@ -22,12 +22,16 @@ user_config:
     local: {}
     wan_entity: null
 
+  # Provider-specific location parameters; the legacy site alias is also accepted.
+  providers:
+    ImgwWarningsApiComponent:
+      parameters:
+        teryt_codes: ["0000"]
+
   installation:
     site:
       timezone: Europe/Warsaw
       country_code: PL
-      teryt_codes:
-        - "0000"
     # Coordinates are always read from Home Assistant, not this file.
     common_entities:
       outside_temp: sensor.example_outdoor_temperature

@@ -1,0 +1,169 @@
+# Copy to user_config.yml and replace only Home Assistant installation values.
+# System policy and defaults live in system_config.yml. Values under
+# installation.component_settings override them for this installation; values on one
+# room or opening override both layers.
+user_config:
+  model_version: 2
+
+  components_enabled:
+    TemperatureComponent: true
+    SafetyDoorsComponent: true
+    ExternalHazardComponent: true
+    EntityMonitorComponent: true
+    InternalEnvironmentalHazardMonitorComponent: false
+    HeatingSystemMonitorComponent: false
+
+  localization:
+    language: pl
+
+  notification:
+    mobile:
+      services:
+        - notify/mobile_app_example_phone
+      default_url: /
+    local: {}
+    wan_entity: null
+
+  # Optional provider enablement overrides. Endpoints, polling, retry, timeout,
+  # and staleness policy remain in system_config.yml.
+  # IMGW is selected only for PL. The Berlin example omits TERYT entirely.
+  providers:
+    OpenMeteoWeatherApiComponent:
+      enabled: true
+    ImgwWarningsApiComponent:
+      enabled: true
+    OpenMeteoAirQualityApiComponent:
+      enabled: true
+
+  installation:
+    # Advisory scenarios; disabled examples never register automatic triggers.
+    # Bind real entities and original timestamps for checks that require freshness.
+    safety_routines:
+      Bedtime:
+        name: Przed snem
+        enabled: false
+        checks:
+          BedroomWindow:
+            name: Okno w sypialni zamknięte
+            entity_id: binary_sensor.example_bedroom_window
+            last_known_value: true
+            expected_states: ["off"]
+      Leaving:
+        name: Wyjście z domu
+        enabled: false
+        delay_seconds: 30
+        observation_seconds: 30
+        triggers:
+          - kind: event
+            event: household_leaving
+        checks:
+          AppliancePower:
+            name: Pobór mocy wybranego urządzenia
+            kind: numeric_range
+            entity_id: sensor.example_appliance_power
+            observed_at_entity_id: sensor.example_appliance_power_observed_at
+            max_age_seconds: 60
+            minimum: 0.0
+            maximum: 5.0
+            unit: W
+
+    # Enable HeatingSystemMonitorComponent and replace these generic bindings.
+    # No controller product/integration is assumed. Literal maps are data only.
+    # availability_only preserves uncertainty about physical observation age.
+    # For qualified input, select freshness: source_timestamp and provide an
+    # original timestamp attribute or observed_at_entity_id (optionally with its
+    # observed_at_attribute). HA last_updated is deliberately not substituted.
+    heating_systems:
+      Main:
+        friendly_name: Heating system
+        profile: Diagnostic
+        inputs:
+          boiler_active:
+            entity_id: binary_sensor.example_boiler_active
+            value_map: {"on": true, "off": false}
+            evidence_kind: measurement
+            independence_group: boiler
+          dhw_active:
+            entity_id: binary_sensor.example_dhw_active
+            value_map: {"on": true, "off": false}
+            evidence_kind: measurement
+            independence_group: boiler
+          flow_temperature:
+            entity_id: sensor.example_boiler_flow
+            unit: °C
+            evidence_kind: measurement
+            independence_group: boiler
+          power_percent:
+            entity_id: sensor.example_boiler_power
+            unit: "%"
+            evidence_kind: measurement
+            independence_group: boiler
+
+    site:
+      timezone: Europe/Warsaw
+      country_code: PL
+      teryt_codes:
+        - "0000"
+
+    common_entities:
+      outside_temp: sensor.outdoor_temperature
+
+    # Optional installation-wide overrides. Omit this block to use the
+    # packaged system defaults unchanged.
+    component_settings:
+      temperature: {}
+      safety_door: {}
+      external_hazard: {}
+      entity_monitor: {}
+      # Optional thresholds/timings; omitted or null fields inherit system defaults.
+      functional_safety: {}
+
+    rooms:
+      LivingRoom:
+        area_id: living_room
+        # The same HA device must expose one sensor.*_last_seen. A source
+        # without it needs an explicit Entity Monitor freshness-source override.
+        temperature_sensor: sensor.living_room_temperature
+        window: LivingRoomWindow
+        temperature: {}
+
+    # Each physical opening is declared once and may feed multiple component
+    # bindings. Presence of a role enables that role for the opening.
+    openings:
+      LivingRoomWindow:
+        area_id: living_room
+        entity_id: binary_sensor.living_room_window
+        friendly_name: Okno w salonie
+        kind: window
+        external_hazard: {}
+
+      EntranceDoor:
+        area_id: entryway
+        entity_id: binary_sensor.entrance_door
+        friendly_name: Drzwi wejściowe
+        kind: door
+        safety_door: {}
+
+    detectors: {}
+    monitored_entities: {}
+
+    # Optional host/maintenance sources. Missing sources are reported as
+    # uncovered; enable suitable diagnostic entities in Home Assistant first.
+    functional_safety:
+      # host_memory:
+      #   available_entity: sensor.home_assistant_host_memory_free
+      #   psi_entity: sensor.home_assistant_host_memory_psi_some_avg60
+      # host_cpu_entity: sensor.home_assistant_host_processor_use
+      # host_disk_free_entity: sensor.home_assistant_host_disk_free
+      # host_temperature_entity: sensor.home_assistant_host_temperature
+      # backup:
+      #   last_success_entity: sensor.backup_last_successful_automatic_backup
+      #   failure_entity: binary_sensor.backup_problem
+      periodic_tests:
+        notification_delivery: true
+        backup_restore: false
+      updates: {}
+      remote_batteries: {}
+      battery_monitoring:
+        enabled: true
+        excluded_devices: []

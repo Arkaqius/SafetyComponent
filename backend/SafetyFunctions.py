@@ -195,7 +195,12 @@ class SafetyFunctions(hass.Hass):
                 provider_config=provider_cfg,
                 site_config=self.site_cfg,
                 http_client=HttpJsonClient(allowed_hosts={provider_host}),
+                parameters=provider_cfg.get("parameters"),
             )
+
+        self.provider_definitions = {
+            name: type(adapter) for name, adapter in self.api_modules.items()
+        }
 
         state_provider = HomeAssistantStateProvider.from_environment()
         self.ha_state_reader: HomeAssistantStateReader | None = (
@@ -271,6 +276,7 @@ class SafetyFunctions(hass.Hass):
                 self.notification_cfg["local"].get(key)
                 for key in ("light_entity", "alarm_entity")
             ),
+            provider_definitions=self.provider_definitions,
         )
         self.sm_modules[self.self_diagnostics.component_name] = self.self_diagnostics
         diagnostic_symptoms, _ = self.self_diagnostics.get_symptoms_data(
@@ -484,9 +490,11 @@ class SafetyFunctions(hass.Hass):
                 monitor_bindings,
                 faults=self.faults,
                 recovery_symptoms=frozenset(self.recovery_actions),
+                provider_definitions=self.provider_definitions,
             ),
             on_change=self._on_coverage_changed,
             isolate_invalid=True,
+            provider_definitions=self.provider_definitions,
         )
         self.fm.restriction_provider = lambda symptom_id: tuple(
             f"{effect.value}:{cause}"

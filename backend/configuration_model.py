@@ -11,6 +11,7 @@ from pydantic import (
     ConfigDict,
     Field,
     RootModel,
+    StrictBool,
     ValidationError,
     field_validator,
     model_validator,
@@ -314,7 +315,8 @@ class NotificationBindings(SourceModel):
 class ProviderSelection(SourceModel):
     """Installation enablement for one system-owned provider."""
 
-    enabled: bool = True
+    enabled: StrictBool = True
+    parameters: dict[str, Any] = Field(default_factory=dict)
 
 
 class ProviderBindings(RootModel[dict[str, ProviderSelection]]):

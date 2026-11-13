@@ -80,6 +80,28 @@ def test_unallocated_adapter_is_rejected() -> None:
         )
 
 
+def test_registered_regional_providers_receive_independent_health_contributors(monkeypatch) -> None:
+    """New registered adapters need no shared provider-name fault allocation."""
+    from components.external_apis.core import registry
+    from tests.provider_plugin_support import PeerRegionalWarnings, RegionalWarnings
+
+    monkeypatch.setattr(registry, "_API_COMPONENT_REGISTRY", registry.get_registered_api_components())
+    registry.register_api_component(RegionalWarnings)
+    registry.register_api_component(PeerRegionalWarnings)
+    names = (RegionalWarnings.component_name, PeerRegionalWarnings.component_name)
+    bus = EventBus()
+    diagnostics = SelfDiagnosticsComponent(Mock(), Mock(), bus, Mock(), {name: Mock() for name in names})
+    symptoms, _ = diagnostics.get_symptoms_data({}, {})
+    for symptom in symptoms.values():
+        diagnostics.init_safety_mechanism(symptom.sm_name, symptom.name, symptom.parameters)
+        diagnostics.enable_safety_mechanism(symptom.name, SMState.ENABLED)
+    bus.publish("external_api_result", result=_result(names[0], ProviderHealthState.UNAVAILABLE))
+    bus.publish("external_api_result", result=_result(names[1], ProviderHealthState.OK))
+    assert diagnostics._observed[diagnostics._symptom_id(names[0])] is True
+    assert diagnostics._observed[diagnostics._symptom_id(names[1])] is False
+    assert diagnostics.get_fault_definitions()["ExternalDataUnavailable"]["category"] == "D"
+
+
 def test_unconfigured_local_output_has_no_phantom_d_contributor() -> None:
     diagnostics = SelfDiagnosticsComponent(
         Mock(), Mock(), EventBus(), Mock(), {}, local_outputs_enabled=False

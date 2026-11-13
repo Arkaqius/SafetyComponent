@@ -2,11 +2,11 @@
 
 **Document ID:** SAF-SWR-SSRD
 
-**Version:** 0.6.0
+**Version:** 0.7.0
 
 **Status:** Software requirements baseline
 
-**Last updated:** 2026-09-11
+**Last updated:** 2026-11-12
 
 ## 1. Purpose and scope
 
@@ -281,6 +281,8 @@ The shared action allocation and completion semantics are defined in
 This subsection defines the software contract for External Hazard Monitoring.
 The detailed design is in
 [`External Hazard Monitoring - Architecture.md`](../features/External%20Hazard%20Monitoring%20-%20Architecture.md).
+The provider-boundary rationale is recorded in
+[ADR-0001](../adr/0001-external-provider-plugins.md).
 
 The stable runtime contract is:
 
@@ -297,7 +299,7 @@ feature architecture §12.
 
 | ID | Requirement | Responsible element |
 | --- | --- | --- |
-| SWR-EXT-001 | Registered provider plugins shall implement a common internal observation and health API and declare their configuration schema, capability, and applicable countries. The bundled plugins shall be `OpenMeteoWeatherApiComponent`, `ImgwWarningsApiComponent`, and `OpenMeteoAirQualityApiComponent`. The compiler shall select plugins applicable to the configured country. | external API component registry |
+| SWR-EXT-001 | Registered provider plugins shall implement a common internal observation and health API and declare their configuration schema, capability, and applicable countries. Bundled defaults shall include `OpenMeteoWeatherApiComponent`, `ImgwWarningsApiComponent`, and `OpenMeteoAirQualityApiComponent`; additional conforming plugins shall follow SWR-EXT-018..027. The compiler shall select plugins applicable to the configured country. | external API component registry |
 | SWR-EXT-002 | API Components shall have independent schemas, polling schedules, caches, failure counters, health, and contract tests. | `components/external_apis/*` |
 | SWR-EXT-003 | API Components shall not inherit from `SafetyComponent` and shall not create symptoms, faults, notifications, recovery actions, or actuator calls. | `ExternalApiComponent` protocol |
 | SWR-EXT-004 | Network work shall run outside the serialized safety-decision callback and results shall return through a bounded queue for ordered EventBus publication. | `ExternalApiRuntime` |
@@ -311,6 +313,16 @@ feature architecture §12.
 | SWR-EXT-015 | Each provider diagnostic MQTT entity shall expose an `observations` list of at most 64 summaries containing the stable observation ID, hazard type, provider level, observation and validity timestamps, and an optional operator-display value and unit. The list shall contain normalized current observations only and shall not expose unbounded provider payloads. | `ExternalHazardComponent._publish_provider_health` |
 | SWR-EXT-016 | The garage and external gate may bind only directional `cover.*` actuators and `user_confirmed` execution. No other opening kind may define an actuator. | `OpeningConfig` validation |
 | SWR-EXT-017 | A gate close shall call only `cover.close_cover` after valid SafetyHome confirmation and shall use its configured contact as the physical closed postcondition. | RecoveryManager confirmed execution |
+| SWR-EXT-018 | The bundled provider registry shall declare each plugin's stable ID, capability, covered hazard types, applicable countries, display metadata, and provider-owned installation-parameter schema. Registration shall reject duplicate IDs and invalid declarations. Runtime package installation shall not be required or exposed by provider selection. | external API component registry |
+| SWR-EXT-019 | Provider installation parameters under `user_config.providers.<ProviderId>.parameters` shall be validated by their plugin's schema independently of household policy and the shared site. Coordinates shall continue to come from Home Assistant Core; country and timezone shall remain common site fields. Required fields shall be enforced for selected applicable providers. Missing required or unknown parameters shall produce configuration-path errors before save, polling, or mechanism activation. An explicitly enabled country-incompatible provider shall fail validation; an inapplicable inherited default shall remain inactive. | source compiler, provider schemas, and `AppCfgValidator` |
+| SWR-EXT-020 | Source model version 2, existing provider enablement bindings, `installation.site.teryt_codes`, generated runtime identifiers, and existing public state codes shall remain compatible. The compiler shall accept the legacy TERYT binding as an alias of `user_config.providers.ImgwWarningsApiComponent.parameters.teryt_codes`, accept simultaneous forms whose normalized code sets agree independently of ordering, and reject conflicting forms before save or startup without silently choosing one. Reading configuration shall not automatically rewrite the source. Other plugins shall not require TERYT. | configuration compiler and IMGW parameter schema |
+| SWR-EXT-021 | The authenticated configuration interface shall supply the registered provider catalogue, country applicability, capability and hazard coverage, installation-parameter schema, defaults, and friendly field metadata. SafetyHome shall use this metadata to edit selected-provider parameters, identify field errors, and revalidate country or selection changes without silently replacing the selected warning provider. Unknown or incomplete metadata shall not authorize activation of an unvalidated provider. | configuration API and SafetyHome configuration |
+| SWR-EXT-022 | Providers shall publish complete `ApiResult` snapshots through the existing `external_api_result` event. Normalized observations shall retain provider and observation identity, supported hazard, values and units, source and retrieval timestamps, validity, region applicability, raw provider level, authority, and normalized urgency where applicable. Unsupported observations or incomplete payloads shall not become a healthy empty result. | provider adapters, `ApiResult`, and serialized EventBus dispatch |
+| SWR-EXT-023 | `SelfDiagnosticsComponent` shall allocate each selected registered external provider's independent health contribution to the existing `ExternalDataUnavailable` fault without a fixed provider-name allowlist. Coverage and degradation bindings shall derive from registered capabilities, covered hazards, and validated installation selection. Adding a conforming plugin shall require no provider-name branch in shared diagnostics, coverage policy, or C-EXT. | SelfDiagnostics, provider registry, and degradation binding compiler |
+| SWR-EXT-024 | For each configured hazard, C-EXT shall evaluate only selected, country-applicable providers declaring coverage of that hazard. A hazard-level clear decision shall require fresh healthy evidence from every such provider and no applicable active warning or threshold assertion. A validated complete empty warning snapshot shall clear only that source's declared warning coverage; failed, stale, partial, or unsupported input shall not clear an active hazard. Confirmation that an opening is closed shall retain its independent exposure-clear semantics. | C-EXT provider selection and hazard-evidence policy |
+| SWR-EXT-025 | Diagnostics shall distinguish unconfigured capability, unsupported hazard, awaiting evidence, provider failure, and healthy complete no-warning results. Absence of a selected official-warning provider shall be visible as not configured without implying healthy official coverage, issuing a failure for an unselected adapter, or disabling independently valid model monitoring. Raw provider health shall remain independent of capability-level coverage. | provider diagnostics, coverage reporting, and SafetyHome |
+| SWR-EXT-026 | Open-Meteo weather and air-quality adapters shall retain the common internal provider contract and their default-source role. Official-warning providers shall be separately selectable. Model values shall not be presented as official alerts or physical sensor measurements, and air-quality index identity and units shall remain explicit rather than reinterpreted by installation country. Friendly provider, parameter, health, and coverage runtime text shall maintain EN/PL/DE parity; raw identifiers shall remain language-independent. | provider adapters, C-EXT, localization, and SafetyHome |
+| SWR-EXT-027 | Automated acceptance shall exercise a synthetic non-Polish provider through compilation, full application startup, polling, normalized dispatch, health contribution, degradation bindings, and shutdown. It shall cover parameter validation and conflicts, complete empty versus failed or partial feeds, unsupported hazards, absent official coverage, simultaneous providers with independent failure/recovery, and existing Polish/Berlin configuration compatibility. These checks shall use stubs or fixtures and shall not operate household actuators. | backend integration and contract tests, frontend configuration tests |
 
 ### 4.9 Entity Health Monitoring
 
@@ -536,7 +548,7 @@ valid measure of safety-logic verification.
 | Advisory contextual checks; no independent safety-goal credit | `SYS-SR-ROUTINE-001..006` | `SWR-ROUTINE-001..008` |
 | SG-001 Unsafe Cold Exposure | `SYS-SR-TEMP-001/002/004/005/007/008/009/010` | `SWR-TEMP-*` |
 | SG-002 Temperature Prediction | `SYS-SR-TEMP-001/003/004/005/006/009/010` | `SWR-TEMP-*` |
-| SG-003 Sensor/Communication Fault Detection | `SYS-SR-ENT-001..009/012/014` plus component-specific unavailable-input requirements | `SWR-ENT-*`, `SWR-TEMP-004`, `SWR-DOOR-004/006`, `SWR-EXT-009` |
+| SG-003 Sensor/Communication Fault Detection | `SYS-SR-ENT-001..009/012/014`, `SYS-SR-EXT-006/008/009/053..056` plus component-specific unavailable-input requirements | `SWR-ENT-*`, `SWR-TEMP-004`, `SWR-DOOR-004/006`, `SWR-EXT-009/018..027` |
 | SG-003 Functional safety and platform health | `SYS-SR-FSM-001..017` | `SWR-FSM-001..017` |
 | SG-004 Unsafe Heat Exposure | `SYS-SR-TEMP-001/002/003/004/005/006/007/008/010` | `SWR-TEMP-*` |
 | SG-003 Heating supervision contribution | `SYS-SR-HSM-002/003/005/011/012/013` | `SWR-HSM-002/003/004/012/014/017/018/019/020` |
@@ -546,8 +558,8 @@ valid measure of safety-logic verification.
 | SG-006/007/008 Smoke, flammable gas and CO | `SYS-SR-IEHM-001..005/008..020` | `SWR-IEHM-001..007/012..025` |
 | SG-009 Water leak | `SYS-SR-LEAK-001..004` | `SWR-LEAK-001..005` |
 | SG-015 Door/Gate Open-Duration Contribution | `SYS-SR-DOOR-001..011` | `SWR-DOOR-*` |
-| SG-011/017/018 External Weather Exposure | `SYS-SR-EXT-001..005/010..013/040..043/050..052` | `SWR-EXT-*` |
-| SG-019 Outdoor Pollution Exposure | `SYS-SR-EXT-001..005/020..023/040..043/050..052` | `SWR-EXT-*` |
+| SG-011/017/018 External Weather Exposure | `SYS-SR-EXT-001..014/040..043/050..056` | `SWR-EXT-*` |
+| SG-019 Outdoor Pollution Exposure | `SYS-SR-EXT-001..009/020..023/040..043/050..056` | `SWR-EXT-*` |
 
 | Requirement group | Primary tests |
 | --- | --- |
@@ -560,7 +572,7 @@ valid measure of safety-logic verification.
 | SWR-REC-* | `test_recovery_man.py`, `test_recovery_manual_contract.py`, `test_recovery_allocations.py`, `test_recovery_state_store.py`, `test_system_notification_recovery.py`; component action-allocation tests, authenticated manual-report contract tests, frontend action/fault/completion tests and localization tests shall cover the shared recovery contract |
 | SWR-LOC-* | `test_localization.py`, `test_mqtt_entity_manager.py`, frontend domain tests |
 | SWR-MQTT-* | `test_mqtt_entity_manager.py`, `test_safetyFunctions.py` |
-| SWR-EXT-* | provider contract tests, external hazard policy tests, EventBus/FaultManager/notification integration tests, negative-actuation tests |
+| SWR-EXT-* | provider contract tests, external hazard policy tests, EventBus/FaultManager/notification integration tests, full startup/diagnostic/degradation/shutdown with a synthetic regional plugin, legacy configuration compatibility and conflicting-parameter tests, metadata-driven frontend parameter/country/selection tests, localization parity, negative-actuation tests |
 | SWR-ENT-* | entity health registry/check/state-machine tests, component dependency and common-entity integration tests, FaultManager/MQTT tests, frontend monitored-list/filter and route tests, negative-actuation tests |
 | SWR-FSM-* | source contract and unit/freshness tests, memory/PSI and disk/thermal qualification and recovery tests, WAN/update/battery/backup policy tests, durable operational-test attestation tests, fault-owner deduplication, independent-watchdog evidence, and negative-actuation tests |
 | SWR-HSM-* | normalized telemetry/code-profile tests, independent-need and phase tests, thermal/distribution/counter rules, timing/restart/clock tests, C-ENT/FaultManager integration, SET/HEAL correlation, frontend diagnostics/localization and negative-actuation tests; detailed mapping in the Heating System Monitoring architecture |

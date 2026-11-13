@@ -21,6 +21,33 @@ import {
 
 const timestamp = '2026-07-29T08:00:00+02:00';
 
+test('external coverage preserves unsupported and unconfigured capabilities independently of healthy model data', () => {
+  const external = getExternalHazards({
+    'sensor.external_hazard_state': entity('clear', {
+      enabled_providers: ['WeatherSource'],
+      official_warnings_configured: false,
+      coverage_details: [
+        { capability: 'WeatherPointModel', hazard: 'wind', providers: ['WeatherSource'], status: 'available' },
+        { capability: 'OfficialWeatherWarnings', hazard: 'wind', providers: [], status: 'not_configured' },
+        { capability: 'OfficialWeatherWarnings', hazard: 'frost', providers: ['WindOnly'], status: 'unsupported' },
+      ],
+    }),
+    'sensor.external_provider_weather': entity('ok', { provider: 'WeatherSource', capability: 'WeatherPointModel', hazards: ['wind'] }),
+  });
+  assert.equal(external.officialWarningsConfigured, false);
+  assert.deepEqual(external.providers[0].hazards, ['wind']);
+  assert.deepEqual(external.coverageDetails?.map(item => item.status), ['available', 'not_configured', 'unsupported']);
+});
+
+test('empty or malformed coverage cannot masquerade as healthy authoritative evidence', () => {
+  const external = getExternalHazards({ 'sensor.external_hazard_state': entity('unavailable', { coverage_details: [
+    { capability: 'OfficialWeatherWarnings', hazard: 'wind', providers: [], status: 'no_current_warnings' },
+    { capability: 'OfficialWeatherWarnings', hazard: 'wind', providers: ['A'], status: 'made_up' },
+  ] }) });
+  assert.deepEqual(external.coverageDetails?.map(item => item.status), ['unavailable']);
+  assert.deepEqual(getExternalHazards({}).coverageDetails, []);
+});
+
 test('not evaluated diagnostic faults are counted as assessments and require attention', () => {
   const faults = getFaults({
     'sensor.fault_diagnostic': entity('NOT_EVALUATED', { active: false, fault_category: 'D' }),

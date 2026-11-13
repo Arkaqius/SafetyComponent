@@ -85,6 +85,25 @@ The shared fault's activation shall not apply the union of every contributor's
 restriction to a single failed source; coverage follows current contributor
 evidence and consumer redundancy policy.
 
+External-provider dependency bindings shall be compiled from the validated
+installed registry, selected providers, capabilities, and declared covered
+hazards. They shall not assume a single provider identity per capability or
+assign all official-warning dependencies to IMGW. A newly bundled provider for
+an existing capability shall require no fixed-name entry in degradation policy.
+The same provider may contribute to multiple installed subjects, while each
+restriction retains its exact source and hazard scope.
+
+A wind-only provider shall not establish frost coverage or frost-clear evidence.
+When no official-warning source is selected, that capability shall be presented
+as not configured without creating a failure for an uninstalled adapter or
+disabling independent model monitoring. A required hazard with no applicable
+covering source remains
+unevaluable. Data-based hazard clearing requires fresh sufficient results from
+all selected applicable providers covering that hazard; restoring one provider's
+diagnostic health does not clear a hazard or release another failed contributor.
+See [External Hazard Monitoring](<External Hazard Monitoring - Architecture.md#91-multiple-providers>)
+and [ADR-0001](../adr/0001-external-provider-plugins.md).
+
 ## Coverage and supervision
 
 Coverage is derived from the declared installed H baseline. Its raw state is

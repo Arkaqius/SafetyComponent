@@ -24,7 +24,7 @@ user_config:
     local: {}
     wan_entity: null
 
-  # Optional provider enablement overrides. Endpoints, polling, retry, timeout,
+  # Optional provider selection and installation parameters. Endpoints, polling, retry, timeout,
   # and staleness policy remain in system_config.yml.
   # IMGW is selected only for PL. The Berlin example omits TERYT entirely.
   providers:
@@ -32,6 +32,9 @@ user_config:
       enabled: true
     ImgwWarningsApiComponent:
       enabled: true
+      parameters:
+        teryt_codes: ["0000"]
+      # Legacy installation.site.teryt_codes remains accepted without a rewrite.
     OpenMeteoAirQualityApiComponent:
       enabled: true
 
@@ -102,8 +105,6 @@ user_config:
     site:
       timezone: Europe/Warsaw
       country_code: PL
-      teryt_codes:
-        - "0000"
 
     common_entities:
       outside_temp: sensor.outdoor_temperature

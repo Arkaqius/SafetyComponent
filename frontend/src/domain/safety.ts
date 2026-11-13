@@ -207,6 +207,7 @@ export interface ExternalProviderView {
   name: string;
   provider: string;
   capability: string;
+  hazards?: string[];
   status: ExternalProviderStatus;
   state: string;
   lastAttemptAt?: string;
@@ -274,6 +275,14 @@ export interface ExternalHazardView {
   providers: ExternalProviderView[];
   officialWarnings: OfficialWarningView[];
   officialWarningsConfigured: boolean;
+  coverageDetails?: ExternalCoverageView[];
+}
+
+export interface ExternalCoverageView {
+  capability: string;
+  hazard: string;
+  providers: string[];
+  status: 'not_configured' | 'unsupported' | 'awaiting_evidence' | 'unavailable' | 'available' | 'no_current_warnings';
 }
 
 const UNAVAILABLE_STATES = new Set(['unavailable', 'unknown', 'none', '']);
@@ -720,6 +729,7 @@ export function getExternalHazardMonitoring(entities: EntityMap): ExternalHazard
         name,
         provider,
         capability,
+        hazards: stringArrayAttribute(entity, 'hazards'),
         status: providerStatus,
         state: entity.state,
         lastAttemptAt: optionalStringAttribute(entity, 'last_attempt_at'),
@@ -755,7 +765,23 @@ export function getExternalHazardMonitoring(entities: EntityMap): ExternalHazard
     officialWarningsConfigured:
       aggregate?.attributes.official_warnings_configured === true ||
       providers.some(provider => provider.capability === 'OfficialWeatherWarnings'),
+    coverageDetails: externalCoverageAttribute(aggregate),
   };
+}
+
+function externalCoverageAttribute(entity: EntitySnapshot | undefined): ExternalCoverageView[] {
+  const raw = entity?.attributes.coverage_details;
+  if (!Array.isArray(raw)) return [];
+  const capabilities = ['WeatherPointModel', 'OfficialWeatherWarnings', 'OutdoorAirQuality'];
+  const hazards = ['frost', 'wind', 'rain', 'storm', 'outdoor_air_pollution'];
+  const statuses = ['not_configured', 'unsupported', 'awaiting_evidence', 'unavailable', 'available', 'no_current_warnings'];
+  return raw.slice(0, 64).flatMap(value => {
+    if (!value || typeof value !== 'object') return [];
+    const item = value as Record<string, unknown>;
+    if (typeof item.capability !== 'string' || !capabilities.includes(item.capability) || typeof item.hazard !== 'string' || !hazards.includes(item.hazard) || typeof item.status !== 'string' || !statuses.includes(item.status) || !Array.isArray(item.providers) || item.providers.length > 64 || item.providers.some(provider => typeof provider !== 'string')) return [];
+    const status = (item.providers.length === 0 && ['available', 'no_current_warnings'].includes(item.status) ? 'unavailable' : item.status) as ExternalCoverageView['status'];
+    return [{ capability: item.capability, hazard: item.hazard, providers: item.providers as string[], status }];
+  });
 }
 
 export function getAirQualityPresentation(external: ExternalHazardView, now = Date.now()): AirQualityPresentation {

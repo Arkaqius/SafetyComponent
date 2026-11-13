@@ -15,7 +15,7 @@ from components.app_config_validator.app_cfg_validator import (
 )
 from components.external_apis.core import registry
 from components.external_apis.core.api_component import ExternalApiComponent
-from components.external_apis.core.models import ProviderCapability
+from components.external_apis.core.models import HazardType, ProviderCapability
 from system_configuration import ProviderRuntimeSource
 
 
@@ -64,7 +64,8 @@ def test_enabled_external_hazard_rejects_a_missing_provider_binding() -> None:
 def test_imgw_location_validation_only_applies_when_selected_in_poland() -> None:
     config = _example_config()
     config["user_config"]["site"].pop("teryt_codes")
-    with pytest.raises(AppCfgValidationError, match="IMGW requires site.teryt_codes"):
+    config["user_config"]["api_components"]["ImgwWarningsApiComponent"].pop("parameters")
+    with pytest.raises(AppCfgValidationError, match="teryt_codes"):
         AppCfgValidator.validate(config)
     config["user_config"]["api_components"]["ImgwWarningsApiComponent"]["enabled"] = False
     assert not AppCfgValidator.validate(config)["user_config"]["api_components"]["ImgwWarningsApiComponent"]["enabled"]
@@ -75,6 +76,7 @@ def test_registered_warning_plugin_supplies_its_own_schema(tmp_path: Path, monke
         component_name = "BerlinWarningsApiComponent"
         config_model = ProviderRuntimeSource
         capability = ProviderCapability.OFFICIAL_WARNINGS
+        hazards = frozenset({HazardType.WIND})
         countries = frozenset({"DE"})
 
         def fetch_payload(self):

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from pathlib import Path
@@ -17,6 +18,7 @@ from components.external_apis.core.models import (
     ExternalObservation,
     HazardType,
     Measurement,
+    ProviderCapability,
     ProviderHealthState,
 )
 from components.external_apis.imgw_warnings.component import ImgwWarningsApiComponent
@@ -236,6 +238,8 @@ def test_http_json_shape_limits_reject_oversized_untrusted_values() -> None:
 def test_stale_source_result_preserves_last_fresh_provider_cache() -> None:
     class StaleProvider(ExternalApiComponent):
         component_name = "StaleProvider"
+        capability = ProviderCapability.OFFICIAL_WARNINGS
+        hazards = frozenset({HazardType.WIND})
 
         def __init__(self) -> None:
             super().__init__(
@@ -262,6 +266,7 @@ def test_stale_source_result_preserves_last_fresh_provider_cache() -> None:
                     valid_from=retrieved_at - timedelta(minutes=1),
                     valid_to=valid_to,
                     retrieved_at=retrieved_at,
+                    authority_confirmed=True,
                 ),
             )
 
@@ -298,3 +303,49 @@ def test_unexpected_provider_exception_becomes_schema_health_result() -> None:
     assert result.health.state == ProviderHealthState.SCHEMA_ERROR
     assert result.health.detail_code == "schema_error"
     assert result.observations == ()
+
+
+def test_weather_requires_original_sample_time() -> None:
+    payload = _payload("open_meteo_weather")
+    del payload["current"]["time"]
+    with pytest.raises(ValueError, match="Missing datetime"):
+        _component(OpenMeteoWeatherApiComponent).normalize(payload, RETRIEVED_AT)
+
+
+def test_unknown_local_warning_is_not_a_healthy_empty_feed() -> None:
+    payload = _payload("imgw_warnings")
+    payload[0]["nazwa_zdarzenia"] = "Unknown provider event"
+    with pytest.raises(ValueError, match="Unsupported local warning"):
+        _component(ImgwWarningsApiComponent).normalize(payload, RETRIEVED_AT)
+
+
+@pytest.mark.parametrize("defect", ["identity", "duplicate", "hazard", "partial", "unit", "nonfinite", "source_time", "authority"])
+def test_invalid_snapshot_does_not_replace_accepted_evidence(monkeypatch, defect):
+    component = _component(OpenMeteoWeatherApiComponent)
+    monkeypatch.setattr("components.external_apis.core.api_component.utc_now", lambda: RETRIEVED_AT)
+    monkeypatch.setattr(component, "fetch_payload", lambda: _payload("open_meteo_weather"))
+    healthy = component.poll()
+    assert healthy.health.state == ProviderHealthState.OK
+    observations = list(healthy.observations)
+    first = observations[0]
+    if defect == "identity":
+        observations[0] = replace(first, provider="Other")
+    elif defect == "duplicate":
+        observations.append(first)
+    elif defect == "hazard":
+        observations[0] = replace(first, hazard_type=HazardType.OUTDOOR_AIR_POLLUTION)
+    elif defect == "partial":
+        observations = observations[:1]
+    elif defect in {"unit", "nonfinite"}:
+        measurements = dict(first.values)
+        measurements["current_temperature"] = Measurement(float("nan") if defect == "nonfinite" else 1.0, "F" if defect == "unit" else "°C")
+        observations[0] = replace(first, values=measurements)
+    elif defect == "source_time":
+        observations[0] = replace(first, observed_at=None)
+    else:
+        observations[0] = replace(first, authority_confirmed=True)
+    monkeypatch.setattr(component, "normalize", lambda *_: tuple(observations))
+    failed = component.poll()
+    assert failed.health.state == ProviderHealthState.SCHEMA_ERROR
+    assert failed.observations == healthy.observations
+    assert failed.health.last_success_at == healthy.health.last_success_at

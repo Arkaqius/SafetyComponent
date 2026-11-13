@@ -90,6 +90,8 @@ class ExternalApiRuntime:
                 level="ERROR",
             )
             return
+        if self._stopping:
+            return
         try:
             self._results.put_nowait(result)
         except Full:
@@ -106,6 +108,8 @@ class ExternalApiRuntime:
     def drain_results(self, **_: Any) -> None:
         """Publish queued results synchronously through the EventBus."""
 
+        if self._stopping:
+            return
         while True:
             try:
                 result = self._results.get_nowait()

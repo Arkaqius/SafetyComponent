@@ -20,6 +20,7 @@ from configuration_model import (
     user_configuration_schema,
     validate_user_configuration_v2,
 )
+from components.external_apis.core.configuration import resolve_provider_bindings
 from system_configuration import (
     FunctionalSafetyCalibrationSource,
     system_configuration_schema,
@@ -89,6 +90,14 @@ def compile_config(
         runtime_defaults, user_config, home_assistant_config or {}
     )
     app_config = _build_app_config(validation, calibration, runtime_cfg, source)
+    site_source = dict(user_config.get("installation", {}).get("site", {}) or {})
+    merged_user_config["api_components"] = resolve_provider_bindings(
+        runtime_cfg.get("providers", {}),
+        user_config.get("providers", {}),
+        site_source,
+        component_enabled=bool(user_config.get("components_enabled", {}).get("ExternalHazardComponent", False)),
+        weather_horizon=app_config["external_hazard_policy"]["weather"]["forecast_horizon_hours"],
+    )
     resolved_app_definition = copy.deepcopy(app_definition)
     if log_level is not None:
         resolved_app_definition["log_level"] = log_level.upper()

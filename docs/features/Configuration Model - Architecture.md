@@ -135,7 +135,7 @@ Unknown keys are rejected. The complete editable `user_config` root is:
 | `components_enabled` | Yes | Contains exactly the five supported component keys, each with a boolean value, and enables at least one component. |
 | `localization` | No | Selects `language` as `en`, `pl`, or `de`; names are resolved from locale files, not from user configuration. Defaults to English. |
 | `notification` | Yes | Installation-owned notification destinations described below. Retry, delivery, profile, persistence, and detail policy remain system-owned. |
-| `providers` | No | Map of registered provider IDs to `enabled: true/false`. Omitted plugins inherit system defaults. Country applicability is checked for each plugin. |
+| `providers` | No | Map of registered provider IDs to `enabled` and optional plugin-owned `parameters`. Omitted values inherit applicable system defaults. Explicit country-incompatible selections and undeclared parameters shall be rejected. |
 | `installation` | Yes | Physical installation registry described below. |
 
 The five required `components_enabled` keys are
@@ -158,6 +158,31 @@ The bundled provider IDs are `OpenMeteoWeatherApiComponent`,
 packaged system configuration supplies URLs and transport parameters. Each
 registered plugin supplies its validation schema.
 
+#### Provider-owned installation parameters
+
+The [external-provider contract](<External Hazard Monitoring - Architecture.md#provider-parameters-and-backward-compatibility>)
+and [ADR-0001](../adr/0001-external-provider-plugins.md) define provider parameters.
+`user_config.providers.<ProviderId>.parameters` shall contain only fields declared
+by that plugin's closed editable schema. Each plugin shall supply the same field
+constraints, requiredness, defaults, and friendly metadata to source validation
+and the authenticated operator editor. Endpoint and transport safety policy
+remain system-owned and shall not become editable provider parameters.
+
+For IMGW, the canonical field shall be
+`user_config.providers.ImgwWarningsApiComponent.parameters.teryt_codes`.
+Source model version `2` and existing enablement-only bindings remain accepted.
+`installation.site.teryt_codes` remains an IMGW compatibility input; it shall not
+be required by another provider. If both forms are supplied, normalized unique
+four-digit code sets shall agree regardless of ordering or validation shall
+fail before save and startup. Resolving the alias shall not rewrite the private
+source. Coordinates continue to come from Home Assistant Core.
+
+Inherited defaults outside a provider's country coverage shall remain inactive.
+An explicit enabled selection outside that coverage shall report a provider-path
+validation error. Disabled providers shall not be polled or contribute an
+installed-provider failure. New parameter fields shall follow the plugin schema
+rather than expanding a country-specific list in the shared site or frontend.
+
 MQTT transport and publication policy are entirely system-owned. The user
 configuration has no MQTT section or retired-discovery cleanup list.
 
@@ -165,7 +190,7 @@ configuration has no MQTT section or retired-discovery cleanup list.
 
 | Field | Required | Contract |
 | --- | --- | --- |
-| `site` | When External Hazard is enabled | Valid IANA `timezone` and two-letter `country_code`. Active IMGW in Poland additionally requires a non-empty, unique list of four-digit `teryt_codes`. Latitude and longitude come from current Home Assistant Core configuration on every App start. |
+| `site` | When External Hazard is enabled | Valid IANA `timezone` and two-letter `country_code`. Latitude and longitude come from current Home Assistant Core configuration on every App start. `teryt_codes` remains an IMGW-only compatibility alias for the provider-owned county-code parameter. |
 | `common_entities` | No | Map of stable semantic keys to Home Assistant entity IDs. |
 | `component_settings` | No | Installation-wide overrides grouped by Temperature, Safety Doors, External Hazard, and Entity Monitor. |
 | `rooms` | No | Stable room registry used to generate Temperature bindings. |
@@ -396,6 +421,12 @@ Compilation fails before AppDaemon starts when:
 - an external-hazard opening has neither asset-specific nor inherited hazards;
 - a source file contains generated-only `safety_components` bindings.
 
+Provider validation shall additionally reject unknown plugin IDs, invalid or
+missing required parameters for selected applicable providers, conflicting
+legacy and canonical TERYT values, and explicitly enabled country-incompatible
+providers. Validation shall not contact external services. Runtime validators
+shall check the resolved plugin schema before polling or mechanism activation.
+
 The generated configuration then passes the existing component schemas and
 Home Assistant startup validation. Those checks continue to validate entity
 syntax and existence, areas, component policy, detection budgets, thresholds,
@@ -462,6 +493,14 @@ delete or write the private file, restart the App, alter system configuration,
 or clear notification and maintenance runtime records. The existing revision
 guard and separate Save action remain required before the template replaces
 the installation's saved configuration.
+
+The provider catalogue shall expose stable IDs, capabilities, supported hazards,
+applicable countries, packaged enablement defaults, and closed editable-parameter
+schemas with friendly field metadata. The editor shall render provider-specific
+fields from this catalogue, preserve unsaved values during provider or country
+changes, and report incompatible selections without substituting a provider.
+It shall distinguish unconfigured official-warning coverage from an unavailable
+configured source. Unknown metadata shall not enable an unvalidated plugin.
 
 The local configuration API accepts a complete `user_config` object together
 with the revision that was read by the browser. Before replacing the file it:

@@ -8,9 +8,26 @@ installed adapter's current health to an independent contributor of the shared
 `ExternalDataUnavailable` L3 diagnostic (`D`) fault. Consumer capability-health
 contributors share that fault and retain their separate meaning: loss of a
 required household capability after redundancy policy differs from failure of
-one adapter. A failed weather provider must not disable independent IMGW or outdoor
-air-quality evidence. See [External Hazard Monitoring](External%20Hazard%20Monitoring%20-%20Architecture.md)
+one adapter. A failed weather provider must not disable independent official-warning
+or outdoor-air-quality evidence. See [External Hazard Monitoring](External%20Hazard%20Monitoring%20-%20Architecture.md)
 and [Fault Degradation and Coverage](Fault%20Degradation%20and%20Coverage%20-%20Architecture.md).
+
+Provider contributors shall be allocated from the validated installed-provider
+registry rather than a fixed list of provider names. Each selected applicable
+adapter shall retain its own health contributor under `ExternalDataUnavailable`.
+Its capability, declared hazards, and consumer dependencies shall determine the
+restricted targets. A conforming newly bundled provider shall integrate without
+changes to shared provider-name fault maps. Existing provider contributor IDs,
+fault identity, and raw health states shall remain stable.
+
+A disabled or country-inapplicable inherited default shall not become an installed
+adapter failure. An explicitly incompatible selection shall fail configuration
+validation. When no official-warning provider is configured, coverage shall be
+reported as not configured rather than as a healthy empty feed. A fresh,
+complete empty feed
+from an installed source is healthy only within its declared regional and hazard
+coverage. These contracts refine SWR-EXT-023..025 and
+[ADR-0001](../adr/0001-external-provider-plugins.md).
 
 `SafetyAppHealth` is one L2 diagnostic fault with distinct contributors for
 startup, MQTT publication, mobile delivery, local outputs, persistence,

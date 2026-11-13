@@ -9,19 +9,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Callable, Iterable, Mapping
+from typing import Any, Callable, Iterable, Mapping
 
 from components.core.fault_state_policy import FaultCategory
 from components.core.types_common import Fault, FaultState, Symptom
 
-_PROVIDER_FOR_CAPABILITY = {
-    "WeatherPointModel": "OpenMeteoWeatherApiComponent",
-    "OfficialWeatherWarnings": "ImgwWarningsApiComponent",
-    "OutdoorAirQuality": "OpenMeteoAirQualityApiComponent",
-}
-_CAPABILITY_FOR_PROVIDER = {
-    provider: capability for capability, provider in _PROVIDER_FOR_CAPABILITY.items()
-}
+def _provider_definitions() -> dict[str, Any]:
+    """Read registered contracts lazily to avoid provider/core import cycles."""
+    from components.external_apis.core.registry import get_registered_api_components
+
+    return get_registered_api_components()
 
 
 class CoverageState(str, Enum):
@@ -51,6 +48,7 @@ class DegradationTarget:
     capability: str
     subject: str
     effect: RestrictionEffect
+    provider: str | None = None
 
 
 @dataclass(frozen=True)
@@ -74,10 +72,14 @@ class DegradationRegistry:
         *,
         on_change: Callable[[], None] | None = None,
         isolate_invalid: bool = False,
+        provider_definitions: Mapping[str, Any] | None = None,
     ) -> None:
         self._symptoms = symptoms
         self._faults = faults
         self._on_change = on_change
+        self._provider_definitions = dict(
+            _provider_definitions() if provider_definitions is None else provider_definitions
+        )
         self._owners: dict[str, str] = {}
         for fault in faults.values():
             for symptom_id in fault.related_symptom_ids:
@@ -96,7 +98,7 @@ class DegradationRegistry:
             symptom_id: None for symptom_id in symptoms
         }
         self._exclusions: dict[str, str] = {}
-        self._requires_reevaluation: set[tuple[str, str]] = set()
+        self._requires_reevaluation: set[tuple[str, str, str | None]] = set()
         for binding in bindings:
             if binding.symptom_id in self._binding_errors:
                 self._reject(binding, f"Duplicate D binding: {binding.symptom_id}")
@@ -121,7 +123,7 @@ class DegradationRegistry:
                     self._binding_errors[symptom_id] = "Missing degradation declaration"
                     self._rejected[symptom_id] = ()
         self._requires_reevaluation.update(
-            (target.symptom_id, target.capability)
+            (target.symptom_id, target.capability, target.provider)
             for binding in self._bindings.values()
             for target in binding.targets
             if target.effect == RestrictionEffect.EVALUATION
@@ -191,27 +193,35 @@ class DegradationRegistry:
         binding = self._bindings.get(symptom_id)
         if binding is not None and previous != self._evidence[symptom_id]:
             self._requires_reevaluation.update(
-                (target.symptom_id, target.capability)
+                (target.symptom_id, target.capability, target.provider)
                 for target in binding.targets
                 if target.effect == RestrictionEffect.EVALUATION
             )
         elif symptom_id in self._baseline:
             source = str((additional_info or {}).get("source", ""))
-            for target_id, capability in tuple(self._requires_reevaluation):
-                if target_id != symptom_id or not self._source_depends_on(capability, source):
+            evaluated = (additional_info or {}).get("reevaluated_sources", ())
+            evaluated_sources = {
+                name for name in evaluated if isinstance(name, str)
+            } if isinstance(evaluated, (list, tuple)) else set()
+            for target_id, capability, provider in tuple(self._requires_reevaluation):
+                # A winning source does not stand in for an independent peer.
+                # C-EXT explicitly lists peers with fresh policy-valid evidence.
+                target_source = provider if provider in evaluated_sources else source
+                if target_id != symptom_id or not self._source_depends_on(capability, target_source, provider):
                     continue
                 if any(
                     self._evidence[d_source] is not False
                     and any(
                         target.symptom_id == symptom_id
                         and target.capability == capability
+                        and self._source_depends_on(target.capability, target_source, target.provider)
                         and target.effect == RestrictionEffect.EVALUATION
                         for target in d_binding.targets
                     )
                     for d_source, d_binding in self._bindings.items()
                 ):
                     continue
-                self._requires_reevaluation.discard((target_id, capability))
+                self._requires_reevaluation.discard((target_id, capability, provider))
         if self._on_change is not None and (
             previous != self._evidence[symptom_id]
             or pending_before != self._requires_reevaluation
@@ -233,7 +243,7 @@ class DegradationRegistry:
         """Return H subjects whose evaluation dependencies are ready again."""
 
         return tuple(sorted({
-            symptom_id for symptom_id, _ in tuple(self._requires_reevaluation)
+            symptom_id for symptom_id, _, _ in tuple(self._requires_reevaluation)
             if symptom_id not in self._exclusions
             and not self.causes_for(symptom_id, RestrictionEffect.EVALUATION)
         }))
@@ -247,7 +257,7 @@ class DegradationRegistry:
         binding = self._bindings.get(symptom_id)
         if binding is not None:
             self._requires_reevaluation.update(
-                (target.symptom_id, target.capability)
+                (target.symptom_id, target.capability, target.provider)
                 for target in binding.targets
                 if target.effect == RestrictionEffect.EVALUATION
             )
@@ -271,20 +281,26 @@ class DegradationRegistry:
                 continue
             if any(
                 target.symptom_id == symptom_id and target.effect == effect
-                and self._source_depends_on(target.capability, evidence_source)
+                and self._source_depends_on(target.capability, evidence_source, target.provider)
                 for target in binding.targets
             ):
                 causes.append(source)
         return tuple(sorted(causes))
 
-    @staticmethod
-    def _source_depends_on(capability: str, evidence_source: str | None) -> bool:
-        provider = _PROVIDER_FOR_CAPABILITY.get(capability)
-        if provider is None or not evidence_source:
+    def _source_depends_on(
+        self, capability: str, evidence_source: str | None, provider: str | None = None
+    ) -> bool:
+        """Restrict only a known dependent source; unknown identities stay conservative."""
+        definition = self._provider_definitions.get(evidence_source or "")
+        if definition is None:
             return True
-        if evidence_source not in _PROVIDER_FOR_CAPABILITY.values():
+        if provider is not None:
+            return evidence_source == provider
+        from components.external_apis.core.models import ProviderCapability
+
+        if capability not in {item.value for item in ProviderCapability}:
             return True
-        return evidence_source == provider
+        return definition.capability.value == capability
 
     def recovery_allowed(
         self, symptom_id: str, *, evidence_source: str | None = None
@@ -293,7 +309,7 @@ class DegradationRegistry:
 
         return self._evidence.get(symptom_id) is not None and symptom_id not in self._exclusions and not any(
             target.symptom_id == symptom_id
-            and self._source_depends_on(target.capability, evidence_source)
+            and self._source_depends_on(target.capability, evidence_source, target.provider)
             for targets in self._rejected.values() for target in targets
         ) and not self.causes_for(
             symptom_id, RestrictionEffect.EVALUATION,
@@ -303,8 +319,8 @@ class DegradationRegistry:
             evidence_source=evidence_source,
         ) and not any(
             target_id == symptom_id
-            and self._source_depends_on(capability, evidence_source)
-            for target_id, capability in tuple(self._requires_reevaluation)
+            and self._source_depends_on(capability, evidence_source, provider)
+            for target_id, capability, provider in tuple(self._requires_reevaluation)
         )
 
     def set_exclusion(self, symptom_id: str, reason: str | None) -> None:
@@ -333,7 +349,7 @@ class DegradationRegistry:
         for symptom_id in sorted(self._baseline):
             if (
                 self._evidence[symptom_id] is None
-                or any(target_id == symptom_id for target_id, _ in pending)
+                or any(target_id == symptom_id for target_id, _, _ in pending)
             ) and symptom_id not in self._exclusions:
                 unresolved.append(symptom_id)
         for source, binding in sorted(self._bindings.items()):
@@ -390,6 +406,7 @@ def compile_runtime_bindings(
     *,
     faults: Mapping[str, Fault] | None = None,
     recovery_symptoms: frozenset[str] = frozenset(),
+    provider_definitions: Mapping[str, Any] | None = None,
 ) -> tuple[DiagnosticBinding, ...]:
     """Expand direct D rows against exact installed H symptom identities.
 
@@ -398,6 +415,7 @@ def compile_runtime_bindings(
     Unknown D owners deliberately remain unbound for strict validation.
     """
 
+    definitions = dict(_provider_definitions() if provider_definitions is None else provider_definitions)
     bindings = list(monitor_bindings)
     bound = {binding.symptom_id for binding in bindings}
     hazard_owners: dict[str, Fault] = {}
@@ -480,12 +498,13 @@ def compile_runtime_bindings(
             ))
         elif symptom.sm_name == "sm_provider_adapter_health":
             provider = str(symptom.parameters.get("provider", ""))
-            capability = _CAPABILITY_FOR_PROVIDER.get(provider)
-            if capability is None:
+            definition = definitions.get(provider)
+            if definition is None:
                 bindings.append(DiagnosticBinding(
                     symptom_id, (), error=f"Unknown provider adapter {provider!r}"
                 ))
                 continue
+            capability = definition.capability.value
             mechanism = (
                 "sm_ext_outdoor_air_quality_exposure"
                 if capability == "OutdoorAirQuality"
@@ -496,18 +515,23 @@ def compile_runtime_bindings(
                     target_id, capability,
                     str(target.parameters["opening_name"]),
                     RestrictionEffect.EVALUATION,
+                    provider=provider,
                 )
                 for target_id, target in symptoms.items()
                 if target.sm_name == mechanism
+                and (
+                    not target.parameters.get("hazard")
+                    or target.parameters["hazard"] in {hazard.value for hazard in definition.hazards}
+                )
             )
             bindings.append(DiagnosticBinding(
                 symptom_id, targets, external_only=not targets
             ))
         elif symptom.sm_name == "sm_ext_provider_unavailable":
             capability = str(symptom.parameters.get("capability", ""))
-            if capability not in {
-                "WeatherPointModel", "OfficialWeatherWarnings", "OutdoorAirQuality"
-            }:
+            from components.external_apis.core.models import ProviderCapability
+
+            if capability not in {item.value for item in ProviderCapability}:
                 bindings.append(DiagnosticBinding(
                     symptom_id, (), error=f"Unknown provider capability {capability!r}"
                 ))
@@ -525,6 +549,14 @@ def compile_runtime_bindings(
                 )
                 for target_id, target in symptoms.items()
                 if target.sm_name == mechanism
+                and (
+                    not target.parameters.get("hazard")
+                    or any(
+                        item.capability.value == capability
+                        and target.parameters["hazard"] in {hazard.value for hazard in item.hazards}
+                        for item in definitions.values()
+                    )
+                )
             )
             bindings.append(DiagnosticBinding(symptom_id, targets, external_only=not targets))
         elif symptom.sm_name == "sm_iehm_detector_health":

@@ -12,8 +12,7 @@ from components.app_config_validator.schema import AppCfg
 from components.core.pydantic_utils import log_extra_keys
 from components.faults_manager.schema import validate_faults_config
 from components.notification_manager.schema import validate_notification_config
-from components.external_apis import get_registered_api_components
-from components.external_apis.core.models import ProviderCapability
+from components.external_apis.core.configuration import resolve_provider_bindings
 from components.safetycomponents.external_hazard.schema import (
     COMPONENT_NAME as EXTERNAL_HAZARD_COMPONENT_NAME,
     validate_external_hazard_config,
@@ -351,35 +350,16 @@ def _validate_api_components(
     if policy is None or site is None:
         return {}
     raw_api_components = cfg.user_config.api_components
-    plugins = get_registered_api_components()
-    normalized: Dict[str, Any] = {}
-    for name, provider_policy in policy.providers.items():
-        plugin = plugins.get(name)
-        if plugin is None:
-            continue
-        user_binding = raw_api_components.get(name)
-        if not isinstance(user_binding, dict):
+    for name in policy.providers:
+        if name not in raw_api_components:
             raise ValueError(f"Missing user_config.api_components.{name}")
-        merged = {**provider_policy, **user_binding}
-        if plugin.countries and site.country_code not in plugin.countries:
-            merged["enabled"] = False
-        if plugin.capability == ProviderCapability.WEATHER_MODEL:
-            merged["forecast_horizon_hours"] = policy.weather.forecast_horizon_hours
-        validated = plugin.config_model.model_validate(
-            merged, context={"strict_validation": strict_validation}
-        )
-        normalized[name] = validated.model_dump()
-        if normalized[name].get("enabled", True):
-            plugin.validate_site(site.model_dump())
-    unknown_policy = sorted(set(policy.providers) - set(plugins))
-    if strict_validation and unknown_policy:
-        raise ValueError(
-            "Unknown external hazard provider policies: " + ", ".join(unknown_policy)
-        )
-    unknown = sorted(set(raw_api_components) - set(policy.providers))
-    if strict_validation and unknown:
-        raise ValueError(f"Unknown API components: {', '.join(unknown)}")
-    return normalized
+    return resolve_provider_bindings(
+        policy.providers,
+        raw_api_components,
+        site.model_dump(),
+        generated=True,
+        weather_horizon=policy.weather.forecast_horizon_hours,
+    )
 
 
 def _to_runtime(

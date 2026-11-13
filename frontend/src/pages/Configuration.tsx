@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useConfig, useHass } from '@hakit/core';
 import { NavLink, useLocation } from 'react-router-dom';
 import ConfigurationObjectEditor from '../components/ConfigurationObjectEditor';
+import ProviderParameterEditor from '../components/ProviderParameterEditor';
 import BatteryDiscovery from '../components/BatteryDiscovery';
 import EntityInput from '../components/EntityInput';
 import HelpTooltip from '../components/HelpTooltip';
@@ -16,7 +17,9 @@ import {
   saveUserConfiguration,
   prepareConfigurationRestart,
   type ConfigurationMap,
+  ConfigurationApiError,
 } from '../userConfigurationApi';
+import { decodeProviderCatalogue, providerRows, readProviderParameters, reconcileProviderParameter, removeProviderSelection, setProviderIntent, setProviderParameter, validateProviderDraft, type ProviderFieldError, type ProviderIntent } from '../domain/providerConfiguration';
 import { canRestartConfiguration, configurationRestartMessage } from '../domain/configurationRestart';
 
 const registrySections = [
@@ -55,6 +58,8 @@ export default function Configuration() {
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [error, setError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<ProviderFieldError[]>([]);
+  const providerCatalogue = useMemo(() => decodeProviderCatalogue(asMap(systemDefaults.external_hazard)), [systemDefaults]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -69,6 +74,7 @@ export default function Configuration() {
       setValidationError(document.validation_error ?? null);
       setDirty(false);
       setSaveState('idle');
+      setFieldErrors([]);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Nie udało się pobrać konfiguracji');
     }
@@ -84,12 +90,20 @@ export default function Configuration() {
       setDraft(current => (current ? updatePath(current, path, value) : current));
       setDirty(true);
       setSaveState('idle');
+      setFieldErrors([]);
     },
     [restarting]
   );
 
   const save = async () => {
     if (!draft || restarting) return;
+    const country = stringValue(asMap(asMap(draft.installation).site).country_code).trim().toUpperCase();
+    const providerErrors = validateProviderDraft(providerCatalogue, draft, country);
+    if (providerErrors.length || providerCatalogue.error && asMap(draft.components_enabled).ExternalHazardComponent === true) {
+      setFieldErrors(providerErrors);
+      setError('Sprawdź parametry źródeł danych.');
+      return;
+    }
     setSaveState('saving');
     setError(null);
     try {
@@ -100,9 +114,11 @@ export default function Configuration() {
       setValidationError(null);
       setDirty(false);
       setSaveState('saved');
+      setFieldErrors([]);
     } catch (caught) {
       setSaveState('idle');
       setError(caught instanceof Error ? caught.message : 'Nie udało się zapisać konfiguracji');
+      setFieldErrors(caught instanceof ConfigurationApiError ? caught.fieldErrors : []);
     }
   };
 
@@ -192,7 +208,6 @@ export default function Configuration() {
   const notification = asMap(draft.notification);
   const mobile = asMap(notification.mobile);
   const localNotification = asMap(notification.local);
-  const providers = asMap(draft.providers);
   const installation = asMap(draft.installation);
   const site = asMap(installation.site);
   const commonEntities = asMap(installation.common_entities);
@@ -208,12 +223,16 @@ export default function Configuration() {
   const safetyDoorSystem = asMap(systemDefaults.safety_door);
   const entityMonitorSystem = asMap(systemDefaults.entity_monitor);
   const externalHazardSystem = asMap(systemDefaults.external_hazard);
-  const providerPlugins = asMap(externalHazardSystem.provider_plugins);
   const country = stringValue(site.country_code).trim().toUpperCase();
-  const providerNames = [...new Set([...Object.keys(providerPlugins), ...Object.keys(providers)])].filter(name => {
-    const countries = stringList(asMap(providerPlugins[name]).countries);
-    return countries.length === 0 || countries.includes(country);
-  });
+  const providerChoices = providerRows(providerCatalogue, draft, country);
+  const changeProviderDraft = (next: ConfigurationMap) => {
+    if (restarting) return;
+    setDraft(next);
+    setDirty(true);
+    setSaveState('idle');
+    setFieldErrors([]);
+    setError(null);
+  };
   const weatherSystem = asMap(externalHazardSystem.weather);
   const airQualitySystem = asMap(externalHazardSystem.outdoor_air_quality);
   const detectorProfiles = stringList(systemDefaults.detector_profiles);
@@ -384,17 +403,40 @@ export default function Configuration() {
               />
             ))}
           </fieldset>
-          <fieldset className='configuration-fieldset'>
-            <legend>Dostawcy danych zewnętrznych</legend>
-            {providerNames.map(name => (
-              <ToggleField
-                checked={(asMap(providers[name]).enabled ?? asMap(providerPlugins[name]).enabled) !== false}
-                key={name}
-                label={friendlyName(name, 'ApiComponent')}
-                onChange={value => update(['providers', name, 'enabled'], value)}
-              />
-            ))}
-          </fieldset>
+        </div>
+        <div className='provider-configuration'>
+          <h3>Dostawcy danych zewnętrznych</h3>
+          <p>Wybierz źródła właściwe dla kraju instalacji. Ustawienie domyślne jest dziedziczone; parametry dotyczą tylko wybranego źródła.</p>
+          {providerCatalogue.error ? <p className='configuration-message configuration-message-error' role='alert'>{providerCatalogue.error}</p> : null}
+          {providerChoices.map(row => {
+            const plugin = row.plugin;
+            const parameters = plugin ? readProviderParameters(draft, plugin) : null;
+            return <fieldset className='configuration-fieldset' key={row.id} data-provider-id={row.id} style={{ minWidth: 0, marginBottom: '1rem' }}>
+              <legend>{plugin?.displayName ?? 'Nieznane źródło'}</legend>
+              {plugin ? <>
+                <p>{plugin.description}</p>
+                <label className='configuration-field'>
+                  <span>Włączenie źródła</span>
+                  <select aria-label='Włączenie źródła' disabled={restarting} value={row.intent} onChange={event => changeProviderDraft(setProviderIntent(draft, row.id, event.target.value as ProviderIntent))}>
+                    <option value='inherit'>Domyślnie ({plugin.enabled ? 'włączone, gdy dostępne' : 'wyłączone'})</option>
+                    <option value='enabled'>Włączone</option>
+                    <option value='disabled'>Wyłączone</option>
+                  </select>
+                </label>
+                <small>Zakres: {plugin.hazards.map(hazard => ({ frost: 'mróz', wind: 'wiatr', rain: 'deszcz', storm: 'burza', outdoor_air_pollution: 'zanieczyszczenie powietrza' })[hazard] ?? hazard).join(', ')}.</small>
+              </> : <><code style={{ overflowWrap: 'anywhere' }}>{row.id}</code><button className='secondary-button' type='button' disabled={restarting} onClick={() => changeProviderDraft(removeProviderSelection(draft, row.id))}>Usuń wybór źródła</button></>}
+              {row.error ? <p className='configuration-message configuration-message-error' role='alert'>{row.error}</p> : null}
+              {parameters && plugin ? <>
+                {Object.entries(parameters.conflicts).map(([name, values]) => <div className='configuration-message configuration-message-error' role='alert' key={name}>
+                  <p>Uzgodnij sprzeczne wartości: {plugin.fields[name].title}.</p>
+                  <p style={{ overflowWrap: 'anywhere' }}>Parametr źródła: {JSON.stringify(values.canonical)}; starsze pole instalacji: {JSON.stringify(values.legacy)}.</p>
+                  <button className='secondary-button' type='button' onClick={() => changeProviderDraft(reconcileProviderParameter(draft, plugin, name, 'canonical'))}>Użyj wartości parametru źródła</button>
+                  <button className='secondary-button' type='button' onClick={() => changeProviderDraft(reconcileProviderParameter(draft, plugin, name, 'legacy'))}>Użyj wartości starszego pola</button>
+                </div>)}
+                <ProviderParameterEditor plugin={plugin} values={parameters.values} active={row.effectiveEnabled && components.ExternalHazardComponent !== false} disabled={restarting || Object.keys(parameters.conflicts).length > 0} errors={fieldErrors} onChange={(name, value) => changeProviderDraft(setProviderParameter(draft, plugin, name, value))} />
+              </> : null}
+            </fieldset>;
+          })}
         </div>
       </section>
 
@@ -475,14 +517,6 @@ export default function Configuration() {
             value={stringValue(site.country_code)}
             onChange={value => update(['installation', 'site', 'country_code'], value.toUpperCase())}
           />
-          {country === 'PL' && (
-            <TextAreaField
-              label='Kody TERYT dla IMGW (jeden w wierszu)'
-              help='Podaj czterocyfrowe kody powiatów, jeśli włączasz ostrzeżenia IMGW.'
-              value={stringList(site.teryt_codes).join('\n')}
-              onChange={value => update(['installation', 'site', 'teryt_codes'], splitLines(value))}
-            />
-          )}
           <TextField
             label='Encja temperatury zewnętrznej'
             entityDomains={['sensor']}

@@ -13,7 +13,7 @@ from components.external_apis.core.models import (
 )
 from components.external_apis.core.registry import register_api_component
 
-from .schema import ImgwWarningsConfig
+from .schema import ImgwWarningsConfig, ImgwWarningsParameters
 
 
 @register_api_component
@@ -22,8 +22,14 @@ class ImgwWarningsApiComponent(ExternalApiComponent):
 
     component_name = "ImgwWarningsApiComponent"
     config_model = ImgwWarningsConfig
+    parameter_model = ImgwWarningsParameters
+    required_when_enabled = frozenset({"teryt_codes"})
     capability = ProviderCapability.OFFICIAL_WARNINGS
+    hazards = frozenset({HazardType.FROST, HazardType.WIND, HazardType.RAIN, HazardType.STORM})
     countries = frozenset({"PL"})
+    display_name = "Ostrzeżenia IMGW"
+    description = "Urzędowe ostrzeżenia dla wybranych powiatów w Polsce."
+    legacy_parameter_paths = {"teryt_codes": ("installation", "site", "teryt_codes")}
 
     @classmethod
     def validate_site(cls, site: Mapping[str, Any]) -> None:
@@ -49,8 +55,9 @@ class ImgwWarningsApiComponent(ExternalApiComponent):
             raise
 
     def normalize(self, payload: Any, retrieved_at: datetime) -> tuple[ExternalObservation, ...]:
-        self.validate_site(self.site_config)
-        configured_teryt = {str(code) for code in self.site_config.get("teryt_codes", [])}
+        effective_site = {**self.site_config, **self.parameters}
+        self.validate_site(effective_site)
+        configured_teryt = {str(code) for code in effective_site.get("teryt_codes", [])}
         observations: list[ExternalObservation] = []
         for warning in self._current_warnings(payload, retrieved_at):
             regions = tuple(warning["regions"])
@@ -59,7 +66,7 @@ class ImgwWarningsApiComponent(ExternalApiComponent):
             event_name = str(warning["event_name"])
             hazard_type = self._hazard_type(event_name)
             if hazard_type is None:
-                continue
+                raise ValueError("Unsupported local warning event; coverage cannot be confirmed")
             observations.append(
                 ExternalObservation(
                     provider=self.component_name,
@@ -96,7 +103,7 @@ class ImgwWarningsApiComponent(ExternalApiComponent):
         retrieved_at = self.last_attempt_at
         if retrieved_at is None:
             raise ValueError("IMGW retrieval timestamp is missing")
-        configured_teryt = {str(code) for code in self.site_config.get("teryt_codes", [])}
+        configured_teryt = {str(code) for code in self.parameters.get("teryt_codes", self.site_config.get("teryt_codes", []))}
         warnings = [
             {**warning, "locally_applicable": True}
             for warning in self._current_warnings(payload, retrieved_at)

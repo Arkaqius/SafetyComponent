@@ -1,5 +1,7 @@
 """Tests for localized presentation metadata and stable backend contracts."""
 
+from string import Formatter
+
 import pytest
 from pydantic import ValidationError
 
@@ -109,6 +111,51 @@ def test_notification_delivery_presentation_is_localized(
 
 def test_unknown_text_key_falls_back_to_key() -> None:
     assert Localizer({"language": "de"}).text("missing.key") == "missing.key"
+
+
+@pytest.mark.parametrize(
+    ("language", "provider_name", "parameter_label", "coverage_label"),
+    [
+        ("en", "IMGW warnings", "TERYT district codes", "No current warnings in the configured coverage"),
+        ("pl", "Ostrzeżenia IMGW", "Kody powiatów TERYT", "Brak aktualnych ostrzeżeń w skonfigurowanym zakresie"),
+        ("de", "IMGW-Warnungen", "TERYT-Kreiskennungen", "Keine aktuellen Warnungen im konfigurierten Bereich"),
+    ],
+)
+def test_external_provider_operator_labels_are_translated(
+    language: str, provider_name: str, parameter_label: str, coverage_label: str
+) -> None:
+    """A healthy empty warning feed has a distinct, translated coverage meaning."""
+    localizer = Localizer({"language": language})
+    assert localizer.text("provider.ImgwWarningsApiComponent.name") == provider_name
+    assert localizer.text("provider.parameter.teryt_codes.label") == parameter_label
+    assert localizer.text("provider.coverage.no_current_warnings") == coverage_label
+    assert provider_name in localizer.text("entity.external_provider", provider=provider_name)
+    assert localizer.text("provider.coverage.not_configured") != coverage_label
+    assert localizer.text("provider.coverage.unavailable") != coverage_label
+
+
+def test_external_provider_translation_placeholders_and_labels_match() -> None:
+    """All provider labels exist in each language with compatible formatting fields."""
+    keys = {key for key in _TRANSLATIONS["en"] if key.startswith("provider.")}
+    keys.add("entity.external_provider")
+    assert {
+        f"provider.coverage.{status}"
+        for status in ("not_configured", "unsupported", "awaiting_evidence", "unavailable", "no_current_warnings", "available")
+    }.issubset(keys)
+    assert {
+        f"provider.health.{status}"
+        for status in ("ok", "stale", "unavailable", "schema_error")
+    }.issubset(keys)
+    formatter = Formatter()
+    for key in keys:
+        expected_fields = {
+            field for _, field, _, _ in formatter.parse(_TRANSLATIONS["en"][key])
+            if field is not None
+        }
+        for language in ("en", "pl", "de"):
+            text = _TRANSLATIONS[language][key]
+            assert text.strip()
+            assert {field for _, field, _, _ in formatter.parse(text) if field is not None} == expected_fields
 
 
 def test_private_entity_names_override_packaged_names_without_changing_ids(tmp_path) -> None:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -17,6 +18,7 @@ from components.external_apis.core.models import (
     ExternalObservation,
     HazardType,
     Measurement,
+    ProviderCapability,
     ProviderHealth,
     ProviderHealthState,
     WarningUrgency,
@@ -71,8 +73,10 @@ class FakeHass:
 class FakeMqtt:
     def __init__(self) -> None:
         self.states: dict[str, tuple[str, dict[str, Any]]] = {}
+        self.names: dict[str, str] = {}
 
-    def register_sensor(self, entity_id: str, _: str, **kwargs: Any) -> str:
+    def register_sensor(self, entity_id: str, name: str, **kwargs: Any) -> str:
+        self.names[entity_id.lower()] = name
         self.states.setdefault(entity_id.lower(), (str(kwargs.get("state", "")), {}))
         return entity_id.lower()
 
@@ -467,6 +471,204 @@ def test_no_provider_cannot_supply_clear_evidence_for_an_open_window() -> None:
     assert component._hazard_evidence(HazardType.WIND)[0] == "unknown"
     assert mqtt.states["sensor.external_hazard_state"][0] == "unavailable"
     assert not any(event["state"] == FaultState.CLEARED for event in events)
+
+
+def test_wind_only_empty_feed_cannot_supply_frost_clear_evidence() -> None:
+    """An empty official feed establishes absence only within declared hazards."""
+    component, _, mqtt, _ = _component()
+    name = "WindOnlyApiComponent"
+    component._provider_plugins = {
+        name: SimpleNamespace(
+            capability=ProviderCapability.OFFICIAL_WARNINGS,
+            hazards=frozenset({HazardType.WIND}),
+        )
+    }
+    component.enabled_providers = {name}
+    component.handle_external_api_result(result=ApiResult(name, (), _health(name)))
+
+    assert component._hazard_evidence(HazardType.WIND)[0] == "clear"
+    assert component._hazard_evidence(HazardType.FROST)[0] == "unknown"
+    assert mqtt.states["sensor.external_hazard_state"][0] == "unavailable"
+
+
+def test_failed_wind_only_source_does_not_block_independent_frost_model() -> None:
+    """A required source for one hazard must not restrict unrelated model evidence."""
+    component, _, _, _ = _component()
+    model = "OpenMeteoWeatherApiComponent"
+    warnings = "WindOnlyApiComponent"
+    component._provider_plugins = {
+        model: SimpleNamespace(
+            capability=ProviderCapability.WEATHER_MODEL,
+            hazards=frozenset({HazardType.FROST}),
+        ),
+        warnings: SimpleNamespace(
+            capability=ProviderCapability.OFFICIAL_WARNINGS,
+            hazards=frozenset({HazardType.WIND}),
+        ),
+    }
+    component.enabled_providers = {model, warnings}
+    frost = _observation(model, HazardType.FROST, {
+        "current_temperature": Measurement(10, "°C"),
+        "forecast_min_temperature": Measurement(9, "°C"),
+    })
+    component.handle_external_api_result(result=ApiResult(model, (frost,), _health(model)))
+    component.handle_external_api_result(
+        result=ApiResult(warnings, (), _health(warnings, ProviderHealthState.UNAVAILABLE))
+    )
+
+    assert component._hazard_evidence(HazardType.FROST)[0] == "clear"
+    assert component._hazard_evidence(HazardType.WIND)[0] == "unknown"
+
+
+def test_coverage_projection_distinguishes_no_source_waiting_and_empty_feed() -> None:
+    """Coverage records expose capability and hazard scope without changing raw state."""
+    component, _, mqtt, _ = _component()
+    name = "WindOnlyApiComponent"
+    component._provider_plugins = {
+        name: SimpleNamespace(
+            capability=ProviderCapability.OFFICIAL_WARNINGS,
+            hazards=frozenset({HazardType.WIND}),
+        ),
+    }
+    component.enabled_providers = {name}
+    component._publish_aggregate()
+    details = mqtt.states["sensor.external_hazard_state"][1].get("coverage_details", [])
+    wind = next((item for item in details if item["capability"] == "OfficialWeatherWarnings" and item["hazard"] == "wind"), None)
+    frost = next((item for item in details if item["capability"] == "OfficialWeatherWarnings" and item["hazard"] == "frost"), None)
+    model = next((item for item in details if item["capability"] == "WeatherPointModel" and item["hazard"] == "wind"), None)
+    assert wind == {"capability": "OfficialWeatherWarnings", "hazard": "wind", "providers": [name], "status": "awaiting_evidence", "status_label": "Oczekiwanie na dane źródła"}
+    assert frost == {"capability": "OfficialWeatherWarnings", "hazard": "frost", "providers": [], "status": "unsupported", "status_label": "Wybrane źródła nie obejmują tego zagrożenia"}
+    assert model == {"capability": "WeatherPointModel", "hazard": "wind", "providers": [], "status": "not_configured", "status_label": "Źródło nieskonfigurowane"}
+
+    component.handle_external_api_result(result=ApiResult(name, (), _health(name)))
+    details = mqtt.states["sensor.external_hazard_state"][1]["coverage_details"]
+    wind = next(item for item in details if item["capability"] == "OfficialWeatherWarnings" and item["hazard"] == "wind")
+    assert wind["status"] == "no_current_warnings"
+    assert mqtt.states["sensor.external_provider_wind_only"][1]["hazards"] == ["wind"]
+
+
+@pytest.mark.parametrize(
+    ("language", "friendly_name", "health_label"),
+    [
+        ("en", "External source: IMGW warnings", "Source unavailable"),
+        ("pl", "Źródło zewnętrzne: Ostrzeżenia IMGW", "Źródło niedostępne"),
+        ("de", "Externe Quelle: IMGW-Warnungen", "Quelle nicht verfügbar"),
+    ],
+)
+def test_provider_health_translates_presentation_without_changing_contract(
+    language: str, friendly_name: str, health_label: str
+) -> None:
+    component, hass, mqtt, _ = _component()
+    hass.localizer = Localizer({"language": language})
+    provider = "ImgwWarningsApiComponent"
+    component._publish_provider_health(ApiResult(provider, (), _health(provider, ProviderHealthState.UNAVAILABLE)))
+    entity_id = "sensor.external_provider_imgw_warnings"
+    state, attributes = mqtt.states[entity_id]
+    assert mqtt.names[entity_id] == friendly_name
+    assert state == "unavailable"
+    assert attributes["provider"] == provider
+    assert attributes["state_label"] == health_label
+
+
+def test_provider_health_uses_plugin_display_name_for_new_plugins() -> None:
+    component, _, mqtt, _ = _component()
+    provider = "RegionalApiComponent"
+    component._provider_plugins = {provider: SimpleNamespace(
+        capability=ProviderCapability.OFFICIAL_WARNINGS,
+        hazards=frozenset({HazardType.WIND}),
+        display_name="Regional Weather Service",
+    )}
+    component._publish_provider_health(ApiResult(provider, (), _health(provider)))
+    entity_id = "sensor.external_provider_regional"
+    assert mqtt.names[entity_id] == "Źródło zewnętrzne: Regional Weather Service"
+    assert mqtt.states[entity_id][1]["provider_name"] == "Regional Weather Service"
+
+
+def test_active_peer_reports_only_fresh_qualified_source_reevaluations() -> None:
+    """An empty healthy peer can recover coverage alongside an independently active H."""
+    component, _, _, _ = _component()
+    names = ("RegionalApiComponent", "PeerApiComponent")
+    component._provider_plugins = {name: SimpleNamespace(
+        capability=ProviderCapability.OFFICIAL_WARNINGS,
+        hazards=frozenset({HazardType.WIND}),
+    ) for name in names}
+    component.enabled_providers = set(names)
+    warning = _observation(names[1], HazardType.WIND, {}, confirmed=True)
+    component.handle_external_api_result(result=ApiResult(names[1], (warning,), _health(names[1])))
+    status, context, _ = component._hazard_evidence(HazardType.WIND)
+    assert status == "active"
+    assert context["source"] == names[1]
+    assert context["reevaluated_sources"] == [names[1]]
+
+    component.handle_external_api_result(result=ApiResult(names[0], (), _health(names[0])))
+    assert set(component._hazard_evidence(HazardType.WIND)[1]["reevaluated_sources"]) == set(names)
+    component.handle_external_api_result(result=ApiResult(names[0], (), _health(names[0], ProviderHealthState.UNAVAILABLE)))
+    assert component._hazard_evidence(HazardType.WIND)[1]["reevaluated_sources"] == [names[1]]
+    stale = replace(_health(names[0]), last_success_at=datetime.now(timezone.utc) - timedelta(days=1))
+    component.handle_external_api_result(result=ApiResult(names[0], (), stale))
+    assert component._hazard_evidence(HazardType.WIND)[1]["reevaluated_sources"] == [names[1]]
+    invalid = _observation(names[0], HazardType.WIND, {}, confirmed=False)
+    component.handle_external_api_result(result=ApiResult(names[0], (invalid,), _health(names[0])))
+    assert component._hazard_evidence(HazardType.WIND)[1]["reevaluated_sources"] == [names[1]]
+
+
+def test_pending_model_is_not_a_qualified_peer_reevaluation() -> None:
+    component, _, _, _ = _component(persistence=120)
+    model = "OpenMeteoWeatherApiComponent"
+    official = "ImgwWarningsApiComponent"
+    component.enabled_providers = {model, official}
+    component.handle_external_api_result(result=_wind_result())
+    warning = _observation(official, HazardType.WIND, {}, confirmed=True)
+    component.handle_external_api_result(result=ApiResult(official, (warning,), _health(official)))
+    assert component._hazard_evidence(HazardType.WIND)[1]["reevaluated_sources"] == [official]
+
+
+def test_expired_warning_after_failure_does_not_clear_active_exposure(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Authoritative expiry cannot prove absence of a replacement during an outage."""
+    component, _, _, events = _component()
+    name = "ImgwWarningsApiComponent"
+    component.enabled_providers = {name}
+    warning = _observation(name, HazardType.WIND, {}, confirmed=True)
+    now = warning.retrieved_at
+    assert now is not None
+    monkeypatch.setattr(component, "_now", lambda: now)
+    warning = replace(warning, valid_to=now + timedelta(seconds=5))
+    component.handle_external_api_result(result=ApiResult(name, (warning,), _health(name)))
+    symptom_id = "ExternalWeatherExposureWindOfficeWindow"
+    assert component.symptom_states[symptom_id] == FaultState.SET
+    component.handle_external_api_result(result=ApiResult(name, (), _health(name, ProviderHealthState.UNAVAILABLE)))
+    monkeypatch.setattr(component, "_now", lambda: now + timedelta(seconds=10))
+    events.clear()
+    component._evaluate_all()
+    assert component.symptom_states[symptom_id] == FaultState.SET
+    assert not any(event["symptom_id"] == symptom_id and event["state"] == FaultState.CLEARED for event in events)
+
+
+def test_capability_recovers_with_one_healthy_peer_without_clearing_hazard() -> None:
+    """Restored usable capability and conservative hazard clearing are separate."""
+    component, _, _, _ = _component()
+    names = ("FirstWarningsApiComponent", "SecondWarningsApiComponent")
+    component._provider_plugins = {
+        name: SimpleNamespace(
+            capability=ProviderCapability.OFFICIAL_WARNINGS,
+            hazards=frozenset({HazardType.WIND}),
+        )
+        for name in names
+    }
+    component.enabled_providers = set(names)
+    warning = _observation(names[0], HazardType.WIND, {}, confirmed=True)
+    component.handle_external_api_result(result=ApiResult(names[0], (warning,), _health(names[0])))
+    symptom_id = "ExternalWeatherExposureWindOfficeWindow"
+    assert component.symptom_states[symptom_id] == FaultState.SET
+    for name in names:
+        failed = replace(_health(name, ProviderHealthState.UNAVAILABLE), stale_after_seconds=0)
+        component.handle_external_api_result(result=ApiResult(name, (), failed))
+    assert component._capability_health("OfficialWeatherWarnings")[0] == "active"
+
+    component.handle_external_api_result(result=ApiResult(names[1], (), _health(names[1])))
+    assert component._capability_health("OfficialWeatherWarnings")[0] == "clear"
+    assert component._health[names[0]].state == ProviderHealthState.UNAVAILABLE
+    assert component.symptom_states[symptom_id] == FaultState.SET
 
 
 def test_clear_timer_requires_current_positive_evidence() -> None:

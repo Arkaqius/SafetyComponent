@@ -314,15 +314,30 @@ request timeout, retry count, and staleness limit. The private
 `user_config.providers.<name>.enabled` field may change enablement; it cannot
 replace endpoints or transport safety bounds.
 
+The optional `user_config.providers.<name>.parameters` mapping shall contain
+installation-specific values validated by that plugin's editable schema. It
+shall not override endpoint allowlists, polling, retries, timeouts, response
+bounds, or staleness policy. Packaged provider configuration shall be validated
+by the registered provider's runtime schema; plugin-specific system fields shall
+not require adding fields to a universal provider model.
+
 The provider registry defines available plugin IDs and their configuration
-schemas. The installation country controls applicability. IMGW is available
-for `PL` and uses `installation.site.teryt_codes` when enabled. The
+schemas, capabilities, covered hazards, and operator metadata. The installation
+country controls applicability. Inherited inapplicable defaults remain inactive;
+explicit enabled incompatible selections shall fail validation. IMGW is available
+for `PL` and uses `providers.ImgwWarningsApiComponent.parameters.teryt_codes`.
+The existing `installation.site.teryt_codes` binding remains a compatible alias;
+both forms shall agree after normalization or validation shall fail. The
 [Berlin example](../examples/berlin_user_config.yml) uses the weather and air
 quality plugins with coordinates from Home Assistant.
 
 Provider configuration is intentionally separate from external-hazard decision
 calibration: providers acquire evidence, while C-EXT decides what that evidence
 means for the installation.
+
+Detailed compatibility and parameter rules are defined in
+[Configuration Model](<../features/Configuration Model - Architecture.md#provider-owned-installation-parameters>)
+and [ADR-0001](../adr/0001-external-provider-plugins.md).
 
 ### 5.3 Notification and recovery
 

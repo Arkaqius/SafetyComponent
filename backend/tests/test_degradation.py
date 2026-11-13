@@ -88,6 +88,51 @@ def test_provider_adapter_bindings_preserve_weather_aq_isolation() -> None:
     assert registry.causes_for("aq_window", RestrictionEffect.EVALUATION) == ()
 
 
+def test_same_capability_provider_scope_and_hazard_coverage_are_independent() -> None:
+    """A failed wind-only adapter cannot restrict its peer or frost evidence."""
+    from components.external_apis.core.models import HazardType, ProviderCapability
+
+    names = ("RegionalWarningsApiComponent", "PeerRegionalWarningsApiComponent")
+    definitions = {name: SimpleNamespace(
+        capability=ProviderCapability.OFFICIAL_WARNINGS,
+        hazards=frozenset({HazardType.WIND}),
+    ) for name in names}
+    symptoms = {
+        "wind": SimpleNamespace(sm_name="sm_ext_weather_exposure", parameters={"opening_name": "Window", "hazard": "wind"}),
+        "frost": SimpleNamespace(sm_name="sm_ext_weather_exposure", parameters={"opening_name": "Window", "hazard": "frost"}),
+        **{name: SimpleNamespace(sm_name="sm_provider_adapter_health", parameters={"provider": name}) for name in names},
+    }
+    faults = {name: Fault(name, [symptom.sm_name], 3,
+        category=FaultCategory.H if name in {"wind", "frost"} else FaultCategory.D,
+        related_symptom_ids=[name]) for name, symptom in symptoms.items()}
+    bindings = compile_runtime_bindings(symptoms, (), faults=faults, provider_definitions=definitions)
+    assert all({target.symptom_id for target in binding.targets} == {"wind"} for binding in bindings)
+    registry = DegradationRegistry(symptoms, faults, bindings, provider_definitions=definitions)
+    for name in names:
+        registry.observe(symptom_id=name, state=FaultState.CLEARED)
+    registry.observe(symptom_id="wind", state=FaultState.SET, additional_info={"source": names[1]})
+    registry.observe(symptom_id="frost", state=FaultState.CLEARED)
+    registry.observe(symptom_id=names[0], state=FaultState.SET)
+    assert registry.causes_for("wind", RestrictionEffect.EVALUATION, evidence_source=names[1]) == ()
+    assert registry.recovery_allowed("wind", evidence_source=names[1])
+    assert not registry.recovery_allowed("wind", evidence_source=names[0])
+    assert not registry.recovery_allowed("wind", evidence_source="UnknownProvider")
+    assert registry.causes_for("frost", RestrictionEffect.EVALUATION) == ()
+    # A successful B evaluation cannot release A's independent failed scope.
+    registry.observe_hazard(symptom_id="wind", state=FaultState.SET,
+                            additional_info={"source": names[1], "reevaluated_sources": list(names)})
+    assert ("wind", "OfficialWeatherWarnings", names[0]) in registry._requires_reevaluation
+    registry.observe(symptom_id=names[0], state=FaultState.CLEARED)
+    registry.observe_hazard(symptom_id="wind", state=FaultState.SET,
+                            additional_info={"source": names[1]})
+    assert registry.pending_reevaluations() == ("wind",)
+    # Complete fresh evaluations explicitly identify both contributing scopes.
+    registry.observe_hazard(symptom_id="wind", state=FaultState.SET,
+                            additional_info={"source": names[1], "reevaluated_sources": list(names)})
+    assert registry.pending_reevaluations() == ()
+    assert registry.snapshot()["state"] == CoverageState.FULL.value
+
+
 def test_heating_storage_and_quality_restrict_only_heating_and_service_is_external() -> None:
     symptoms = {
         "heating": SimpleNamespace(sm_name="sm_hsm_no_response", parameters={"installation_key": "Main"}),
