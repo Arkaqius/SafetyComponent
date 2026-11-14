@@ -982,14 +982,16 @@ distinct; one failed adapter shall not disable independently supplied evidence.
   `T_ext_door_open`, timed independently for each opening. A closed or unknown
   contact shall reset this interval. An open window shall qualify immediately.
   A valid, locally applicable official warning normalized as `immediate`
-  shall also qualify an open aperture configured for its hazard.
+  shall also qualify an open aperture configured for its hazard after the
+  shared hazard persistence interval.
   C-EXT shall re-evaluate the contact and applicable evidence when the
   interval elapses. An existing exposure shall follow the clear policy in
   SYS-SR-EXT-013 and SYS-SR-EXT-043.
-  C-EXT shall qualify modeled hazards independently per provider and hazard
+  C-EXT shall qualify modeled hazards and applicable official warnings independently per provider and hazard
   after continuous fresh threshold evidence for the configured persistence
-  interval. An interruption shall reset pending qualification. Applicable
-  official warnings shall follow their authoritative validity.
+  interval (300 seconds by default). An interruption shall reset pending
+  qualification. Official warnings, including `immediate` warnings, shall remain
+  authoritatively valid and fresh throughout that interval.
 - **SYS-SR-EXT-011:** Official IMGW warnings shall be applicable only when at
   least one configured TERYT code is present in the warning region set and the
   current time is within its validity interval.

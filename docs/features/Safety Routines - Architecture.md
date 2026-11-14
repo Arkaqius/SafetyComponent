@@ -30,6 +30,10 @@ disabled bedtime and leaving scenarios. A scenario shall contain `name`,
 `enabled` (default true), `checks`, and optional `triggers`, `delay_seconds`
 (default 0), and `observation_seconds` (default 0). New scenarios in the operator
 form shall default to disabled. Installation names shall be shown as supplied.
+Single-sample scenarios shall use zero delay and a zero observation window when
+an immediate report is required. A configured delay shall apply to manual and
+automatic requests; execution shall not add an implicit waiting period. Observation
+windows shall remain explicit and shall not be shortened to fabricate evidence.
 
 | Check field | Contract |
 | --- | --- |

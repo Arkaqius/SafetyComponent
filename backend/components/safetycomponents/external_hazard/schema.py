@@ -51,7 +51,7 @@ class WeatherPolicy(StrictBaseModel):
     gust_watch_m_s: float = Field(gt=0)
     gust_warning_m_s: float = Field(gt=0)
     precipitation_warning_mm_h: float = Field(gt=0)
-    persistence_seconds: int = Field(default=120, ge=0)
+    persistence_seconds: int = Field(default=300, ge=0)
     hysteresis: dict[str, float] = Field(default_factory=dict)
 
     @model_validator(mode="after")

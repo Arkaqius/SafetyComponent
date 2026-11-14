@@ -640,7 +640,7 @@ class ExternalHazardComponent(SafetyComponent):
     def _hazard_evidence(self, hazard: HazardType, *, track: bool = True) -> HazardEvidence:
         now = self._now()
         elapsed = monotonic()
-        persistence = int(self.policy["weather"].get("persistence_seconds", 120))
+        persistence = int(self.policy["weather"].get("persistence_seconds", 300))
         providers = self._providers_for(_HAZARD_CAPABILITIES[hazard], hazard=hazard)
         active: list[tuple[ExternalObservation, HazardAssessment]] = []
         reevaluated_sources: list[str] = []
@@ -706,19 +706,14 @@ class ExternalHazardComponent(SafetyComponent):
                 and fresh
                 and not invalid
             )
-            if official_warning:
-                if source_ready:
-                    reevaluated_sources.append(provider)
-                active.extend(provider_active)
-                continue
-            if invalid or not provider_usable or health is None or health.state != ProviderHealthState.OK:
+            if not source_ready or (not provider_usable and not official_warning):
                 unusable = True
                 provider_active.clear()
             if not track:
                 active.extend(provider_active)
                 continue
             if not provider_active:
-                if source_ready and provider_usable:
+                if source_ready and (provider_usable or official_warning):
                     reevaluated_sources.append(provider)
                 self._model_assertions.pop(key, None)
                 self._cancel_model_timer(key)

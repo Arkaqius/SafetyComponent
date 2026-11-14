@@ -412,16 +412,18 @@ other direct sensor path.
 | Rain/storm | Precipitation policy or applicable official warning | Relevant opening is qualified | Warn with opening and validity/source |
 | Outdoor pollution | Current European AQI crosses configured policy | Relevant opening is qualified | Warn and inhibit advice to open external openings |
 
-**Model qualification**
+**External hazard qualification**
 
 C-EXT shall qualify modeled frost, wind, rain, storm, and outdoor pollution
 independently per provider and hazard. Fresh evidence shall meet the applicable
 assertion threshold for the shared `weather.persistence_seconds` interval
-(120 seconds by default). The monotonic timer shall re-evaluate fresh provider
+(300 seconds by default). This interval shall also apply to applicable official
+warnings, including warnings normalized as `immediate`. The monotonic timer shall
+re-evaluate fresh provider
 evidence and the current contact at its deadline without waiting for another
 poll. A below-threshold reading, unusable snapshot, or gap in freshness shall
-restart pending qualification. Applicable official warnings shall follow their
-authoritative validity without this model delay.
+restart pending qualification. Official warning qualification shall require current
+authoritative validity and fresh healthy provider evidence throughout the interval.
 
 Provider diagnostics and advice inhibition shall use current evidence
 independently of model and opening qualification.
@@ -433,9 +435,10 @@ after 60 seconds of continuously known-open state. C-EXT shall measure the
 interval per opening with a monotonic clock, starting at the first known-open
 observation. Closing the contact or losing its state shall reset qualification.
 The deadline shall re-read the contact and re-evaluate the applicable hazard
-evidence without waiting for the next provider poll. An open window shall
-qualify immediately. A valid, locally applicable official warning normalized
-as `immediate` shall qualify an open aperture configured for its hazard. Existing
+evidence without waiting for the next provider poll. After hazard qualification,
+an open window shall need no additional opening delay. A valid, locally applicable
+official warning normalized as `immediate` shall need no additional opening delay
+for an open aperture configured for its hazard. Existing
 exposures shall follow the clearing policy.
 
 ### 9.1 Multiple providers
@@ -561,7 +564,7 @@ calibration:
       default_gust_watch_m_s: 15.0
       default_gust_warning_m_s: 20.0
       default_precipitation_warning_mm_h: 2.5
-      default_persistence_seconds: 120
+      default_persistence_seconds: 300
       default_hysteresis:
         temperature_c: 0.5
         gust_m_s: 1.0
@@ -863,7 +866,7 @@ Each API Component requires fixtures for:
 ### 15.2 Safety-policy tests
 
 - Applicable hazard active + qualified open aperture -> symptom set.
-- A modeled weather or AQI threshold breach qualifies after the configured
+- A modeled weather or AQI threshold breach or applicable official warning qualifies after the configured
   persistence interval. An interrupted or expired breach cannot set exposure.
 - For hazards subject to the opening delay, a brief door or gate opening
   produces no new exposure. A continuous 60-second opening qualifies when the
@@ -871,8 +874,8 @@ Each API Component requires fixtures for:
 - A closed or unknown contact restarts qualification. An obsolete timer cannot
   complete a later opening interval, and expired model evidence cannot start a
   new exposure at the deadline.
-- Open windows qualify immediately. A valid, locally applicable IMGW degree-3
-  warning also qualifies an open aperture configured for the warning's hazard.
+- Open windows need no additional opening delay. A valid, locally applicable
+  immediate warning also needs no additional opening delay after hazard qualification.
 - Hazard active + opening closed -> no exposure symptom.
 - One of several openings closes -> fault remains with reduced context.
 - Weather forecast is labeled forecast.

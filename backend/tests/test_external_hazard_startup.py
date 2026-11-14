@@ -212,6 +212,11 @@ def test_real_assertion_survives_source_disable_restart_without_false_clear(tmp_
     )
     from components.core.types_common import FaultState
 
+    elapsed = [0.0]
+    monkeypatch.setattr(
+        "components.safetycomponents.external_hazard.external_hazard_component.monotonic",
+        lambda: elapsed[0],
+    )
     app, _ = _start_target(_target_raw(tmp_path), tmp_path, monkeypatch)
     now = datetime.now(timezone.utc)
     provider = "ImgwWarningsApiComponent"
@@ -222,6 +227,10 @@ def test_real_assertion_survives_source_disable_restart_without_false_clear(tmp_
     app.event_bus.publish("external_api_result", result=ApiResult(provider, (observation,), health))
     component = app.sm_modules["ExternalHazardComponent"]
     symptom_id = "ExternalWeatherExposureWindLivingRoomWindow"
+    assert component.policy["weather"]["persistence_seconds"] == 300
+    assert component.symptom_states[symptom_id] != FaultState.SET
+    elapsed[0] = 300.0
+    component._evaluate_all()
     assert component.symptom_states[symptom_id] == FaultState.SET
     assert symptom_id in app.real_assertion_store.records
     assert app.faults["ExternalWeatherExposure"].evaluation.active

@@ -50,8 +50,8 @@ user_config:
       Leaving:
         name: Wyjście z domu
         enabled: false
-        delay_seconds: 30
-        observation_seconds: 30
+        delay_seconds: 0
+        observation_seconds: 0
         triggers:
           - kind: event
             event: household_leaving
