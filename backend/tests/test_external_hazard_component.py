@@ -888,7 +888,8 @@ def test_expired_warning_after_failure_does_not_clear_active_exposure(monkeypatc
     assert now is not None
     monkeypatch.setattr(component, "_now", lambda: now)
     warning = replace(warning, valid_to=now + timedelta(seconds=5))
-    component.handle_external_api_result(result=ApiResult(name, (warning,), _health(name)))
+    health = replace(_health(name), last_attempt_at=now, last_success_at=now)
+    component.handle_external_api_result(result=ApiResult(name, (warning,), health))
     symptom_id = "ExternalWeatherExposureWindOfficeWindow"
     assert component.symptom_states[symptom_id] == FaultState.SET
     component.handle_external_api_result(result=ApiResult(name, (), _health(name, ProviderHealthState.UNAVAILABLE)))
