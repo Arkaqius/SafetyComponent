@@ -130,6 +130,8 @@ def parse_datetime(value: Any, *, default: datetime | None = None) -> datetime:
     else:
         raise ValueError(f"Missing datetime value: {value!r}")
 
+    if parsed is None:
+        raise ValueError(f"Missing datetime value: {value!r}")
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
     return parsed.astimezone(timezone.utc)

@@ -15,7 +15,7 @@ from components.app_config_validator.app_cfg_validator import (
 )
 from components.external_apis.core import registry
 from components.external_apis.core.api_component import ExternalApiComponent
-from components.external_apis.core.models import ProviderCapability
+from components.external_apis.core.models import HazardType, ProviderCapability
 from system_configuration import ProviderRuntimeSource
 
 
@@ -32,7 +32,7 @@ def _example_config() -> dict:
 def test_external_hazard_config_normalizes_all_three_independent_providers() -> None:
     runtime = AppCfgValidator.validate(_example_config())
 
-    assert set(runtime["user_config"]["api_components"]) == {
+    assert {name for name, binding in runtime["user_config"]["api_components"].items() if binding["enabled"]} == {
         "OpenMeteoWeatherApiComponent",
         "ImgwWarningsApiComponent",
         "OpenMeteoAirQualityApiComponent",
@@ -55,18 +55,18 @@ def test_external_hazard_config_normalizes_all_three_independent_providers() -> 
 
 def test_enabled_external_hazard_rejects_a_missing_provider_binding() -> None:
     config = copy.deepcopy(_example_config())
-    del config["user_config"]["api_components"]["ImgwWarningsApiComponent"]
+    config["user_config"]["external_sources"]["OfficialWeatherWarnings"] = "UnknownImgwWarningsApiComponent"
 
-    with pytest.raises(AppCfgValidationError, match="ImgwWarningsApiComponent"):
+    with pytest.raises(AppCfgValidationError, match="OfficialWeatherWarnings"):
         AppCfgValidator.validate(config)
 
 
 def test_imgw_location_validation_only_applies_when_selected_in_poland() -> None:
     config = _example_config()
-    config["user_config"]["site"].pop("teryt_codes")
-    with pytest.raises(AppCfgValidationError, match="IMGW requires site.teryt_codes"):
+    config["user_config"]["provider_parameters"]["ImgwWarningsApiComponent"] = {}
+    with pytest.raises(AppCfgValidationError, match="teryt_codes"):
         AppCfgValidator.validate(config)
-    config["user_config"]["api_components"]["ImgwWarningsApiComponent"]["enabled"] = False
+    config["user_config"]["external_sources"]["OfficialWeatherWarnings"] = None
     assert not AppCfgValidator.validate(config)["user_config"]["api_components"]["ImgwWarningsApiComponent"]["enabled"]
 
 
@@ -75,6 +75,7 @@ def test_registered_warning_plugin_supplies_its_own_schema(tmp_path: Path, monke
         component_name = "BerlinWarningsApiComponent"
         config_model = ProviderRuntimeSource
         capability = ProviderCapability.OFFICIAL_WARNINGS
+        hazards = frozenset({HazardType.WIND})
         countries = frozenset({"DE"})
 
         def fetch_payload(self):
@@ -88,7 +89,6 @@ def test_registered_warning_plugin_supplies_its_own_schema(tmp_path: Path, monke
     name = BerlinWarnings.component_name
     system = yaml.safe_load((BACKEND_DIR / "config/system_config.yml").read_text(encoding="utf-8"))
     system["runtime_cfg"]["providers"][name] = {
-        "enabled": True,
         "base_url": "https://example.invalid/warnings",
         "poll_interval_seconds": 300,
         "request_timeout_seconds": 5,
@@ -96,7 +96,7 @@ def test_registered_warning_plugin_supplies_its_own_schema(tmp_path: Path, monke
         "stale_after_seconds": 900,
     }
     source = yaml.safe_load((BACKEND_DIR.parent / "docs/examples/berlin_user_config.yml").read_text(encoding="utf-8"))
-    source["user_config"]["providers"] = {name: {"enabled": True}}
+    source["user_config"]["external_sources"]["OfficialWeatherWarnings"] = name
     system_path = tmp_path / "system_config.yml"
     user_path = tmp_path / "user_config.yml"
     system_path.write_text(yaml.safe_dump(system), encoding="utf-8")

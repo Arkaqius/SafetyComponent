@@ -4,13 +4,38 @@
 
 Provider adapters own polling, schema validation, freshness, normalized results,
 and raw provider-health telemetry. `SelfDiagnosticsComponent` converts each
-installed adapter's current health to an independent contributor of the shared
+installed live adapter's current health to an independent contributor of the shared
 `ExternalDataUnavailable` L3 diagnostic (`D`) fault. Consumer capability-health
 contributors share that fault and retain their separate meaning: loss of a
 required household capability after redundancy policy differs from failure of
-one adapter. A failed weather provider must not disable independent IMGW or outdoor
-air-quality evidence. See [External Hazard Monitoring](External%20Hazard%20Monitoring%20-%20Architecture.md)
+one adapter. A failed weather provider must not disable independent official-warning
+or outdoor-air-quality evidence. See [External Hazard Monitoring](External%20Hazard%20Monitoring%20-%20Architecture.md)
 and [Fault Degradation and Coverage](Fault%20Degradation%20and%20Coverage%20-%20Architecture.md).
+
+Provider contributors shall be allocated from the validated installed-provider
+registry rather than a fixed list of provider names. Each selected applicable live
+adapter shall retain its own health contributor under `ExternalDataUnavailable`.
+Its capability, declared hazards, and consumer dependencies shall determine the
+restricted targets. A conforming newly bundled provider shall integrate without
+changes to shared provider-name fault maps. Existing provider contributor IDs,
+fault identity, and raw health states shall remain stable.
+
+A disabled or unselected provider shall not become an installed adapter failure.
+There is no inherited source selection. An incompatible selection shall fail
+configuration validation. Explicitly disabled official warnings shall be shown as
+disabled, distinct from missing configuration and a healthy empty feed. A fresh,
+complete empty feed
+from an installed source is healthy only within its declared regional and hazard
+coverage. These contracts refine SWR-EXT-023..025 and
+[ADR-0001](../adr/0001-external-provider-plugins.md).
+
+Trusted `data_kind: synthetic` providers shall not be installed as real provider
+or capability D contributors. Their test event stream and preview diagnostics
+shall not affect real H/D state, degradation qualification, safety coverage,
+notifications or recovery. Applied selection is independently published through
+`sensor.external_source_selection`, including a per-start `runtime_id`; retained
+health from another start cannot override an explicit disabled choice. See the
+[selection and presentation contract](002-provider-selection-states/contracts/monitoring-presentation.md).
 
 `SafetyAppHealth` is one L2 diagnostic fault with distinct contributors for
 startup, MQTT publication, mobile delivery, local outputs, persistence,

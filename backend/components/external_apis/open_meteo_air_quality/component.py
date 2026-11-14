@@ -19,6 +19,9 @@ class OpenMeteoAirQualityApiComponent(ExternalApiComponent):
     component_name = "OpenMeteoAirQualityApiComponent"
     config_model = OpenMeteoAirQualityConfig
     capability = ProviderCapability.AIR_QUALITY
+    hazards = frozenset({HazardType.OUTDOOR_AIR_POLLUTION})
+    display_name = "Jakość powietrza Open-Meteo"
+    description = "Model CAMS i europejski indeks jakości powietrza."
     _FIELDS = (
         "european_aqi",
         "european_aqi_pm2_5",
@@ -34,6 +37,7 @@ class OpenMeteoAirQualityApiComponent(ExternalApiComponent):
     )
 
     def fetch_payload(self) -> Any:
+        assert self.http_client is not None
         return self.http_client.get_json(
             self.provider_config["base_url"],
             params={

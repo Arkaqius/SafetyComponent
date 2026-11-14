@@ -56,11 +56,48 @@ domyślną interpretację całej instalacji ogrzewania.
    sprawdza dostępność encji. Sprawdź logi oraz stany czujników SafetyComponent.
    Nie uruchamiaj alarmów ani urządzeń wykonawczych tylko dla testu formularza.
 
-## Podstrony i reset instalacji
+## Podstrony konfiguracji
 
 Formularz jest podzielony na podstrony tematyczne. Przechodzenie między nimi
 zachowuje wspólny szkic; **Zapisz konfigurację** zapisuje cały dokument, nie
 tylko widoczną podstronę.
+
+## Źródła zagrożeń zewnętrznych
+
+W **Instalacja HA** ustaw kraj i strefę czasową. Następnie w **Ogólne** wybierz
+nazwany plugin albo **Wyłączone** osobno dla **Pogody**, **Oficjalnych ostrzeżeń
+pogodowych** i **Jakości powietrza**. Nie ma dodatkowego wyboru domyślnego
+włączenia. Współrzędne pochodzą z Home Assistant.
+
+Formularz pokazuje tylko pola wybranego pluginu. Dla polskiego źródła IMGW są to
+kody powiatów TERYT, po jednym w wierszu. Inne źródło może wymagać własnego kodu
+regionu i nie prosi o polskie kody. Zmiana pluginu lub wyłączenie kategorii zachowuje
+wpisane wartości do ponownego wyboru. Zmiana kraju zachowuje szkic; jeżeli wybrany
+plugin nie obsługuje nowego kraju, wybierz zgodne źródło albo je wyłącz.
+
+Zapis sprawdza cały dokument. Błąd pola lub konflikt rewizji pozostawia szkic do
+poprawy. Po zmianie pliku przez inną sesję wczytaj zapisane ustawienia przyciskiem
+**Odrzuć zmiany** i ponownie wprowadź potrzebne poprawki. Niepoprawny plik trzeba
+poprawić do aktualnego modelu lub zastąpić zweryfikowanym szablonem.
+
+Na stronie **Zagrożenia zewnętrzne** wyłączona kategoria jest szara z tekstem
+**Wyłączone** i kreską **—** zamiast zera wykryć. Zero bieżących ostrzeżeń dotyczy
+tylko świeżych kompletnych danych działającego źródła i jego zakresu. Oczekiwanie,
+brak wiarygodnych danych, dane nieaktualne i nieobsługiwane zagrożenie są odrębnymi
+stanami. Dostępna pogoda modelowa nie zastępuje ostrzeżeń urzędowych. Zachowane
+rzeczywiste zagrożenie nadal wymaga uwagi po wyłączeniu pluginu lub restarcie.
+
+Dla kraju **DE** można jawnie wybrać **Niemcy — źródło testowe**. Wpisz własny
+identyfikator regionu testowego i wybierz scenariusz: **empty** (brak testowych
+ostrzeżeń), **warning** (testowy wiatr), **unavailable** (niedostępność) albo
+**stale** (dane nieaktualne). Podgląd jest stale oznaczony jako dane syntetyczne:
+nie zmienia rzeczywistych alarmów, pokrycia monitorowania, powiadomień ani poleceń.
+
+Ekran monitorowania opisuje konfigurację zastosowaną przy uruchomieniu aplikacji.
+Niezapisany szkic ani zapis czekający na restart nie zmienia tego widoku.
+**Zapisz konfigurację** i osobno potwierdzony restart pozostają dwiema czynnościami.
+
+## Reset i restart instalacji
 
 Przycisk resetu konfiguracji instalacji po potwierdzeniu zastępuje **szkic**
 publicznym szablonem. Usunie z formularza Twoje encje i nadpisania, ale nie
@@ -94,8 +131,9 @@ lokalizacji używa `Europe/Berlin` oraz współrzędnych ustawionych w Home Assi
 
 1. W **Funkcjach i integracjach** włącz pięć komponentów domu. Wybierz język
    polski i rzeczywistą usługę powiadomień, np. własne `notify/mobile_app_*`.
-2. W **Instalacji Home Assistant** wybierz `Europe/Warsaw`, kraj `PL`, własne
-   czterocyfrowe kody powiatów TERYT oraz czujnik temperatury zewnętrznej.
+2. W **Instalacji Home Assistant** wybierz `Europe/Warsaw`, kraj `PL` oraz
+   czujnik temperatury zewnętrznej. W **Ogólne** uzupełnij przy IMGW własne
+   czterocyfrowe kody powiatów TERYT.
    Nie wpisuj współrzędnych — aplikacja odczyta je z HA przy starcie.
 3. W **Ustawieniach komponentów** przykład ustawia górny próg temperatury
    całego domu na `27 °C` i czas drzwi na `180 s`. Sypialnia ma własny próg
@@ -133,7 +171,7 @@ budżecie wykrycia.
 | Funkcje i integracje | Włącz tylko komponenty, dla których masz rzeczywiste źródła danych. Providery API można osobno włączać i wyłączać; ich adresy i harmonogramy są ustawieniami systemowymi. |
 | Język | Wybierz polski, angielski lub niemiecki. Nazw encji nie edytuje się w tym formularzu — pochodzą z plików lokalizacji. |
 | Powiadomienia | Wpisz konkretne usługi `notify/<nazwa>`, po jednej w wierszu. `notify/notify` jest niejednoznaczne. Adres po kliknięciu powinien być ścieżką w HA, np. `/`. Encja WAN i lokalne urządzenia sygnalizacji są opcjonalne. |
-| Instalacja Home Assistant | Wybierz strefę czasową i podaj dwuliterowy kod kraju. Dla włączonego IMGW w Polsce podaj kody powiatów TERYT. Gdy używasz komponentu temperatury, wybierz czujnik temperatury zewnętrznej. Współrzędne pochodzą z HA. |
+| Instalacja Home Assistant | Wybierz strefę czasową i podaj dwuliterowy kod kraju. Parametry źródeł, w tym kody TERYT dla IMGW, ustaw w Ogólne. Gdy używasz komponentu temperatury, wybierz czujnik temperatury zewnętrznej. Współrzędne pochodzą z HA. |
 | Zdrowie systemu i konserwacja | Wskaż źródła pamięci i PSI, CPU, wolnego miejsca, temperatury hosta, kopii i aktualizacji. Urządzenia bateryjne pobierane są automatycznie; wybierz, które monitorować. Włącz potrzebne testy okresowe. Progi i interwały można nadpisać w Ustawieniach komponentów; puste pola dziedziczą defaulty. Brak źródła oznacza brak pokrycia, nie stan prawidłowy. |
 | Ustawienia komponentów | Opcjonalnie zmień progi temperatury, czas drzwi/bram, czasy monitoringu, progi pogody i jakości powietrza oraz progi i harmonogramy Functional Safety. Puste pole oznacza wartość systemową pokazaną pod polem. Lista domyślnych zagrożeń i horyzont prognozy pozostają w konfiguracji systemowej. |
 | Pomieszczenia | Dodaj wpis dla każdego monitorowanego pomieszczenia. Wskaż obszar HA i czujnik temperatury. Opcjonalnie wybierz otwór z sekcji „Drzwi, bramy i okna”, osłonę `cover.*` i indywidualne progi. |

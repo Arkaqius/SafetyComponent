@@ -3,16 +3,18 @@
 from __future__ import annotations
 
 import time
+from math import isfinite
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Any, ClassVar, Mapping
+from typing import Any, ClassVar, Mapping, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from .http_json_client import HttpJsonClient, HttpJsonError
 from .models import (
     ApiResult,
     ExternalObservation,
+    HazardType,
     ProviderCapability,
     ProviderHealth,
     ProviderHealthState,
@@ -20,31 +22,43 @@ from .models import (
 )
 
 
+class EmptyProviderParameters(BaseModel):
+    """Closed editable parameter model for coordinate-only providers."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class ExternalApiComponent(ABC):
     """Provider adapter contract; deliberately separate from SafetyComponent."""
 
     component_name = ""
     config_model: ClassVar[type[BaseModel]]
+    parameter_model: ClassVar[type[BaseModel]] = EmptyProviderParameters
+    required_when_selected: ClassVar[frozenset[str]] = frozenset()
     capability: ClassVar[ProviderCapability]
+    hazards: ClassVar[frozenset[HazardType]] = frozenset()
     countries: ClassVar[frozenset[str]] = frozenset()
-
-    @classmethod
-    def validate_site(cls, site: Mapping[str, Any]) -> None:
-        """Validate additional location requirements for an enabled plugin."""
-        return None
+    display_name: ClassVar[str] = ""
+    description: ClassVar[str] = ""
+    data_kind: ClassVar[Literal["live", "synthetic"]] = "live"
+    transport_kind: ClassVar[Literal["http", "none"]] = "http"
 
     def __init__(
         self,
         *,
         provider_config: Mapping[str, Any],
         site_config: Mapping[str, Any],
-        http_client: HttpJsonClient,
+        http_client: HttpJsonClient | None,
+        parameters: Mapping[str, Any],
     ) -> None:
         self.provider_config = dict(provider_config)
         self.site_config = dict(site_config)
+        self.parameters = dict(parameters)
         self.http_client = http_client
         self.poll_interval_seconds = int(self.provider_config["poll_interval_seconds"])
-        self.request_timeout_seconds = float(self.provider_config["request_timeout_seconds"])
+        self.request_timeout_seconds = float(
+            self.provider_config.get("request_timeout_seconds", 0)
+        )
         self.max_retries = int(self.provider_config.get("max_retries", 0))
         self.stale_after_seconds = int(self.provider_config["stale_after_seconds"])
         self.last_attempt_at: datetime | None = None
@@ -61,6 +75,7 @@ class ExternalApiComponent(ABC):
             try:
                 payload = self.fetch_payload()
                 observations = tuple(self.normalize(payload, self.last_attempt_at))
+                self.validate_observations(observations)
                 if observations and all(
                     observation.valid_to < self.last_attempt_at
                     for observation in observations
@@ -106,7 +121,8 @@ class ExternalApiComponent(ABC):
         )
         state = (
             ProviderHealthState.SCHEMA_ERROR
-            if detail_code in {
+            if detail_code
+            in {
                 "malformed_json",
                 "payload_too_deep",
                 "string_too_long",
@@ -117,7 +133,9 @@ class ExternalApiComponent(ABC):
             else ProviderHealthState.UNAVAILABLE
         )
         cached = self.last_valid_result.observations if self.last_valid_result else ()
-        cached_evidence = dict(self.last_valid_result.evidence) if self.last_valid_result else {}
+        cached_evidence = (
+            dict(self.last_valid_result.evidence) if self.last_valid_result else {}
+        )
         return ApiResult(
             provider=self.component_name,
             observations=cached,
@@ -133,6 +151,93 @@ class ExternalApiComponent(ABC):
         """Build bounded provider evidence exposed with the health snapshot."""
 
         return {"observation_count": len(observations)}
+
+    def validate_observations(
+        self, observations: tuple[ExternalObservation, ...]
+    ) -> None:
+        """Validate complete normalized snapshots before publishing healthy data."""
+
+        identities: set[str] = set()
+        for observation in observations:
+            if (
+                observation.provider != self.component_name
+                or observation.hazard_type not in self.hazards
+            ):
+                raise ValueError(
+                    "Observation provider or hazard does not match its registered definition"
+                )
+            if (
+                not observation.observation_id
+                or observation.observation_id in identities
+            ):
+                raise ValueError(
+                    "Observation IDs must be non-empty and unique in a snapshot"
+                )
+            identities.add(observation.observation_id)
+            official = (
+                self.capability == ProviderCapability.OFFICIAL_WARNINGS
+                and self.data_kind == "live"
+            )
+            if observation.authority_confirmed != official:
+                raise ValueError(
+                    "Observation authority does not match provider capability"
+                )
+            if (
+                self.capability != ProviderCapability.OFFICIAL_WARNINGS
+                and observation.observed_at is None
+            ):
+                raise ValueError(
+                    "Model observations require an original source timestamp"
+                )
+            if (
+                observation.observed_at is not None
+                and observation.observed_at > observation.retrieved_at
+            ):
+                raise ValueError("Observation source time is in the future")
+            requirements = {
+                HazardType.FROST: {
+                    "current_temperature": "°C",
+                    "forecast_min_temperature": "°C",
+                },
+                HazardType.WIND: {
+                    "current_wind_gust": "m/s",
+                    "forecast_max_wind_gust": "m/s",
+                },
+                HazardType.RAIN: {
+                    key: "mm"
+                    for key in (
+                        "current_precipitation",
+                        "current_rain",
+                        "forecast_max_precipitation",
+                        "forecast_max_rain",
+                    )
+                },
+                HazardType.STORM: {
+                    "current_weather_code": "wmo_code",
+                    "forecast_weather_codes": "wmo_code",
+                },
+                HazardType.OUTDOOR_AIR_POLLUTION: {"current_european_aqi": "EAQI"},
+            }
+            if self.capability != ProviderCapability.OFFICIAL_WARNINGS:
+                for name, unit in requirements[observation.hazard_type].items():
+                    measurement = observation.values.get(name)
+                    if measurement is None or measurement.unit != unit:
+                        raise ValueError(
+                            f"Missing or invalid normalized measurement {name}"
+                        )
+                    if isinstance(measurement.value, bool):
+                        raise ValueError(f"Boolean normalized measurement {name}")
+                    values: list[Any] = [measurement.value]
+                    if name == "forecast_weather_codes":
+                        values = str(measurement.value).split(",")
+                    if not values or any(
+                        not isfinite(float(value)) for value in values
+                    ):
+                        raise ValueError(f"Non-finite normalized measurement {name}")
+        if self.capability != ProviderCapability.OFFICIAL_WARNINGS and {
+            item.hazard_type for item in observations
+        } != set(self.hazards):
+            raise ValueError("Model snapshot does not contain all declared hazards")
 
     def _health(
         self,

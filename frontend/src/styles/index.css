@@ -2287,11 +2287,14 @@ details summary:focus-visible {
 
 .configuration-introduction {
   align-items: flex-end;
+  flex-wrap: wrap;
 }
 
 .configuration-actions {
   display: flex;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  max-width: 100%;
   gap: 10px;
 }
 
@@ -3374,19 +3377,19 @@ details summary:focus-visible {
   text-align: right;
 }
 
-.imgw-warnings-panel .panel-header {
+.official-warnings-panel .panel-header {
   align-items: flex-start;
 }
 
-.imgw-warnings-panel .panel-header p,
-.imgw-warning-empty {
+.official-warnings-panel .panel-header p,
+.official-warning-empty {
   color: var(--text-muted);
   font-size: 0.7rem;
   line-height: 1.5;
   margin: 6px 0 0;
 }
 
-.imgw-warning-count {
+.official-warning-count {
   align-items: center;
   background: var(--accent-soft);
   border-radius: 999px;
@@ -3399,77 +3402,77 @@ details summary:focus-visible {
   padding: 0 10px;
 }
 
-.imgw-warning-list {
+.official-warning-list {
   display: grid;
   gap: 13px;
 }
 
-.imgw-warning-card {
+.official-warning-card {
   background: rgba(158, 180, 194, 0.05);
   border: 1px solid var(--border);
   border-radius: 14px;
   padding: 16px;
 }
 
-.imgw-warning-card.imgw-warning-local {
+.official-warning-card.official-warning-local {
   border-color: rgba(243, 201, 105, 0.4);
 }
 
-.imgw-warning-card header {
+.official-warning-card header {
   align-items: flex-start;
   display: flex;
   gap: 16px;
   justify-content: space-between;
 }
 
-.imgw-warning-card h3 {
+.official-warning-card h3 {
   font-size: 0.82rem;
   margin: 0 0 4px;
 }
 
-.imgw-warning-card header small,
-.imgw-warning-card > p,
-.imgw-warning-card dd {
+.official-warning-card header small,
+.official-warning-card > p,
+.official-warning-card dd {
   color: var(--text-muted);
   font-size: 0.68rem;
 }
 
-.imgw-warning-card > p {
+.official-warning-card > p {
   line-height: 1.55;
   margin: 13px 0;
 }
 
-.imgw-warning-card .imgw-warning-comment {
+.official-warning-card .official-warning-comment {
   color: var(--text-soft);
   font-style: italic;
 }
 
-.imgw-warning-badges {
+.official-warning-badges {
   display: flex;
   flex-wrap: wrap;
   gap: 7px;
   justify-content: flex-end;
 }
 
-.imgw-local-badge,
-.imgw-degree-badge {
+.official-local-badge,
+.official-degree-badge {
   border-radius: 999px;
   font-size: 0.59rem;
   padding: 5px 8px;
   white-space: nowrap;
 }
 
-.imgw-local-badge {
+.official-local-badge {
   background: var(--warning-soft);
   color: var(--warning);
 }
 
-.imgw-degree-badge {
+.official-degree-badge {
   background: var(--danger-soft);
   color: var(--danger);
 }
 
-.imgw-warning-card dl {
+.official-warning-card dl {
   border-top: 1px solid var(--border);
   display: grid;
   gap: 12px;
@@ -3478,13 +3481,13 @@ details summary:focus-visible {
   padding-top: 13px;
 }
 
-.imgw-warning-card dt {
+.official-warning-card dt {
   color: var(--text-muted);
   font-size: 0.59rem;
   text-transform: uppercase;
 }
 
-.imgw-warning-card dd {
+.official-warning-card dd {
   margin: 4px 0 0;
   overflow-wrap: anywhere;
 }
@@ -4016,15 +4019,15 @@ details summary:focus-visible {
     text-align: left;
   }
 
-  .imgw-warning-card header {
+  .official-warning-card header {
     flex-direction: column;
   }
 
-  .imgw-warning-badges {
+  .official-warning-badges {
     justify-content: flex-start;
   }
 
-  .imgw-warning-card dl {
+  .official-warning-card dl {
     grid-template-columns: 1fr;
   }
 
@@ -4865,3 +4868,14 @@ dialog.entity-dialog-backdrop::backdrop { background: rgba(0, 0, 0, 0.65); }
   .configuration-page :is(.configuration-actions, .configuration-subpages) { min-width: 0; }
   .configuration-page .configuration-object-add > input { min-width: 0; width: 100%; }
 }
+
+/* Applied selection is authoritative even when old source telemetry is retained. */
+.external-category-card { min-width: 0; display: grid; gap: .8rem; align-content: start; }
+.external-category-card > .external-provider-card { padding: .8rem 0 0; border: 0; box-shadow: none; background: transparent; }
+.provider-muted { background: var(--bg-soft); border-color: var(--border-strong); color: var(--text-muted); }
+.external-clear-panel.provider-muted .external-clear-icon { color: var(--text-muted); background: var(--surface-strong); }
+.external-monitoring-muted .external-current-state { color: var(--text-muted); }
+.external-category-count { margin: 0; }
+.external-test-preview { border: 2px dashed var(--warning); background: var(--warning-soft); }
+.external-test-preview .official-warning-card { background: var(--surface); }
+.external-retained-panel { border-color: var(--warning); }

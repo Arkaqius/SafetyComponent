@@ -12,7 +12,6 @@ COMPONENT_NAME = "OpenMeteoWeatherApiComponent"
 class OpenMeteoWeatherConfig(StrictBaseModel):
     """Validated Open-Meteo weather provider configuration."""
 
-    enabled: bool = True
     base_url: str
     poll_interval_seconds: int = Field(ge=60)
     request_timeout_seconds: float = Field(gt=0, le=30)

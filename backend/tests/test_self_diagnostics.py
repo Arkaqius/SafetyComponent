@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from dataclasses import replace
 from unittest.mock import Mock
 
 import pytest
@@ -23,6 +24,29 @@ def _result(provider: str, state: ProviderHealthState) -> ApiResult:
         (),
         ProviderHealth(provider, state, None, None, 1 if state != ProviderHealthState.OK else 0),
     )
+
+
+def test_synthetic_provider_never_allocates_real_diagnostic_contribution():
+    from components.external_apis.germany_dummy_warnings import GermanyDummyWarningsApiComponent
+
+    name = GermanyDummyWarningsApiComponent.component_name
+    diagnostics = SelfDiagnosticsComponent(Mock(), Mock(), EventBus(), Mock(), {name: Mock()})
+    symptoms, _ = diagnostics.get_symptoms_data({}, {})
+    assert diagnostics.providers == frozenset()
+    assert not any(symptom.sm_name == "sm_provider_adapter_health" for symptom in symptoms.values())
+    before = dict(diagnostics._observed)
+    diagnostics.observe_provider(result=_result(name, ProviderHealthState.UNAVAILABLE))
+    assert diagnostics._observed == before
+
+
+def test_provider_health_identity_spoof_cannot_clear_or_set_real_diagnostic():
+    bus = EventBus()
+    provider = "ImgwWarningsApiComponent"
+    diagnostics = SelfDiagnosticsComponent(Mock(), Mock(), bus, Mock(), {provider: Mock()})
+    result = _result(provider, ProviderHealthState.OK)
+    before = dict(diagnostics._observed)
+    diagnostics.observe_provider(result=replace(result, health=replace(result.health, provider="GermanyDummyWarningsApiComponent")))
+    assert diagnostics._observed == before
 
 
 def test_each_provider_fault_sets_and_clears_only_from_its_own_result() -> None:
@@ -78,6 +102,28 @@ def test_unallocated_adapter_is_rejected() -> None:
         SelfDiagnosticsComponent(
             Mock(), Mock(), EventBus(), Mock(), {"UnknownProvider": Mock()}
         )
+
+
+def test_registered_regional_providers_receive_independent_health_contributors(monkeypatch) -> None:
+    """New registered adapters need no shared provider-name fault allocation."""
+    from components.external_apis.core import registry
+    from tests.provider_plugin_support import PeerRegionalWarnings, RegionalWarnings
+
+    monkeypatch.setattr(registry, "_API_COMPONENT_REGISTRY", registry.get_registered_api_components())
+    registry.register_api_component(RegionalWarnings)
+    registry.register_api_component(PeerRegionalWarnings)
+    names = (RegionalWarnings.component_name, PeerRegionalWarnings.component_name)
+    bus = EventBus()
+    diagnostics = SelfDiagnosticsComponent(Mock(), Mock(), bus, Mock(), {name: Mock() for name in names})
+    symptoms, _ = diagnostics.get_symptoms_data({}, {})
+    for symptom in symptoms.values():
+        diagnostics.init_safety_mechanism(symptom.sm_name, symptom.name, symptom.parameters)
+        diagnostics.enable_safety_mechanism(symptom.name, SMState.ENABLED)
+    bus.publish("external_api_result", result=_result(names[0], ProviderHealthState.UNAVAILABLE))
+    bus.publish("external_api_result", result=_result(names[1], ProviderHealthState.OK))
+    assert diagnostics._observed[diagnostics._symptom_id(names[0])] is True
+    assert diagnostics._observed[diagnostics._symptom_id(names[1])] is False
+    assert diagnostics.get_fault_definitions()["ExternalDataUnavailable"]["category"] == "D"
 
 
 def test_unconfigured_local_output_has_no_phantom_d_contributor() -> None:

@@ -4,7 +4,9 @@ Scenariusz zbiera raport z wybranych kontroli przed snem lub po wyjściu z domu.
 Otwórz **Scenariusze bezpieczeństwa** i wybierz **Sprawdź teraz**. Karta pokaże
 uruchamianie i przebieg kontroli. W **Ostatnich wykonaniach** wybierz **Pokaż
 raport**, aby sprawdzić odczyty i wyjaśnienia. Kontrola uwzględnia
-skonfigurowane opóźnienie.
+skonfigurowane opóźnienie. Dla natychmiastowego raportu ustaw opóźnienie i okno
+obserwacji na 0 s. Dwie minuty oczekiwania wynikają z opóźnienia 120 s, a nie
+z czasu odczytywania każdej kontroli.
 Scenariusz odczytuje dane: nie zmienia nastaw pieca ani ogrzewania, nie zamyka
 bram i nie wyłącza urządzeń. Sam nie wysyła powiadomień na telefon.
 
@@ -20,7 +22,7 @@ i surowe stany w swojej instalacji; nazwa widoczna w HA może być przetłumaczo
 | Encja wyzwalacza | `sensor.home_monitor_occupancy` | `sensor.home_monitor_activity` |
 | Stan początkowy | `occupied` | `awake` |
 | Stan docelowy | `empty` | `asleep` — nie `sleep` |
-| Przykładowe opóźnienie | 120 s na dokończenie wyjścia | 120 s na dokończenie rutyny wieczornej |
+| Przykładowe opóźnienie | 0 s: ocena bez oczekiwania | 0 s: ocena bez oczekiwania |
 | Okno obserwacji | 0 s: jedna ocena po opóźnieniu | 0 s: jedna ocena po opóźnieniu |
 | Kontrole | Pusty dom, zamknięte wybrane otwory, moc całego domu, właściwy tryb ogrzewania | Stan snu, zamknięte wybrane otwory, moc całego domu |
 

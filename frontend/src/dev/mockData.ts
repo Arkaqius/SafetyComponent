@@ -17,6 +17,21 @@ function entity(state: string, friendlyName: string, attributes: Record<string, 
 
 /** Deterministic entity contract used only by the local visual demo. */
 export const MOCK_ENTITIES: EntityMap = {
+  'sensor.external_source_selection': entity(
+    'ready',
+    'Zastosowane źródła zewnętrzne',
+    {
+      schema_version: 1,
+      runtime_id: 'mock-runtime',
+      component_enabled: true,
+      selections: {
+        WeatherPointModel: { provider: 'OpenMeteoWeatherApiComponent', data_kind: 'live', hazards: ['frost', 'wind', 'rain', 'storm'] },
+        OfficialWeatherWarnings: { provider: 'ImgwWarningsApiComponent', data_kind: 'live', hazards: ['frost', 'wind', 'rain', 'storm'] },
+        OutdoorAirQuality: { provider: 'OpenMeteoAirQualityApiComponent', data_kind: 'live', hazards: ['outdoor_air_pollution'] },
+      },
+    },
+    0
+  ),
   'sensor.functional_safety_sources': entity('attention', 'Źródła zdrowia systemu', {
     memory: { status: 'normal', available_mib: 1800, psi_percent: 0, checked_at: timestamp(0) },
     cpu: { status: 'normal', usage_percent: 12, checked_at: timestamp(0) },
@@ -177,6 +192,7 @@ export const MOCK_ENTITIES: EntityMap = {
     'Zagrożenia zewnętrzne',
     {
       active_hazards: ['niebezpieczny wiatr'],
+      runtime_id: 'mock-runtime',
       affected_openings: ['Brama garażowa'],
       providers: {
         OpenMeteoWeatherApiComponent: 'ok',
@@ -199,6 +215,11 @@ export const MOCK_ENTITIES: EntityMap = {
   ),
   'sensor.external_provider_open_meteo_weather': entity('ok', 'Dane pogodowe Open-Meteo', {
     provider: 'OpenMeteoWeatherApiComponent',
+    capability: 'WeatherPointModel',
+    data_kind: 'live',
+    runtime_id: 'mock-runtime',
+    stale_after_seconds: 1200,
+    hazards: ['frost', 'wind', 'rain', 'storm'],
     last_attempt_at: timestamp(0),
     last_success_at: timestamp(0),
     consecutive_failures: 0,
@@ -213,6 +234,11 @@ export const MOCK_ENTITIES: EntityMap = {
   }),
   'sensor.external_provider_imgw_warnings': entity('ok', 'Ostrzeżenia IMGW', {
     provider: 'ImgwWarningsApiComponent',
+    capability: 'OfficialWeatherWarnings',
+    data_kind: 'live',
+    runtime_id: 'mock-runtime',
+    stale_after_seconds: 900,
+    hazards: ['frost', 'wind', 'rain', 'storm'],
     last_attempt_at: timestamp(1),
     last_success_at: timestamp(1),
     consecutive_failures: 0,
@@ -247,6 +273,11 @@ export const MOCK_ENTITIES: EntityMap = {
   }),
   'sensor.external_provider_open_meteo_air_quality': entity('ok', 'Jakość powietrza Open-Meteo', {
     provider: 'OpenMeteoAirQualityApiComponent',
+    capability: 'OutdoorAirQuality',
+    data_kind: 'live',
+    runtime_id: 'mock-runtime',
+    stale_after_seconds: 4200,
+    hazards: ['outdoor_air_pollution'],
     last_attempt_at: timestamp(4),
     last_success_at: timestamp(4),
     consecutive_failures: 0,

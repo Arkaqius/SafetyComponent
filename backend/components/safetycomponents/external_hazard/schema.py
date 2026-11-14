@@ -21,7 +21,6 @@ class SiteConfig(StrictBaseModel):
     longitude: float = Field(ge=-180, le=180)
     timezone: str
     country_code: str
-    teryt_codes: list[str] = Field(default_factory=list)
 
     @field_validator("country_code")
     @classmethod
@@ -41,10 +40,6 @@ class SiteConfig(StrictBaseModel):
             raise ValueError(f"Unknown site timezone: {normalized}") from exc
         return normalized
 
-    @field_validator("teryt_codes")
-    @classmethod
-    def _teryt_codes(cls, value: list[str]) -> list[str]:
-        return [code.strip() for code in value]
 
 
 class WeatherPolicy(StrictBaseModel):
@@ -56,7 +51,7 @@ class WeatherPolicy(StrictBaseModel):
     gust_watch_m_s: float = Field(gt=0)
     gust_warning_m_s: float = Field(gt=0)
     precipitation_warning_mm_h: float = Field(gt=0)
-    persistence_seconds: int = Field(default=120, ge=0)
+    persistence_seconds: int = Field(default=300, ge=0)
     hysteresis: dict[str, float] = Field(default_factory=dict)
 
     @model_validator(mode="after")

@@ -40,6 +40,11 @@ def _temperature_component_rooms():
 def _base_user_config():
     return {
         "components_enabled": {"TemperatureComponent": True},
+        "external_sources": {
+            "WeatherPointModel": None,
+            "OfficialWeatherWarnings": None,
+            "OutdoorAirQuality": None,
+        },
         "notification": {
             "local": {"light_entity": "light.warning_light"},
             "persistence": {"enabled": False},

@@ -95,6 +95,7 @@ class RecoveryManager:
         recovery_observer: Callable[[str, bool], None] | None = None,
         command_observer: Callable[[str, str, bool, str], None] | None = None,
         timing: Mapping[str, Any] | None = None,
+        restore_excluded_symptoms: frozenset[str] = frozenset(),
     ) -> None:
         """
         Initializes the RecoveryManager with the necessary application context and recovery configuration.
@@ -129,6 +130,7 @@ class RecoveryManager:
         self.recovery_observer = recovery_observer
         self.command_observer = command_observer
         self.timing = RecoveryTiming.model_validate(dict(timing or {}))
+        self._restore_excluded_symptoms = restore_excluded_symptoms
         self._command_failures: dict[tuple[str, str], str] = {}
         self._command_postconditions: dict[tuple[str, str], dict[str, str]] = {}
         self._command_failure_handles: dict[tuple[str, str], list[Any]] = {}
@@ -302,6 +304,8 @@ class RecoveryManager:
             if not isinstance(raw, dict):
                 continue
             proposal_id = str(raw.get("proposal_id", ""))
+            if proposal_id in self._restore_excluded_symptoms:
+                continue
             recovery = self.recovery_actions.get(proposal_id)
             if recovery is None:
                 continue

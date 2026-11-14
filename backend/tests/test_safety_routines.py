@@ -316,6 +316,16 @@ def test_repeat_is_immutable_and_duplicate_is_idempotent(tmp_path):
     app.set_state.assert_not_called()
 
 
+def test_zero_delay_snapshot_completes_without_scheduling_or_waiting(tmp_path):
+    runtime, app, _, clock = build(tmp_path, delay_seconds=0, observation_seconds=0)
+    result = runtime.run("Bedtime", "immediate")["run"]
+    assert result["state"] == "completed"
+    assert result["sample_count"] == 1
+    assert result["finished_at"] == result["started_at"] == clock[0].isoformat()
+    app.run_in.assert_not_called()
+    app.call_service.assert_not_called()
+
+
 def test_delayed_run_overlap_cancel_and_late_callback(tmp_path):
     runtime, app, _, clock = build(tmp_path, delay_seconds=30)
     first = runtime.run("Bedtime", "one")["run"]

@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
 from components.core.event_bus import EventBus
+from components.core.degradation import CoverageState, DegradationRegistry, compile_runtime_bindings
+from components.core.fault_state_policy import FaultCategory
 from components.core.localization import Localizer
 from components.core.types_common import Fault, FaultState, RecoveryResult, SMState, Symptom
 from components.external_apis import get_registered_api_components
@@ -17,6 +20,7 @@ from components.external_apis.core.models import (
     ExternalObservation,
     HazardType,
     Measurement,
+    ProviderCapability,
     ProviderHealth,
     ProviderHealthState,
     WarningUrgency,
@@ -71,8 +75,10 @@ class FakeHass:
 class FakeMqtt:
     def __init__(self) -> None:
         self.states: dict[str, tuple[str, dict[str, Any]]] = {}
+        self.names: dict[str, str] = {}
 
-    def register_sensor(self, entity_id: str, _: str, **kwargs: Any) -> str:
+    def register_sensor(self, entity_id: str, name: str, **kwargs: Any) -> str:
+        self.names[entity_id.lower()] = name
         self.states.setdefault(entity_id.lower(), (str(kwargs.get("state", "")), {}))
         return entity_id.lower()
 
@@ -100,6 +106,132 @@ POLICY = {
         "warning_at": 60,
     },
 }
+
+
+@pytest.mark.parametrize("scenario,state,count", [
+    ("empty", "ok", 0), ("warning", "ok", 1),
+    ("unavailable", "unavailable", 0), ("stale", "stale", 1),
+])
+def test_synthetic_preview_does_not_mutate_real_policy_or_dispatch_symptoms(scenario, state, count):
+    from components.external_apis.germany_dummy_warnings.component import GermanyDummyWarningsApiComponent
+
+    component, hass, mqtt, events = _component()
+    provider = GermanyDummyWarningsApiComponent.component_name
+    selections = {cap.value: None for cap in ProviderCapability}
+    selections[ProviderCapability.OFFICIAL_WARNINGS.value] = provider
+    component.configure_runtime(runtime_id="preview-start", selections=selections)
+    adapter = GermanyDummyWarningsApiComponent(
+        provider_config={"poll_interval_seconds": 60, "stale_after_seconds": 180},
+        site_config={"country_code": "DE"}, parameters={"region_code": "Berlin", "scenario": scenario},
+    )
+    events.clear()
+    before_states = dict(component.symptom_states)
+    result = adapter.poll()
+    component.handle_external_api_result(result=result)
+    assert component._health == {}
+    assert component._observations == {}
+    component.handle_external_api_test_result(result=result)
+    assert component.symptom_states == before_states
+    assert events == []
+    assert component._inhibited_reasons == {}
+    assert hass.service_calls == []
+    preview_state, attributes = mqtt.states["sensor.external_hazard_test_state"]
+    assert preview_state == state
+    assert attributes["runtime_id"] == "preview-start"
+    assert attributes["data_kind"] == "synthetic"
+    assert attributes["count"] == count
+    assert attributes["scenario"] == scenario
+    assert provider not in component.enabled_providers
+
+
+def test_real_assertions_are_persisted_before_publication_and_failure_cannot_clear():
+    component, _, _, events = _component()
+    name = "ExternalWeatherExposureWindOfficeWindow"
+    writes = []
+    component.assertion_observer = lambda symptom_id, active, context: writes.append(
+        (symptom_id, active, dict(context), len(events))
+    ) or True
+    events.clear()
+    component._apply_state(name, "active", {"source": "ImgwWarningsApiComponent"})
+    assert writes[0][0:2] == (name, True)
+    assert writes[0][3] == 0
+    assert component.symptom_states[name] == FaultState.SET
+    component.assertion_observer = lambda *_: False
+    component._publish_clear(name, {"clear_evidence": "positive"})
+    assert component.symptom_states[name] == FaultState.SET
+    assert not any(event["state"] == FaultState.CLEARED for event in events)
+
+
+@pytest.mark.parametrize("defect", ["authority", "provider", "hazard", "health"])
+def test_malformed_synthetic_preview_is_rejected_without_real_effects(defect):
+    from components.external_apis.germany_dummy_warnings import GermanyDummyWarningsApiComponent
+
+    component, _, mqtt, events = _component()
+    provider = GermanyDummyWarningsApiComponent.component_name
+    choices = {cap.value: None for cap in ProviderCapability}
+    choices["OfficialWeatherWarnings"] = provider
+    component.configure_runtime(runtime_id="test-start", selections=choices)
+    adapter = GermanyDummyWarningsApiComponent(
+        provider_config={"poll_interval_seconds": 60, "stale_after_seconds": 180},
+        site_config={"country_code": "DE"}, parameters={"region_code": "Test", "scenario": "warning"},
+    )
+    result = adapter.poll()
+    event = result.observations[0]
+    if defect == "health":
+        result = replace(result, health=replace(result.health, provider="Spoofed"))
+    else:
+        changes = {"authority": {"authority_confirmed": True}, "provider": {"provider": "ImgwWarningsApiComponent"}, "hazard": {"hazard_type": HazardType.FROST}}
+        result = replace(result, observations=(replace(event, **changes[defect]),))
+    before = dict(mqtt.states)
+    events.clear()
+    component.handle_external_api_test_result(result=result)
+    assert mqtt.states == before
+    assert component._health == component._observations == {}
+    assert events == []
+
+
+def test_forged_live_result_does_not_replace_real_provider_health():
+    component, _, _, events = _component()
+    provider = "ImgwWarningsApiComponent"
+    observation = _observation("GermanyDummyWarningsApiComponent", HazardType.WIND, {}, confirmed=False)
+    events.clear()
+    component.handle_external_api_result(result=ApiResult(provider, (observation,), _health(provider)))
+    assert component._health == component._observations == {}
+    assert events == []
+
+
+def test_preview_summary_is_bounded_without_publishing_real_warning_counts():
+    from components.external_apis.germany_dummy_warnings import GermanyDummyWarningsApiComponent
+
+    component, _, mqtt, events = _component()
+    provider = GermanyDummyWarningsApiComponent.component_name
+    choices = {cap.value: None for cap in ProviderCapability}
+    choices["OfficialWeatherWarnings"] = provider
+    component.configure_runtime(runtime_id="bounded-preview", selections=choices)
+    adapter = GermanyDummyWarningsApiComponent(
+        provider_config={"poll_interval_seconds": 60, "stale_after_seconds": 180},
+        site_config={"country_code": "DE"}, parameters={"region_code": "Test", "scenario": "warning"},
+    )
+    result = adapter.poll()
+    result = replace(result, observations=tuple(replace(result.observations[0], observation_id=f"Synthetic{i}") for i in range(65)))
+    events.clear()
+    component.handle_external_api_test_result(result=result)
+    attributes = mqtt.states["sensor.external_hazard_test_state"][1]
+    assert attributes["count"] == len(attributes["observations"]) == len(attributes["warnings"]) == 64
+    assert provider not in component.enabled_providers
+    assert component._health == component._observations == {}
+    assert events == []
+
+
+def test_restored_removed_assertion_stays_visible_without_event_replay():
+    component, _, mqtt, events = _component()
+    events.clear()
+    name = "ExternalWeatherExposureWindRemovedWindow"
+    component.restore_assertions({name: {"hazard": "wind", "openings": "Removed", "source": "OldProvider", "severity": "warning"}})
+    component._publish_aggregate()
+    assert component.symptom_states[name] == FaultState.SET
+    assert events == []
+    assert mqtt.states["sensor.external_hazard_state"][0] == "warning"
 
 
 def test_confirmed_opening_declares_separate_recovery_health() -> None:
@@ -239,19 +371,19 @@ def _pollution_result(aqi: float = 75) -> ApiResult:
 def test_modeled_hazards_qualify_at_deadline_without_another_poll(
     hazard: HazardType, values: dict[str, int], symptom_id: str, opening_clock: list[float],
 ) -> None:
-    component, hass, _, _ = _component(persistence=120)
+    component, hass, _, _ = _component(persistence=300)
     provider = "OpenMeteoAirQualityApiComponent" if hazard == HazardType.OUTDOOR_AIR_POLLUTION else "OpenMeteoWeatherApiComponent"
     observation = _observation(provider, hazard, {name: Measurement(value) for name, value in values.items()})
     result = ApiResult(provider, (observation,), _health(provider))
     component.handle_external_api_result(result=result)
     callback, delay, kwargs = hass.timers[-1]
-    assert delay == 120
-    opening_clock[0] = 119
+    assert delay == 300
+    opening_clock[0] = 299
     component.handle_external_api_result(result=result)
     assert len(hass.timers) == 1
     assert component.symptom_states[symptom_id] != FaultState.SET
 
-    opening_clock[0] = 120
+    opening_clock[0] = 300
     callback(**kwargs)
     assert component.symptom_states[symptom_id] == FaultState.SET
     assert hass.service_calls == []
@@ -424,15 +556,77 @@ def test_qualification_timer_rejects_unusable_provider_evidence(
     assert not any(event["state"] == FaultState.SET for event in events)
 
 
-def test_valid_imgw_degree_three_bypasses_door_qualification() -> None:
-    component, _, _, events = _component("door", persistence=120)
+def test_valid_imgw_degree_three_waits_for_hazard_debounce(opening_clock: list[float]) -> None:
+    component, hass, _, events = _component("door", persistence=300)
     wind = replace(
         _observation("ImgwWarningsApiComponent", HazardType.WIND, {}, confirmed=True),
         provider_level="3",
         warning_urgency=WarningUrgency.IMMEDIATE,
     )
     component.handle_external_api_result(result=ApiResult(wind.provider, (wind,), _health(wind.provider)))
+    assert not any(event["state"] == FaultState.SET for event in events)
+    opening_clock[0] = 300
+    component._evaluate_all()
     assert any(event["state"] == FaultState.SET for event in events)
+    assert hass.service_calls == []
+
+
+@pytest.mark.parametrize("hazard", [HazardType.FROST, HazardType.WIND, HazardType.RAIN, HazardType.STORM])
+@pytest.mark.parametrize("urgency", [WarningUrgency.STANDARD, WarningUrgency.IMMEDIATE])
+def test_all_official_weather_warnings_require_five_minutes(
+    hazard: HazardType, urgency: WarningUrgency, opening_clock: list[float],
+) -> None:
+    component, hass, _, _ = _component(persistence=300)
+    warning = replace(
+        _observation("ImgwWarningsApiComponent", hazard, {}, confirmed=True),
+        warning_urgency=urgency,
+    )
+    result = ApiResult(warning.provider, (warning,), _health(warning.provider))
+    component.handle_external_api_result(result=result)
+    symptom_id = f"ExternalWeatherExposure{hazard.value.capitalize()}OfficeWindow"
+    assert component.symptom_states[symptom_id] != FaultState.SET
+    callback, delay, kwargs = hass.timers[-1]
+    assert delay == 300
+    opening_clock[0] = 299
+    component.handle_external_api_result(result=result)
+    assert component.symptom_states[symptom_id] != FaultState.SET
+    opening_clock[0] = 300
+    callback(**kwargs)
+    assert component.symptom_states[symptom_id] == FaultState.SET
+    assert hass.service_calls == []
+
+
+@pytest.mark.parametrize("interruption", ["empty", "failed", "stale", "expired", "invalid"])
+def test_official_warning_debounce_restarts_after_interruption(
+    interruption: str, opening_clock: list[float], monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    component, hass, _, _ = _component(persistence=300)
+    provider = "ImgwWarningsApiComponent"
+    warning = _observation(provider, HazardType.WIND, {}, confirmed=True)
+    result = ApiResult(provider, (warning,), _health(provider))
+    now = result.health.last_success_at
+    assert now is not None
+    monkeypatch.setattr(component, "_now", lambda: now + timedelta(seconds=opening_clock[0]))
+    component.handle_external_api_result(result=result)
+    obsolete, _, obsolete_kwargs = hass.timers[-1]
+    opening_clock[0] = 100
+    broken = {
+        "empty": replace(result, observations=()),
+        "failed": replace(result, health=_health(provider, ProviderHealthState.UNAVAILABLE)),
+        "stale": replace(result, health=replace(result.health, stale_after_seconds=30)),
+        "expired": replace(result, observations=(replace(warning, valid_to=now + timedelta(seconds=50)),)),
+        "invalid": replace(result, health=_health(provider, ProviderHealthState.SCHEMA_ERROR)),
+    }[interruption]
+    component.handle_external_api_result(result=broken)
+    component.handle_external_api_result(result=result)
+    callback, delay, kwargs = hass.timers[-1]
+    assert delay == 300
+    opening_clock[0] = 300
+    obsolete(**obsolete_kwargs)
+    assert component.symptom_states["ExternalWeatherExposureWindOfficeWindow"] != FaultState.SET
+    opening_clock[0] = 400
+    callback(**kwargs)
+    assert component.symptom_states["ExternalWeatherExposureWindOfficeWindow"] == FaultState.SET
 
 
 def test_registered_non_imgw_warning_can_qualify_an_open_door(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -467,6 +661,271 @@ def test_no_provider_cannot_supply_clear_evidence_for_an_open_window() -> None:
     assert component._hazard_evidence(HazardType.WIND)[0] == "unknown"
     assert mqtt.states["sensor.external_hazard_state"][0] == "unavailable"
     assert not any(event["state"] == FaultState.CLEARED for event in events)
+
+
+def test_wind_only_empty_feed_cannot_supply_frost_clear_evidence() -> None:
+    """An empty official feed establishes absence only within declared hazards."""
+    component, _, mqtt, _ = _component()
+    name = "WindOnlyApiComponent"
+    component._provider_plugins = {
+        name: SimpleNamespace(
+            data_kind="live",
+            capability=ProviderCapability.OFFICIAL_WARNINGS,
+            hazards=frozenset({HazardType.WIND}),
+        )
+    }
+    component.enabled_providers = {name}
+    component.handle_external_api_result(result=ApiResult(name, (), _health(name)))
+
+    assert component._hazard_evidence(HazardType.WIND)[0] == "clear"
+    assert component._hazard_evidence(HazardType.FROST)[0] == "unknown"
+    assert mqtt.states["sensor.external_hazard_state"][0] == "unavailable"
+
+
+def test_failed_wind_only_source_does_not_block_independent_frost_model() -> None:
+    """A required source for one hazard must not restrict unrelated model evidence."""
+    component, _, _, _ = _component()
+    model = "OpenMeteoWeatherApiComponent"
+    warnings = "WindOnlyApiComponent"
+    component._provider_plugins = {
+        model: SimpleNamespace(
+            data_kind="live",
+            capability=ProviderCapability.WEATHER_MODEL,
+            hazards=frozenset({HazardType.FROST}),
+        ),
+        warnings: SimpleNamespace(
+            data_kind="live",
+            capability=ProviderCapability.OFFICIAL_WARNINGS,
+            hazards=frozenset({HazardType.WIND}),
+        ),
+    }
+    component.enabled_providers = {model, warnings}
+    frost = _observation(model, HazardType.FROST, {
+        "current_temperature": Measurement(10, "°C"),
+        "forecast_min_temperature": Measurement(9, "°C"),
+    })
+    component.handle_external_api_result(result=ApiResult(model, (frost,), _health(model)))
+    component.handle_external_api_result(
+        result=ApiResult(warnings, (), _health(warnings, ProviderHealthState.UNAVAILABLE))
+    )
+
+    assert component._hazard_evidence(HazardType.FROST)[0] == "clear"
+    assert component._hazard_evidence(HazardType.WIND)[0] == "unknown"
+
+
+def test_coverage_projection_distinguishes_no_source_waiting_and_empty_feed() -> None:
+    """Coverage records expose capability and hazard scope without changing raw state."""
+    component, _, mqtt, _ = _component()
+    name = "WindOnlyApiComponent"
+    component._provider_plugins = {
+        name: SimpleNamespace(
+            data_kind="live",
+            capability=ProviderCapability.OFFICIAL_WARNINGS,
+            hazards=frozenset({HazardType.WIND}),
+        ),
+    }
+    component.enabled_providers = {name}
+    component._publish_aggregate()
+    details = mqtt.states["sensor.external_hazard_state"][1].get("coverage_details", [])
+    wind = next((item for item in details if item["capability"] == "OfficialWeatherWarnings" and item["hazard"] == "wind"), None)
+    frost = next((item for item in details if item["capability"] == "OfficialWeatherWarnings" and item["hazard"] == "frost"), None)
+    model = next((item for item in details if item["capability"] == "WeatherPointModel" and item["hazard"] == "wind"), None)
+    assert wind == {"capability": "OfficialWeatherWarnings", "hazard": "wind", "providers": [name], "status": "awaiting_evidence", "status_label": "Oczekiwanie na dane źródła"}
+    assert frost == {"capability": "OfficialWeatherWarnings", "hazard": "frost", "providers": [], "status": "unsupported", "status_label": "Wybrane źródła nie obejmują tego zagrożenia"}
+    assert model == {"capability": "WeatherPointModel", "hazard": "wind", "providers": [], "status": "not_configured", "status_label": "Źródło nieskonfigurowane"}
+
+    component.handle_external_api_result(result=ApiResult(name, (), _health(name)))
+    details = mqtt.states["sensor.external_hazard_state"][1]["coverage_details"]
+    wind = next(item for item in details if item["capability"] == "OfficialWeatherWarnings" and item["hazard"] == "wind")
+    assert wind["status"] == "no_current_warnings"
+    assert mqtt.states["sensor.external_provider_wind_only"][1]["hazards"] == ["wind"]
+
+
+@pytest.mark.parametrize(
+    ("language", "friendly_name", "health_label"),
+    [
+        ("en", "External source: IMGW warnings", "Source unavailable"),
+        ("pl", "Źródło zewnętrzne: Ostrzeżenia IMGW", "Źródło niedostępne"),
+        ("de", "Externe Quelle: IMGW-Warnungen", "Quelle nicht verfügbar"),
+    ],
+)
+def test_provider_health_translates_presentation_without_changing_contract(
+    language: str, friendly_name: str, health_label: str
+) -> None:
+    component, hass, mqtt, _ = _component()
+    hass.localizer = Localizer({"language": language})
+    provider = "ImgwWarningsApiComponent"
+    component._publish_provider_health(ApiResult(provider, (), _health(provider, ProviderHealthState.UNAVAILABLE)))
+    entity_id = "sensor.external_provider_imgw_warnings"
+    state, attributes = mqtt.states[entity_id]
+    assert mqtt.names[entity_id] == friendly_name
+    assert state == "unavailable"
+    assert attributes["provider"] == provider
+    assert attributes["state_label"] == health_label
+
+
+def test_provider_health_uses_plugin_display_name_for_new_plugins() -> None:
+    component, _, mqtt, _ = _component()
+    provider = "RegionalApiComponent"
+    component._provider_plugins = {provider: SimpleNamespace(
+        data_kind="live",
+        capability=ProviderCapability.OFFICIAL_WARNINGS,
+        hazards=frozenset({HazardType.WIND}),
+        display_name="Regional Weather Service",
+    )}
+    component._publish_provider_health(ApiResult(provider, (), _health(provider)))
+    entity_id = "sensor.external_provider_regional"
+    assert mqtt.names[entity_id] == "Źródło zewnętrzne: Regional Weather Service"
+    assert mqtt.states[entity_id][1]["provider_name"] == "Regional Weather Service"
+
+
+def test_active_peer_reports_only_fresh_qualified_source_reevaluations() -> None:
+    """An empty healthy peer can recover coverage alongside an independently active H."""
+    component, _, _, _ = _component()
+    names = ("RegionalApiComponent", "PeerApiComponent")
+    component._provider_plugins = {name: SimpleNamespace(
+        data_kind="live",
+        capability=ProviderCapability.OFFICIAL_WARNINGS,
+        hazards=frozenset({HazardType.WIND}),
+    ) for name in names}
+    component.enabled_providers = set(names)
+    warning = _observation(names[1], HazardType.WIND, {}, confirmed=True)
+    component.handle_external_api_result(result=ApiResult(names[1], (warning,), _health(names[1])))
+    status, context, _ = component._hazard_evidence(HazardType.WIND)
+    assert status == "active"
+    assert context["source"] == names[1]
+    assert context["reevaluated_sources"] == [names[1]]
+
+    component.handle_external_api_result(result=ApiResult(names[0], (), _health(names[0])))
+    assert set(component._hazard_evidence(HazardType.WIND)[1]["reevaluated_sources"]) == set(names)
+    component.handle_external_api_result(result=ApiResult(names[0], (), _health(names[0], ProviderHealthState.UNAVAILABLE)))
+    assert component._hazard_evidence(HazardType.WIND)[1]["reevaluated_sources"] == [names[1]]
+    stale = replace(_health(names[0]), last_success_at=datetime.now(timezone.utc) - timedelta(days=1))
+    component.handle_external_api_result(result=ApiResult(names[0], (), stale))
+    assert component._hazard_evidence(HazardType.WIND)[1]["reevaluated_sources"] == [names[1]]
+    invalid = _observation(names[0], HazardType.WIND, {}, confirmed=False)
+    component.handle_external_api_result(result=ApiResult(names[0], (invalid,), _health(names[0])))
+    assert component._hazard_evidence(HazardType.WIND)[1]["reevaluated_sources"] == [names[1]]
+
+
+def test_pending_model_is_not_a_qualified_peer_reevaluation() -> None:
+    component, _, _, _ = _component(persistence=120)
+    model = "OpenMeteoWeatherApiComponent"
+    official = "ImgwWarningsApiComponent"
+    component.enabled_providers = {model, official}
+    component.handle_external_api_result(result=_wind_result())
+    warning = _observation(official, HazardType.WIND, {}, confirmed=True)
+    component.handle_external_api_result(result=ApiResult(official, (warning,), _health(official)))
+    assert component._hazard_evidence(HazardType.WIND)[1].get("reevaluated_sources", []) == []
+
+
+@pytest.mark.parametrize("peer_capability", [ProviderCapability.OFFICIAL_WARNINGS, ProviderCapability.WEATHER_MODEL])
+def test_fresh_empty_peer_restores_coverage_while_other_peer_keeps_hazard_active(
+    peer_capability: ProviderCapability,
+) -> None:
+    """Provider recovery removes its own pending coverage without clearing H."""
+    component, _, _, _ = _component()
+    names = ("RegionalApiComponent", "PeerApiComponent")
+    definitions = {name: SimpleNamespace(
+        data_kind="live",
+        capability=ProviderCapability.OFFICIAL_WARNINGS,
+        hazards=frozenset({HazardType.WIND}),
+    ) for name in names}
+    definitions[names[1]].capability = peer_capability
+    component._provider_plugins = definitions
+    component.enabled_providers = set(names)
+    hazard_id = "ExternalWeatherExposureWindOfficeWindow"
+    capability_id = "ExternalHazardDataUnavailableOfficialWeatherWarnings"
+    symptoms = {
+        hazard_id: SimpleNamespace(sm_name="sm_ext_weather_exposure", parameters={"opening_name": "OfficeWindow", "hazard": "wind"}),
+        capability_id: SimpleNamespace(sm_name="sm_ext_provider_unavailable", parameters={"capability": "OfficialWeatherWarnings"}),
+        **{name: SimpleNamespace(sm_name="sm_provider_adapter_health", parameters={"provider": name}) for name in names},
+    }
+    faults = {name: Fault(name, [symptom.sm_name], 3,
+        category=FaultCategory.H if name == hazard_id else FaultCategory.D,
+        related_symptom_ids=[name]) for name, symptom in symptoms.items()}
+    registry = DegradationRegistry(symptoms, faults, compile_runtime_bindings(
+        symptoms, (), faults=faults, provider_definitions=definitions
+    ), provider_definitions=definitions)
+    component.event_bus.subscribe("symptom", lambda **payload: registry.observe(**payload) if payload["symptom_id"] in symptoms else None)
+    component.event_bus.subscribe("symptom_observed", registry.observe_hazard)
+    registry.observe(symptom_id=names[0], state=FaultState.SET)
+    registry.observe(symptom_id=names[1], state=FaultState.CLEARED)
+    registry.observe(symptom_id=capability_id, state=FaultState.CLEARED)
+    warning = _observation(names[1], HazardType.WIND, {
+        "current_wind_gust": Measurement(22.0, "m/s"),
+        "forecast_max_wind_gust": Measurement(22.0, "m/s"),
+    }, confirmed=peer_capability == ProviderCapability.OFFICIAL_WARNINGS)
+    component.handle_external_api_result(result=ApiResult(names[1], (warning,), _health(names[1])))
+    assert registry.snapshot()["state"] == CoverageState.DEGRADED.value
+
+    registry.observe(symptom_id=names[0], state=FaultState.CLEARED)
+    component.handle_external_api_result(result=ApiResult(names[0], (), _health(names[0])))
+    assert registry.snapshot()["state"] == CoverageState.FULL.value
+    assert not registry.pending_reevaluations()
+    assert component.symptom_states[hazard_id] == FaultState.SET
+
+
+def test_closed_opening_clear_does_not_reuse_old_provider_reevaluation_list() -> None:
+    component, hass, _, events = _component()
+    component.handle_external_api_result(result=_wind_result())
+    symptom_id = "ExternalWeatherExposureWindOfficeWindow"
+    assert next(event for event in events if event["symptom_id"] == symptom_id)["additional_info"]["reevaluated_sources"]
+    hass.states["binary_sensor.office_window"] = "off"
+    component._evaluate_all()
+    clear = next(event for event in reversed(events) if event["symptom_id"] == symptom_id)
+    assert clear["state"] == FaultState.CLEARED
+    assert "reevaluated_sources" not in clear["additional_info"]
+
+
+def test_expired_warning_after_failure_does_not_clear_active_exposure(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Authoritative expiry cannot prove absence of a replacement during an outage."""
+    component, _, _, events = _component()
+    name = "ImgwWarningsApiComponent"
+    component.enabled_providers = {name}
+    warning = _observation(name, HazardType.WIND, {}, confirmed=True)
+    now = warning.retrieved_at
+    assert now is not None
+    monkeypatch.setattr(component, "_now", lambda: now)
+    warning = replace(warning, valid_to=now + timedelta(seconds=5))
+    health = replace(_health(name), last_attempt_at=now, last_success_at=now)
+    component.handle_external_api_result(result=ApiResult(name, (warning,), health))
+    symptom_id = "ExternalWeatherExposureWindOfficeWindow"
+    assert component.symptom_states[symptom_id] == FaultState.SET
+    component.handle_external_api_result(result=ApiResult(name, (), _health(name, ProviderHealthState.UNAVAILABLE)))
+    monkeypatch.setattr(component, "_now", lambda: now + timedelta(seconds=10))
+    events.clear()
+    component._evaluate_all()
+    assert component.symptom_states[symptom_id] == FaultState.SET
+    assert not any(event["symptom_id"] == symptom_id and event["state"] == FaultState.CLEARED for event in events)
+
+
+def test_capability_recovers_with_one_healthy_peer_without_clearing_hazard() -> None:
+    """Restored usable capability and conservative hazard clearing are separate."""
+    component, _, _, _ = _component()
+    names = ("FirstWarningsApiComponent", "SecondWarningsApiComponent")
+    component._provider_plugins = {
+        name: SimpleNamespace(
+            data_kind="live",
+            capability=ProviderCapability.OFFICIAL_WARNINGS,
+            hazards=frozenset({HazardType.WIND}),
+        )
+        for name in names
+    }
+    component.enabled_providers = set(names)
+    warning = _observation(names[0], HazardType.WIND, {}, confirmed=True)
+    component.handle_external_api_result(result=ApiResult(names[0], (warning,), _health(names[0])))
+    symptom_id = "ExternalWeatherExposureWindOfficeWindow"
+    assert component.symptom_states[symptom_id] == FaultState.SET
+    for name in names:
+        failed = replace(_health(name, ProviderHealthState.UNAVAILABLE), stale_after_seconds=0)
+        component.handle_external_api_result(result=ApiResult(name, (), failed))
+    assert component._capability_health("OfficialWeatherWarnings")[0] == "active"
+
+    component.handle_external_api_result(result=ApiResult(names[1], (), _health(names[1])))
+    assert component._capability_health("OfficialWeatherWarnings")[0] == "clear"
+    assert component._health[names[0]].state == ProviderHealthState.UNAVAILABLE
+    assert component.symptom_states[symptom_id] == FaultState.SET
 
 
 def test_clear_timer_requires_current_positive_evidence() -> None:

@@ -159,15 +159,19 @@ export const monitoringHelp = [
     entries: [
       {
         title: 'Warunki wymagające uwagi i narażone wejścia',
-        text: 'Porównaj rodzaj warunku z listą dotkniętych wejść. Nowa ekspozycja przez drzwi lub bramę zwykle wymaga minuty ciągłego otwarcia. Otwarte okna i właściwe lokalne ostrzeżenia IMGW trzeciego stopnia są uwzględniane od razu.',
+        text: 'Porównaj rodzaj warunku z listą dotkniętych wejść. Nowa ekspozycja przez drzwi lub bramę zwykle wymaga minuty ciągłego otwarcia. Otwarte okna i lokalnie właściwe ostrzeżenia o natychmiastowej pilności są uwzględniane od razu. Zachowane zagrożenie nadal wymaga uwagi po wyłączeniu źródła; wyłączenie nie jest dowodem ustąpienia warunku.',
       },
       {
         title: 'Blokady porad otwarcia',
         text: 'Blokada wskazuje powód, dla którego system wstrzymuje poradę otwarcia. Sprawdź źródło i ważność. Ta karta opisuje spójność zaleceń.',
       },
       {
-        title: 'Ostrzeżenia IMGW',
-        text: 'Sprawdź treść, stopień, obszar i okres ważności komunikatu. Przy pustej liście porównaj stan integracji IMGW, aby odróżnić brak ostrzeżenia od problemu z pobraniem danych.',
+        title: 'Oficjalne ostrzeżenia pogodowe',
+        text: 'Sprawdź nazwę wybranego źródła, treść, stopień, obszar i ważność komunikatu. Zero aktualnych ostrzeżeń dotyczy tylko działającego źródła i jego zakresu. „Wyłączone” jest szare i nie pokazuje zera. Oczekiwanie, brak danych oraz nieaktualne dane nie potwierdzają braku ostrzeżeń.',
+      },
+      {
+        title: 'Podgląd danych testowych',
+        text: 'Niemiecki plugin testowy pokazuje osobne syntetyczne obserwacje i stan scenariusza. Nie zasilają one rzeczywistych alarmów, pokrycia monitorowania, powiadomień ani poleceń. Widok monitorowania opisuje konfigurację zastosowaną przy uruchomieniu, a nie niezapisany lub zapisany szkic oczekujący na restart.',
       },
       {
         title: 'Stan niezależnych integracji i EAQI',

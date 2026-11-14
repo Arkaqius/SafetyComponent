@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 import yaml
+from pydantic import ValidationError
 
 from build_app_config import SYSTEM_CONFIG_PATH, compile_config, load_mapping
 from build_appdaemon_config import CORE_CONFIG_URL, fetch_core_config
@@ -25,7 +26,7 @@ from components.core.functional_safety_diagnostics import (
     FunctionalSafetyDiagnosticsStore,
     JsonFunctionalSafetyDiagnosticsStore,
 )
-from components.external_apis import get_registered_api_components
+from components.external_apis.core.configuration import export_provider_catalogue, resolve_provider_bindings
 from components.external_apis.home_assistant_state import HomeAssistantStateProvider
 from components.external_apis.supervisor_app import own_app_slug
 
@@ -40,6 +41,31 @@ MAX_REQUEST_BYTES = 512 * 1024
 
 class RevisionConflictError(ValueError):
     """Raised when a client attempts to overwrite a newer configuration."""
+
+
+def configuration_error_payload(error: Exception) -> dict[str, Any]:
+    """Preserve error envelopes with bounded structured validation details."""
+
+    payload: dict[str, Any] = {"error": "invalid_configuration", "message": str(error)}
+    records = getattr(error, "field_errors", None)
+    current: BaseException | None = error
+    while not records and current is not None:
+        if isinstance(current, ValidationError):
+            records = [
+                {"path": ["user_config", *issue["loc"]],
+                 "code": "unknown_field" if issue["type"] == "extra_forbidden" else "invalid_value",
+                 "message": issue["msg"]}
+                for issue in current.errors(include_input=False)[:32]
+            ]
+            break
+        current = current.__cause__
+    if records:
+        payload["field_errors"] = [
+            {"path": [part[:128] if isinstance(part, str) else part for part in record["path"][:16]],
+             "code": str(record["code"])[:128], "message": str(record["message"])[:512]}
+            for record in records[:32]
+        ]
+    return payload
 
 
 class UserConfigStore:
@@ -103,6 +129,17 @@ class UserConfigStore:
         safety_door = calibration.get("safety_door", {})
         entity_monitor = calibration.get("entity_monitor", {})
         external_hazard = calibration.get("external_hazard", {})
+        if validation_error is None:
+            try:
+                resolve_provider_bindings(
+                    provider_defaults,
+                    user_config.get("external_sources", {}),
+                    user_config.get("provider_parameters", {}),
+                    user_config.get("installation", {}).get("site", {}) or {},
+                    component_enabled=bool(user_config.get("components_enabled", {}).get("ExternalHazardComponent", False)),
+                )
+            except ValueError as exc:
+                validation_error = str(exc)
         system_defaults = {
             "functional_safety": calibration.get("functional_safety", {}),
             "detector_profiles": sorted(
@@ -127,11 +164,8 @@ class UserConfigStore:
                 if key in entity_monitor
             },
             "external_hazard": {
-                "provider_plugins": {
-                    name: {"countries": sorted(plugin.countries), "enabled": provider_defaults[name].get("enabled", True)}
-                    for name, plugin in get_registered_api_components().items()
-                    if name in provider_defaults
-                },
+                "provider_metadata_version": 2,
+                "provider_plugins": export_provider_catalogue(provider_defaults),
                 "weather": {
                     key: value
                     for key, value in external_hazard.get("weather", {}).items()
@@ -357,7 +391,7 @@ class UserConfigRequestHandler(BaseHTTPRequestHandler):
         except (json.JSONDecodeError, OSError, ValueError, yaml.YAMLError) as exc:
             self._send_json(
                 HTTPStatus.UNPROCESSABLE_ENTITY,
-                {"error": "invalid_configuration", "message": str(exc)},
+                configuration_error_payload(exc),
             )
             return
 
@@ -379,7 +413,7 @@ class UserConfigRequestHandler(BaseHTTPRequestHandler):
         except (json.JSONDecodeError, OSError, ValueError, yaml.YAMLError) as exc:
             self._send_json(
                 HTTPStatus.UNPROCESSABLE_ENTITY,
-                {"error": "invalid_configuration", "message": str(exc)},
+                configuration_error_payload(exc),
             )
             return
         self._send_json(HTTPStatus.OK, imported)

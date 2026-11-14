@@ -197,7 +197,7 @@ def test_coverage_recheck_waits_for_completed_application_initialization():
 
 def test_pending_reevaluations_uses_stable_copy_during_evidence_changes():
     registry = _registry()
-    registry._requires_reevaluation.add(("room_b", "temperature"))
+    registry._requires_reevaluation.add(("room_b", "temperature", None))
 
     def observe_during_lookup(*args):
         registry._requires_reevaluation.clear()

@@ -25,8 +25,12 @@ class OpenMeteoWeatherApiComponent(ExternalApiComponent):
     component_name = "OpenMeteoWeatherApiComponent"
     config_model = OpenMeteoWeatherConfig
     capability = ProviderCapability.WEATHER_MODEL
+    hazards = frozenset({HazardType.FROST, HazardType.WIND, HazardType.RAIN, HazardType.STORM})
+    display_name = "Pogoda Open-Meteo"
+    description = "Model pogody i prognoza dla współrzędnych Home Assistant."
 
     def fetch_payload(self) -> Any:
+        assert self.http_client is not None
         return self.http_client.get_json(
             self.provider_config["base_url"],
             params={
@@ -77,12 +81,12 @@ class OpenMeteoWeatherApiComponent(ExternalApiComponent):
         if current_units.get("wind_gusts_10m") not in {"m/s", "ms"}:
             raise ValueError("Open-Meteo weather wind unit must be m/s")
 
-        observed_at = parse_datetime(current.get("time"), default=retrieved_at)
+        observed_at = parse_datetime(current.get("time"))
         horizon = int(self.provider_config.get("forecast_horizon_hours", 12))
         valid_to = retrieved_at + timedelta(hours=horizon)
         times = self._series(hourly, "time")[:horizon]
         if times:
-            valid_to = parse_datetime(times[-1], default=valid_to) + timedelta(hours=1)
+            valid_to = parse_datetime(times[-1]) + timedelta(hours=1)
 
         temperatures = self._numbers(hourly, "temperature_2m", horizon)
         gusts = self._numbers(hourly, "wind_gusts_10m", horizon)
@@ -160,7 +164,9 @@ class OpenMeteoWeatherApiComponent(ExternalApiComponent):
     def _numbers(cls, section: dict[str, Any], name: str, limit: int) -> list[float]:
         values = cls._series(section, name)[:limit]
         try:
-            return [float(value) for value in values if value is not None]
+            if any(value is None for value in values):
+                raise ValueError("Missing forecast sample")
+            return [float(value) for value in values]
         except (TypeError, ValueError) as exc:
             raise ValueError(f"Invalid Open-Meteo weather hourly.{name}") from exc
 
