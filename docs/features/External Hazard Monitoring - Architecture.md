@@ -400,8 +400,13 @@ exposure.
 
 Cloud timing is measured from receipt of a usable, source-dated input. The
 system does not claim that a 5- or 10-minute polling service detects a physical event
-within 120 seconds of its occurrence. The 120-second decision goal begins when
-the applicable normalized observation is delivered to C-EXT. Achieving a true
+within 120 seconds of its occurrence. The 120-second total warning response begins
+at runtime receipt of usable applicable input and a relevant known-open aperture,
+including dispatch, qualification, scheduling, decision and notification allocation.
+The allocation is 5 s dispatch + max(75 s weather, 60 s door) + 9 s scheduling/
+reconciliation + 1 s decision + 30 s notification. HA acceptance shall not prove
+phone receipt; failed acceptance shall expose delivery uncertainty and retain the
+active hazard. Achieving a true
 physical-event FTTI of 120 seconds would require a reviewed local rain/wind or
 other direct sensor path.
 
@@ -416,8 +421,10 @@ other direct sensor path.
 
 C-EXT shall qualify modeled frost, wind, rain, storm, and outdoor pollution
 independently per provider and hazard. Fresh evidence shall meet the applicable
-assertion threshold for the shared `weather.persistence_seconds` interval
-(300 seconds by default). This interval shall also apply to applicable official
+assertion threshold for its independent persistence interval: weather uses
+`weather.persistence_seconds` (75 seconds by default); outdoor AQ uses a separate
+300-second default. Timing validation shall reject weather overrides exceeding
+the total response allocation. The weather interval shall also apply to official
 warnings, including warnings normalized as `immediate`. The monotonic timer shall
 re-evaluate fresh provider
 evidence and the current contact at its deadline without waiting for another
@@ -564,11 +571,12 @@ calibration:
       default_gust_watch_m_s: 15.0
       default_gust_warning_m_s: 20.0
       default_precipitation_warning_mm_h: 2.5
-      default_persistence_seconds: 300
+      default_persistence_seconds: 75
       default_hysteresis:
         temperature_c: 0.5
         gust_m_s: 1.0
     outdoor_air_quality:
+      default_persistence_seconds: 300
       default_standard: european_aqi
       default_warning_at: 60
 
