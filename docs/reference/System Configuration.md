@@ -159,7 +159,8 @@ weather forecast horizon has no user override.
 | `weather.default_gust_watch_m_s` | m/s `15` | `weather.gust_watch_m_s` |
 | `weather.default_gust_warning_m_s` | m/s `20` | `weather.gust_warning_m_s` |
 | `weather.default_precipitation_warning_mm_h` | mm/h `2.5` | `weather.precipitation_warning_mm_h` |
-| `weather.default_persistence_seconds` | seconds `300`; modeled hazards and official warnings | `weather.persistence_seconds` |
+| `weather.default_persistence_seconds` | seconds `75`; modeled weather and official warnings, within the total 120 s response allocation | `weather.persistence_seconds` |
+| `outdoor_air_quality.default_persistence_seconds` | seconds `300`; independent AQ confirmation | `outdoor_air_quality.persistence_seconds` |
 | `weather.default_hysteresis` | temperature `0.5`, gust `1.0` | `weather.hysteresis` |
 | `outdoor_air_quality.default_standard` | `european_aqi` | `outdoor_air_quality.standard` |
 | `outdoor_air_quality.default_warning_at` | index `60` | `outdoor_air_quality.warning_at` |

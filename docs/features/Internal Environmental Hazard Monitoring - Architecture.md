@@ -296,6 +296,14 @@ retain unknown recovery status, not emit HEAL. Clock rollback or unknown
 downtime shall conservatively expire uncertain coverage deadlines rather than
 grant another grace period. Removed detector configuration shall retain an
 unresolved prior incident for explicit reconciliation rather than clear it.
+Owner restoration shall run even with the component disabled or no current
+channels, before inactive-fault filtering and initial fault/global publication.
+The independent gas latch shall precede output recovery. New authoritative clear
+shall start a complete monotonic interval; cached age shall not shorten it.
+Reconnect and source-order uncertainty shall invalidate qualification. Durable
+clear acknowledgement shall precede HEAL; storage failure shall preserve current
+danger and restrictions. The detailed [recovery and retention contract](004-safety-timing-alarm-retention/contracts/indoor-recovery-retention.md)
+shall govern source admission, orphan identity, bounded state and operator projection.
 
 | Path | Maximum interface budget | Example allocation, conditional on validated source/transport |
 | --- | --- | --- |

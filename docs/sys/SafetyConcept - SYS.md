@@ -989,7 +989,13 @@ distinct; one failed adapter shall not disable independently supplied evidence.
   SYS-SR-EXT-013 and SYS-SR-EXT-043.
   C-EXT shall qualify modeled hazards and applicable official warnings independently per provider and hazard
   after continuous fresh threshold evidence for the configured persistence
-  interval (300 seconds by default). An interruption shall reset pending
+  interval (75 seconds for weather, independently 300 seconds for outdoor AQ by
+  default). Weather response shall complete within 120 seconds total from usable
+  input and a relevant known-open aperture: 5 s dispatch, concurrent weather and
+  opening qualification (75 s and 60 s), 9 s scheduling/reconciliation, 1 s decision
+  and 30 s notification allocation. Configured overrides shall fit this total;
+  provider polling and physical onset remain explicit boundaries.
+  An interruption shall reset pending
   qualification. Official warnings, including `immediate` warnings, shall remain
   authoritatively valid and fresh throughout that interval.
 - **SYS-SR-EXT-011:** Official IMGW warnings shall be applicable only when at
