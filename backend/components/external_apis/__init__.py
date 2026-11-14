@@ -14,6 +14,7 @@ from .core import (
     register_api_component,
 )
 from .imgw_warnings import ImgwWarningsApiComponent, ImgwWarningsConfig
+from .germany_dummy_warnings import GermanyDummyWarningsApiComponent
 from .open_meteo_air_quality import OpenMeteoAirQualityApiComponent, OpenMeteoAirQualityConfig
 from .open_meteo_weather import OpenMeteoWeatherApiComponent, OpenMeteoWeatherConfig
 
@@ -26,6 +27,7 @@ __all__ = [
     "HttpJsonClient",
     "ImgwWarningsApiComponent",
     "ImgwWarningsConfig",
+    "GermanyDummyWarningsApiComponent",
     "Measurement",
     "OpenMeteoAirQualityApiComponent",
     "OpenMeteoAirQualityConfig",

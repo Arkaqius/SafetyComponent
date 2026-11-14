@@ -3,6 +3,7 @@ import { useHass } from '@hakit/core';
 import {
   getFaults,
   getExternalHazardMonitoring,
+  invalidateExternalMonitoring,
   getAirQualityPresentation,
   getMonitoredTemperatures,
   getRecentActivity,
@@ -38,12 +39,9 @@ export function useSafetyEntities() {
       return areaName ? { ...temperature, roomName: areaName } : temperature;
     });
     const safetyDoors = getSafetyDoors(entities);
-    const externalHazards = getExternalHazardMonitoring(entities);
+    let externalHazards = getExternalHazardMonitoring(entities, Math.max(clock, Date.now()));
     if (cannotConnect || !ready) {
-      externalHazards.providers = externalHazards.providers.map(provider =>
-        provider.status === 'ok' ? { ...provider, status: 'stale' } : provider
-      );
-      if (externalHazards.status === 'clear') externalHazards.status = 'unavailable';
+      externalHazards = invalidateExternalMonitoring(externalHazards);
     }
     const internalEnvironment = getInternalEnvironmentMonitoring(entities);
     const healthEntity = entities[HEALTH_ENTITY_ID];

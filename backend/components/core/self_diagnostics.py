@@ -11,15 +11,11 @@ from typing import Any, Mapping
 from components.core.event_bus import EventBus
 from components.core.types_common import FaultState, RecoveryAction, RecoveryResult, SMState, Symptom
 from components.recovery_manager.manual_actions import manual_action
-from components.external_apis.core.models import ApiResult, ProviderHealthState
+from components.external_apis.core.models import ApiResult, ProviderCapability, ProviderHealthState
+from components.external_apis.core.registry import get_registered_api_components
 from components.safetycomponents.core.safety_component import SafetyComponent
 from components.safetycomponents.core.safety_mechanism import SafetyMechanism
 
-PROVIDER_FAULTS: Mapping[str, str] = {
-    "OpenMeteoWeatherApiComponent": "ExternalDataUnavailable",
-    "ImgwWarningsApiComponent": "ExternalDataUnavailable",
-    "OpenMeteoAirQualityApiComponent": "ExternalDataUnavailable",
-}
 APP_CAUSES = (
     "startup",
     "publication",
@@ -32,6 +28,7 @@ PERSISTENCE_STORES = (
     "battery_fault_catalog",
     "heating_monitor_state",
     "safety_routines",
+    "external_hazard_assertions",
 )
 
 
@@ -52,12 +49,20 @@ class SelfDiagnosticsComponent(SafetyComponent):
             "notification_state", "recovery_state"
         }),
         local_outputs_enabled: bool = True,
+        provider_definitions: Mapping[str, Any] | None = None,
     ) -> None:
         super().__init__(hass_app, common_entities, event_bus, mqtt_entities)
-        unknown = set(providers) - PROVIDER_FAULTS.keys()
+        self.provider_definitions = dict(
+            get_registered_api_components() if provider_definitions is None else provider_definitions
+        )
+        unknown = set(providers) - self.provider_definitions.keys()
         if unknown:
             raise ValueError(f"Provider diagnostics need explicit fault allocation: {sorted(unknown)}")
-        self.providers = frozenset(providers)
+        self.provider_definitions = {
+            name: definition for name, definition in self.provider_definitions.items()
+            if getattr(definition, "data_kind", None) == "live"
+        }
+        self.providers = frozenset(name for name in providers if name in self.provider_definitions)
         if not persistence_stores.issubset(PERSISTENCE_STORES):
             raise ValueError("Unknown App Health persistence store allocation")
         self.persistence_stores = persistence_stores
@@ -110,7 +115,7 @@ class SelfDiagnosticsComponent(SafetyComponent):
         localizer = getattr(self.hass_app, "localizer", None)
         for provider in sorted(self.providers):
             symptom_id = self._symptom_id(provider)
-            fault_name = PROVIDER_FAULTS[provider]
+            fault_name = "ExternalDataUnavailable"
             symptoms[symptom_id] = Symptom(
                 symptom_id,
                 "sm_provider_adapter_health",
@@ -383,6 +388,14 @@ class SelfDiagnosticsComponent(SafetyComponent):
         """Publish only qualified state changes from one enabled adapter."""
 
         if result.provider not in self.providers:
+            return
+        definition = self.provider_definitions[result.provider]
+        if result.health.provider != result.provider or any(
+            observation.provider != result.provider
+            or observation.hazard_type not in definition.hazards
+            or observation.authority_confirmed != (definition.capability == ProviderCapability.OFFICIAL_WARNINGS)
+            for observation in result.observations
+        ):
             return
         symptom_id = self._symptom_id(result.provider)
         failed = result.health.state != ProviderHealthState.OK

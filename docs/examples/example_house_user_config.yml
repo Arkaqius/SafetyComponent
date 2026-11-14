@@ -22,12 +22,18 @@ user_config:
     local: {}
     wan_entity: null
 
+  external_sources:
+    WeatherPointModel: OpenMeteoWeatherApiComponent
+    OfficialWeatherWarnings: ImgwWarningsApiComponent
+    OutdoorAirQuality: OpenMeteoAirQualityApiComponent
+  provider_parameters:
+    ImgwWarningsApiComponent:
+      teryt_codes: ["0000"]
+
   installation:
     site:
       timezone: Europe/Warsaw
       country_code: PL
-      teryt_codes:
-        - "0000"
     # Coordinates are always read from Home Assistant, not this file.
     common_entities:
       outside_temp: sensor.example_outdoor_temperature

@@ -66,7 +66,7 @@ calibration:
       default_gust_watch_m_s: 15.0
       default_gust_warning_m_s: 20.0
       default_precipitation_warning_mm_h: 2.5
-      default_persistence_seconds: 120
+      default_persistence_seconds: 300
       default_hysteresis:
         temperature_c: 0.5
         gust_m_s: 1.0
@@ -197,22 +197,22 @@ runtime_cfg:
         - sm_iehm_detector_health
 
   providers:
+    GermanyDummyWarningsApiComponent:
+      poll_interval_seconds: 60
+      stale_after_seconds: 180
     OpenMeteoWeatherApiComponent:
-      enabled: true
       base_url: https://api.open-meteo.com/v1/forecast
       poll_interval_seconds: 600
       request_timeout_seconds: 10
       max_retries: 2
       stale_after_seconds: 1200
     ImgwWarningsApiComponent:
-      enabled: true
       base_url: https://danepubliczne.imgw.pl/api/data/warningsmeteo
       poll_interval_seconds: 300
       request_timeout_seconds: 10
       max_retries: 2
       stale_after_seconds: 900
     OpenMeteoAirQualityApiComponent:
-      enabled: true
       base_url: https://air-quality-api.open-meteo.com/v1/air-quality
       poll_interval_seconds: 300
       request_timeout_seconds: 10

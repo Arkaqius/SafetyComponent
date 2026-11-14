@@ -2,6 +2,10 @@
 # Home Assistant and replace the example entities and notification service.
 user_config:
   model_version: 2
+  external_sources:
+    WeatherPointModel: OpenMeteoWeatherApiComponent
+    OfficialWeatherWarnings: null
+    OutdoorAirQuality: OpenMeteoAirQualityApiComponent
   components_enabled:
     TemperatureComponent: false
     SafetyDoorsComponent: false

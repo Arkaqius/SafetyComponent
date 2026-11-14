@@ -246,6 +246,7 @@ def test_cli_prints_complete_user_schema(monkeypatch, capsys) -> None:
         "components_enabled",
         "notification",
         "installation",
+        "external_sources",
     }
     assert schema["additionalProperties"] is False
     assert "InstallationConfig" in schema["$defs"]
@@ -280,9 +281,9 @@ def test_cli_prints_complete_system_schema(monkeypatch, capsys) -> None:
         "calibration",
         "runtime_cfg",
     }
-    assert schema["$defs"]["ProviderRuntimeSet"]["additionalProperties"] == {
-        "$ref": "#/$defs/ProviderRuntimeSource"
-    }
+    providers = schema["$defs"]["ProviderRuntimeSet"]
+    assert providers["additionalProperties"] is False
+    assert "base_url" in providers["properties"]["ImgwWarningsApiComponent"]["properties"]
 
 
 def test_system_source_rejects_unknown_keys(tmp_path) -> None:
@@ -420,9 +421,7 @@ def test_v2_overrides_system_policy_defaults_from_installation(tmp_path) -> None
         },
         "outdoor_air_quality": {"warning_at": 55},
     }
-    source["user_config"]["providers"] = {
-        "ImgwWarningsApiComponent": {"enabled": False}
-    }
+    source["user_config"]["external_sources"]["OfficialWeatherWarnings"] = None
     user_path = tmp_path / "user.yml"
     user_path.write_text(yaml.safe_dump(source), encoding="utf-8")
 
@@ -525,3 +524,34 @@ def test_v2_requires_explicit_selection_for_every_component(tmp_path) -> None:
 
     with pytest.raises(ValueError, match="EntityMonitorComponent"):
         compile_config(user_path=user_path)
+
+
+@pytest.mark.parametrize("codes", [["0001","0000"],[" 0001 ","0000"]])
+def test_canonical_teryt_resolves_without_source_rewrite(tmp_path, codes):
+    source=yaml.safe_load((BACKEND_DIR/"config/user_config.example.yml").read_text(encoding="utf-8"))
+    source["user_config"]["provider_parameters"]["ImgwWarningsApiComponent"]={"teryt_codes":codes}
+    path=tmp_path/"source.yml"
+    path.write_text(yaml.safe_dump(source),encoding="utf-8")
+    before=path.read_bytes()
+    runtime=compile_config(user_path=path)["SafetyFunctions"]["user_config"]
+    assert runtime["api_components"]["ImgwWarningsApiComponent"]["parameters"]["teryt_codes"]==["0001","0000"]
+    assert path.read_bytes()==before
+
+@pytest.mark.parametrize("obsolete", ["providers","site_alias","missing_category","multiple_sources"])
+def test_obsolete_selection_forms_are_rejected_without_rewrite(tmp_path,obsolete):
+    source=yaml.safe_load((BACKEND_DIR/"config/user_config.example.yml").read_text(encoding="utf-8"))
+    user=source["user_config"]
+    if obsolete=="providers":
+        user["providers"]={"ImgwWarningsApiComponent":{"enabled":True}}
+    elif obsolete=="site_alias":
+        user["installation"]["site"]["teryt_codes"]=["0000"]
+    elif obsolete=="missing_category":
+        user["external_sources"].pop("OfficialWeatherWarnings")
+    else:
+        user["external_sources"]["OfficialWeatherWarnings"]=["ImgwWarningsApiComponent"]
+    path=tmp_path/"source.yml"
+    path.write_text(yaml.safe_dump(source),encoding="utf-8")
+    before=path.read_bytes()
+    with pytest.raises(ValueError):
+        compile_config(user_path=path)
+    assert path.read_bytes()==before

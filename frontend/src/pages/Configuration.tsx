@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useConfig, useHass } from '@hakit/core';
 import { NavLink, useLocation } from 'react-router-dom';
 import ConfigurationObjectEditor from '../components/ConfigurationObjectEditor';
+import ProviderParameterEditor from '../components/ProviderParameterEditor';
 import BatteryDiscovery from '../components/BatteryDiscovery';
 import EntityInput from '../components/EntityInput';
 import HelpTooltip from '../components/HelpTooltip';
@@ -16,7 +17,17 @@ import {
   saveUserConfiguration,
   prepareConfigurationRestart,
   type ConfigurationMap,
+  ConfigurationApiError,
 } from '../userConfigurationApi';
+import {
+  decodeProviderCatalogue,
+  categoryRows,
+  readProviderParameters,
+  setCategoryProvider,
+  setProviderParameter,
+  validateProviderDraft,
+  type ProviderFieldError,
+} from '../domain/providerConfiguration';
 import { canRestartConfiguration, configurationRestartMessage } from '../domain/configurationRestart';
 
 const registrySections = [
@@ -55,6 +66,8 @@ export default function Configuration() {
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [error, setError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<ProviderFieldError[]>([]);
+  const providerCatalogue = useMemo(() => decodeProviderCatalogue(asMap(systemDefaults.external_hazard)), [systemDefaults]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
@@ -69,6 +82,7 @@ export default function Configuration() {
       setValidationError(document.validation_error ?? null);
       setDirty(false);
       setSaveState('idle');
+      setFieldErrors([]);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Nie udało się pobrać konfiguracji');
     }
@@ -84,12 +98,22 @@ export default function Configuration() {
       setDraft(current => (current ? updatePath(current, path, value) : current));
       setDirty(true);
       setSaveState('idle');
+      setFieldErrors([]);
     },
     [restarting]
   );
 
   const save = async () => {
     if (!draft || restarting) return;
+    const country = stringValue(asMap(asMap(draft.installation).site).country_code)
+      .trim()
+      .toUpperCase();
+    const providerErrors = validateProviderDraft(providerCatalogue, draft, country);
+    if (providerErrors.length || (providerCatalogue.error && asMap(draft.components_enabled).ExternalHazardComponent === true)) {
+      setFieldErrors(providerErrors);
+      setError('Sprawdź parametry źródeł danych.');
+      return;
+    }
     setSaveState('saving');
     setError(null);
     try {
@@ -100,9 +124,11 @@ export default function Configuration() {
       setValidationError(null);
       setDirty(false);
       setSaveState('saved');
+      setFieldErrors([]);
     } catch (caught) {
       setSaveState('idle');
       setError(caught instanceof Error ? caught.message : 'Nie udało się zapisać konfiguracji');
+      setFieldErrors(caught instanceof ConfigurationApiError ? caught.fieldErrors : []);
     }
   };
 
@@ -192,7 +218,6 @@ export default function Configuration() {
   const notification = asMap(draft.notification);
   const mobile = asMap(notification.mobile);
   const localNotification = asMap(notification.local);
-  const providers = asMap(draft.providers);
   const installation = asMap(draft.installation);
   const site = asMap(installation.site);
   const commonEntities = asMap(installation.common_entities);
@@ -208,12 +233,16 @@ export default function Configuration() {
   const safetyDoorSystem = asMap(systemDefaults.safety_door);
   const entityMonitorSystem = asMap(systemDefaults.entity_monitor);
   const externalHazardSystem = asMap(systemDefaults.external_hazard);
-  const providerPlugins = asMap(externalHazardSystem.provider_plugins);
   const country = stringValue(site.country_code).trim().toUpperCase();
-  const providerNames = [...new Set([...Object.keys(providerPlugins), ...Object.keys(providers)])].filter(name => {
-    const countries = stringList(asMap(providerPlugins[name]).countries);
-    return countries.length === 0 || countries.includes(country);
-  });
+  const providerChoices = categoryRows(providerCatalogue, draft, country);
+  const changeProviderDraft = (next: ConfigurationMap) => {
+    if (restarting) return;
+    setDraft(next);
+    setDirty(true);
+    setSaveState('idle');
+    setFieldErrors([]);
+    setError(null);
+  };
   const weatherSystem = asMap(externalHazardSystem.weather);
   const airQualitySystem = asMap(externalHazardSystem.outdoor_air_quality);
   const detectorProfiles = stringList(systemDefaults.detector_profiles);
@@ -384,17 +413,102 @@ export default function Configuration() {
               />
             ))}
           </fieldset>
-          <fieldset className='configuration-fieldset'>
-            <legend>Dostawcy danych zewnętrznych</legend>
-            {providerNames.map(name => (
-              <ToggleField
-                checked={(asMap(providers[name]).enabled ?? asMap(providerPlugins[name]).enabled) !== false}
-                key={name}
-                label={friendlyName(name, 'ApiComponent')}
-                onChange={value => update(['providers', name, 'enabled'], value)}
-              />
-            ))}
-          </fieldset>
+        </div>
+        <div className='provider-configuration'>
+          <h3>Źródła danych zewnętrznych</h3>
+          <p>
+            Wybierz źródło dla każdego rodzaju danych albo je wyłącz. Parametry dotyczą wybranego pluginu. Zapis wymaga osobnego restartu,
+            aby zmienić działające monitorowanie.
+          </p>
+          {providerCatalogue.error ? (
+            <p className='configuration-message configuration-message-error' role='alert'>
+              {providerCatalogue.error}
+            </p>
+          ) : null}
+          {providerChoices.map(row => {
+            const plugin = row.plugin;
+            const values = plugin ? readProviderParameters(draft, plugin) : null;
+            const categoryErrors = fieldErrors.filter(error => error.path[1] === 'external_sources' && error.path[2] === row.capability);
+            return (
+              <fieldset
+                className='configuration-fieldset'
+                key={row.capability}
+                data-capability={row.capability}
+                data-provider-id={plugin?.id}
+                style={{ minWidth: 0, marginBottom: '1rem' }}
+              >
+                <legend>{row.label}</legend>
+                <label className='configuration-field'>
+                  <span>Źródło: {row.label}</span>
+                  <select
+                    aria-label={`Źródło: ${row.label}`}
+                    disabled={restarting}
+                    value={row.selected === undefined ? '__unselected__' : (row.selected ?? '')}
+                    onChange={event => changeProviderDraft(setCategoryProvider(draft, row.capability, event.target.value || null))}
+                  >
+                    {row.selected === undefined ? (
+                      <option value='__unselected__' disabled>
+                        Wybierz źródło lub wyłącz
+                      </option>
+                    ) : null}
+                    <option value=''>Wyłączone</option>
+                    {typeof row.selected === 'string' && !row.options.some(option => option.id === row.selected) ? (
+                      <option value={row.selected}>{plugin?.displayName ?? row.selected} — nieprawidłowy wybór</option>
+                    ) : null}
+                    {row.options.map(option => (
+                      <option value={option.id} key={option.id}>
+                        {option.displayName}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {row.error ? (
+                  <p className='configuration-message configuration-message-error' role='alert'>
+                    {row.error}
+                  </p>
+                ) : null}
+                {categoryErrors.map((error, index) => (
+                  <p key={index} className='configuration-message configuration-message-error' role='alert'>
+                    {error.message}
+                  </p>
+                ))}
+                {plugin && values ? (
+                  <>
+                    <p>{plugin.description}</p>
+                    {plugin.dataKind === 'synthetic' ? (
+                      <p className='configuration-message configuration-message-warning'>
+                        Źródło testowe — dane syntetyczne. Nie zapewnia rzeczywistego monitorowania ani sterowania.
+                      </p>
+                    ) : null}
+                    <small>
+                      Zakres:{' '}
+                      {plugin.hazards
+                        .map(
+                          hazard =>
+                            ({
+                              frost: 'mróz',
+                              wind: 'wiatr',
+                              rain: 'deszcz',
+                              storm: 'burza',
+                              outdoor_air_pollution: 'zanieczyszczenie powietrza',
+                            })[hazard] ?? hazard
+                        )
+                        .join(', ')}
+                      .
+                    </small>
+                    <ProviderParameterEditor
+                      plugin={plugin}
+                      values={values}
+                      active={!row.error && components.ExternalHazardComponent !== false}
+                      disabled={restarting}
+                      errors={fieldErrors}
+                      onChange={(name, value) => changeProviderDraft(setProviderParameter(draft, plugin, name, value))}
+                    />
+                  </>
+                ) : null}
+              </fieldset>
+            );
+          })}
         </div>
       </section>
 
@@ -475,14 +589,6 @@ export default function Configuration() {
             value={stringValue(site.country_code)}
             onChange={value => update(['installation', 'site', 'country_code'], value.toUpperCase())}
           />
-          {country === 'PL' && (
-            <TextAreaField
-              label='Kody TERYT dla IMGW (jeden w wierszu)'
-              help='Podaj czterocyfrowe kody powiatów, jeśli włączasz ostrzeżenia IMGW.'
-              value={stringList(site.teryt_codes).join('\n')}
-              onChange={value => update(['installation', 'site', 'teryt_codes'], splitLines(value))}
-            />
-          )}
           <TextField
             label='Encja temperatury zewnętrznej'
             entityDomains={['sensor']}

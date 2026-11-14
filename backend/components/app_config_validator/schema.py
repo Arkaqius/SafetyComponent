@@ -82,6 +82,8 @@ class UserConfig(StrictBaseModel):
     safety_components: Dict[str, Dict[str, Any]]
     site: SiteConfig | None = None
     api_components: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+    external_sources: Dict[str, str | None]
+    provider_parameters: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
     functional_safety: Dict[str, Any] = Field(default_factory=dict)
     safety_routines: SafetyRoutinesConfig = Field(default_factory=SafetyRoutinesConfig)
 

@@ -26,8 +26,12 @@ export const configurationHelp: Array<{
         text: 'Włącz funkcję po przypisaniu źródeł, których potrzebuje. Po zmianie sprawdź „Zdrowie systemu”, ponieważ wyłączona lub nieoceniona kontrola wpływa na zakres monitorowania. Wejścia ogrzewania konfiguruje się w prywatnym YAML, w sekcji installation.heating_systems.',
       },
       {
-        title: 'Providery API',
-        text: 'Open-Meteo dostarcza dane pogodowe i jakość powietrza z dwóch niezależnych usług, a IMGW dostarcza oficjalne ostrzeżenia. Wybór wpływa na dostępne źródła oceny. Ich adresy i harmonogramy pochodzą z konfiguracji systemowej.',
+        title: 'Źródła danych zewnętrznych',
+        text: 'Ustaw kraj w „Instalacja HA”. Dla pogody, oficjalnych ostrzeżeń i jakości powietrza wybierz nazwany plugin albo „Wyłączone”. Pojawią się tylko pola wybranego źródła. Zmiana wyboru zachowuje wpisane parametry do ponownego użycia. Nieobsługiwany kraj lub nieznane źródło trzeba poprawić przed zapisem.',
+      },
+      {
+        title: 'Wyłączenie i źródło testowe',
+        text: 'Wyłączona kategoria pozostaje szara z oznaczeniem „Wyłączone”, bez zera sugerującego działające monitorowanie. Dla Niemiec można jawnie wybrać „Niemcy — źródło testowe” i scenariusz empty, warning, unavailable lub stale. To dane syntetyczne: podgląd nie zmienia rzeczywistych alarmów, pokrycia, powiadomień ani poleceń. Zapis i osobny restart są potrzebne do zastosowania wyboru.',
       },
       {
         title: 'Język',
@@ -60,8 +64,8 @@ export const configurationHelp: Array<{
     intro: 'Uzupełnij dane instalacji wykorzystywane do oceny warunków zewnętrznych oraz wskazań temperatury.',
     entries: [
       {
-        title: 'Strefa czasowa, kraj i kody TERYT',
-        text: 'Wybierz strefę czasową i wpisz dwuliterowy kod kraju. Kody powiatów TERYT do dopasowania ostrzeżeń IMGW wpisz po jednym w wierszu. Współrzędne są pobierane z ustawień Home Assistant przy każdym uruchomieniu aplikacji.',
+        title: 'Strefa czasowa i kraj',
+        text: 'Wybierz strefę czasową i wpisz dwuliterowy kod kraju. Źródła i ich parametry, w tym kody TERYT dla IMGW, ustawisz w „Ogólne”. Współrzędne są pobierane z ustawień Home Assistant przy każdym uruchomieniu aplikacji.',
       },
       {
         title: 'Temperatura zewnętrzna',

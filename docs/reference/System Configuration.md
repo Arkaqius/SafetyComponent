@@ -159,7 +159,7 @@ weather forecast horizon has no user override.
 | `weather.default_gust_watch_m_s` | m/s `15` | `weather.gust_watch_m_s` |
 | `weather.default_gust_warning_m_s` | m/s `20` | `weather.gust_warning_m_s` |
 | `weather.default_precipitation_warning_mm_h` | mm/h `2.5` | `weather.precipitation_warning_mm_h` |
-| `weather.default_persistence_seconds` | seconds `120` | `weather.persistence_seconds` |
+| `weather.default_persistence_seconds` | seconds `300`; modeled hazards and official warnings | `weather.persistence_seconds` |
 | `weather.default_hysteresis` | temperature `0.5`, gust `1.0` | `weather.hysteresis` |
 | `outdoor_air_quality.default_standard` | `european_aqi` | `outdoor_air_quality.standard` |
 | `outdoor_air_quality.default_warning_at` | index `60` | `outdoor_air_quality.warning_at` |
@@ -309,20 +309,42 @@ tests, UI, MQTT, and deployment changes.
 ### 5.2 Providers
 
 `runtime_cfg.providers` is the only system source for external API adapters.
-Each provider groups default enablement with its endpoint, polling interval,
-request timeout, retry count, and staleness limit. The private
-`user_config.providers.<name>.enabled` field may change enablement; it cannot
-replace endpoints or transport safety bounds.
+Each provider groups its endpoint where applicable, polling interval, request
+timeout, retry count, and staleness limit. Packaged policy contains no `enabled`
+selection default. The required private `user_config.external_sources` map selects
+one provider or explicit `null` per capability; it cannot replace endpoints or
+transport safety bounds. Compiled `api_components` may contain derived lifecycle
+`enabled` values, never an independently editable enablement override.
+
+The optional `user_config.provider_parameters.<name>` mapping shall contain
+installation-specific values validated by that plugin's editable schema. It
+shall not override endpoint allowlists, polling, retries, timeouts, response
+bounds, or staleness policy. Packaged provider configuration shall be validated
+by the registered provider's runtime schema; plugin-specific system fields shall
+not require adding fields to a universal provider model.
 
 The provider registry defines available plugin IDs and their configuration
-schemas. The installation country controls applicability. IMGW is available
-for `PL` and uses `installation.site.teryt_codes` when enabled. The
+schemas, capabilities, covered hazards, and operator metadata. The installation
+country controls applicability. Incompatible selections shall fail validation.
+IMGW is available for `PL` and uses
+`provider_parameters.ImgwWarningsApiComponent.teryt_codes`. The former provider
+enablement map, provenance and site TERYT alias are rejected. The
 [Berlin example](../examples/berlin_user_config.yml) uses the weather and air
 quality plugins with coordinates from Home Assistant.
 
 Provider configuration is intentionally separate from external-hazard decision
 calibration: providers acquire evidence, while C-EXT decides what that evidence
 means for the installation.
+
+The catalogue exposes `provider_metadata_version: 2`, trusted `data_kind` and
+`transport_kind`, parameter schemas and friendly metadata. It has no provider
+selection default or legacy parameter paths. `GermanyDummyWarningsApiComponent`
+supports DE wind preview with `region_code` and a deterministic `scenario`, uses
+`transport_kind: none`, and never contributes to real safety coverage or actions.
+
+Detailed selection and parameter rules are defined in
+[Configuration Model](<../features/Configuration Model - Architecture.md#provider-owned-installation-parameters>)
+and the [source-selection contract](../features/002-provider-selection-states/contracts/source-selection.md).
 
 ### 5.3 Notification and recovery
 

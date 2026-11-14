@@ -1,8 +1,8 @@
-# Lean SYS + TSC — Safety Architecture & Requirements (v1.2.0)
+# Lean SYS + TSC — Safety Architecture & Requirements (v1.4.0)
 
 **Item:** Home Automation Safety Monitoring & Recovery (multi-hazard)
 
-**Date:** 2025-09-18
+**Date:** 2026-11-14
 **Owner:** System/Safety (SYS)
 **Scope:** Blend **ASPICE SYS.x** with **ISO 26262-3/4/6** work products; align with provided **HARA** and **SYS v0.2** inputs.
 
@@ -489,7 +489,9 @@ _Interfaces turn §2 elements into **testable contracts**: freshness, latency, a
 - Official warning plugins shall filter warnings for the installation before
   entering the hazard-decision path. IMGW uses the configured TERYT codes.
 - A warning update with the same stable ID shall patch the existing condition;
-  expiry or explicit withdrawal shall clear it.
+  expiry or explicit withdrawal shall remove that source assertion. Hazard-level
+  clearing shall additionally meet SYS-SR-EXT-055; an unavailable refresh shall
+  not prove absence of a replacement warning.
 - **Freshness:** poll interval `≤ 5 min`; late retrieval shall preserve the
   authority validity interval and expose provider degradation.
 
@@ -837,6 +839,18 @@ temperature.
 - API Components may share an injected HTTP transport and common immutable data
   types, but shall not share polling schedules, failure counters, cached
   payloads, or provider health.
+- Open-Meteo shall remain the default point-weather and outdoor-air-quality
+  source behind the same internal provider contract. Official weather warnings
+  shall remain a separately selectable capability; model output shall not
+  constitute an official warning.
+- Provider plugins shall be bundled with the application. The installation
+  shall select registered plugins rather than install executable packages at
+  runtime. Provider selection shall not change household policy or actuator
+  authority.
+
+The provider contract and configuration decisions are detailed in the
+[External Hazard Monitoring architecture](<../features/External Hazard Monitoring - Architecture.md>)
+and [ADR-0001](../adr/0001-external-provider-plugins.md).
 
 #### 8.3.2 Inputs (from §7)
 
@@ -870,18 +884,24 @@ temperature.
   clear delay.
 - Outdoor AQ policy: European AQI standard and warning threshold. Modeled
   outdoor AQ and weather share the configured persistence interval.
-- Per-provider base URL, poll interval, request timeout, retry count, stale
-  timeout, and enablement. Provider defaults belong to application policy;
-  location and station selection belong to installation configuration.
+- Per-provider base URL where applicable, poll interval, request timeout, retry
+  count and stale timeout belong to application policy. Explicit provider-or-null
+  selection, location and station selection belong to installation configuration. Each
+  plugin shall own the schema of its installation-specific parameters; shared
+  site identity shall not acquire fields for every regional provider.
 
 #### 8.3.5 Normalized events and states
 
-- API Components publish `external_observation` with a typed observation:
-  `{provider, observation_id, hazard_type, provider_level, measured_values,
+- Live API Components publish `external_api_result` with one complete provider
+  snapshot containing typed observations and independent provider health. Each
+  observation contains:
+  `{provider, observation_id, hazard_type, provider_level, values,
   observed_at, valid_from, valid_to, retrieved_at, region_codes, confidence,
-  authority_confirmed, source_reference}`.
-- API Components publish `external_provider_health` independently of data
-  observations.
+  authority_confirmed, source_reference, warning_urgency}`. The provider's
+  supported capability and hazard set shall determine which observations and
+  empty results can contribute to a decision. Trusted synthetic declarations
+  route only to `external_api_test_result` and isolated test preview; their
+  observations shall not claim real official authority or enter real decisions.
 - `ExternalHazardComponent` maintains a latest-valid observation set keyed by
   provider and observation ID. Repeated retrieval of unchanged input is
   idempotent.
@@ -925,6 +945,32 @@ distinct; one failed adapter shall not disable independently supplied evidence.
   changes produce `schema_error` and shall not be interpreted as `clear`.
 - **SYS-SR-EXT-005:** One provider failure shall not delay another provider's
   schedule or replace another provider's last valid observation.
+- **SYS-SR-EXT-006:** Each registered provider shall declare a stable identity,
+  supported capability, covered hazard types, applicable countries, and
+  provider-owned configuration and location-parameter schemas. Adding a
+  conforming provider shall not require provider-name conditions in C-EXT,
+  shared diagnostics, coverage allocation, or the configuration interface.
+- **SYS-SR-EXT-007:** The installation shall allow selection of applicable
+  bundled providers and entry of their required location parameters. Geographic
+  coordinates shall come from Home Assistant Core; country and timezone shall
+  remain shared installation data. TERYT codes shall be IMGW parameters and
+  shall not be required by an unrelated provider.
+- **SYS-SR-EXT-008:** Provider configuration shall be validated before polling
+  or mechanism activation. An unknown plugin, missing required parameter,
+  unsupported parameter, or explicitly selected provider incompatible with the
+  installation country shall be rejected with an identified configuration path.
+  There shall be no inherited provider selection; an unselected adapter shall
+  create no provider-failure diagnostic.
+- **SYS-SR-EXT-009:** Source model version 2 shall use one explicit provider or
+  disabled choice per external-data category, with provider-owned installation
+  parameters in one canonical location. Superseded enablement maps, selection
+  provenance and site TERYT aliases shall be rejected without migration or
+  reconciliation. Technical IDs and raw states not changed by this contract
+  shall remain stable; safety consent and positive-clear rules remain controlling.
+  Active real external-hazard assertions shall remain unresolved across a restart
+  that disables or replaces their source or component. Startup shall restore
+  them conservatively before publishing fault status rather than treat missing
+  mechanisms or retained presentation as evidence of recovery.
 
 **Weather and opening correlation**
 
@@ -936,14 +982,16 @@ distinct; one failed adapter shall not disable independently supplied evidence.
   `T_ext_door_open`, timed independently for each opening. A closed or unknown
   contact shall reset this interval. An open window shall qualify immediately.
   A valid, locally applicable official warning normalized as `immediate`
-  shall also qualify an open aperture configured for its hazard.
+  shall also qualify an open aperture configured for its hazard after the
+  shared hazard persistence interval.
   C-EXT shall re-evaluate the contact and applicable evidence when the
   interval elapses. An existing exposure shall follow the clear policy in
   SYS-SR-EXT-013 and SYS-SR-EXT-043.
-  C-EXT shall qualify modeled hazards independently per provider and hazard
+  C-EXT shall qualify modeled hazards and applicable official warnings independently per provider and hazard
   after continuous fresh threshold evidence for the configured persistence
-  interval. An interruption shall reset pending qualification. Applicable
-  official warnings shall follow their authoritative validity.
+  interval (300 seconds by default). An interruption shall reset pending
+  qualification. Official warnings, including `immediate` warnings, shall remain
+  authoritatively valid and fresh throughout that interval.
 - **SYS-SR-EXT-011:** Official IMGW warnings shall be applicable only when at
   least one configured TERYT code is present in the warning region set and the
   current time is within its validity interval.
@@ -986,9 +1034,9 @@ distinct; one failed adapter shall not disable independently supplied evidence.
   refresh the existing notification and aggregate newly affected hazards or
   openings without creating duplicate notification tags.
 - **SYS-SR-EXT-043:** Clearing shall require positive valid evidence or expiry
-  according to provider semantics. Network failure, stale data, or parse error
-  shall not clear an active condition. The configured frost and gust
-  hysteresis shall apply to the clear thresholds for modeled weather.
+  according to provider semantics and SYS-SR-EXT-055. Network failure, stale
+  data, or parse error shall not clear an active condition. The configured frost
+  and gust hysteresis shall apply to the clear thresholds for modeled weather.
 - **SYS-SR-EXT-044:** Only explicitly configured `cover` entities, when bound
   to their configured closed contacts, may be commanded, and only with
   `cover.close_cover` after an authenticated SafetyHome user confirms a current
@@ -1000,7 +1048,7 @@ distinct; one failed adapter shall not disable independently supplied evidence.
 
 **Diagnostics and evidence**
 
-- **SYS-SR-EXT-050:** Each API Component shall expose provider health per
+- **SYS-SR-EXT-050:** Each selected live API Component shall expose provider health per
   IR-027 through MQTT diagnostics. When every provider required for an enabled
   capability remains unusable beyond its stale timeout, C-EXT shall set
   `ExternalHazardDataUnavailable{CapabilityId}` through
@@ -1011,14 +1059,78 @@ distinct; one failed adapter shall not disable independently supplied evidence.
 - **SYS-SR-EXT-052:** C-EXT shall publish one normalized external-hazard entity
   containing active hazards, affected openings, provider health summary, and
   the most recent successful evaluation time.
+- **SYS-SR-EXT-053:** Every selected live provider's health shall contribute to
+  `ExternalDataUnavailable` and the applicable coverage bindings through its
+  registered capability and covered hazards, without a fixed provider-name
+  allocation. An independent healthy source shall remain usable; recovery of
+  one contributor shall not remove another contributor's failure. Synthetic
+  provider health shall be excluded from real diagnostic and degradation bindings.
+- **SYS-SR-EXT-054:** Coverage shall distinguish an unconfigured capability, an
+  unsupported hazard, a configured source awaiting evidence, an unhealthy
+  source, and a healthy source reporting no applicable warnings. An explicitly
+  disabled category shall remain visible with muted styling and disabled text,
+  without a green healthy indication or evaluated zero. Unconfigured coverage
+  shall remain distinguishable from disabled monitoring, and neither shall
+  disable independently configured model-based monitoring. Synthetic-only and
+  all-disabled monitoring shall not imply healthy real coverage.
+- **SYS-SR-EXT-055:** Hazard-level clear evidence shall require fresh, healthy
+  results from every selected, country-applicable live provider declaring coverage
+  of that hazard, with no applicable active warning or threshold assertion.
+  A validated complete empty warning result shall count only for that
+  provider's declared coverage. Unsupported or unconfigured coverage and failed
+  retrieval shall not supply positive clear evidence. Official-warning expiry
+  shall follow authoritative validity without turning failed refresh into
+  evidence of absence. Clearing an exposure because its opening is confirmed
+  closed shall retain the separate contract in SYS-SR-EXT-013.
+- **SYS-SR-EXT-056:** Provider selection, required parameters, field errors,
+  capability coverage, and diagnostic labels shall be exposed using registered
+  provider metadata and friendly localized names. English, Polish, and German
+  runtime labels shall retain parity while technical identifiers remain
+  language-independent. Changing country or provider selection shall require
+  revalidation and shall not silently replace a selected warning provider.
+- **SYS-SR-EXT-057:** Each external-data category shall present one named
+  applicable source or an explicit disabled choice, revealing only that source's
+  installation fields. Generic category wording shall be provider-neutral;
+  provider names shall identify actual selection or provenance. There shall be
+  no enabled/default/disabled selection tier or compatibility reconciliation flow.
+- **SYS-SR-EXT-058:** A deliberately selected German test-warning source shall
+  provide repeatable synthetic empty, active-warning, unavailable and stale
+  scenarios without an external service. Test data shall remain visibly marked
+  and isolated from real hazard state, real diagnostic contributions and coverage,
+  real alarm notifications, recovery proposals and actuator execution.
+  Active real external assertions shall be checkpointed separately in existing
+  durable state and restored before initial fault publication. The store shall
+  admit at most 4096 assertions and 1 MiB; overflow or failed persistence shall
+  report explicit state failure/unknown coverage, without silent loss of an
+  unresolved assertion. A missing/corrupt checkpoint with an active journal
+  record shall remain unknown; an ordinary cold start awaits fresh evidence.
+  Removed-opening assertions remain unresolved until valid positive evidence;
+  physical closure requires the matching live contact. Startup shall not replay
+  qualification timers, notifications, proposals or consent.
+- **SYS-SR-EXT-059:** Applied external-source selection and component enablement
+  shall be published independently of C-EXT evaluation and editor drafts. All
+  source, aggregate and test-preview presentations shall identify the same
+  application start. Retained records from another start or missing selection
+  truth shall not authorize a healthy or disabled inference; explicit applied
+  disabling shall override retained healthy source diagnostics and counts.
+
+Retained real external danger shall remain active with `UNEVALUABLE` evaluation
+and shall be explicitly identified in fault and global coverage presentation.
+Unresolved retained state shall prevent `FULL`/`PARTIAL` coverage claims without
+hiding known technical degradation. Restoring persisted external recovery
+recommendations or consent shall not be a response to retained assertions;
+fresh qualified real evidence is required to enter normal recovery again.
 
 #### 8.3.7 Mapping
 
-- **SG-011:** SYS-SR-EXT-001/010/011/012/013/040/041/042/043/051
-- **SG-017:** SYS-SR-EXT-010/012/013/040/041/042/043/051
-- **SG-018:** SYS-SR-EXT-010/011/012/013/040/041/042/043/051
-- **SG-019:** SYS-SR-EXT-020/021/022/023/040/041/042/043/051
-- **SG-003:** SYS-SR-EXT-004/005/043/050/052
+- **SG-011:** SYS-SR-EXT-001/006/007/008/009/010/011/012/013/040/041/042/043/051/054/055/056/057/058/059
+- **SG-017:** SYS-SR-EXT-006/007/008/009/010/012/013/040/041/042/043/051/054/055/056/057/058/059
+- **SG-018:** SYS-SR-EXT-006/007/008/009/010/011/012/013/040/041/042/043/051/054/055/056/057/058/059
+- **SG-019:** SYS-SR-EXT-006/007/008/009/020/021/022/023/040/041/042/043/051/054/055/056/057/058/059
+- **SG-003:** SYS-SR-EXT-004/005/006/008/009/043/050/052/053/054/055/056/057/058/059
+
+These requirements refine existing safety-goal allocations; they shall not
+introduce a new hazard or change a HARA risk classification.
 
 #### 8.3.8 Verification
 
@@ -1037,6 +1149,17 @@ distinct; one failed adapter shall not disable independently supplied evidence.
 - **Failure injection:** WAN loss, HTTP timeout, partial provider outage,
   rate-limit response, clock skew, duplicate warning ID, provider withdrawal,
   and stale data that must not clear an active fault.
+- **Plugin extension acceptance:** a synthetic non-Polish warning provider shall
+  traverse configuration compilation, application startup, independent polling,
+  normalized test dispatch, preview diagnostics and shutdown without provider-name
+  branches in consumers. Acceptance shall prove its exclusion from real H/D
+  evaluation, degradation, coverage, notifications and recovery. Tests shall cover
+  unsupported hazards, complete empty feeds, unavailable/stale feeds, rejected
+  obsolete configuration shapes, incompatible selections and disabled categories.
+  A synthetic fixture shall not constitute evidence of a real regional service.
+- **Configuration presentation:** metadata-driven parameter editing, identified
+  validation errors, country changes, persistence of selections, and EN/PL/DE
+  runtime-label parity shall be verified without live household actions.
 
 ---
 

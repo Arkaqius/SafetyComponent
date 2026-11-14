@@ -11,6 +11,7 @@ from pydantic import (
     ConfigDict,
     Field,
     RootModel,
+    StrictStr,
     ValidationError,
     field_validator,
     model_validator,
@@ -21,7 +22,7 @@ from components.safety_routines.schema import SafetyRoutine, SafetyRoutinesConfi
 
 from build_appdaemon_config import validated_number
 from components.core.pydantic_utils import StrictBaseModel
-from components.external_apis.core.registry import describe_provider_keys, validate_provider_keys
+from components.external_apis.core.registry import describe_provider_keys, describe_source_choices, validate_provider_keys
 from components.safetycomponents.entity_monitor.schema import (
     ComponentEntityOverride,
     ExplicitEntityConfig,
@@ -311,20 +312,24 @@ class NotificationBindings(SourceModel):
         return value
 
 
-class ProviderSelection(SourceModel):
-    """Installation enablement for one system-owned provider."""
+class ExternalSources(SourceModel):
+    """One explicit provider or disabled choice for each external capability."""
 
-    enabled: bool = True
+    model_config = ConfigDict(json_schema_extra=describe_source_choices)
+
+    WeatherPointModel: StrictStr | None
+    OfficialWeatherWarnings: StrictStr | None
+    OutdoorAirQuality: StrictStr | None
 
 
-class ProviderBindings(RootModel[dict[str, ProviderSelection]]):
-    """Optional installation overrides for registered plugins."""
+class ProviderParameters(RootModel[dict[str, dict[str, Any]]]):
+    """Canonical installation parameters keyed by their registered owner."""
 
-    root: dict[str, ProviderSelection] = Field(default_factory=dict)
+    root: dict[str, dict[str, Any]] = Field(default_factory=dict)
     model_config = ConfigDict(json_schema_extra=describe_provider_keys)
 
     @model_validator(mode="after")
-    def _registered_plugins(self) -> "ProviderBindings":
+    def _registered_plugins(self) -> "ProviderParameters":
         validate_provider_keys(self.root)
         return self
 
@@ -334,7 +339,6 @@ class InstallationSite(SourceModel):
 
     timezone: str
     country_code: str
-    teryt_codes: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _validate_site(self) -> "InstallationSite":
@@ -548,7 +552,8 @@ class UserConfigurationV2(SourceModel):
     components_enabled: ComponentSelection
     localization: LocalizationBindings = Field(default_factory=LocalizationBindings)
     notification: NotificationBindings
-    providers: ProviderBindings = Field(default_factory=ProviderBindings)
+    external_sources: ExternalSources
+    provider_parameters: ProviderParameters = Field(default_factory=ProviderParameters)
     installation: InstallationConfig
 
 
@@ -711,7 +716,7 @@ def compile_user_config_v2(
     user_config: dict[str, Any],
     home_assistant_config: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """Compile a v2 source config while preserving the v1 runtime contract."""
+    """Compile the current explicit source contract into runtime bindings."""
 
     source = validate_user_configuration_v2(user_config)
     installation = source.installation
@@ -719,11 +724,8 @@ def compile_user_config_v2(
     source_overrides = source.model_dump(exclude_unset=True)
     source_overrides.pop("model_version", None)
     source_overrides.pop("installation", None)
-    provider_overrides = source_overrides.pop("providers", {})
     compiled = deep_merge(runtime_defaults, source_overrides)
-    compiled["api_components"] = deep_merge(
-        runtime_defaults.get("api_components", {}), provider_overrides
-    )
+    compiled["api_components"] = {}
     compiled["common_entities"] = copy.deepcopy(installation.common_entities)
     compiled["safety_routines"] = SafetyRoutinesConfig.model_validate(
         {"routines": {key: value.model_dump() for key, value in installation.safety_routines.items()}}

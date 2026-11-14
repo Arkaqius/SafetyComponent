@@ -1,0 +1,226 @@
+{
+  "provider_metadata_version": 2,
+  "provider_plugins": {
+    "GermanyDummyWarningsApiComponent": {
+      "countries": [
+        "DE"
+      ],
+      "capability": "OfficialWeatherWarnings",
+      "hazards": [
+        "wind"
+      ],
+      "display_name": "Niemcy \u2014 \u017ar\u00f3d\u0142o testowe",
+      "description": "Dane syntetyczne. Nie s\u0105 ostrze\u017ceniami urz\u0119dowymi i nie steruj\u0105 domem.",
+      "parameter_schema": {
+        "additionalProperties": false,
+        "description": "Select a synthetic region and a repeatable preview scenario.",
+        "properties": {
+          "region_code": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Identyfikator testowy, bez znaczenia urz\u0119dowego.",
+            "title": "Region testowy"
+          },
+          "scenario": {
+            "default": "empty",
+            "description": "Wy\u0142\u0105cznie syntetyczny podgl\u0105d, bez wp\u0142ywu na bezpiecze\u0144stwo domu.",
+            "enum": [
+              "empty",
+              "warning",
+              "unavailable",
+              "stale"
+            ],
+            "title": "Scenariusz testowy",
+            "type": "string"
+          }
+        },
+        "title": "GermanyDummyParameters",
+        "type": "object"
+      },
+      "required_when_selected": [
+        "region_code"
+      ],
+      "parameter_defaults": {
+        "scenario": "empty"
+      },
+      "data_kind": "synthetic",
+      "transport_kind": "none"
+    },
+    "OpenMeteoWeatherApiComponent": {
+      "countries": [],
+      "capability": "WeatherPointModel",
+      "hazards": [
+        "frost",
+        "rain",
+        "storm",
+        "wind"
+      ],
+      "display_name": "Pogoda Open-Meteo",
+      "description": "Model pogody i prognoza dla wsp\u00f3\u0142rz\u0119dnych Home Assistant.",
+      "parameter_schema": {
+        "additionalProperties": false,
+        "description": "Closed editable parameter model for coordinate-only providers.",
+        "properties": {},
+        "title": "EmptyProviderParameters",
+        "type": "object"
+      },
+      "required_when_selected": [],
+      "parameter_defaults": {},
+      "data_kind": "live",
+      "transport_kind": "http"
+    },
+    "ImgwWarningsApiComponent": {
+      "countries": [
+        "PL"
+      ],
+      "capability": "OfficialWeatherWarnings",
+      "hazards": [
+        "frost",
+        "rain",
+        "storm",
+        "wind"
+      ],
+      "display_name": "Ostrze\u017cenia IMGW",
+      "description": "Urz\u0119dowe ostrze\u017cenia dla wybranych powiat\u00f3w w Polsce.",
+      "parameter_schema": {
+        "additionalProperties": false,
+        "description": "Installation-owned county selection, required only for active IMGW.",
+        "properties": {
+          "teryt_codes": {
+            "anyOf": [
+              {
+                "items": {
+                  "pattern": "^[0-9]{4}$",
+                  "type": "string"
+                },
+                "maxItems": 10000,
+                "type": "array",
+                "uniqueItems": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Czterocyfrowe kody powiat\u00f3w IMGW, jeden w wierszu.",
+            "title": "Kody TERYT"
+          }
+        },
+        "title": "ImgwWarningsParameters",
+        "type": "object"
+      },
+      "required_when_selected": [
+        "teryt_codes"
+      ],
+      "parameter_defaults": {},
+      "data_kind": "live",
+      "transport_kind": "http"
+    },
+    "OpenMeteoAirQualityApiComponent": {
+      "countries": [],
+      "capability": "OutdoorAirQuality",
+      "hazards": [
+        "outdoor_air_pollution"
+      ],
+      "display_name": "Jako\u015b\u0107 powietrza Open-Meteo",
+      "description": "Model CAMS i europejski indeks jako\u015bci powietrza.",
+      "parameter_schema": {
+        "additionalProperties": false,
+        "description": "Closed editable parameter model for coordinate-only providers.",
+        "properties": {},
+        "title": "EmptyProviderParameters",
+        "type": "object"
+      },
+      "required_when_selected": [],
+      "parameter_defaults": {},
+      "data_kind": "live",
+      "transport_kind": "http"
+    },
+    "RegionalWarningsApiComponent": {
+      "countries": [
+        "DE"
+      ],
+      "capability": "OfficialWeatherWarnings",
+      "hazards": [
+        "wind"
+      ],
+      "display_name": "Regionalne ostrze\u017cenia testowe",
+      "description": "Kontrolowane \u017ar\u00f3d\u0142o do test\u00f3w.",
+      "parameter_schema": {
+        "additionalProperties": false,
+        "description": "Installation-only region selection for a synthetic provider.",
+        "properties": {
+          "region_code": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Region"
+          }
+        },
+        "title": "RegionalParameters",
+        "type": "object"
+      },
+      "required_when_selected": [
+        "region_code"
+      ],
+      "parameter_defaults": {},
+      "data_kind": "live",
+      "transport_kind": "http"
+    },
+    "PeerRegionalWarningsApiComponent": {
+      "countries": [
+        "DE"
+      ],
+      "capability": "OfficialWeatherWarnings",
+      "hazards": [
+        "wind"
+      ],
+      "display_name": "Regionalne ostrze\u017cenia testowe",
+      "description": "Kontrolowane \u017ar\u00f3d\u0142o do test\u00f3w.",
+      "parameter_schema": {
+        "additionalProperties": false,
+        "description": "Installation-only region selection for a synthetic provider.",
+        "properties": {
+          "region_code": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Region"
+          }
+        },
+        "title": "RegionalParameters",
+        "type": "object"
+      },
+      "required_when_selected": [
+        "region_code"
+      ],
+      "parameter_defaults": {},
+      "data_kind": "live",
+      "transport_kind": "http"
+    }
+  }
+}

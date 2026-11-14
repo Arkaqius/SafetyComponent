@@ -8,7 +8,7 @@ from pydantic import ConfigDict, Field, RootModel, ValidationError, model_valida
 
 from components.core.mqtt_entity_manager import MqttSettings
 from components.core.pydantic_utils import StrictBaseModel
-from components.external_apis.core.registry import describe_provider_keys, validate_provider_keys
+from components.external_apis.core.registry import describe_runtime_provider_keys, get_registered_api_components, validate_provider_keys
 from components.faults_manager.schema import FaultEntry, FaultEvidenceConfig
 from components.notification_manager.schema import (
     LevelOneRepeatPolicy,
@@ -202,7 +202,6 @@ class CalibrationSource(SystemSourceModel):
 class ProviderRuntimeSource(SystemSourceModel):
     """One external provider lifecycle and transport contract."""
 
-    enabled: bool
     base_url: str
     poll_interval_seconds: int = Field(ge=1)
     request_timeout_seconds: int = Field(ge=1)
@@ -210,14 +209,19 @@ class ProviderRuntimeSource(SystemSourceModel):
     stale_after_seconds: int = Field(ge=1)
 
 
-class ProviderRuntimeSet(RootModel[dict[str, ProviderRuntimeSource]]):
+class ProviderRuntimeSet(RootModel[dict[str, dict[str, Any]]]):
     """Packaged lifecycle configuration keyed by registered plugin ID."""
 
-    model_config = ConfigDict(json_schema_extra=describe_provider_keys)
+    model_config = ConfigDict(json_schema_extra=describe_runtime_provider_keys)
 
     @model_validator(mode="after")
     def _registered_plugins(self) -> "ProviderRuntimeSet":
         validate_provider_keys(self.root)
+        plugins = get_registered_api_components()
+        self.root = {
+            name: plugins[name].config_model.model_validate(value, context={"strict_validation": True}).model_dump()
+            for name, value in self.root.items()
+        }
         return self
 
 

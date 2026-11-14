@@ -35,6 +35,19 @@ test('not evaluated diagnostic faults are counted as assessments and require att
   assert.doesNotMatch(summary.detail, /encj/);
 });
 
+function appliedSource(official: string | null = null, air: string | null = null) {
+  return entity('ready', {
+    schema_version: 1,
+    runtime_id: 'test-boot',
+    component_enabled: true,
+    selections: {
+      WeatherPointModel: { provider: null, data_kind: null, hazards: [] },
+      OfficialWeatherWarnings: { provider: official, data_kind: official ? 'live' : null, hazards: official ? ['wind', 'storm'] : [] },
+      OutdoorAirQuality: { provider: air, data_kind: air ? 'live' : null, hazards: air ? ['outdoor_air_pollution'] : [] },
+    },
+  });
+}
+
 function entity(state: string, attributes: Record<string, unknown> = {}) {
   return { state, attributes, last_changed: timestamp, last_updated: timestamp };
 }
@@ -483,64 +496,74 @@ test('area names are preserved instead of translating or inventing locations', (
 });
 
 test('normalizes external hazard aggregate and independent provider diagnostics', () => {
-  const external = getExternalHazardMonitoring({
-    'sensor.external_hazard_state': entity('warning', {
-      active_hazards: ['niebezpieczny wiatr'],
-      enabled_providers: ['OpenMeteoWeatherApiComponent', 'ImgwWarningsApiComponent'],
-      affected_openings: ['Okno biura'],
-      advice_inhibition: [
-        {
-          reason: 'wind',
-          source: 'OpenMeteoWeatherApiComponent',
-          valid_until: '2026-07-29T10:00:00Z',
-        },
-      ],
-      active_symptom_count: 1,
-      actuation_mode: 'manual_and_user_confirmed',
-      last_evaluated_at: timestamp,
-    }),
-    'sensor.external_provider_open_meteo_weather': entity('ok', {
-      friendly_name: 'Dane pogodowe Open-Meteo',
-      provider: 'OpenMeteoWeatherApiComponent',
-      last_success_at: timestamp,
-      consecutive_failures: 0,
-      observation_count: 4,
-      observations: [
-        {
-          id: 'weather-wind',
-          hazard_type: 'wind',
-          provider_level: 'warning',
-          observed_at: timestamp,
-          valid_to: timestamp,
-        },
-      ],
-    }),
-    'sensor.external_provider_imgw_warnings': entity('ok', {
-      friendly_name: 'Ostrzeżenia IMGW',
-      provider: 'ImgwWarningsApiComponent',
-      consecutive_failures: 0,
-      observation_count: 1,
-      warnings: [
-        {
-          id: 'imgw-1',
-          event_name: 'Burze',
-          degree: '2',
-          probability: '80',
-          valid_from: timestamp,
-          valid_to: timestamp,
-          regions: ['0000'],
-          content: 'Prognozowane są burze.',
-          locally_applicable: true,
-        },
-        {
-          id: 'imgw-outside-home',
-          event_name: 'Silny wiatr',
-          regions: ['1465'],
-          locally_applicable: false,
-        },
-      ],
-    }),
-  });
+  const external = getExternalHazardMonitoring(
+    {
+      'sensor.external_source_selection': appliedSource('ImgwWarningsApiComponent'),
+      'sensor.external_hazard_state': entity('warning', {
+        runtime_id: 'test-boot',
+        active_hazards: ['niebezpieczny wiatr'],
+        enabled_providers: ['OpenMeteoWeatherApiComponent', 'ImgwWarningsApiComponent'],
+        affected_openings: ['Okno biura'],
+        advice_inhibition: [
+          {
+            reason: 'wind',
+            source: 'OpenMeteoWeatherApiComponent',
+            valid_until: '2026-07-29T10:00:00Z',
+          },
+        ],
+        active_symptom_count: 1,
+        actuation_mode: 'manual_and_user_confirmed',
+        last_evaluated_at: timestamp,
+      }),
+      'sensor.external_provider_open_meteo_weather': entity('ok', {
+        friendly_name: 'Dane pogodowe Open-Meteo',
+        provider: 'OpenMeteoWeatherApiComponent',
+        last_success_at: timestamp,
+        consecutive_failures: 0,
+        observation_count: 4,
+        observations: [
+          {
+            id: 'weather-wind',
+            hazard_type: 'wind',
+            provider_level: 'warning',
+            observed_at: timestamp,
+            valid_to: timestamp,
+          },
+        ],
+      }),
+      'sensor.external_provider_imgw_warnings': entity('ok', {
+        friendly_name: 'Ostrzeżenia IMGW',
+        provider: 'ImgwWarningsApiComponent',
+        capability: 'OfficialWeatherWarnings',
+        data_kind: 'live',
+        runtime_id: 'test-boot',
+        last_success_at: timestamp,
+        stale_after_seconds: 180,
+        consecutive_failures: 0,
+        observation_count: 1,
+        warnings: [
+          {
+            id: 'imgw-1',
+            event_name: 'Burze',
+            degree: '2',
+            probability: '80',
+            valid_from: timestamp,
+            valid_to: timestamp,
+            regions: ['0000'],
+            content: 'Prognozowane są burze.',
+            locally_applicable: true,
+          },
+          {
+            id: 'imgw-outside-home',
+            event_name: 'Silny wiatr',
+            regions: ['1465'],
+            locally_applicable: false,
+          },
+        ],
+      }),
+    },
+    Date.parse(timestamp)
+  );
 
   assert.equal(external.status, 'warning');
   assert.deepEqual(external.activeHazards, ['niebezpieczny wiatr']);
@@ -560,44 +583,55 @@ test('normalizes external hazard aggregate and independent provider diagnostics'
   );
 });
 
-test('filters out a retained official feed after a country change and accepts a replacement plugin', () => {
-  const aggregate = (enabled_providers: string[]) => entity('clear', { enabled_providers });
-  const staleImgw = entity('ok', {
-    provider: 'ImgwWarningsApiComponent',
-    capability: 'OfficialWeatherWarnings',
-    warnings: [{ id: 'alert', event_name: 'Burze', locally_applicable: true }],
-  });
-  const replacement = entity('ok', {
-    provider: 'BerlinWarningsApiComponent',
-    capability: 'OfficialWeatherWarnings',
-    warnings: [{ id: 'alert', event_name: 'Sturm', locally_applicable: true }],
-  });
-  const base = {
-    'sensor.external_provider_imgw_warnings': staleImgw,
-    'sensor.external_provider_berlin_warnings': replacement,
+test('applied replacement ignores retained healthy old source for current warnings', () => {
+  const currentTime = new Date().toISOString();
+  const sources = {
+    'sensor.external_provider_old': entity('ok', {
+      provider: 'Old',
+      capability: 'OfficialWeatherWarnings',
+      data_kind: 'live',
+      runtime_id: 'test-boot',
+      last_success_at: currentTime,
+      stale_after_seconds: 180,
+      observation_count: 1,
+      warnings: [{ id: 'old', event_name: 'Burze', locally_applicable: true }],
+    }),
+    'sensor.external_provider_new': entity('ok', {
+      provider: 'Regional',
+      capability: 'OfficialWeatherWarnings',
+      data_kind: 'live',
+      runtime_id: 'test-boot',
+      last_success_at: currentTime,
+      stale_after_seconds: 180,
+      observation_count: 1,
+      warnings: [{ id: 'new', event_name: 'Sturm', locally_applicable: true }],
+    }),
   };
-  const berlin = getExternalHazardMonitoring({
-    ...base,
-    'sensor.external_hazard_state': aggregate(['OpenMeteoWeatherApiComponent']),
-  });
-  assert.equal(berlin.officialWarningsConfigured, false);
-  assert.deepEqual(berlin.officialWarnings, []);
-  const withAlerts = getExternalHazardMonitoring({
-    ...base,
-    'sensor.external_hazard_state': aggregate(['OpenMeteoWeatherApiComponent', 'BerlinWarningsApiComponent']),
-  });
-  assert.equal(withAlerts.officialWarningsConfigured, true);
+  const disabled = getExternalHazardMonitoring({ ...sources, 'sensor.external_source_selection': appliedSource() });
+  assert.equal(disabled.officialWarningsConfigured, false);
+  assert.deepEqual(disabled.officialWarnings, []);
+  const enabled = getExternalHazardMonitoring({ ...sources, 'sensor.external_source_selection': appliedSource('Regional') });
   assert.deepEqual(
-    withAlerts.officialWarnings.map(warning => warning.eventName),
+    enabled.officialWarnings.map(item => item.eventName),
     ['Sturm']
+  );
+  assert.deepEqual(
+    enabled.retainedWarnings.map(item => item.eventName),
+    ['Burze']
   );
 });
 
 test('presents current Open-Meteo air quality for the home coordinates', () => {
   const external = getExternalHazardMonitoring({
-    'sensor.external_hazard_state': entity('clear'),
+    'sensor.external_hazard_state': entity('clear', { runtime_id: 'test-boot' }),
+    'sensor.external_source_selection': appliedSource(null, 'OpenMeteoAirQualityApiComponent'),
     'sensor.external_provider_open_meteo_air_quality': entity('ok', {
       provider: 'OpenMeteoAirQualityApiComponent',
+      capability: 'OutdoorAirQuality',
+      runtime_id: 'test-boot',
+      data_kind: 'live',
+      last_success_at: new Date().toISOString(),
+      stale_after_seconds: 180,
       observations: [
         {
           id: 'model-current',

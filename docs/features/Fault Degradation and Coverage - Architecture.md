@@ -85,6 +85,33 @@ The shared fault's activation shall not apply the union of every contributor's
 restriction to a single failed source; coverage follows current contributor
 evidence and consumer redundancy policy.
 
+External-provider dependency bindings shall be compiled from the validated
+installed registry, selected live providers, capabilities, and declared covered
+hazards. They shall derive the selected identity for each capability rather than
+assign all official-warning dependencies to IMGW. A newly bundled provider for
+an existing capability shall require no fixed-name entry in degradation policy.
+The same provider may contribute to multiple installed subjects, while each
+restriction retains its exact source and hazard scope.
+
+A wind-only provider shall not establish frost coverage or frost-clear evidence.
+When official-warning selection is explicit null, that capability shall be
+presented as disabled without creating a failure for an uninstalled adapter or
+disabling independent model monitoring. A required hazard with no applicable
+covering source remains
+unevaluable. Data-based hazard clearing requires fresh sufficient results from
+all selected applicable providers covering that hazard; restoring one provider's
+diagnostic health does not clear a hazard or release another failed contributor.
+See [External Hazard Monitoring](<External Hazard Monitoring - Architecture.md#91-multiple-providers>)
+and [ADR-0001](../adr/0001-external-provider-plugins.md).
+
+Synthetic providers and their preview results shall not be real D contributors,
+real hazard evidence, degradation requalification evidence or real coverage.
+Their health recovery cannot release a live-source restriction. Applied selection
+and same-start `runtime_id` truth shall distinguish explicit disabled monitoring
+from unavailable or unknown configuration; all-disabled or synthetic-only inputs
+shall not imply full real monitoring coverage. See the
+[synthetic boundary](002-provider-selection-states/contracts/synthetic-provider.md).
+
 ## Coverage and supervision
 
 Coverage is derived from the declared installed H baseline. Its raw state is
@@ -99,6 +126,15 @@ fault, exact symptom, capability, subject, restriction effect, and each D cause.
 On restart, a persisted or remembered clear is not proof of current coverage.
 Required paths remain `UNKNOWN` until fresh qualified evidence arrives. The
 system shall never publish a false H clear to make coverage look healthy.
+
+Unresolved real C-EXT assertions restored after a restart remain active with
+`UNEVALUABLE` evaluation, including removed sources or openings. Their real fault
+attributes are `retained_assertions` and `retained_hazard_unknown`. The application
+coverage wrapper shall publish `retained_external_assertion_count`, up to 32
+`retained_external_assertions`, and `retained_hazard_unknown` while such state
+remains. It shall turn `FULL`/`PARTIAL` into `UNKNOWN` without hiding `DEGRADED`.
+Restoring those assertions shall not restore old external recovery proposals or
+consent; only fresh qualified real evidence may enter normal recovery again.
 
 `sensor.safety_coverage_state` publishes the raw state and bounded attributes
 for the installed baseline, affected scopes, rejected bindings, and omission

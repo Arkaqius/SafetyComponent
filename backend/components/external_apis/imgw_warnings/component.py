@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from datetime import datetime
 from typing import Any, Mapping
 
@@ -13,7 +12,7 @@ from components.external_apis.core.models import (
 )
 from components.external_apis.core.registry import register_api_component
 
-from .schema import ImgwWarningsConfig
+from .schema import ImgwWarningsConfig, ImgwWarningsParameters
 
 
 @register_api_component
@@ -22,20 +21,17 @@ class ImgwWarningsApiComponent(ExternalApiComponent):
 
     component_name = "ImgwWarningsApiComponent"
     config_model = ImgwWarningsConfig
+    parameter_model = ImgwWarningsParameters
+    required_when_selected = frozenset({"teryt_codes"})
     capability = ProviderCapability.OFFICIAL_WARNINGS
+    hazards = frozenset({HazardType.FROST, HazardType.WIND, HazardType.RAIN, HazardType.STORM})
     countries = frozenset({"PL"})
-
-    @classmethod
-    def validate_site(cls, site: Mapping[str, Any]) -> None:
-        """Require applicable Polish county codes when IMGW is selected."""
-        codes = site.get("teryt_codes", [])
-        if not codes:
-            raise ValueError("IMGW requires site.teryt_codes for a Polish installation")
-        if any(not re.fullmatch(r"[0-9]{4}", code) for code in codes) or len(codes) != len(set(codes)):
-            raise ValueError("IMGW requires unique four-digit codes in site.teryt_codes")
+    display_name = "Ostrzeżenia IMGW"
+    description = "Urzędowe ostrzeżenia dla wybranych powiatów w Polsce."
 
     def fetch_payload(self) -> Any:
         try:
+            assert self.http_client is not None
             return self.http_client.get_json(
                 self.provider_config["base_url"],
                 timeout_seconds=self.request_timeout_seconds,
@@ -49,8 +45,10 @@ class ImgwWarningsApiComponent(ExternalApiComponent):
             raise
 
     def normalize(self, payload: Any, retrieved_at: datetime) -> tuple[ExternalObservation, ...]:
-        self.validate_site(self.site_config)
-        configured_teryt = {str(code) for code in self.site_config.get("teryt_codes", [])}
+        parameters = self.parameter_model.model_validate(self.parameters)
+        if not parameters.teryt_codes:
+            raise ValueError("IMGW requires canonical provider_parameters.teryt_codes")
+        configured_teryt = set(parameters.teryt_codes)
         observations: list[ExternalObservation] = []
         for warning in self._current_warnings(payload, retrieved_at):
             regions = tuple(warning["regions"])
@@ -59,7 +57,7 @@ class ImgwWarningsApiComponent(ExternalApiComponent):
             event_name = str(warning["event_name"])
             hazard_type = self._hazard_type(event_name)
             if hazard_type is None:
-                continue
+                raise ValueError("Unsupported local warning event; coverage cannot be confirmed")
             observations.append(
                 ExternalObservation(
                     provider=self.component_name,
@@ -96,7 +94,7 @@ class ImgwWarningsApiComponent(ExternalApiComponent):
         retrieved_at = self.last_attempt_at
         if retrieved_at is None:
             raise ValueError("IMGW retrieval timestamp is missing")
-        configured_teryt = {str(code) for code in self.site_config.get("teryt_codes", [])}
+        configured_teryt = {str(code) for code in self.parameters.get("teryt_codes", [])}
         warnings = [
             {**warning, "locally_applicable": True}
             for warning in self._current_warnings(payload, retrieved_at)
