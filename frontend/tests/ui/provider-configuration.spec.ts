@@ -1,26 +1,32 @@
 import { expect, test, type Page } from '@playwright/test';
 
-const regional = {
-  enabled: false,
+const dummy = {
   countries: ['DE'],
   capability: 'OfficialWeatherWarnings',
   hazards: ['wind'],
-  display_name: 'Ostrzeżenia regionalne',
-  description: 'Kontrolowane źródło regionalne.',
+  display_name: 'Niemcy — źródło testowe',
+  description: 'Źródło testowe — dane syntetyczne.',
+  data_kind: 'synthetic',
+  transport_kind: 'none',
   parameter_schema: {
     type: 'object',
     additionalProperties: false,
-    properties: { region_code: { type: 'string', title: 'Kod regionu', minLength: 2, maxLength: 16 } },
+    properties: {
+      region_code: { type: 'string', title: 'Kod regionu', minLength: 1, maxLength: 32, pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$' },
+      scenario: { type: 'string', title: 'Scenariusz testowy', enum: ['empty', 'warning', 'unavailable', 'stale'], default: 'empty' },
+    },
   },
-  required_when_enabled: ['region_code'],
-  parameter_defaults: {},
-  legacy_parameter_paths: {},
+  required_when_selected: ['region_code'],
+  parameter_defaults: { scenario: 'empty' },
 };
 const imgw = {
-  ...regional,
-  enabled: true,
+  ...dummy,
   countries: ['PL'],
+  hazards: ['frost', 'wind', 'rain', 'storm'],
   display_name: 'Ostrzeżenia IMGW',
+  description: 'Ostrzeżenia urzędowe dla wybranych powiatów.',
+  data_kind: 'live',
+  transport_kind: 'http',
   parameter_schema: {
     type: 'object',
     additionalProperties: false,
@@ -29,16 +35,14 @@ const imgw = {
         type: 'array',
         title: 'Kody powiatów',
         items: { type: 'string', pattern: '^[0-9]{4}$' },
-        minItems: 1,
         maxItems: 10000,
         uniqueItems: true,
       },
     },
   },
-  required_when_enabled: ['teryt_codes'],
-  legacy_parameter_paths: { teryt_codes: ['installation', 'site', 'teryt_codes'] },
+  required_when_selected: ['teryt_codes'],
+  parameter_defaults: {},
 };
-
 function fixture(country = 'DE') {
   return {
     revision: 'fixture-1',
@@ -48,159 +52,124 @@ function fixture(country = 'DE') {
       model_version: 2,
       components_enabled: { ExternalHazardComponent: true },
       notification: { mobile: { services: ['notify/mobile_app_example'] } },
-      installation: { site: { country_code: country, timezone: 'Europe/Berlin', ...(country === 'PL' ? { teryt_codes: ['0000'] } : {}) } },
+      external_sources: { WeatherPointModel: null, OfficialWeatherWarnings: null, OutdoorAirQuality: null } as Record<
+        string,
+        string | null
+      >,
+      provider_parameters: {} as Record<string, Record<string, unknown>>,
+      installation: { site: { country_code: country, timezone: country === 'PL' ? 'Europe/Warsaw' : 'Europe/Berlin' } },
     },
     system_defaults: {
       external_hazard: {
-        provider_metadata_version: 1,
-        provider_plugins: { RegionalWarningsApiComponent: regional, ImgwWarningsApiComponent: imgw },
+        provider_metadata_version: 2,
+        provider_plugins: { GermanyDummyWarningsApiComponent: dummy, ImgwWarningsApiComponent: imgw },
       },
     },
   };
 }
-
 async function openConfiguration(page: Page, document: unknown) {
   await page.addInitScript(value => {
     localStorage.setItem('safetyhome.view-mode', 'advanced');
-    (window as unknown as { __safetyHomeConfigurationSeed: unknown }).__safetyHomeConfigurationSeed = value;
+    window.__safetyHomeConfigurationSeed = value;
   }, document);
-  await page.route('**/*', request => (new URL(request.request().url()).hostname === '127.0.0.1' ? request.continue() : request.abort()));
+  await page.route('**/*', route => (new URL(route.request().url()).hostname === '127.0.0.1' ? route.continue() : route.abort()));
   await page.goto('/#/configuration/general');
   await expect(page.getByRole('heading', { name: 'Ustawienia SafetyComponent' })).toBeVisible();
 }
+const official = (page: Page) => page.locator('[data-capability="OfficialWeatherWarnings"]');
+const selector = (page: Page) => official(page).getByRole('combobox').first();
 
-test('regional provider fields are configurable without Polish codes and retain explicit intent after save', async ({ page }) => {
+test('selects a German test source or disabled with conditional fields and clean save/reopen', async ({ page }) => {
   await openConfiguration(page, fixture());
-  const provider = page.locator('[data-provider-id="RegionalWarningsApiComponent"]');
-  await provider.getByLabel('Włączenie źródła').selectOption('enabled');
-  await expect(provider.getByLabel('Kod regionu')).toBeVisible();
+  await expect(page.locator('[data-capability]')).toHaveCount(3);
+  await expect(selector(page)).toHaveValue('');
+  await expect(official(page).getByLabel('Kod regionu')).toHaveCount(0);
+  await expect(selector(page).locator('option')).toHaveText(['Wyłączone', 'Niemcy — źródło testowe']);
+  await selector(page).selectOption('GermanyDummyWarningsApiComponent');
+  await official(page).getByLabel('Kod regionu').fill('BE');
+  await expect(official(page).getByLabel('Scenariusz testowy')).toHaveValue('empty');
   await expect(page.getByLabel('Kody powiatów')).toHaveCount(0);
-  await provider.getByLabel('Kod regionu').fill('BE');
-  await page.getByRole('button', { name: 'Zapisz konfigurację', exact: true }).click();
-  await expect(page.getByText('Konfiguracja została zapisana', { exact: false })).toBeVisible();
-  await expect(provider.getByLabel('Włączenie źródła')).toHaveValue('enabled');
-  await expect(provider.getByLabel('Kod regionu')).toHaveValue('BE');
-  await provider.getByLabel('Kod regionu').fill('BB');
-  await page.getByRole('button', { name: 'Odrzuć zmiany', exact: true }).click();
-  await expect(provider.getByLabel('Kod regionu')).toHaveValue('BE');
-  await expect(provider.getByLabel('Włączenie źródła')).toHaveValue('enabled');
-});
-
-test('missing regional parameter prevents save and identifies the field', async ({ page }) => {
-  await openConfiguration(page, fixture());
-  const provider = page.locator('[data-provider-id="RegionalWarningsApiComponent"]');
-  await provider.getByLabel('Włączenie źródła').selectOption('enabled');
-  await page.getByRole('button', { name: 'Zapisz konfigurację', exact: true }).click();
-  await expect(provider.getByLabel('Kod regionu')).toHaveAttribute('aria-invalid', 'true');
-  await expect(page.getByText('Sprawdź parametry źródeł danych.')).toBeVisible();
-  await provider.getByLabel('Kod regionu').fill('BE');
-  await provider.getByLabel('Włączenie źródła').selectOption('disabled');
-  await expect(provider.getByLabel('Kod regionu')).toHaveValue('BE');
-});
-
-test('country changes expose incompatible explicit choices and preserve the draft', async ({ page }) => {
-  await openConfiguration(page, fixture());
-  const provider = page.locator('[data-provider-id="RegionalWarningsApiComponent"]');
-  await provider.getByLabel('Włączenie źródła').selectOption('enabled');
-  await provider.getByLabel('Kod regionu').fill('BE');
-  await page.getByRole('link', { name: 'Instalacja HA', exact: true }).click();
-  await page.getByLabel('Kod kraju', { exact: false }).fill('PL');
-  await page.getByRole('link', { name: 'Ogólne', exact: true }).click();
-  await expect(provider).toBeVisible();
-  await expect(provider.getByText('Źródło nie obsługuje wybranego kraju.')).toBeVisible();
-  await expect(provider.getByLabel('Kod regionu')).toHaveValue('BE');
-});
-
-test('legacy county codes project without dirty state and edit their original binding', async ({ page }) => {
-  await openConfiguration(page, fixture('PL'));
-  const provider = page.locator('[data-provider-id="ImgwWarningsApiComponent"]');
-  await expect(provider.getByLabel('Kody powiatów')).toHaveValue('0000');
-  await expect(page.getByRole('button', { name: 'Zapisz konfigurację', exact: true })).toBeDisabled();
-  await provider.getByLabel('Kody powiatów').fill('0001');
-  await page.getByRole('button', { name: 'Zapisz konfigurację', exact: true }).click();
-  const saved = await page.evaluate(() =>
-    (
-      window as unknown as {
-        __safetyHomeConfigurationMock: {
-          snapshot(): { user_config: { installation: { site: { teryt_codes: string[] } }; providers?: object } };
-        };
-      }
-    ).__safetyHomeConfigurationMock.snapshot()
-  );
-  expect(saved.user_config.installation.site.teryt_codes).toEqual(['0001']);
-  expect(saved.user_config.providers).toBeUndefined();
-});
-
-test('unknown metadata remains visible for explicit correction without granting eligibility', async ({ page }) => {
-  const document = {
-    ...fixture(),
-    user_config: { ...fixture().user_config, providers: { Unknown: { enabled: true, parameters: { x: 'preserve' } } } },
-  };
-  await openConfiguration(page, document);
-  const provider = page.locator('[data-provider-id="Unknown"]');
-  await expect(provider).toBeVisible();
-  await expect(provider.getByText('Brak poprawnych metadanych źródła.')).toBeVisible();
-  await provider.getByRole('button', { name: 'Usuń wybór źródła' }).click();
-  await expect(provider).toHaveCount(0);
-});
-
-test('provider fields fit a narrow screen and expose keyboard labels', async ({ page }) => {
-  await page.setViewportSize({ width: 320, height: 760 });
-  await openConfiguration(page, fixture());
-  const provider = page.locator('[data-provider-id="RegionalWarningsApiComponent"]');
-  await provider.getByLabel('Włączenie źródła').focus();
-  await expect(provider.getByLabel('Włączenie źródła')).toBeFocused();
-  await provider.getByLabel('Włączenie źródła').selectOption('enabled');
-  await provider.getByLabel('Kod regionu').focus();
-  await expect(provider.getByLabel('Kod regionu')).toBeFocused();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
-});
-
-test('equal canonical and legacy fields update together and conflicts require a deliberate choice', async ({ page }) => {
-  const document = {
-    ...fixture('PL'),
-    user_config: { ...fixture('PL').user_config, providers: { ImgwWarningsApiComponent: { parameters: { teryt_codes: ['0000'] } } } },
-  };
-  await openConfiguration(page, document);
-  const provider = page.locator('[data-provider-id="ImgwWarningsApiComponent"]');
-  await provider.getByLabel('Kody powiatów').fill('0002');
+  await selector(page).selectOption('');
+  await expect(official(page).getByLabel('Kod regionu')).toHaveCount(0);
+  await selector(page).selectOption('GermanyDummyWarningsApiComponent');
+  await expect(official(page).getByLabel('Kod regionu')).toHaveValue('BE');
   await page.getByRole('button', { name: 'Zapisz konfigurację', exact: true }).click();
   await expect(page.getByText('Konfiguracja została zapisana', { exact: false })).toBeVisible();
   const saved = await page.evaluate(() => window.__safetyHomeConfigurationMock!.snapshot());
-  expect((saved.user_config.providers as Record<string, { parameters: object }>).ImgwWarningsApiComponent.parameters).toEqual({
-    teryt_codes: ['0002'],
+  expect(saved.user_config.external_sources).toEqual({
+    WeatherPointModel: null,
+    OfficialWeatherWarnings: 'GermanyDummyWarningsApiComponent',
+    OutdoorAirQuality: null,
   });
-  expect((saved.user_config.installation as { site: { teryt_codes: string[] } }).site.teryt_codes).toEqual(['0002']);
+  expect(saved.user_config.provider_parameters).toEqual({ GermanyDummyWarningsApiComponent: { region_code: 'BE' } });
+  await page.getByRole('link', { name: 'Instalacja HA', exact: true }).click();
+  await page.getByRole('link', { name: 'Ogólne', exact: true }).click();
+  await expect(official(page).getByLabel('Kod regionu')).toHaveValue('BE');
 });
 
-test('conflicting alias values are visible until the user explicitly reconciles them', async ({ page }) => {
-  const document = {
-    ...fixture('PL'),
-    user_config: { ...fixture('PL').user_config, providers: { ImgwWarningsApiComponent: { parameters: { teryt_codes: ['0001'] } } } },
-  };
-  await openConfiguration(page, document);
-  const provider = page.locator('[data-provider-id="ImgwWarningsApiComponent"]');
-  await expect(provider.getByLabel('Kody powiatów')).toBeDisabled();
-  await expect(provider.getByText('["0000"]', { exact: false })).toBeVisible();
-  await expect(provider.getByText('["0001"]', { exact: false })).toBeVisible();
-  await provider.getByRole('button', { name: 'Użyj wartości parametru źródła' }).click();
-  await expect(provider.getByLabel('Kody powiatów')).toBeEnabled();
-  await expect(provider.getByLabel('Kody powiatów')).toHaveValue('0001');
-});
-
-test('server field errors and stale revision preserve the draft for correction and reload', async ({ page }) => {
+test('missing required selected parameter blocks save; disabling keeps a valid incomplete draft', async ({ page }) => {
   await openConfiguration(page, fixture());
-  const provider = page.locator('[data-provider-id="RegionalWarningsApiComponent"]');
-  await provider.getByLabel('Włączenie źródła').selectOption('enabled');
-  await provider.getByLabel('Kod regionu').fill('BE');
+  await selector(page).selectOption('GermanyDummyWarningsApiComponent');
+  await page.getByRole('button', { name: 'Zapisz konfigurację', exact: true }).click();
+  await expect(official(page).getByText('Wypełnij wymagany parametr źródła.')).toBeVisible();
+  expect((await page.evaluate(() => window.__safetyHomeConfigurationMock!.snapshot())).revision).toBe('fixture-1');
+  await selector(page).selectOption('');
+  await page.getByRole('button', { name: 'Zapisz konfigurację', exact: true }).click();
+  await expect(page.getByText('Konfiguracja została zapisana', { exact: false })).toBeVisible();
+});
+
+test('Polish selection exposes only canonical county parameters and no default or inheritance choices', async ({ page }) => {
+  const document = fixture('PL');
+  document.user_config.external_sources.OfficialWeatherWarnings = 'ImgwWarningsApiComponent';
+  document.user_config.provider_parameters.ImgwWarningsApiComponent = { teryt_codes: ['0000'] };
+  await openConfiguration(page, document);
+  await expect(official(page).getByLabel('Kody powiatów')).toHaveValue('0000');
+  await expect(selector(page).locator('option')).toHaveText(['Wyłączone', 'Ostrzeżenia IMGW']);
+  await official(page).getByLabel('Kody powiatów').fill('0001');
+  await page.getByRole('button', { name: 'Zapisz konfigurację', exact: true }).click();
+  await expect(page.getByText('Konfiguracja została zapisana', { exact: false })).toBeVisible();
+  expect((await page.evaluate(() => window.__safetyHomeConfigurationMock!.snapshot())).user_config.provider_parameters).toEqual({
+    ImgwWarningsApiComponent: { teryt_codes: ['0001'] },
+  });
+});
+
+test('country changes preserve incompatible choice and draft until explicit correction', async ({ page }) => {
+  const document = fixture();
+  document.user_config.external_sources.OfficialWeatherWarnings = 'GermanyDummyWarningsApiComponent';
+  document.user_config.provider_parameters.GermanyDummyWarningsApiComponent = { region_code: 'BE' };
+  await openConfiguration(page, document);
+  await page.getByRole('link', { name: 'Instalacja HA', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Kod kraju', exact: false }).fill('PL');
+  await page.getByRole('link', { name: 'Ogólne', exact: true }).click();
+  await expect(selector(page)).toHaveValue('GermanyDummyWarningsApiComponent');
+  await expect(official(page).getByText('Źródło nie obsługuje wybranego kraju.')).toBeVisible();
+  await expect(official(page).getByLabel('Kod regionu')).toHaveValue('BE');
+  await selector(page).selectOption('');
+  await expect(official(page).getByLabel('Kod regionu')).toHaveCount(0);
+});
+
+test('invalid metadata and unknown selections remain visible without automatic source replacement', async ({ page }) => {
+  const document = fixture();
+  document.user_config.external_sources.OfficialWeatherWarnings = 'Unknown';
+  await openConfiguration(page, document);
+  await expect(selector(page)).toHaveValue('Unknown');
+  await expect(official(page).getByText('Brak poprawnych metadanych źródła.')).toBeVisible();
+  await selector(page).selectOption('');
+  await expect(selector(page)).toHaveValue('');
+});
+
+test('422 and 409 responses retain draft and field errors until explicit reload', async ({ page }) => {
+  await openConfiguration(page, fixture());
+  await selector(page).selectOption('GermanyDummyWarningsApiComponent');
+  await official(page).getByLabel('Kod regionu').fill('BE');
   await page.evaluate(() =>
     window.__safetyHomeConfigurationMock!.failNext({
       error: 'invalid_configuration',
-      message: 'Odrzucono konfigurację źródła.',
+      message: 'Odrzucono konfigurację.',
       status: 422,
       field_errors: [
         {
-          path: ['user_config', 'providers', 'RegionalWarningsApiComponent', 'parameters', 'region_code'],
+          path: ['user_config', 'provider_parameters', 'GermanyDummyWarningsApiComponent', 'region_code'],
           code: 'invalid_region',
           message: 'Sprawdź kod regionu.',
         },
@@ -208,8 +177,7 @@ test('server field errors and stale revision preserve the draft for correction a
     })
   );
   await page.getByRole('button', { name: 'Zapisz konfigurację', exact: true }).click();
-  await expect(provider.getByText('Sprawdź kod regionu.')).toBeVisible();
-  await expect(provider.getByLabel('Kod regionu')).toHaveValue('BE');
+  await expect(official(page).getByText('Sprawdź kod regionu.')).toBeVisible();
   await page.evaluate(() =>
     window.__safetyHomeConfigurationMock!.failNext({
       error: 'revision_conflict',
@@ -219,55 +187,29 @@ test('server field errors and stale revision preserve the draft for correction a
   );
   await page.getByRole('button', { name: 'Zapisz konfigurację', exact: true }).click();
   await expect(page.getByText('Konfiguracja zmieniła się. Wczytaj ją ponownie.')).toBeVisible();
-  await expect(provider.getByLabel('Kod regionu')).toHaveValue('BE');
+  await expect(official(page).getByLabel('Kod regionu')).toHaveValue('BE');
   await page.getByRole('button', { name: 'Odrzuć zmiany', exact: true }).click();
-  await expect(provider.getByLabel('Włączenie źródła')).toHaveValue('inherit');
+  await expect(selector(page)).toHaveValue('');
 });
 
-test('new Polish parameters use canonical source fields and keep enablement inherited', async ({ page }) => {
-  const document = fixture('PL');
-  delete (document.user_config.installation.site as { teryt_codes?: string[] }).teryt_codes;
-  await openConfiguration(page, document);
-  const provider = page.locator('[data-provider-id="ImgwWarningsApiComponent"]');
-  await provider.getByLabel('Kody powiatów').fill('0001');
-  await page.getByRole('button', { name: 'Zapisz konfigurację', exact: true }).click();
-  await expect(page.getByText('Konfiguracja została zapisana', { exact: false })).toBeVisible();
-  const saved = await page.evaluate(() => window.__safetyHomeConfigurationMock!.snapshot());
-  expect(saved.user_config.providers).toEqual({ ImgwWarningsApiComponent: { parameters: { teryt_codes: ['0001'] } } });
-});
-
-test('unsupported metadata cannot grant activation or silently discard saved values', async ({ page }) => {
-  const document = fixture();
-  const invalid = {
-    ...document,
-    system_defaults: { external_hazard: { provider_metadata_version: 2, provider_plugins: { RegionalWarningsApiComponent: regional } } },
-    user_config: {
-      ...document.user_config,
-      providers: { RegionalWarningsApiComponent: { enabled: true, parameters: { region_code: 'BE' } } },
-    },
-  };
-  await openConfiguration(page, invalid);
-  const provider = page.locator('[data-provider-id="RegionalWarningsApiComponent"]');
-  await expect(provider.getByText('Brak poprawnych metadanych źródła.')).toBeVisible();
-  await expect(provider.getByLabel('Kod regionu')).toHaveCount(0);
-  expect((await page.evaluate(() => window.__safetyHomeConfigurationMock!.snapshot())).user_config.providers).toEqual(
-    invalid.user_config.providers
-  );
-});
-
-test('unknown supplied parameters fail validation even when the source is disabled', async ({ page }) => {
-  const document = {
-    ...fixture(),
-    user_config: {
-      ...fixture().user_config,
-      providers: { RegionalWarningsApiComponent: { enabled: false, parameters: { region_code: 'BE', unknown: 'preserved' } } },
-    },
-  };
-  await openConfiguration(page, document);
-  const provider = page.locator('[data-provider-id="RegionalWarningsApiComponent"]');
-  await provider.getByLabel('Kod regionu').fill('BB');
-  await page.getByRole('button', { name: 'Zapisz konfigurację', exact: true }).click();
-  await expect(page.getByText('Sprawdź parametry źródeł danych.')).toBeVisible();
-  await expect(provider.getByLabel('Kod regionu')).toHaveValue('BB');
-  expect((await page.evaluate(() => window.__safetyHomeConfigurationMock!.snapshot())).revision).toBe('fixture-1');
+test('keyboard labels and narrow layout stay usable', async ({ page }) => {
+  await openConfiguration(page, fixture());
+  await selector(page).focus();
+  await expect(selector(page)).toBeFocused();
+  await selector(page).selectOption('GermanyDummyWarningsApiComponent');
+  await official(page).getByLabel('Kod regionu').focus();
+  await expect(official(page).getByLabel('Kod regionu')).toBeFocused();
+  const bounds = await page.evaluate(() => ({
+    width: document.documentElement.scrollWidth,
+    viewport: window.innerWidth,
+    overflow: Array.from(document.querySelectorAll('body *'))
+      .flatMap(element => {
+        const rect = element.getBoundingClientRect();
+        return rect.width > 0 && rect.right > window.innerWidth + 1
+          ? [{ tag: element.tagName, class: element.className, right: rect.right }]
+          : [];
+      })
+      .slice(0, 8),
+  }));
+  expect(bounds.width, JSON.stringify(bounds)).toBeLessThanOrEqual(bounds.viewport + 1);
 });

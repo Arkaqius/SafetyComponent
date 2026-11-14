@@ -24,19 +24,15 @@ user_config:
     local: {}
     wan_entity: null
 
-  # Optional provider selection and installation parameters. Endpoints, polling, retry, timeout,
-  # and staleness policy remain in system_config.yml.
-  # IMGW is selected only for PL. The Berlin example omits TERYT entirely.
-  providers:
-    OpenMeteoWeatherApiComponent:
-      enabled: true
+  # One explicit source per category; null disables that category.
+  # Endpoints and lifecycle policy remain system-owned.
+  external_sources:
+    WeatherPointModel: OpenMeteoWeatherApiComponent
+    OfficialWeatherWarnings: ImgwWarningsApiComponent
+    OutdoorAirQuality: OpenMeteoAirQualityApiComponent
+  provider_parameters:
     ImgwWarningsApiComponent:
-      enabled: true
-      parameters:
-        teryt_codes: ["0000"]
-      # Legacy installation.site.teryt_codes remains accepted without a rewrite.
-    OpenMeteoAirQualityApiComponent:
-      enabled: true
+      teryt_codes: ["0000"]
 
   installation:
     # Advisory scenarios; disabled examples never register automatic triggers.

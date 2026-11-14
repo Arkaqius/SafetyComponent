@@ -80,6 +80,36 @@ def test_fault_manager_initialization(fault_manager, fault, symptom):
     assert fault_manager.symptoms["RiskyTemperatureOffice"] == symptom
 
 
+def test_restore_external_assertions_is_active_unevaluable_without_replay(fault_manager):
+    """Removed contributors retain danger without creating notification events."""
+    from datetime import datetime, timezone
+    from components.safetycomponents.external_hazard.assertion_store import AssertionRecord
+
+    fault = Fault("ExternalWeatherExposure", ["sm_ext_weather_exposure"], 2)
+    fault_manager.faults = {fault.name: fault}
+    entry = AssertionRecord(symptom_id="ExternalWeatherExposureWindRemovedWindow",
+        fault_id=fault.name, opening="RemovedWindow", hazard="wind",
+        source="RemovedProvider", asserted_at=datetime.now(timezone.utc).isoformat(),
+        context={"hazard": "wind", "source": "RemovedProvider"})
+    fault_manager.restore_external_assertions({entry.symptom_id: entry})
+    assert fault.evaluation.active
+    assert fault.evaluation.status == Status.UNEVALUABLE
+    assert entry.symptom_id in fault.evaluation.active_contributors
+    fault_manager.notify_spy.assert_not_called()
+    fault_manager.recovery_spy.assert_not_called()
+    fault.evaluation.observe("OtherNewOpening", False)
+    assert fault.evaluation.active
+
+
+def test_active_journal_without_checkpoint_cannot_become_a_clear(fault_manager):
+    fault = Fault("ExternalWeatherExposure", ["sm_ext_weather_exposure"], 2)
+    fault_manager.faults = {fault.name: fault}
+    fault_manager.restore_external_assertions({}, uncertain_faults={fault.name})
+    assert fault.evaluation.active and fault.evaluation.status == Status.UNEVALUABLE
+    fault.evaluation.observe("NewOpening", False)
+    assert fault.evaluation.active
+
+
 def test_subject_bound_faults_clear_independently(fault_manager):
     """A second subject cannot hold or clear the first subject's fault."""
 

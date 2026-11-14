@@ -4,9 +4,11 @@
 
 **System component ID:** `C-EXT`
 
-The [provider-plugin specification](001-external-provider-plugins/spec.md) defines
-the operator outcomes. [ADR-0001](../adr/0001-external-provider-plugins.md) records
-the provider boundary and compatibility decisions. This document defines the
+The [selection specification](002-provider-selection-states/spec.md) defines
+the operator outcomes and supersedes the former selection compatibility model.
+[ADR-0001](../adr/0001-external-provider-plugins.md) records the provider boundary.
+The [source-selection contract](002-provider-selection-states/contracts/source-selection.md)
+defines the explicit target configuration. This document defines the
 required integration contract; it is not evidence of deployment.
 
 ## 1. Decisions already fixed
@@ -64,9 +66,11 @@ The system shall:
 | `OpenMeteoWeatherApiComponent` | Open-Meteo `/v1/forecast` | Current/model temperature, frost forecast, precipitation, weather code, wind and gusts | 10 min | Forecast/model input |
 | `ImgwWarningsApiComponent` | IMGW `/api/data/warningsmeteo` | Current official weather warnings matching configured TERYT codes | 5 min | Authoritative weather warning |
 | `OpenMeteoAirQualityApiComponent` | Open-Meteo `/v1/air-quality` | Current CAMS-model European AQI and pollutant values | 5 min | Current model input |
+| `GermanyDummyWarningsApiComponent` | No external service | DE-only synthetic wind-warning preview | Packaged bounded test cadence | Synthetic; no real safety authority |
 
-This table defines bundled defaults, not a closed list of provider identities.
-Open-Meteo remains the default model source. Additional official-warning adapters
+This table defines bundled choices, not a closed list of provider identities.
+Public templates select Open-Meteo explicitly for the global model roles.
+Additional official-warning adapters
 shall declare supported countries and hazard coverage, while retaining the
 existing normalized contract. Geographic availability shall not imply identical
 model resolution, freshness, units, air-quality index, or official-warning
@@ -161,7 +165,7 @@ separate API Component registry:
 
 - `self.api_modules` stores API Component instances;
 - `self.sm_modules` continues to store only Safety Components;
-- `user_config.providers` is validated independently from
+- `user_config.external_sources` and `user_config.provider_parameters` are validated independently from
   `user_config.safety_components`;
 - the EventBus is the only provider-to-C-EXT data path, so the existing
   four-argument `SafetyComponent` constructor does not need provider-specific
@@ -176,14 +180,13 @@ separate API Component registry:
 `user_config.site`, generated provider bindings, and
 `ExternalHazardComponent`. Its entity and area collection will include every
 configured opening. C-EXT requires a site when enabled. The compiler validates
-the configuration of registered plugins and selects only the enabled plugins
-applicable to that country. Inherited defaults outside their supported country
-remain inactive. An explicit incompatible selection shall be rejected with a
-provider-specific error rather than silently ignored. A configured hazard
-without an enabled source declaring coverage for that hazard remains unevaluable.
+exactly one selected plugin or explicit null per capability. It rejects unknown,
+capability-incompatible or country-incompatible selections rather than choosing
+a replacement. There is no inherited/default selection. A configured real hazard
+without selected applicable live evidence remains unevaluable.
 
 Diagnostic allocation and degradation bindings shall be derived from the resolved
-registry, installed providers, covered hazards, and consumer dependencies. Adding
+registry, installed live providers, covered hazards, and consumer dependencies. Adding
 an adapter for an existing capability shall not require adding its provider ID to
 fixed maps in `SelfDiagnosticsComponent`, the degradation registry, or C-EXT.
 
@@ -205,9 +208,10 @@ class ExternalApiComponent(ABC):
     capability: ProviderCapability
     hazards: frozenset[HazardType]
     countries: frozenset[str]
+    data_kind: Literal["live", "synthetic"]
+    transport_kind: Literal["http", "none"]
+    required_when_selected: frozenset[str]
 
-    @classmethod
-    def validate_site(cls, site: Mapping[str, Any]) -> None: ...
     def fetch_payload(self) -> Any: ...
     def normalize(self, payload: Any, retrieved_at: datetime) -> tuple[ExternalObservation, ...]: ...
     def poll(self) -> ApiResult: ...
@@ -215,8 +219,8 @@ class ExternalApiComponent(ABC):
 
 Capability values are `WeatherPointModel`, `OfficialWeatherWarnings` and
 `OutdoorAirQuality`. An empty country set allows all installation countries.
-Bundled plugins are registered at import and enabled through their system
-defaults and installation overrides. A plugin implementing a supported
+Bundled plugins are registered at import and selected explicitly by installation
+category. System-owned lifecycle policy contains no selection default. A plugin implementing a supported
 capability supplies the existing normalized measurements and units for it.
 The editable parameter model shall be closed to undeclared fields and separate
 from the system-owned endpoint and transport configuration. Metadata shall supply
@@ -262,6 +266,8 @@ The runtime provides:
 - a thread-safe result queue;
 - a short AppDaemon timer that drains results and publishes EventBus events from
   the serialized application context;
+- dispatch to the live or synthetic event stream based on trusted registered
+  `data_kind`, never a source-supplied payload flag;
 - cancellation/no-resubmit behavior during shutdown;
 - no polling from constructors.
 
@@ -439,13 +445,14 @@ exposures shall follow the clearing policy.
 - The outdoor-air-quality capability supplies European AQI for the home
   coordinates.
 - Individual provider failure degrades only capabilities that require it.
-- A provider is relevant only when it is selected, applicable to the configured
+- A live provider is relevant only when it is selected, applicable to the configured
   region, and declares coverage for the evaluated hazard. Capability membership
   alone does not imply support for every weather hazard.
 - Active applicable evidence from any selected provider is retained; a clear
   result from another provider cannot outvote it.
-- No selected official-warning provider means not-configured official coverage,
-  not a healthy empty warning feed and not an installed-adapter failure. Any
+- Explicit null official-warning selection means disabled official coverage,
+  not a healthy empty warning feed and not an installed-adapter failure. Missing
+  selection truth remains unknown, and synthetic selection supplies preview only. Any
   required uncovered hazard remains explicitly unevaluable.
 
 ### 9.2 Clearing
@@ -565,21 +572,18 @@ calibration:
 runtime_cfg:
   providers:
     OpenMeteoWeatherApiComponent:
-      enabled: true
       base_url: "https://api.open-meteo.com/v1/forecast"
       poll_interval_seconds: 600
       request_timeout_seconds: 10
       max_retries: 2
       stale_after_seconds: 1200
     ImgwWarningsApiComponent:
-      enabled: true
       base_url: "https://danepubliczne.imgw.pl/api/data/warningsmeteo"
       poll_interval_seconds: 300
       request_timeout_seconds: 10
       max_retries: 2
       stale_after_seconds: 900
     OpenMeteoAirQualityApiComponent:
-      enabled: true
       base_url: "https://air-quality-api.open-meteo.com/v1/air-quality"
       poll_interval_seconds: 300
       request_timeout_seconds: 10
@@ -614,15 +618,13 @@ user_config:
     EntityMonitorComponent: false
     InternalEnvironmentalHazardMonitorComponent: false
 
-  providers:
-    OpenMeteoWeatherApiComponent:
-      enabled: true
+  external_sources:
+    WeatherPointModel: OpenMeteoWeatherApiComponent
+    OfficialWeatherWarnings: ImgwWarningsApiComponent
+    OutdoorAirQuality: OpenMeteoAirQualityApiComponent
+  provider_parameters:
     ImgwWarningsApiComponent:
-      enabled: true
-      parameters:
-        teryt_codes: ["0000"]
-    OpenMeteoAirQualityApiComponent:
-      enabled: true
+      teryt_codes: ["0000"]
 
   installation:
     site:
@@ -658,23 +660,27 @@ language are installation-specific. The compiler shall generate the complete
 runtime configuration; the validator shall reject an enabled component,
 provider, or opening whose corresponding schema is absent or invalid.
 
-### Provider parameters and backward compatibility
+### Provider selection and parameters
 
-`user_config.providers.<provider_id>` shall accept `enabled` and an optional
-`parameters` mapping validated by that plugin's editable schema. The illustrated
-IMGW parameter is `providers.ImgwWarningsApiComponent.parameters.teryt_codes`.
+The required `user_config.external_sources` mapping shall contain exactly
+`WeatherPointModel`, `OfficialWeatherWarnings` and `OutdoorAirQuality`. Each
+value shall be one applicable registered provider ID or explicit `null` for
+disabled. The optional `user_config.provider_parameters.<provider_id>` mapping
+shall be validated by that plugin's editable schema. The illustrated IMGW
+parameter is `provider_parameters.ImgwWarningsApiComponent.teryt_codes`.
 Other plugins own their regional or station fields; these shall not be added as
 mandatory fields of the shared installation site. Coordinates continue to come
 from current Home Assistant Core configuration; country and timezone remain
 shared installation fields.
 
-Source model version `2`, all current provider IDs, MQTT topics, entity IDs,
-fault names, and raw state codes shall remain compatible. Existing
-`installation.site.teryt_codes` remains accepted as an IMGW-only compatibility
-input. When both locations are present, their normalized unique code sets shall
-agree regardless of ordering; conflicts shall fail before save or startup.
-The compiler shall normalize the value for IMGW without rewriting the operator's
-saved source or imposing TERYT on other plugins.
+Source model version `2` shall accept only the target selection shape. Former
+`user_config.providers`, per-provider editable `enabled`, selection provenance
+and `installation.site.teryt_codes` shall be rejected without migration,
+alias resolution or reconciliation. All category choices are explicit; valid
+inactive provider parameters are retained for reselection but cannot activate
+monitoring. Compiled `api_components` may use derived lifecycle `enabled` values.
+Actual safety IDs and raw states remain stable; configuration compatibility
+shall not require retaining the superseded model.
 
 Endpoint allowlists, polling, timeout, retry, response bounds, and staleness
 policy remain system-owned. Plugin schemas shall distinguish those settings
@@ -688,10 +694,86 @@ selections rather than silently enabling a replacement. Save retains complete
 configuration validation, revision protection, and atomic replacement. Activation
 requires the existing separate, explicitly authorized App restart.
 
+The catalogue uses `provider_metadata_version: 2` with trusted `data_kind`,
+`transport_kind` and `required_when_selected`, without `enabled`, default selection,
+`required_when_enabled` aliases or `legacy_parameter_paths`.
+Each category selector offers applicable provider names and "Wyłączone"; there
+is no enabled/default tier. Generic headings, help and counters are provider-neutral.
+
+### Applied selection and synthetic presentation
+
+Active real opening/hazard assertions shall be durably checkpointed in the
+existing SQLite state database, separately from preview state and first-activation
+evidence frames. The checkpoint shall allow at most 4096 assertions and 1 MiB;
+overflow or persistence failure shall remain explicit state failure/unknown
+coverage without silently discarding unresolved active assertions. Startup shall restore
+unresolved real assertions as active but unevaluable before the first fault or
+aggregate publication, even if a source or C-EXT is disabled or replaced by a test
+source. Missing or corrupt checkpoint state with an active evidence-journal
+record shall remain explicit unknown; an ordinary cold start with no prior
+assertion shall await fresh evidence without inferring a clear.
+Disabling/removing a source or opening shall not manufacture HEAL, active=false
+or no-fault evidence. Restoration shall not replay notifications, consent,
+commands or qualification timers; real clearing still requires the positive
+evidence rules, including independently confirmed physical closure from a valid
+matching live contact where allowed. A removed opening remains unresolved.
+
+`SafetyFunctions` shall publish `sensor.external_source_selection` independently
+of C-EXT enablement. Its attributes are `schema_version: 1`, a per-start
+`runtime_id`, `component_enabled`, and `selections` keyed by all three capability
+IDs. Each selection has `provider` (ID or null), `data_kind` (live, synthetic or
+null) and `hazards` (declared selected scope or an empty list). Provider,
+aggregate and test-preview outputs shall carry the same `runtime_id`. The UI
+shall join only same-start records and shall not treat a saved but unapplied
+draft as monitoring truth. Missing or mismatched selection truth remains unknown.
+
+An explicit null selection or disabled component overrides retained healthy
+provider telemetry. Disabled sections remain visible, muted and labelled
+"Wyłączone", with nonnumeric not-evaluated summaries. Only a fresh complete
+selected live feed may supply a real zero-warning indication. Disabled,
+unconfigured, unsupported, waiting, stale/unavailable and synthetic meanings
+remain distinct. See the
+[monitoring contract](002-provider-selection-states/contracts/monitoring-presentation.md).
+
+`GermanyDummyWarningsApiComponent` declares DE applicability, wind-only scope,
+`data_kind: synthetic` and `transport_kind: none`. Its parameters are a non-empty
+synthetic `region_code` of at most 32 characters and `scenario` from `empty`,
+`warning`, `unavailable`, or `stale`. It has no endpoint, credential or HTTP client.
+Its scenarios use deterministic fixtures and an injectable clock; synthetic
+warnings do not claim real official authority.
+
+The runtime routes trusted registered live sources to `external_api_result` and
+synthetic sources only to `external_api_test_result`. C-EXT shall maintain preview
+state separately and publish `sensor.external_hazard_test_state`; synthetic
+results shall never enter live health/evidence caches, real H/D contributors,
+degradation requalification, real coverage, notifications or recovery proposals.
+Normal live handlers shall reject synthetic definitions defensively. Every preview
+and its warnings shall be visibly test-labelled. See the
+[synthetic-provider contract](002-provider-selection-states/contracts/synthetic-provider.md).
+
 ### 12.1 Provider diagnostics and operator presentation
 
-Each `sensor.external_provider_<provider>` diagnostic entity publishes provider
-health and `capability` together with `observation_count` and an `observations` list bounded to
+Restored real danger is published on the real fault entity through
+`retained_assertions` and `retained_hazard_unknown`, with `active: true` and raw
+evaluation `UNEVALUABLE`. This remains visible independently of disabled/test
+source presentation. A newly qualified real decision replaces its own retained
+symptom context; unrelated or synthetic results cannot remove it. An active
+evidence journal without a matching usable checkpoint record remains an unresolved
+retained unknown contribution.
+
+The application-level `sensor.safety_coverage_state` wrapper shall include
+`retained_external_assertion_count`, at most 32 `retained_external_assertions`,
+and `retained_hazard_unknown` while unresolved retained state exists. It shall
+replace `FULL` or `PARTIAL` with `UNKNOWN`, preserving an existing `DEGRADED` or
+`UNKNOWN` result. The wrapper does not turn synthetic data into real coverage.
+Recovery state restoration shall exclude external exposure proposal IDs from
+both checkpoint records and current configured exposure symptoms; old consent,
+recommendations and command execution shall not be replayed. New qualified real
+evidence may use the normal confirmation-boundary workflow.
+
+Each live `sensor.external_provider_<provider>` diagnostic entity publishes provider
+health, `capability`, trusted `data_kind`, and the applied-selection `runtime_id`,
+together with `observation_count` and an `observations` list bounded to
 64 summaries. Each observation summary contains:
 
 - `id`: stable normalized observation ID;
@@ -704,7 +786,7 @@ health and `capability` together with `observation_count` and an `observations` 
 The summary does not replace the immutable normalized provider result used by
 the safety policy and does not expose raw provider payloads. User interfaces
 translate stable hazard codes into localized names. The official warning view
-lists warnings from plugins with `OfficialWeatherWarnings` capability and
+lists real warnings from live plugins with `OfficialWeatherWarnings` capability and
 distinguishes a healthy empty feed, unavailable data and an unconfigured feed.
 Provider choices and fields shall use friendly localized labels. The operator UI
 remains Polish; new runtime text shall maintain English/Polish/German parity.
@@ -748,17 +830,17 @@ No provider may perform a request during schema validation or construction.
 
 ## 15. Test architecture
 
-End-to-end extension acceptance shall register a controlled non-Polish warning
-adapter with its own editable parameters and hazard coverage. The test shall
-exercise source compilation, complete `SafetyFunctions` startup, diagnostics,
-degradation bindings, normalized dispatch, operator metadata, failure/recovery,
-and shutdown without provider-name additions in consumer or diagnostic policy.
+End-to-end extension acceptance shall select the German dummy warning adapter
+with its own parameters and hazard coverage. The test shall exercise compilation,
+complete `SafetyFunctions` startup, test dispatch, preview diagnostics, metadata,
+failure/recovery and shutdown. It shall prove exclusion from real H/D contributors,
+degradation requalification, real coverage, notifications and recovery proposals.
 Registration or isolated C-EXT tests alone are insufficient evidence.
 
-Compatibility tests shall cover existing Polish and Berlin configurations,
-legacy/new/equal/conflicting TERYT declarations, inherited inapplicable defaults,
-explicit incompatible selection, unknown parameters, disabled providers, and
-zero-source coverage. Hazard tests shall cover a wind-only empty feed,
+Target-model tests shall cover Polish and German selections, explicit null,
+rejection of obsolete provider enablement/site TERYT forms, incompatible selections,
+unknown parameters, inactive drafts, applied-versus-draft state and cross-start
+retained telemetry. Hazard tests shall cover a wind-only empty feed,
 conflicting sources, failure after active evidence, expiry without a fresh feed,
 and independent provider recovery without automatic hazard clearing. Tests shall
 use sanitized fixtures and the AppDaemon stub; no household actuator is required.

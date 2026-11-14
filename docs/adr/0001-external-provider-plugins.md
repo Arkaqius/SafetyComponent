@@ -4,6 +4,10 @@
 
 **Status:** Accepted design decision
 
+The selection and backwards-compatibility clauses are superseded by
+[ADR-0002](0002-explicit-provider-selection.md). Provider isolation, common
+normalization and household-policy ownership remain controlling.
+
 ## Context
 
 External-hazard monitoring needs forecast models, official regional warnings,

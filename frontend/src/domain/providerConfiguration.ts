@@ -1,6 +1,7 @@
 /** Typed, bounded provider metadata and immutable installation-draft operations. */
 export type ProviderDraft = Record<string, unknown>;
-export type ProviderIntent = 'inherit' | 'enabled' | 'disabled';
+export const EXTERNAL_CAPABILITIES = ['WeatherPointModel', 'OfficialWeatherWarnings', 'OutdoorAirQuality'] as const;
+export type ExternalCapability = (typeof EXTERNAL_CAPABILITIES)[number];
 export interface ProviderFieldError {
   path: (string | number)[];
   code: string;
@@ -28,30 +29,35 @@ export interface ProviderField {
 }
 export interface ProviderDefinition {
   id: string;
-  enabled: boolean;
+  dataKind: 'live' | 'synthetic';
+  transportKind: 'http' | 'none';
   countries: string[];
   capability: string;
   hazards: string[];
   displayName: string;
   description: string;
   fields: Record<string, ProviderField>;
-  requiredWhenEnabled: string[];
+  requiredWhenSelected: string[];
   defaults: ProviderDraft;
-  legacyPaths: Record<string, string[]>;
 }
 export interface ProviderCatalogue {
   providers: Record<string, ProviderDefinition>;
   errors: Record<string, string>;
   error?: string;
 }
-export interface ProviderRow {
-  id: string;
+export interface ProviderCategoryRow {
+  capability: ExternalCapability;
+  label: string;
+  selected: string | null | undefined;
   plugin?: ProviderDefinition;
-  intent: ProviderIntent;
-  applicable: boolean;
-  effectiveEnabled: boolean;
+  options: ProviderDefinition[];
   error?: string;
 }
+export const CATEGORY_LABELS: Record<ExternalCapability, string> = {
+  WeatherPointModel: 'Pogoda',
+  OfficialWeatherWarnings: 'Oficjalne ostrzeżenia pogodowe',
+  OutdoorAirQuality: 'Jakość powietrza',
+};
 
 const forbiddenKeys = new Set(['__proto__', 'constructor', 'prototype']);
 const capabilities = new Set(['WeatherPointModel', 'OfficialWeatherWarnings', 'OutdoorAirQuality']);
@@ -167,7 +173,7 @@ export function decodeProviderCatalogue(value: unknown): ProviderCatalogue {
     const source = record(value);
     const plugins = record(source.provider_plugins);
     if (
-      source.provider_metadata_version !== 1 ||
+      source.provider_metadata_version !== 2 ||
       !source.provider_plugins ||
       Object.keys(plugins).length > 64 ||
       bytes(plugins) > 1024 * 1024
@@ -177,7 +183,10 @@ export function decodeProviderCatalogue(value: unknown): ProviderCatalogue {
       try {
         if (!safeKey(id)) throw new Error('Nieprawidłowy identyfikator źródła.');
         const metadata = record(raw);
-        if (typeof metadata.enabled !== 'boolean') throw new Error('Brak domyślnego włączenia.');
+        if (!['live', 'synthetic'].includes(String(metadata.data_kind)) || !['http', 'none'].includes(String(metadata.transport_kind)))
+          throw new Error('Nieprawidłowy rodzaj źródła.');
+        if (has(metadata, 'enabled') || has(metadata, 'legacy_parameter_paths') || has(metadata, 'required_when_enabled'))
+          throw new Error('Nieobsługiwany starszy model źródła.');
         const countries = strings(metadata.countries, 256);
         if (countries.some(country => !/^[A-Z]{2}$/.test(country))) throw new Error('Nieprawidłowy kraj.');
         const capability = checkedText(metadata.capability, 128);
@@ -199,34 +208,28 @@ export function decodeProviderCatalogue(value: unknown): ProviderCatalogue {
           throw new Error('Nieobsługiwany schemat parametrów.');
         depth(schema);
         const required = strings(schema.required, 64, false);
-        const requiredWhenEnabled = strings(metadata.required_when_enabled, 64);
+        const requiredWhenSelected = strings(metadata.required_when_selected, 64);
         const fields: Record<string, ProviderField> = {};
         for (const [name, fieldSchema] of Object.entries(record(schema.properties))) {
           if (!safeKey(name)) throw new Error('Nieprawidłowa nazwa pola.');
           fields[name] = decodeField(fieldSchema, schema, name, required.includes(name));
         }
-        if ([...required, ...requiredWhenEnabled].some(name => !has(fields, name)))
+        if ([...required, ...requiredWhenSelected].some(name => !has(fields, name)))
           throw new Error('Wymagane pole nie jest zadeklarowane.');
-        const legacyPaths: Record<string, string[]> = {};
-        for (const [name, rawPath] of Object.entries(record(metadata.legacy_parameter_paths))) {
-          const path = strings(rawPath, 16);
-          if (!has(fields, name) || path.length < 2 || path[0] !== 'installation') throw new Error('Nieprawidłowa ścieżka zgodności.');
-          legacyPaths[name] = path;
-        }
         const defaults = record(metadata.parameter_defaults);
         if (Object.keys(defaults).some(name => !has(fields, name))) throw new Error('Nieznane pole domyślne.');
         result.providers[id] = {
           id,
-          enabled: metadata.enabled,
+          dataKind: metadata.data_kind as 'live' | 'synthetic',
+          transportKind: metadata.transport_kind as 'http' | 'none',
           countries,
           capability,
           hazards,
           displayName: checkedText(metadata.display_name, 256, id),
           description: checkedText(metadata.description, 2048),
           fields,
-          requiredWhenEnabled,
+          requiredWhenSelected,
           defaults: structuredClone(defaults),
-          legacyPaths,
         };
       } catch (error) {
         Object.defineProperty(result.errors, id, {
@@ -244,44 +247,33 @@ export function decodeProviderCatalogue(value: unknown): ProviderCatalogue {
   return result;
 }
 
-export function providerRows(catalogue: ProviderCatalogue, draft: ProviderDraft, country: string): ProviderRow[] {
-  const choices = record(draft.providers);
-  const ids = new Set([
-    ...Object.keys(catalogue.providers),
-    ...Object.keys(choices),
-    ...Object.keys(catalogue.errors).filter(id => id !== '_catalogue'),
-  ]);
-  return [...ids]
-    .filter(id => {
-      const plugin = has(catalogue.providers, id) ? catalogue.providers[id] : undefined;
-      return has(choices, id) || !plugin || !plugin.countries.length || plugin.countries.includes(country);
-    })
-    .map(id => {
-      const plugin = has(catalogue.providers, id) ? catalogue.providers[id] : undefined;
-      const selection = record(choices[id]);
-      const intent: ProviderIntent = selection.enabled === true ? 'enabled' : selection.enabled === false ? 'disabled' : 'inherit';
-      const applicable = Boolean(plugin && (!plugin.countries.length || plugin.countries.includes(country)));
-      const error = !plugin
-        ? 'Brak poprawnych metadanych źródła.'
-        : has(selection, 'enabled') && typeof selection.enabled !== 'boolean'
-          ? 'Włączenie źródła musi być wartością logiczną.'
-          : intent === 'enabled' && !applicable
-            ? 'Źródło nie obsługuje wybranego kraju.'
-            : undefined;
-      return {
-        id,
-        plugin,
-        intent,
-        applicable,
-        error,
-        effectiveEnabled: Boolean(plugin && applicable && !error && (intent === 'enabled' || (intent === 'inherit' && plugin.enabled))),
-      };
-    });
+/** Project exactly one explicit choice per category without changing the source. */
+export function categoryRows(catalogue: ProviderCatalogue, draft: ProviderDraft, country: string): ProviderCategoryRow[] {
+  const sources = record(draft.external_sources);
+  const normalizedCountry = country.trim().toUpperCase();
+  return EXTERNAL_CAPABILITIES.map(capability => {
+    const raw = has(sources, capability) ? sources[capability] : undefined;
+    const selected = typeof raw === 'string' || raw === null ? raw : undefined;
+    const plugin = typeof selected === 'string' && has(catalogue.providers, selected) ? catalogue.providers[selected] : undefined;
+    const options = Object.values(catalogue.providers).filter(
+      item => item.capability === capability && (!item.countries.length || item.countries.includes(normalizedCountry))
+    );
+    const error =
+      selected === undefined
+        ? 'Wybierz źródło lub wyłącz kategorię.'
+        : selected === null
+          ? undefined
+          : !plugin
+            ? 'Brak poprawnych metadanych źródła.'
+            : plugin.capability !== capability
+              ? 'Źródło nie obsługuje tego rodzaju danych.'
+              : normalizedCountry && plugin.countries.length && !plugin.countries.includes(normalizedCountry)
+                ? 'Źródło nie obsługuje wybranego kraju.'
+                : undefined;
+    return { capability, label: CATEGORY_LABELS[capability], selected, plugin, options, error };
+  });
 }
 
-function getPath(draft: ProviderDraft, path: string[]): unknown {
-  return path.reduce<unknown>((value, key) => record(value)[key], draft);
-}
 function putPath(draft: ProviderDraft, path: string[], value: unknown): void {
   if (path.some(key => !safeKey(key))) throw new Error('Nieprawidłowa ścieżka pola.');
   let current = draft;
@@ -293,60 +285,22 @@ function putPath(draft: ProviderDraft, path: string[], value: unknown): void {
   if (value === undefined) delete current[final];
   else current[final] = structuredClone(value);
 }
-function equivalent(left: unknown, right: unknown): boolean {
-  const normalize = (value: unknown) =>
-    Array.isArray(value) && value.every(item => typeof item === 'string') ? [...value].map(item => item.trim()).sort() : value;
-  return JSON.stringify(normalize(left)) === JSON.stringify(normalize(right));
-}
-export function setProviderIntent(draft: ProviderDraft, id: string, intent: ProviderIntent): ProviderDraft {
+export function setCategoryProvider(draft: ProviderDraft, capability: ExternalCapability, provider: string | null): ProviderDraft {
+  if (!EXTERNAL_CAPABILITIES.includes(capability) || (provider !== null && !safeKey(provider)))
+    throw new Error('Nieprawidłowy wybór źródła.');
   const result = structuredClone(draft);
-  putPath(result, ['providers', id, 'enabled'], intent === 'inherit' ? undefined : intent === 'enabled');
-  const providers = record(result.providers);
-  if (Object.keys(record(providers[id])).length === 0) delete providers[id];
+  putPath(result, ['external_sources', capability], provider);
   return result;
 }
-export function removeProviderSelection(draft: ProviderDraft, id: string): ProviderDraft {
-  const result = structuredClone(draft);
-  delete record(result.providers)[id];
-  return result;
-}
-export function readProviderParameters(
-  draft: ProviderDraft,
-  plugin: ProviderDefinition
-): { values: ProviderDraft; conflicts: Record<string, { canonical: unknown; legacy: unknown }> } {
-  const canonical = record(record(record(draft.providers)[plugin.id]).parameters);
-  const values = { ...structuredClone(plugin.defaults), ...structuredClone(canonical) };
-  const conflicts: Record<string, { canonical: unknown; legacy: unknown }> = {};
-  for (const [name, path] of Object.entries(plugin.legacyPaths)) {
-    const legacy = getPath(draft, path);
-    if (legacy === undefined) continue;
-    if (has(canonical, name) && !equivalent(canonical[name], legacy)) conflicts[name] = { canonical: canonical[name], legacy };
-    if (!has(canonical, name)) values[name] = structuredClone(legacy);
-  }
-  return { values, conflicts };
+export function readProviderParameters(draft: ProviderDraft, plugin: ProviderDefinition): ProviderDraft {
+  const parameters = record(draft.provider_parameters);
+  const own = has(parameters, plugin.id) ? record(parameters[plugin.id]) : {};
+  return { ...structuredClone(plugin.defaults), ...structuredClone(own) };
 }
 export function setProviderParameter(draft: ProviderDraft, plugin: ProviderDefinition, name: string, value: unknown): ProviderDraft {
   if (!has(plugin.fields, name)) throw new Error('Nieznany parametr źródła.');
-  if (readProviderParameters(draft, plugin).conflicts[name]) throw new Error('Najpierw uzgodnij sprzeczne wartości parametru.');
   const result = structuredClone(draft);
-  const alias = plugin.legacyPaths[name];
-  const legacyPresent = alias && getPath(draft, alias) !== undefined;
-  const canonicalPresent = has(record(record(record(draft.providers)[plugin.id]).parameters), name);
-  if (legacyPresent) putPath(result, alias, value);
-  if (canonicalPresent || !legacyPresent) putPath(result, ['providers', plugin.id, 'parameters', name], value);
-  return result;
-}
-export function reconcileProviderParameter(
-  draft: ProviderDraft,
-  plugin: ProviderDefinition,
-  name: string,
-  choice: 'canonical' | 'legacy'
-): ProviderDraft {
-  const conflict = readProviderParameters(draft, plugin).conflicts[name];
-  if (!conflict) return structuredClone(draft);
-  const result = structuredClone(draft);
-  putPath(result, ['providers', plugin.id, 'parameters', name], conflict[choice]);
-  putPath(result, plugin.legacyPaths[name], conflict[choice]);
+  putPath(result, ['provider_parameters', plugin.id, name], value);
   return result;
 }
 
@@ -388,56 +342,53 @@ export function providerValueError(value: unknown, field: ProviderField): string
 }
 export function validateProviderDraft(catalogue: ProviderCatalogue, draft: ProviderDraft, country: string): ProviderFieldError[] {
   const errors: ProviderFieldError[] = [];
+  const add = (path: (string | number)[], code: string, message: string) => errors.push({ path: ['user_config', ...path], code, message });
   const componentEnabled = record(draft.components_enabled).ExternalHazardComponent !== false;
-  if (
-    draft.providers !== undefined &&
-    (draft.providers === null || typeof draft.providers !== 'object' || Array.isArray(draft.providers))
-  ) {
-    return [{ path: ['user_config', 'providers'], code: 'invalid_provider', message: 'Źródła muszą być obiektem konfiguracji.' }];
+  if (has(draft, 'providers')) add(['providers'], 'obsolete_source', 'Starszy model wyboru źródeł nie jest obsługiwany.');
+  if (has(record(record(draft.installation).site), 'teryt_codes'))
+    add(['installation', 'site', 'teryt_codes'], 'obsolete_source', 'Parametry regionalne należą do wybranego źródła.');
+  if (!draft.external_sources || typeof draft.external_sources !== 'object' || Array.isArray(draft.external_sources)) {
+    add(['external_sources'], 'invalid_selection', 'Wybierz źródło lub wyłącz każdą kategorię.');
   }
-  for (const row of providerRows(catalogue, draft, country)) {
-    const prefix = ['user_config', 'providers', row.id];
-    const selections = record(draft.providers);
-    const selection = selections[row.id];
-    if (has(selections, row.id) && (selection === null || typeof selection !== 'object' || Array.isArray(selection))) {
-      errors.push({ path: prefix, code: 'invalid_provider', message: 'Wybór źródła musi być obiektem konfiguracji.' });
+  const sources = record(draft.external_sources);
+  for (const key of Object.keys(sources))
+    if (!EXTERNAL_CAPABILITIES.includes(key as ExternalCapability))
+      add(['external_sources', key], 'unknown_category', 'Nieznana kategoria źródła.');
+  const rows = categoryRows(catalogue, draft, country);
+  for (const row of rows) if (row.error) add(['external_sources', row.capability], 'invalid_provider', row.error);
+  if (
+    draft.provider_parameters !== undefined &&
+    (!draft.provider_parameters || typeof draft.provider_parameters !== 'object' || Array.isArray(draft.provider_parameters))
+  ) {
+    add(['provider_parameters'], 'invalid_parameter', 'Parametry źródeł muszą być obiektem.');
+    return errors;
+  }
+  const parameters = record(draft.provider_parameters);
+  const ids = new Set([...Object.keys(parameters), ...rows.flatMap(row => (row.plugin ? [row.plugin.id] : []))]);
+  for (const id of ids) {
+    const plugin = has(catalogue.providers, id) ? catalogue.providers[id] : undefined;
+    if (!plugin) {
+      add(['provider_parameters', id], 'unknown_provider', 'Nieznane źródło parametrów.');
       continue;
     }
-    const source = record(selection);
-    if (Object.keys(source).some(key => key !== 'enabled' && key !== 'parameters'))
-      errors.push({ path: prefix, code: 'unknown_parameter', message: 'Nieznane pole wyboru źródła.' });
-    if (
-      has(source, 'parameters') &&
-      (source.parameters === null || typeof source.parameters !== 'object' || Array.isArray(source.parameters))
-    ) {
-      errors.push({ path: [...prefix, 'parameters'], code: 'invalid_parameter', message: 'Parametry źródła muszą być obiektem.' });
+    const raw = has(parameters, id) ? parameters[id] : {};
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      add(['provider_parameters', id], 'invalid_parameter', 'Parametry źródła muszą być obiektem.');
       continue;
     }
-    if (row.error) {
-      errors.push({ path: prefix, code: 'invalid_provider', message: row.error });
-      if (!row.plugin) continue;
-    }
-    const plugin = row.plugin;
-    if (!plugin) continue;
-    const { values, conflicts } = readProviderParameters(draft, plugin);
-    for (const name of Object.keys(values)) {
-      if (!has(plugin.fields, name))
-        errors.push({ path: [...prefix, 'parameters', name], code: 'unknown_parameter', message: 'Nieznany parametr źródła.' });
-    }
+    const values = readProviderParameters(draft, plugin);
+    for (const name of Object.keys(values))
+      if (!has(plugin.fields, name)) add(['provider_parameters', id, name], 'unknown_parameter', 'Nieznany parametr źródła.');
+    const active = componentEnabled && rows.some(row => row.selected === id && !row.error);
     for (const [name, field] of Object.entries(plugin.fields)) {
-      const path = [...prefix, 'parameters', name];
-      if (conflicts[name]) {
-        errors.push({ path, code: 'alias_conflict', message: 'Uzgodnij sprzeczne wartości parametru.' });
-        continue;
-      }
       const value = values[name];
-      const required = field.required || (componentEnabled && row.effectiveEnabled && plugin.requiredWhenEnabled.includes(name));
-      if (value === undefined || (required && (value === null || value === '' || (Array.isArray(value) && value.length === 0)))) {
-        if (required) errors.push({ path, code: 'required_when_enabled', message: 'Wypełnij wymagany parametr źródła.' });
+      const required = field.required || (active && plugin.requiredWhenSelected.includes(name));
+      if (value === undefined || (required && (value === null || value === '' || (Array.isArray(value) && !value.length)))) {
+        if (required) add(['provider_parameters', id, name], 'required_when_selected', 'Wypełnij wymagany parametr źródła.');
         continue;
       }
       const message = providerValueError(value, field);
-      if (message) errors.push({ path, code: 'invalid_parameter', message });
+      if (message) add(['provider_parameters', id, name], 'invalid_parameter', message);
     }
   }
   return errors;
@@ -462,9 +413,6 @@ export function decodeProviderFieldErrors(value: unknown): ProviderFieldError[] 
   });
 }
 export function providerFieldErrors(errors: ProviderFieldError[], plugin: ProviderDefinition, name: string): ProviderFieldError[] {
-  const canonical = ['user_config', 'providers', plugin.id, 'parameters', name];
-  const legacy = plugin.legacyPaths[name] ? ['user_config', ...plugin.legacyPaths[name]] : [];
-  return errors.filter(error =>
-    [canonical, legacy].some(prefix => prefix.length > 0 && prefix.every((part, index) => error.path[index] === part))
-  );
+  const prefix = ['user_config', 'provider_parameters', plugin.id, name];
+  return errors.filter(error => prefix.every((part, index) => error.path[index] === part));
 }

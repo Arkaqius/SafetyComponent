@@ -27,11 +27,11 @@ export const configurationHelp: Array<{
       },
       {
         title: 'Źródła danych zewnętrznych',
-        text: 'Ustaw kraj w „Instalacja HA”, a tutaj wybierz źródła i uzupełnij ich własne parametry. IMGW wymaga kodów powiatów TERYT. „Domyślnie” zachowuje ustawienie systemowe; jawne włączenie lub wyłączenie zapisuje Twój wybór. Wyłączenie i zmiana kraju zachowują wpisane wartości. Nieobsługiwany wybór trzeba poprawić przed zapisem.',
+        text: 'Ustaw kraj w „Instalacja HA”. Dla pogody, oficjalnych ostrzeżeń i jakości powietrza wybierz nazwany plugin albo „Wyłączone”. Pojawią się tylko pola wybranego źródła. Zmiana wyboru zachowuje wpisane parametry do ponownego użycia. Nieobsługiwany kraj lub nieznane źródło trzeba poprawić przed zapisem.',
       },
       {
-        title: 'Starsze parametry i zakres danych',
-        text: 'Starsze kody TERYT zobaczysz przy IMGW bez zmiany pliku przy odczycie. Edycja zachowuje ich miejsce zapisu. Przy dwóch sprzecznych wartościach wybierz właściwą w formularzu. Strona „Zagrożenia zewnętrzne” rozróżnia brak źródła, nieobsługiwane zagrożenie, oczekiwanie, brak wiarygodnych danych i zdrowe źródło bez bieżących ostrzeżeń. Dostępna pogoda modelowa nie potwierdza dostępności oficjalnych ostrzeżeń.',
+        title: 'Wyłączenie i źródło testowe',
+        text: 'Wyłączona kategoria pozostaje szara z oznaczeniem „Wyłączone”, bez zera sugerującego działające monitorowanie. Dla Niemiec można jawnie wybrać „Niemcy — źródło testowe” i scenariusz empty, warning, unavailable lub stale. To dane syntetyczne: podgląd nie zmienia rzeczywistych alarmów, pokrycia, powiadomień ani poleceń. Zapis i osobny restart są potrzebne do zastosowania wyboru.',
       },
       {
         title: 'Język',

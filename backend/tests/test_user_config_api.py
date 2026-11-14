@@ -123,19 +123,16 @@ def _store(tmp_path: Path) -> UserConfigStore:
     )
 
 
-def test_legacy_read_and_alias_conflict_save_import_preserve_bytes(tmp_path: Path) -> None:
-    """An operator must reconcile conflicting source paths before replacement."""
+def test_obsolete_source_save_import_preserve_bytes(tmp_path: Path) -> None:
+    """Obsolete inputs are rejected without migration or replacement."""
     store = _store(tmp_path)
-    store.user_path.write_bytes((BACKEND_DIR / "tests/fixtures/external_apis/legacy_user_config.yml").read_bytes())
     before = store.user_path.read_bytes()
     document = store.read()
     source = document["user_config"]
-    assert "parameters" not in source["providers"]["ImgwWarningsApiComponent"]
-    assert store.user_path.read_bytes() == before
-    source["providers"]["ImgwWarningsApiComponent"]["parameters"] = {"teryt_codes": ["0001"]}
-    with pytest.raises(ValueError, match="conflict"):
+    source["providers"] = {"ImgwWarningsApiComponent": {"enabled": True}}
+    with pytest.raises(ValueError, match="providers"):
         store.save(source, document["revision"])
-    with pytest.raises(ValueError, match="conflict"):
+    with pytest.raises(ValueError, match="providers"):
         store.import_yaml(yaml.safe_dump({"user_config": source}))
     assert store.user_path.read_bytes() == before
     assert store.read()["revision"] == document["revision"]
@@ -146,7 +143,7 @@ def test_provider_invalid_http_save_keeps_bytes_revision_and_structured_path(tmp
     before = store.user_path.read_bytes()
     document = store.read()
     config = document["user_config"]
-    config["providers"]["ImgwWarningsApiComponent"]["parameters"] = {"teryt_codes": ["bad"]}
+    config["provider_parameters"]["ImgwWarningsApiComponent"] = {"teryt_codes": ["bad"]}
     UserConfigRequestHandler.store = store
     server = ConfigurationHttpServer(("127.0.0.1", 0), UserConfigRequestHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -158,7 +155,7 @@ def test_provider_invalid_http_save_keeps_bytes_revision_and_structured_path(tmp
         assert caught.value.code == 422
         error = json.load(caught.value)
         assert error["error"] == "invalid_configuration"
-        assert error["field_errors"][0]["path"][:4] == ["user_config", "providers", "ImgwWarningsApiComponent", "parameters"]
+        assert error["field_errors"][0]["path"][:3] == ["user_config", "provider_parameters", "ImgwWarningsApiComponent"]
         assert store.user_path.read_bytes() == before
         assert store.read()["revision"] == document["revision"]
     finally:
@@ -170,13 +167,13 @@ def test_provider_invalid_http_save_keeps_bytes_revision_and_structured_path(tmp
 def test_invalid_saved_provider_source_remains_readable_without_rewrite(tmp_path: Path) -> None:
     store = _store(tmp_path)
     document = yaml.safe_load(store.user_path.read_text(encoding="utf-8"))
-    document["user_config"]["providers"]["ImgwWarningsApiComponent"]["parameters"] = {"teryt_codes": ["bad"]}
+    document["user_config"]["provider_parameters"]["ImgwWarningsApiComponent"] = {"teryt_codes": ["bad"]}
     store.user_path.write_text(yaml.safe_dump(document), encoding="utf-8")
     before = store.user_path.read_bytes()
     result = store.read()
     assert result["validation_error"]
-    assert result["user_config"]["providers"]["ImgwWarningsApiComponent"]["parameters"]["teryt_codes"] == ["bad"]
-    assert result["system_defaults"]["external_hazard"]["provider_metadata_version"] == 1
+    assert result["user_config"]["provider_parameters"]["ImgwWarningsApiComponent"]["teryt_codes"] == ["bad"]
+    assert result["system_defaults"]["external_hazard"]["provider_metadata_version"] == 2
     assert store.user_path.read_bytes() == before
 
 
@@ -191,8 +188,8 @@ def test_read_returns_only_user_source_and_revision(tmp_path: Path) -> None:
         "home_assistant_binary_alarm"
     ]
     plugin = result["system_defaults"]["external_hazard"]["provider_plugins"]["ImgwWarningsApiComponent"]
-    assert plugin["countries"] == ["PL"] and plugin["enabled"] is True
-    assert plugin["required_when_enabled"] == ["teryt_codes"]
+    assert plugin["countries"] == ["PL"] and plugin["data_kind"] == "live"
+    assert plugin["required_when_selected"] == ["teryt_codes"]
     assert plugin["parameter_schema"]["additionalProperties"] is False
     assert "system_config" not in result
 

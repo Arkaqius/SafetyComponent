@@ -37,6 +37,7 @@ class OpenMeteoAirQualityApiComponent(ExternalApiComponent):
     )
 
     def fetch_payload(self) -> Any:
+        assert self.http_client is not None
         return self.http_client.get_json(
             self.provider_config["base_url"],
             params={

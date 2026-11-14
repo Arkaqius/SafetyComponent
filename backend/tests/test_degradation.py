@@ -44,6 +44,18 @@ def _registry(*, recovery_only: bool = False) -> DegradationRegistry:
     ))
 
 
+def test_synthetic_source_cannot_requalify_real_hazard_evidence():
+    from components.external_apis.germany_dummy_warnings import GermanyDummyWarningsApiComponent
+
+    registry = _registry()
+    before_evidence = dict(registry._evidence)
+    before_pending = set(registry._requires_reevaluation)
+    registry.observe_hazard(symptom_id="room_a", state=FaultState.CLEARED,
+                            additional_info={"source": GermanyDummyWarningsApiComponent.component_name})
+    assert registry._evidence == before_evidence
+    assert registry._requires_reevaluation == before_pending
+
+
 def test_provider_adapter_bindings_preserve_weather_aq_isolation() -> None:
     symptoms = {
         "weather_gate": SimpleNamespace(
@@ -94,6 +106,7 @@ def test_same_capability_provider_scope_and_hazard_coverage_are_independent() ->
 
     names = ("RegionalWarningsApiComponent", "PeerRegionalWarningsApiComponent")
     definitions = {name: SimpleNamespace(
+        data_kind="live",
         capability=ProviderCapability.OFFICIAL_WARNINGS,
         hazards=frozenset({HazardType.WIND}),
     ) for name in names}

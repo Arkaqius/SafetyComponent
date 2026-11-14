@@ -498,7 +498,7 @@ test('source observations use the same accessible help and scrolling dismisses i
   else await trigger.click();
   await expect(page.getByRole('tooltip')).toBeVisible();
   await expect(page.getByRole('tooltip')).not.toContainText('sensor.');
-  await page.evaluate(() => window.scrollBy(0, -100));
+  await page.evaluate(() => window.scrollBy(0, window.scrollY > 0 ? -100 : 100));
   await expect(page.getByRole('tooltip')).toHaveCount(0);
   expect(errors).toEqual([]);
 });

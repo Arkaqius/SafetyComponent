@@ -35,8 +35,10 @@ Note:
 
 """
 
+from datetime import datetime, timezone
 from typing import Any, Dict, Mapping
 from urllib.parse import urlparse
+from uuid import uuid4
 
 import appdaemon.plugins.hass.hassapi as hass
 from pydantic import ValidationError
@@ -77,8 +79,13 @@ from components.external_apis import (
     HttpJsonClient,
     get_registered_api_components,
 )
+from components.external_apis.core.selection_state import AppliedSourceSelection
+from components.safetycomponents.external_hazard.assertion_store import (
+    AssertionRecord,
+    RealAssertionStore,
+)
 from components.faults_manager import cfg_parser as cfg_pr
-from components.faults_manager.fault_manager import FaultManager
+from components.faults_manager.fault_manager import FaultManager, SYSTEM_STATE_BY_FAULT_LEVEL
 from components.faults_manager.evidence import FaultEvidenceJournal
 from components.faults_manager.evidence_store import (
     InMemoryFaultEvidenceStore,
@@ -118,9 +125,21 @@ class SafetyFunctions(hass.Hass):
         # Disable all the no-member violations in this function
         # pylint: disable=attribute-defined-outside-init
         self._coverage_reevaluation_enabled = False
+        self.runtime_id = uuid4().hex
         if not self._initialize_mqtt():
             self.stop_app(self.name)
             return
+
+        # Invalidate retained applied truth before validation can fail or polling starts.
+        selection_entity = self.mqtt_entities.register_sensor(
+            "sensor.external_source_selection",
+            self.localizer.text("entity.external_source_selection"),
+            icon="mdi:format-list-checks", entity_category="diagnostic",
+        )
+        self.mqtt_entities.publish_sensor_state(
+            selection_entity, "unknown",
+            attributes={"schema_version": 1, "runtime_id": self.runtime_id},
+        )
 
         try:
             self.runtime_config: Dict[str, Any] = AppCfgValidator.validate(
@@ -158,6 +177,16 @@ class SafetyFunctions(hass.Hass):
             "api_components", {}
         )
         self.site_cfg: dict = self.runtime_config["user_config"].get("site", {})
+        self.external_sources = self.runtime_config["user_config"]["external_sources"]
+        self.applied_source_selection = AppliedSourceSelection(
+            self.mqtt_entities,
+            runtime_id=self.runtime_id,
+            component_enabled="ExternalHazardComponent" in self.safety_components_cfg,
+            selections=self.external_sources,
+            provider_definitions=get_registered_api_components(),
+            localizer=self.localizer,
+        )
+        self.applied_source_selection.publish()
         self.state_database = SqliteStateDatabase(
             state_database_path(
                 self.runtime_config["app_config"]["fault_evidence"]["state_file"]
@@ -188,18 +217,22 @@ class SafetyFunctions(hass.Hass):
                 "enabled", True
             ):
                 continue
-            provider_host = urlparse(str(provider_cfg["base_url"])).hostname
-            if not provider_host:
-                raise ValueError(f"Invalid provider base URL for {component_name}")
+            http_client = None
+            if component_cls.transport_kind == "http":
+                provider_host = urlparse(str(provider_cfg["base_url"])).hostname
+                if not provider_host:
+                    raise ValueError(f"Invalid provider base URL for {component_name}")
+                http_client = HttpJsonClient(allowed_hosts={provider_host})
             self.api_modules[component_name] = component_cls(
                 provider_config=provider_cfg,
                 site_config=self.site_cfg,
-                http_client=HttpJsonClient(allowed_hosts={provider_host}),
-                parameters=provider_cfg.get("parameters"),
+                http_client=http_client,
+                parameters=provider_cfg["parameters"],
             )
 
         self.provider_definitions = {
             name: type(adapter) for name, adapter in self.api_modules.items()
+            if adapter.data_kind == "live"
         }
 
         state_provider = HomeAssistantStateProvider.from_environment()
@@ -223,6 +256,10 @@ class SafetyFunctions(hass.Hass):
                     component_instance.state_reader = self.ha_state_reader
 
                 component_cfg = self.safety_components_cfg[component_name]
+                if component_name == "ExternalHazardComponent":
+                    component_instance.configure_runtime(
+                        runtime_id=self.runtime_id, selections=self.external_sources
+                    )
                 symptoms_data, recovery_data = component_instance.get_symptoms_data(
                     self.sm_modules, component_cfg
                 )
@@ -248,6 +285,7 @@ class SafetyFunctions(hass.Hass):
             "recovery_state",
             "fault_evidence_state",
             "safety_routines",
+            "external_hazard_assertions",
         }
         indoor_monitor = self.sm_modules.get("InternalEnvironmentalHazardMonitorComponent")
         if indoor_monitor is not None:
@@ -270,7 +308,7 @@ class SafetyFunctions(hass.Hass):
             self.common_entities,
             self.event_bus,
             self.mqtt_entities,
-            self.api_modules,
+            {name: adapter for name, adapter in self.api_modules.items() if adapter.data_kind == "live"},
             persistence_stores=frozenset(persistence_stores),
             local_outputs_enabled=any(
                 self.notification_cfg["local"].get(key)
@@ -477,6 +515,7 @@ class SafetyFunctions(hass.Hass):
             self.mqtt_entities,
             evidence_journal=self.fault_evidence,
         )
+        self._restore_external_assertions()
         entity_monitor = self.sm_modules.get("EntityMonitorComponent")
         monitor_bindings = (
             entity_monitor.get_degradation_bindings()
@@ -561,7 +600,11 @@ class SafetyFunctions(hass.Hass):
             self.common_entities,
             self.notify_man,
             self.mqtt_entities,
-            recovery_state_store,
+            restore_excluded_symptoms=frozenset(self._external_assertions) | frozenset(
+                key for key, symptom in self.symptoms.items()
+                if symptom.sm_name in {"sm_ext_weather_exposure", "sm_ext_outdoor_air_quality_exposure"}
+            ),
+            state_store=recovery_state_store,
             degradation=self.degradation,
             diagnostics_observer=self.self_diagnostics.record_app_cause,
             recovery_observer=self.self_diagnostics.record_recovery,
@@ -616,6 +659,12 @@ class SafetyFunctions(hass.Hass):
 
         # Initialize state listeners and timers for every safety mechanism.
         self.fm.init_safety_mechanisms()
+        external_component = self.sm_modules.get("ExternalHazardComponent")
+        if external_component is not None:
+            external_component.assertion_observer = self._checkpoint_external_assertion
+            external_component.restore_assertions({
+                key: value.context for key, value in self._external_assertions.items()
+            })
 
         # Core dispatch is ready before the first H evaluation can propose recovery.
         self.self_diagnostics.record_app_cause("startup", False)
@@ -1087,7 +1136,7 @@ class SafetyFunctions(hass.Hass):
                 recovery_manager.invalidate_restricted_proposals()
             except Exception as exc:
                 self.log(f"Unable to withdraw restricted recovery: {exc}", level="ERROR")
-        coverage = self.degradation.snapshot(limit=32)
+        coverage = self._external_coverage_snapshot()
         try:
             self._set_internal_entity(
                 "sensor.safety_coverage_state",
@@ -1151,6 +1200,98 @@ class SafetyFunctions(hass.Hass):
             self._coverage_reevaluating = False
 
 
+    def _restore_external_assertions(self) -> None:
+        """Restore retained real danger before any initial fault state publication."""
+        self._external_assertions: dict[str, AssertionRecord] = {}
+        self.real_assertion_store: RealAssertionStore | None = None
+        load_failed = False
+        try:
+            self.real_assertion_store = RealAssertionStore(self.state_database)
+            self._external_assertions = self.real_assertion_store.records
+        except (OSError, ValueError, TypeError) as exc:
+            load_failed = True
+            self.log(f"Unable to load real external assertions: {exc}", level="ERROR")
+        self.self_diagnostics.record_app_cause(
+            "persistence", load_failed, detail="external_hazard_assertions", operation="load"
+        )
+        uncertain: set[str] = set()
+        for fault_id in ("ExternalWeatherExposure", "OutdoorAirQualityExposure"):
+            evidence = self.fault_evidence.get(fault_id)
+            if evidence and evidence.get("active") and not any(
+                record.fault_id == fault_id for record in self._external_assertions.values()
+            ):
+                uncertain.add(fault_id)
+        self.fm.restore_external_assertions(self._external_assertions, uncertain_faults=uncertain)
+
+    def _external_coverage_snapshot(self) -> dict[str, Any]:
+        """Retained unresolved real danger cannot disappear from global coverage."""
+        snapshot = self.degradation.snapshot(limit=32)
+        fault_manager = getattr(self, "fm", None)
+        if fault_manager is None:
+            return snapshot
+        records = [record for fault_id in ("ExternalWeatherExposure", "OutdoorAirQualityExposure")
+                   for record in fault_manager.retained_assertions(fault_id)]
+        unknown = any(
+            key.startswith("RetainedUnknown")
+            for fault in fault_manager.faults.values()
+            for key in fault.evaluation.active_contributors
+        )
+        if records or unknown:
+            if snapshot["state"] in {"FULL", "PARTIAL"}:
+                snapshot["state"] = "UNKNOWN"
+            snapshot["retained_external_assertion_count"] = len(records)
+            snapshot["retained_external_assertions"] = records[:32]
+            snapshot["retained_hazard_unknown"] = unknown
+        return snapshot
+
+    def _checkpoint_external_assertion(
+        self, symptom_id: str, active: bool, context: Mapping[str, Any]
+    ) -> bool:
+        """Persist real transitions; storage uncertainty can never acknowledge clear."""
+        candidate = dict(self._external_assertions)
+        try:
+            if active:
+                symptom = self.symptoms[symptom_id]
+                hazard = str(symptom.parameters["hazard"])
+                source = str(context.get("source", ""))
+                definition = self.provider_definitions.get(source)
+                if definition is None or definition.data_kind != "live":
+                    raise ValueError("Real assertion requires a selected live source")
+                previous = candidate.get(symptom_id)
+                retained_context = {
+                    **context,
+                    "hazard_code": hazard,
+                    "opening_id": str(symptom.parameters["opening_name"]),
+                }
+                candidate[symptom_id] = AssertionRecord(
+                    symptom_id=symptom_id,
+                    fault_id="OutdoorAirQualityExposure" if hazard == "outdoor_air_pollution" else "ExternalWeatherExposure",
+                    opening=str(symptom.parameters["opening_name"]),
+                    hazard=hazard,
+                    source=source,
+                    asserted_at=previous.asserted_at if previous else datetime.now(timezone.utc).isoformat(),
+                    context=retained_context,
+                )
+            else:
+                candidate.pop(symptom_id, None)
+            if self.real_assertion_store is None:
+                raise OSError("Real assertion checkpoint is unavailable")
+            self.real_assertion_store.replace(candidate)
+        except (OSError, ValueError, TypeError, KeyError) as exc:
+            if active:
+                self._external_assertions = candidate
+            self.log(f"Unable to persist real external assertion: {exc}", level="ERROR")
+            self.self_diagnostics.record_app_cause(
+                "persistence", True, detail="external_hazard_assertions", operation="write"
+            )
+            return active
+        self._external_assertions = candidate
+        self.fm.acknowledge_external_evidence(symptom_id)
+        self.self_diagnostics.record_app_cause(
+            "persistence", False, detail="external_hazard_assertions", operation="write"
+        )
+        return True
+
     def register_entities(self) -> None:
         """
         Registers all entities required by the Safety Functions app in Home Assistant.
@@ -1165,7 +1306,7 @@ class SafetyFunctions(hass.Hass):
         self.mqtt_entities.register_sensor(
             "sensor.safetysystem_state",
             "System State",
-            state="no_faults",
+            state=SYSTEM_STATE_BY_FAULT_LEVEL.get(self.fm.get_system_fault_level(), "warning"),
             attributes={
                 "attribution": "Managed by SafetyFunction",
                 "description": "Overall safety system state based on fault conditions.",
@@ -1182,7 +1323,7 @@ class SafetyFunctions(hass.Hass):
             entity_category="diagnostic",
         )
 
-        coverage = self.degradation.snapshot(limit=32)
+        coverage = self._external_coverage_snapshot()
         self.mqtt_entities.register_sensor(
             "sensor.safety_coverage_state",
             "Safety Coverage",
@@ -1221,8 +1362,13 @@ class SafetyFunctions(hass.Hass):
                     "shadowed_by": [],
                     "latched": fault.evaluation.latched,
                     "category": fault.category.value,
+                    "fault_id": name,
                     "contributors": contributors,
                     "active_contributors": sorted(fault.evaluation.active_contributors),
+                    "retained_assertions": self.fm.retained_assertions(name),
+                    "retained_hazard_unknown": any(
+                        key.startswith("RetainedUnknown") for key in fault.evaluation.active_contributors
+                    ),
                     **evidence_attributes,
                 },
                 icon="mdi:alert-outline",

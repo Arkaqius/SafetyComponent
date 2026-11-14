@@ -18,7 +18,10 @@ def _provider_definitions() -> dict[str, Any]:
     """Read registered contracts lazily to avoid provider/core import cycles."""
     from components.external_apis.core.registry import get_registered_api_components
 
-    return get_registered_api_components()
+    return {
+        name: definition for name, definition in get_registered_api_components().items()
+        if definition.data_kind == "live"
+    }
 
 
 class CoverageState(str, Enum):
@@ -80,6 +83,16 @@ class DegradationRegistry:
         self._provider_definitions = dict(
             _provider_definitions() if provider_definitions is None else provider_definitions
         )
+        from components.external_apis.core.registry import get_registered_api_components
+
+        self._synthetic_provider_ids = {
+            name for name, definition in get_registered_api_components().items()
+            if definition.data_kind == "synthetic"
+        }
+        self._provider_definitions = {
+            name: definition for name, definition in self._provider_definitions.items()
+            if getattr(definition, "data_kind", None) == "live"
+        }
         self._owners: dict[str, str] = {}
         for fault in faults.values():
             for symptom_id in fault.related_symptom_ids:
@@ -185,6 +198,8 @@ class DegradationRegistry:
 
         if symptom_id not in self._evidence:
             raise ValueError(f"Unknown symptom {symptom_id}")
+        if symptom_id in self._baseline and (additional_info or {}).get("source") in self._synthetic_provider_ids:
+            return
         if state not in (FaultState.SET, FaultState.CLEARED):
             return
         previous = self._evidence[symptom_id]
@@ -427,7 +442,11 @@ def compile_runtime_bindings(
     Unknown D owners deliberately remain unbound for strict validation.
     """
 
-    definitions = dict(_provider_definitions() if provider_definitions is None else provider_definitions)
+    definitions = {
+        name: definition for name, definition in (
+            _provider_definitions() if provider_definitions is None else provider_definitions
+        ).items() if getattr(definition, "data_kind", None) == "live"
+    }
     bindings = list(monitor_bindings)
     bound = {binding.symptom_id for binding in bindings}
     hazard_owners: dict[str, Fault] = {}
@@ -496,6 +515,11 @@ def compile_runtime_bindings(
                     cause != "persistence"
                     or symptom.parameters.get("store") != "heating_monitor_state"
                     or target.sm_name.startswith("sm_hsm_")
+                )
+                and (
+                    cause != "persistence"
+                    or symptom.parameters.get("store") != "external_hazard_assertions"
+                    or target.sm_name in {"sm_ext_weather_exposure", "sm_ext_outdoor_air_quality_exposure"}
                 )
                 and (
                     cause != "persistence"

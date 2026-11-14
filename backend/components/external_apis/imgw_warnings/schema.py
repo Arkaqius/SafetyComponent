@@ -28,14 +28,13 @@ class ImgwWarningsParameters(BaseModel):
             raise ValueError("IMGW codes must be four-digit strings")
         codes = [code.strip() for code in value]
         if len(codes) != len(set(codes)):
-            raise ValueError("IMGW requires unique four-digit codes in site.teryt_codes or provider parameters")
+            raise ValueError("IMGW requires unique four-digit codes in provider_parameters")
         return codes
 
 
 class ImgwWarningsConfig(StrictBaseModel):
     """Validated IMGW warning provider configuration."""
 
-    enabled: bool = True
     base_url: str
     poll_interval_seconds: int = Field(ge=60)
     request_timeout_seconds: float = Field(gt=0, le=30)

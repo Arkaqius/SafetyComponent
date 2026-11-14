@@ -65,31 +65,37 @@ tylko widoczną podstronę.
 ## Źródła zagrożeń zewnętrznych
 
 W **Instalacja HA** ustaw kraj i strefę czasową. Następnie w **Ogólne** wybierz
-źródła danych dla tej lokalizacji. Każde źródło pokazuje obsługiwane zagrożenia
-i własne pola. Dla IMGW są to kody powiatów TERYT, po jednym w wierszu.
-Współrzędne dla danych Open-Meteo pochodzą z Home Assistant.
+nazwany plugin albo **Wyłączone** osobno dla **Pogody**, **Oficjalnych ostrzeżeń
+pogodowych** i **Jakości powietrza**. Nie ma dodatkowego wyboru domyślnego
+włączenia. Współrzędne pochodzą z Home Assistant.
 
-Wybór **Domyślnie** zachowuje ustawienie dostarczone
-z aplikacją. **Włączone** i **Wyłączone** zapisują Twój jawny wybór. Wyłączenie
-źródła zachowuje wpisane parametry; ponowne włączenie wymaga uzupełnienia
-wymaganych pól. Zmiana kraju zachowuje szkic. Jeżeli wcześniej wybrane źródło
-nie obsługuje nowego kraju, popraw jego wybór przed zapisem. Nieznane źródło
-pozostaje widoczne i można usunąć jego zapisany wybór.
+Formularz pokazuje tylko pola wybranego pluginu. Dla polskiego źródła IMGW są to
+kody powiatów TERYT, po jednym w wierszu. Inne źródło może wymagać własnego kodu
+regionu i nie prosi o polskie kody. Zmiana pluginu lub wyłączenie kategorii zachowuje
+wpisane wartości do ponownego wyboru. Zmiana kraju zachowuje szkic; jeżeli wybrany
+plugin nie obsługuje nowego kraju, wybierz zgodne źródło albo je wyłącz.
 
-Starsze kody TERYT są widoczne w polach IMGW bez zmiany pliku podczas odczytu.
-Ich edycja zachowuje dotychczasowe miejsce zapisu. Gdy plik zawiera dwie
-sprzeczne wartości tego samego parametru, panel pokaże obie i poprosi o jawny
-wybór. Zapis sprawdza cały dokument; błąd pola lub konflikt rewizji zachowuje
-Twój szkic. Po zmianie pliku przez inną sesję wczytaj zapisane ustawienia
-przyciskiem **Odrzuć zmiany** i ponownie wprowadź potrzebne poprawki.
+Zapis sprawdza cały dokument. Błąd pola lub konflikt rewizji pozostawia szkic do
+poprawy. Po zmianie pliku przez inną sesję wczytaj zapisane ustawienia przyciskiem
+**Odrzuć zmiany** i ponownie wprowadź potrzebne poprawki. Niepoprawny plik trzeba
+poprawić do aktualnego modelu lub zastąpić zweryfikowanym szablonem.
 
-Na stronie **Zagrożenia zewnętrzne** sprawdź **Zakres danych zewnętrznych**.
-Panel rozróżnia brak skonfigurowanego źródła, zagrożenie poza jego zakresem,
-oczekiwanie na dane, brak wiarygodnych danych, dane dostępne oraz brak bieżących
-ostrzeżeń w obsługiwanym zakresie. Dostępna pogoda modelowa nie zastępuje
-oficjalnych ostrzeżeń. Brak ostrzeżeń dotyczy tylko obsługiwanego zakresu
-zdrowego źródła. Zapis konfiguracji i restart aplikacji pozostają osobnymi
-czynnościami.
+Na stronie **Zagrożenia zewnętrzne** wyłączona kategoria jest szara z tekstem
+**Wyłączone** i kreską **—** zamiast zera wykryć. Zero bieżących ostrzeżeń dotyczy
+tylko świeżych kompletnych danych działającego źródła i jego zakresu. Oczekiwanie,
+brak wiarygodnych danych, dane nieaktualne i nieobsługiwane zagrożenie są odrębnymi
+stanami. Dostępna pogoda modelowa nie zastępuje ostrzeżeń urzędowych. Zachowane
+rzeczywiste zagrożenie nadal wymaga uwagi po wyłączeniu pluginu lub restarcie.
+
+Dla kraju **DE** można jawnie wybrać **Niemcy — źródło testowe**. Wpisz własny
+identyfikator regionu testowego i wybierz scenariusz: **empty** (brak testowych
+ostrzeżeń), **warning** (testowy wiatr), **unavailable** (niedostępność) albo
+**stale** (dane nieaktualne). Podgląd jest stale oznaczony jako dane syntetyczne:
+nie zmienia rzeczywistych alarmów, pokrycia monitorowania, powiadomień ani poleceń.
+
+Ekran monitorowania opisuje konfigurację zastosowaną przy uruchomieniu aplikacji.
+Niezapisany szkic ani zapis czekający na restart nie zmienia tego widoku.
+**Zapisz konfigurację** i osobno potwierdzony restart pozostają dwiema czynnościami.
 
 ## Reset i restart instalacji
 

@@ -31,7 +31,6 @@ SITE = {
     "latitude": 50.0125,
     "longitude": 20.1163,
     "timezone": "Europe/Warsaw",
-    "teryt_codes": ["0000"],
 }
 
 
@@ -55,6 +54,7 @@ def _component(cls, **config: object):
         provider_config=_config(**config),
         site_config=SITE,
         http_client=object(),
+        parameters={"teryt_codes": ["0000"]} if cls is ImgwWarningsApiComponent else {},
     )
 
 
@@ -153,6 +153,7 @@ def test_imgw_distinguishes_empty_warning_feed_from_other_404_errors(
         provider_config=_config(),
         site_config=SITE,
         http_client=client,
+        parameters={"teryt_codes": ["0000"]},
     )
 
     result = component.poll()
@@ -246,6 +247,7 @@ def test_stale_source_result_preserves_last_fresh_provider_cache() -> None:
                 provider_config=_config(),
                 site_config=SITE,
                 http_client=object(),
+                parameters={},
             )
             self.fresh = True
 
@@ -290,6 +292,7 @@ def test_unexpected_provider_exception_becomes_schema_health_result() -> None:
                 provider_config=_config(),
                 site_config=SITE,
                 http_client=object(),
+                parameters={},
             )
 
         def fetch_payload(self) -> object:

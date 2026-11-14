@@ -28,7 +28,6 @@ class RegionalTransport(BaseModel):
     """Packaged lifecycle schema proving provider-specific system fields."""
 
     model_config = ConfigDict(extra="forbid")
-    enabled: bool = True
     base_url: str
     poll_interval_seconds: int = Field(ge=60)
     request_timeout_seconds: float = Field(gt=0, le=30)
@@ -43,7 +42,7 @@ class RegionalWarnings(ExternalApiComponent):
     component_name = "RegionalWarningsApiComponent"
     config_model = RegionalTransport
     parameter_model = RegionalParameters
-    required_when_enabled = frozenset({"region_code"})
+    required_when_selected = frozenset({"region_code"})
     capability = ProviderCapability.OFFICIAL_WARNINGS
     hazards = frozenset({HazardType.WIND})
     countries = frozenset({"DE"})
@@ -68,7 +67,6 @@ class PeerRegionalWarnings(RegionalWarnings):
 def provider_policy(**overrides: Any) -> dict[str, Any]:
     """Return sanitized system-owned provider defaults."""
     return {
-        "enabled": True,
         "base_url": "https://example.invalid/warnings",
         "poll_interval_seconds": 300,
         "request_timeout_seconds": 5,

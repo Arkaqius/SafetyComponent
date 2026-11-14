@@ -202,7 +202,6 @@ class CalibrationSource(SystemSourceModel):
 class ProviderRuntimeSource(SystemSourceModel):
     """One external provider lifecycle and transport contract."""
 
-    enabled: bool
     base_url: str
     poll_interval_seconds: int = Field(ge=1)
     request_timeout_seconds: int = Field(ge=1)

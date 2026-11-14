@@ -59,8 +59,8 @@ def test_provider_schema_export_tracks_new_registration():
     registry.register_api_component(RegionalWarnings)
     registry.describe_provider_keys(schema)
     entry = schema["properties"][RegionalWarnings.component_name]
-    assert entry["properties"]["parameters"]["additionalProperties"] is False
-    assert "region_code" in entry["properties"]["parameters"]["properties"]
+    assert entry["additionalProperties"] is False
+    assert "region_code" in entry["properties"]
 
 
 def test_registration_rejects_undeclared_activation_requirement() -> None:
@@ -68,7 +68,7 @@ def test_registration_rejects_undeclared_activation_requirement() -> None:
 
     class BadRequired(RegionalWarnings):
         component_name = "BadRequiredApiComponent"
-        required_when_enabled = frozenset({"undeclared_region"})
+        required_when_selected = frozenset({"undeclared_region"})
 
     with pytest.raises(ValueError, match="unknown required parameters"):
         registry.register_api_component(BadRequired)
@@ -114,3 +114,32 @@ def test_runtime_schema_preserves_closed_provider_owned_packaged_fields() -> Non
     assert transport.model_dump()["feed_variant"] == "test-region"
     with pytest.raises(ValidationError, match="extra_forbidden"):
         RegionalWarnings.config_model.model_validate(provider_policy(unknown_policy=1))
+
+
+def test_source_choice_schema_is_scoped_to_provider_capability():
+    """A choice schema cannot offer an air-quality plugin as an official feed."""
+    from configuration_model import user_configuration_schema
+
+    schema = user_configuration_schema()["$defs"]["ExternalSources"]
+    official = schema["properties"]["OfficialWeatherWarnings"]["anyOf"]
+    choices = next(item["enum"] for item in official if item.get("type") == "string")
+    assert "ImgwWarningsApiComponent" in choices
+    assert "OpenMeteoAirQualityApiComponent" not in choices
+
+
+@pytest.mark.parametrize(("attribute", "value"), [("data_kind", "preview"), ("transport_kind", "socket")])
+def test_registration_rejects_unknown_trusted_kind(attribute, value):
+    class InvalidKind(RegionalWarnings):
+        component_name = "InvalidKindApiComponent"
+
+    setattr(InvalidKind, attribute, value)
+    with pytest.raises(ValueError, match="invalid data or transport kind"):
+        registry.register_api_component(InvalidKind)
+
+
+def test_registration_rejects_oversized_provider_identity():
+    class Oversized(RegionalWarnings):
+        component_name = "P" * 129
+
+    with pytest.raises(ValueError, match="stable alphanumeric key"):
+        registry.register_api_component(Oversized)

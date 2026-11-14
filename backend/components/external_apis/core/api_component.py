@@ -6,7 +6,7 @@ import time
 from math import isfinite
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Any, ClassVar, Mapping
+from typing import Any, ClassVar, Mapping, Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -34,39 +34,30 @@ class ExternalApiComponent(ABC):
     component_name = ""
     config_model: ClassVar[type[BaseModel]]
     parameter_model: ClassVar[type[BaseModel]] = EmptyProviderParameters
-    required_when_enabled: ClassVar[frozenset[str]] = frozenset()
+    required_when_selected: ClassVar[frozenset[str]] = frozenset()
     capability: ClassVar[ProviderCapability]
     hazards: ClassVar[frozenset[HazardType]] = frozenset()
     countries: ClassVar[frozenset[str]] = frozenset()
     display_name: ClassVar[str] = ""
     description: ClassVar[str] = ""
-    legacy_parameter_paths: ClassVar[dict[str, tuple[str, ...]]] = {}
-
-    @classmethod
-    def validate_site(cls, site: Mapping[str, Any]) -> None:
-        """Validate additional location requirements for an enabled plugin."""
-        return None
+    data_kind: ClassVar[Literal["live", "synthetic"]] = "live"
+    transport_kind: ClassVar[Literal["http", "none"]] = "http"
 
     def __init__(
         self,
         *,
         provider_config: Mapping[str, Any],
         site_config: Mapping[str, Any],
-        http_client: HttpJsonClient,
-        parameters: Mapping[str, Any] | None = None,
+        http_client: HttpJsonClient | None,
+        parameters: Mapping[str, Any],
     ) -> None:
         self.provider_config = dict(provider_config)
         self.site_config = dict(site_config)
-        supplied_parameters = (
-            parameters
-            if parameters is not None
-            else provider_config.get("parameters", {})
-        )
-        self.parameters = dict(supplied_parameters)
+        self.parameters = dict(parameters)
         self.http_client = http_client
         self.poll_interval_seconds = int(self.provider_config["poll_interval_seconds"])
         self.request_timeout_seconds = float(
-            self.provider_config["request_timeout_seconds"]
+            self.provider_config.get("request_timeout_seconds", 0)
         )
         self.max_retries = int(self.provider_config.get("max_retries", 0))
         self.stale_after_seconds = int(self.provider_config["stale_after_seconds"])
@@ -183,12 +174,18 @@ class ExternalApiComponent(ABC):
                     "Observation IDs must be non-empty and unique in a snapshot"
                 )
             identities.add(observation.observation_id)
-            official = self.capability == ProviderCapability.OFFICIAL_WARNINGS
+            official = (
+                self.capability == ProviderCapability.OFFICIAL_WARNINGS
+                and self.data_kind == "live"
+            )
             if observation.authority_confirmed != official:
                 raise ValueError(
                     "Observation authority does not match provider capability"
                 )
-            if not official and observation.observed_at is None:
+            if (
+                self.capability != ProviderCapability.OFFICIAL_WARNINGS
+                and observation.observed_at is None
+            ):
                 raise ValueError(
                     "Model observations require an original source timestamp"
                 )
@@ -221,7 +218,7 @@ class ExternalApiComponent(ABC):
                 },
                 HazardType.OUTDOOR_AIR_POLLUTION: {"current_european_aqi": "EAQI"},
             }
-            if not official:
+            if self.capability != ProviderCapability.OFFICIAL_WARNINGS:
                 for name, unit in requirements[observation.hazard_type].items():
                     measurement = observation.values.get(name)
                     if measurement is None or measurement.unit != unit:

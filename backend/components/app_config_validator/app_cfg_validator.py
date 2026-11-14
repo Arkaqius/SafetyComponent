@@ -347,17 +347,14 @@ def _validate_api_components(
 
     policy = cfg.app_config.external_hazard_policy
     site = cfg.user_config.site
-    if policy is None or site is None:
+    if policy is None:
         return {}
-    raw_api_components = cfg.user_config.api_components
-    for name in policy.providers:
-        if name not in raw_api_components:
-            raise ValueError(f"Missing user_config.api_components.{name}")
     return resolve_provider_bindings(
         policy.providers,
-        raw_api_components,
-        site.model_dump(),
-        generated=True,
+        cfg.user_config.external_sources,
+        cfg.user_config.provider_parameters,
+        site.model_dump() if site is not None else {},
+        component_enabled=bool(cfg.user_config.components_enabled.get("ExternalHazardComponent", False)),
         weather_horizon=policy.weather.forecast_horizon_hours,
     )
 
@@ -376,14 +373,17 @@ def _to_runtime(
     if external_enabled:
         if cfg.app_config.external_hazard_policy is None:
             raise ValueError("ExternalHazardComponent requires external_hazard_policy")
-        if cfg.user_config.site is None:
+        if cfg.user_config.site is None and any(cfg.user_config.external_sources.values()):
             raise ValueError("ExternalHazardComponent requires user_config.site")
-        runtime_user_cfg["site"] = cfg.user_config.site.model_dump()
+        runtime_user_cfg["site"] = cfg.user_config.site.model_dump() if cfg.user_config.site is not None else None
         runtime_user_cfg["api_components"] = _validate_api_components(
             cfg, strict_validation=strict_validation
         )
     else:
+        _validate_api_components(cfg, strict_validation=strict_validation)
         runtime_user_cfg["api_components"] = {}
+    runtime_user_cfg["external_sources"] = dict(cfg.user_config.external_sources)
+    runtime_user_cfg["provider_parameters"] = dict(cfg.user_config.provider_parameters)
     runtime_components: Dict[str, Any] = {}
     for name, component_cfg in enabled_components.items():
         if name == TEMPERATURE_COMPONENT_NAME:

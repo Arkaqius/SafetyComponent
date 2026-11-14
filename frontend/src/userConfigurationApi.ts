@@ -50,31 +50,32 @@ declare global {
 const emptyParameters = { type: 'object', additionalProperties: false, properties: {} };
 const mockProviderDefinitions = {
   OpenMeteoWeatherApiComponent: {
-    enabled: true,
+    data_kind: 'live',
+    transport_kind: 'http',
     countries: [],
     capability: 'WeatherPointModel',
     hazards: ['frost', 'wind', 'rain', 'storm'],
     display_name: 'Pogoda Open-Meteo',
     description: 'Model pogody dla współrzędnych Home Assistant.',
     parameter_schema: emptyParameters,
-    required_when_enabled: [],
+    required_when_selected: [],
     parameter_defaults: {},
-    legacy_parameter_paths: {},
   },
   OpenMeteoAirQualityApiComponent: {
-    enabled: true,
+    data_kind: 'live',
+    transport_kind: 'http',
     countries: [],
     capability: 'OutdoorAirQuality',
     hazards: ['outdoor_air_pollution'],
     display_name: 'Jakość powietrza Open-Meteo',
     description: 'Model jakości powietrza.',
     parameter_schema: emptyParameters,
-    required_when_enabled: [],
+    required_when_selected: [],
     parameter_defaults: {},
-    legacy_parameter_paths: {},
   },
   ImgwWarningsApiComponent: {
-    enabled: true,
+    data_kind: 'live',
+    transport_kind: 'http',
     countries: ['PL'],
     capability: 'OfficialWeatherWarnings',
     hazards: ['frost', 'wind', 'rain', 'storm'],
@@ -95,27 +96,34 @@ const mockProviderDefinitions = {
         },
       },
     },
-    required_when_enabled: ['teryt_codes'],
+    required_when_selected: ['teryt_codes'],
     parameter_defaults: {},
-    legacy_parameter_paths: { teryt_codes: ['installation', 'site', 'teryt_codes'] },
   },
-  RegionalWarningsApiComponent: {
-    enabled: false,
+  GermanyDummyWarningsApiComponent: {
+    data_kind: 'synthetic',
+    transport_kind: 'none',
     countries: ['DE'],
     capability: 'OfficialWeatherWarnings',
     hazards: ['wind'],
-    display_name: 'Regionalne ostrzeżenia testowe',
+    display_name: 'Niemcy — źródło testowe',
     description: 'Kontrolowane źródło regionalne trybu demonstracyjnego.',
     parameter_schema: {
       type: 'object',
       additionalProperties: false,
       properties: {
-        region_code: { type: 'string', title: 'Kod regionu', description: 'Region objęty ostrzeżeniami.', minLength: 1, maxLength: 32 },
+        region_code: {
+          type: 'string',
+          title: 'Kod regionu',
+          description: 'Identyfikator regionu testowego.',
+          minLength: 1,
+          maxLength: 32,
+          pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$',
+        },
+        scenario: { type: 'string', title: 'Scenariusz testowy', enum: ['empty', 'warning', 'unavailable', 'stale'], default: 'empty' },
       },
     },
-    required_when_enabled: ['region_code'],
-    parameter_defaults: {},
-    legacy_parameter_paths: {},
+    required_when_selected: ['region_code'],
+    parameter_defaults: { scenario: 'empty' },
   },
 };
 
@@ -139,16 +147,16 @@ let mockDocument: UserConfigurationDocument = {
       local: {},
       wan_entity: null,
     },
-    providers: {
-      OpenMeteoWeatherApiComponent: { enabled: true },
-      ImgwWarningsApiComponent: { enabled: true },
-      OpenMeteoAirQualityApiComponent: { enabled: true },
+    external_sources: {
+      WeatherPointModel: 'OpenMeteoWeatherApiComponent',
+      OfficialWeatherWarnings: 'ImgwWarningsApiComponent',
+      OutdoorAirQuality: 'OpenMeteoAirQualityApiComponent',
     },
+    provider_parameters: { ImgwWarningsApiComponent: { teryt_codes: ['0000'] } },
     installation: {
       site: {
         timezone: 'Europe/Warsaw',
         country_code: 'PL',
-        teryt_codes: ['0000'],
       },
       common_entities: { outside_temp: 'sensor.outdoor_temperature' },
       component_settings: {
@@ -183,7 +191,7 @@ let mockDocument: UserConfigurationDocument = {
     safety_door: { default_timeout_seconds: 120 },
     entity_monitor: { default_startup_grace_seconds: 600, default_evaluation_interval_seconds: 5 },
     external_hazard: {
-      provider_metadata_version: 1,
+      provider_metadata_version: 2,
       provider_plugins: mockProviderDefinitions,
       weather: {
         default_frost_watch_c: 2,

@@ -6,6 +6,11 @@
 
 **Status**: Draft
 
+Selection and compatibility requirements are superseded by
+[Provider Selection and Monitoring States](../002-provider-selection-states/spec.md).
+The shared provider boundary remains the foundation; the superseded selection
+forms do not require a compatibility implementation.
+
 **Input**: User description: "Document selectable external-hazard providers for
 installations outside Poland, shared provider results, provider-specific location
 parameters, and default Open-Meteo sources. Update SYS and SSRD, retain HARA, and

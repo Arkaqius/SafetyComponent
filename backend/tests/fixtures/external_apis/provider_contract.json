@@ -1,9 +1,61 @@
 {
-  "provider_metadata_version": 1,
+  "provider_metadata_version": 2,
   "provider_plugins": {
+    "GermanyDummyWarningsApiComponent": {
+      "countries": [
+        "DE"
+      ],
+      "capability": "OfficialWeatherWarnings",
+      "hazards": [
+        "wind"
+      ],
+      "display_name": "Niemcy \u2014 \u017ar\u00f3d\u0142o testowe",
+      "description": "Dane syntetyczne. Nie s\u0105 ostrze\u017ceniami urz\u0119dowymi i nie steruj\u0105 domem.",
+      "parameter_schema": {
+        "additionalProperties": false,
+        "description": "Select a synthetic region and a repeatable preview scenario.",
+        "properties": {
+          "region_code": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Identyfikator testowy, bez znaczenia urz\u0119dowego.",
+            "title": "Region testowy"
+          },
+          "scenario": {
+            "default": "empty",
+            "description": "Wy\u0142\u0105cznie syntetyczny podgl\u0105d, bez wp\u0142ywu na bezpiecze\u0144stwo domu.",
+            "enum": [
+              "empty",
+              "warning",
+              "unavailable",
+              "stale"
+            ],
+            "title": "Scenariusz testowy",
+            "type": "string"
+          }
+        },
+        "title": "GermanyDummyParameters",
+        "type": "object"
+      },
+      "required_when_selected": [
+        "region_code"
+      ],
+      "parameter_defaults": {
+        "scenario": "empty"
+      },
+      "data_kind": "synthetic",
+      "transport_kind": "none"
+    },
     "OpenMeteoWeatherApiComponent": {
       "countries": [],
-      "enabled": true,
       "capability": "WeatherPointModel",
       "hazards": [
         "frost",
@@ -20,15 +72,15 @@
         "title": "EmptyProviderParameters",
         "type": "object"
       },
-      "required_when_enabled": [],
+      "required_when_selected": [],
       "parameter_defaults": {},
-      "legacy_parameter_paths": {}
+      "data_kind": "live",
+      "transport_kind": "http"
     },
     "ImgwWarningsApiComponent": {
       "countries": [
         "PL"
       ],
-      "enabled": true,
       "capability": "OfficialWeatherWarnings",
       "hazards": [
         "frost",
@@ -65,21 +117,15 @@
         "title": "ImgwWarningsParameters",
         "type": "object"
       },
-      "required_when_enabled": [
+      "required_when_selected": [
         "teryt_codes"
       ],
       "parameter_defaults": {},
-      "legacy_parameter_paths": {
-        "teryt_codes": [
-          "installation",
-          "site",
-          "teryt_codes"
-        ]
-      }
+      "data_kind": "live",
+      "transport_kind": "http"
     },
     "OpenMeteoAirQualityApiComponent": {
       "countries": [],
-      "enabled": true,
       "capability": "OutdoorAirQuality",
       "hazards": [
         "outdoor_air_pollution"
@@ -93,15 +139,15 @@
         "title": "EmptyProviderParameters",
         "type": "object"
       },
-      "required_when_enabled": [],
+      "required_when_selected": [],
       "parameter_defaults": {},
-      "legacy_parameter_paths": {}
+      "data_kind": "live",
+      "transport_kind": "http"
     },
     "RegionalWarningsApiComponent": {
       "countries": [
         "DE"
       ],
-      "enabled": true,
       "capability": "OfficialWeatherWarnings",
       "hazards": [
         "wind"
@@ -130,17 +176,17 @@
         "title": "RegionalParameters",
         "type": "object"
       },
-      "required_when_enabled": [
+      "required_when_selected": [
         "region_code"
       ],
       "parameter_defaults": {},
-      "legacy_parameter_paths": {}
+      "data_kind": "live",
+      "transport_kind": "http"
     },
     "PeerRegionalWarningsApiComponent": {
       "countries": [
         "DE"
       ],
-      "enabled": true,
       "capability": "OfficialWeatherWarnings",
       "hazards": [
         "wind"
@@ -169,11 +215,12 @@
         "title": "RegionalParameters",
         "type": "object"
       },
-      "required_when_enabled": [
+      "required_when_selected": [
         "region_code"
       ],
       "parameter_defaults": {},
-      "legacy_parameter_paths": {}
+      "data_kind": "live",
+      "transport_kind": "http"
     }
   }
 }

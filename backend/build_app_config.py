@@ -93,7 +93,8 @@ def compile_config(
     site_source = dict(user_config.get("installation", {}).get("site", {}) or {})
     merged_user_config["api_components"] = resolve_provider_bindings(
         runtime_cfg.get("providers", {}),
-        user_config.get("providers", {}),
+        user_config["external_sources"],
+        user_config.get("provider_parameters", {}),
         site_source,
         component_enabled=bool(user_config.get("components_enabled", {}).get("ExternalHazardComponent", False)),
         weather_horizon=app_config["external_hazard_policy"]["weather"]["forecast_horizon_hours"],
@@ -138,16 +139,12 @@ def _build_runtime_defaults(
     internal_hazard["health_recovery_debounce_seconds"] = internal_hazard.pop(
         "default_health_recovery_debounce_seconds"
     )
-    providers = runtime_cfg.get("providers", {})
 
     return {
         "notification": copy.deepcopy(runtime_cfg.get("notification", {})),
         "recovery": copy.deepcopy(runtime_cfg.get("recovery", {})),
         "mqtt": copy.deepcopy(runtime_cfg.get("mqtt", {})),
-        "api_components": {
-            name: {"enabled": bool(config.get("enabled", True))}
-            for name, config in providers.items()
-        },
+        "api_components": {},
         "safety_components": {
             "TemperatureComponent": {
                 "defaults": {
@@ -232,14 +229,7 @@ def _build_app_config(
         air_quality,
         user_external.outdoor_air_quality.model_dump(exclude_none=True),
     )
-    provider_policy = {
-        name: {
-            key: copy.deepcopy(value)
-            for key, value in provider.items()
-            if key != "enabled"
-        }
-        for name, provider in runtime_cfg.get("providers", {}).items()
-    }
+    provider_policy = copy.deepcopy(runtime_cfg.get("providers", {}))
 
     functional_safety = deep_merge(
         calibration.get("functional_safety", {}),

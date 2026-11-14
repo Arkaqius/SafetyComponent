@@ -22,11 +22,13 @@ user_config:
     local: {}
     wan_entity: null
 
-  # Provider-specific location parameters; the legacy site alias is also accepted.
-  providers:
+  external_sources:
+    WeatherPointModel: OpenMeteoWeatherApiComponent
+    OfficialWeatherWarnings: ImgwWarningsApiComponent
+    OutdoorAirQuality: OpenMeteoAirQualityApiComponent
+  provider_parameters:
     ImgwWarningsApiComponent:
-      parameters:
-        teryt_codes: ["0000"]
+      teryt_codes: ["0000"]
 
   installation:
     site:

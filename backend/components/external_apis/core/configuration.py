@@ -24,151 +24,129 @@ class ProviderConfigurationError(ValueError):
 
 
 def _error(
-    name: str, suffix: list[str | int], code: str, message: str
+    section: str, suffix: list[str | int], code: str, message: str
 ) -> ProviderConfigurationError:
-    return ProviderConfigurationError(
-        ["user_config", "providers", name, *suffix], code, message
-    )
+    return ProviderConfigurationError(["user_config", section, *suffix], code, message)
 
 
 def resolve_provider_bindings(
     provider_policies: Mapping[str, Any],
-    selections: Mapping[str, Any],
+    external_sources: Mapping[str, Any],
+    provider_parameters: Mapping[str, Any],
     site: Mapping[str, Any],
     *,
     component_enabled: bool = True,
-    generated: bool = False,
     weather_horizon: int | None = None,
 ) -> dict[str, dict[str, Any]]:
-    """Validate and resolve providers without network calls or source mutation."""
-
+    """Resolve explicit source choices and canonical parameters without I/O."""
     plugins = get_registered_api_components()
-    unknown = set(provider_policies) | set(selections)
-    unknown -= plugins.keys()
-    if unknown:
-        name = sorted(unknown)[0]
-        raise _error(name, [], "unknown_provider", "Unknown provider plugin")
-    missing_policy = set(selections) - set(provider_policies)
-    if missing_policy:
+    capabilities = {item.value for item in ProviderCapability}
+    if set(external_sources) != capabilities:
         raise _error(
-            sorted(missing_policy)[0],
+            "external_sources",
             [],
+            "invalid_categories",
+            "Each category must explicitly select a provider or null",
+        )
+    if "teryt_codes" in site:
+        raise _error(
+            "installation",
+            ["site", "teryt_codes"],
+            "unknown_field",
+            "teryt_codes belongs to provider_parameters",
+        )
+    unknown = (set(provider_policies) | set(provider_parameters)) - plugins.keys()
+    if unknown:
+        raise _error(
+            "provider_parameters",
+            [sorted(unknown)[0]],
             "unknown_provider",
-            "Provider has no packaged policy",
+            "Unknown provider plugin",
         )
-    result: dict[str, dict[str, Any]] = {}
-    for name, policy in provider_policies.items():
-        plugin = plugins[name]
-        selection = copy.deepcopy(dict(selections.get(name, {})))
-        if not generated:
-            extra = set(selection) - {"enabled", "parameters"}
-            if extra:
-                raise _error(
-                    name, [sorted(extra)[0]], "unknown_field", "Unknown provider field"
-                )
-        origin = selection.get(
-            "selection_origin",
-            "inherited"
-            if generated
-            else ("explicit" if "enabled" in selection else "inherited"),
-        )
-        if origin not in {"explicit", "inherited"}:
-            raise _error(name, [], "invalid_value", "Invalid selection provenance")
-        requested = selection.get("enabled", policy.get("enabled", True))
-        if not isinstance(requested, bool):
+    selected: set[str] = set()
+    country = str(site.get("country_code", "")).strip().upper()
+    for capability, name in external_sources.items():
+        if name is None:
+            continue
+        if (
+            not isinstance(name, str)
+            or name not in plugins
+            or name not in provider_policies
+        ):
             raise _error(
-                name, ["enabled"], "invalid_value", "enabled must be a boolean"
+                "external_sources",
+                [capability],
+                "unknown_provider",
+                "Unknown provider or missing packaged policy",
             )
-        country = str(site.get("country_code", "")).strip().upper()
-        applicable = not plugin.countries or country in plugin.countries
-        if component_enabled and requested and not applicable and origin == "explicit":
+        plugin = plugins[name]
+        if plugin.capability.value != capability:
             raise _error(
-                name,
-                ["enabled"],
+                "external_sources",
+                [capability],
+                "invalid_capability",
+                "Provider capability does not match category",
+            )
+        if site and plugin.countries and country not in plugin.countries:
+            raise _error(
+                "external_sources",
+                [capability],
                 "incompatible_country",
                 "Provider is incompatible with installation country",
             )
-        active = bool(component_enabled and requested and applicable)
-        raw = selection.get("parameters", {})
-        if not isinstance(raw, dict):
+        selected.add(name)
+    if component_enabled and selected and not country:
+        raise _error(
+            "installation",
+            ["site"],
+            "required_site",
+            "An active source requires installation country and site",
+        )
+    normalized: dict[str, dict[str, Any]] = {}
+    for name in set(provider_parameters) | set(provider_policies):
+        plugin = plugins[name]
+        raw = provider_parameters.get(name, {})
+        if not isinstance(raw, Mapping):
             raise _error(
-                name, ["parameters"], "invalid_value", "parameters must be a mapping"
+                "provider_parameters",
+                [name],
+                "invalid_value",
+                "Provider parameters must be a mapping",
             )
-        raw = copy.deepcopy(raw)
         extras = set(raw) - plugin.parameter_model.model_fields.keys()
         if extras:
             raise _error(
-                name,
-                ["parameters", sorted(extras)[0]],
+                "provider_parameters",
+                [name, sorted(extras)[0]],
                 "unknown_field",
                 "Unknown provider parameter",
             )
-        # Compatibility is declared by its provider; generic code owns no TERYT rule.
-        for field, path in plugin.legacy_parameter_paths.items():
-            legacy: Any = {"installation": {"site": dict(site)}}
-            for part in path:
-                if not isinstance(legacy, Mapping) or part not in legacy:
-                    legacy = None
-                    break
-                legacy = legacy[part]
-            if generated and legacy == []:
-                legacy = None
-            if legacy is not None:
-                try:
-                    normalized_legacy = plugin.parameter_model.model_validate(
-                        {field: legacy}
-                    ).model_dump(exclude_none=True)[field]
-                    if field in raw:
-                        normalized_new = plugin.parameter_model.model_validate(
-                            {field: raw[field]}
-                        ).model_dump(exclude_none=True)[field]
-                        equal = (
-                            set(normalized_new) == set(normalized_legacy)
-                            if isinstance(normalized_new, list)
-                            and isinstance(normalized_legacy, list)
-                            else normalized_new == normalized_legacy
-                        )
-                        if not equal:
-                            raise _error(
-                                name,
-                                ["parameters", field],
-                                "alias_conflict",
-                                "Legacy and provider parameter values conflict",
-                            )
-                    else:
-                        raw[field] = legacy
-                except ValidationError as exc:
-                    raise ProviderConfigurationError(
-                        ["user_config", *path], "invalid_value", str(exc)
-                    ) from exc
         try:
-            parameters = plugin.parameter_model.model_validate(raw).model_dump(
+            parameters = plugin.parameter_model.model_validate(dict(raw)).model_dump(
                 exclude_none=True
             )
         except ValidationError as exc:
             issue = exc.errors()[0]
             raise _error(
-                name, ["parameters", *issue["loc"]], "invalid_value", issue["msg"]
+                "provider_parameters",
+                [name, *issue["loc"]],
+                "invalid_value",
+                issue["msg"],
             ) from exc
-        if active:
-            for field in plugin.required_when_enabled:
+        if component_enabled and name in selected:
+            for field in plugin.required_when_selected:
                 if parameters.get(field) in (None, "", []):
                     raise _error(
-                        name,
-                        ["parameters", field],
-                        "required_when_enabled",
-                        f"{field} is required when provider is enabled",
+                        "provider_parameters",
+                        [name, field],
+                        "required_when_selected",
+                        f"{field} is required when provider is selected",
                     )
+        normalized[name] = parameters
+    result: dict[str, dict[str, Any]] = {}
+    for name, policy in provider_policies.items():
+        plugin = plugins[name]
         transport = copy.deepcopy(dict(policy))
-        if generated:
-            transport.update(
-                {
-                    key: value
-                    for key, value in selection.items()
-                    if key not in {"parameters", "selection_origin"}
-                }
-            )
-        transport["enabled"] = active
         if (
             plugin.capability == ProviderCapability.WEATHER_MODEL
             and weather_horizon is not None
@@ -179,11 +157,16 @@ def resolve_provider_bindings(
                 transport, context={"strict_validation": True}
             ).model_dump()
         except (ValidationError, ValueError) as exc:
-            raise _error(name, [], "invalid_transport", str(exc)) from exc
+            raise _error(
+                "external_sources",
+                [plugin.capability.value],
+                "invalid_transport",
+                str(exc),
+            ) from exc
         result[name] = {
             **validated,
-            "parameters": parameters,
-            "selection_origin": origin,
+            "enabled": bool(component_enabled and name in selected),
+            "parameters": normalized[name],
         }
     return result
 
@@ -195,7 +178,7 @@ def export_provider_catalogue(packaged_defaults: Mapping[str, Any]) -> dict[str,
     if len(packaged_defaults) > 64:
         raise ValueError("Provider catalogue exceeds 64 entries")
     result: dict[str, Any] = {}
-    for name, defaults in packaged_defaults.items():
+    for name in packaged_defaults:
         if name not in plugins:
             raise ValueError(f"Unknown provider plugin: {name}")
         plugin = plugins[name]
@@ -207,22 +190,20 @@ def export_provider_catalogue(packaged_defaults: Mapping[str, Any]) -> dict[str,
             raise ValueError("Provider display metadata exceeds text budget")
         result[name] = {
             "countries": sorted(plugin.countries),
-            "enabled": defaults.get("enabled", True),
             "capability": plugin.capability.value,
             "hazards": sorted(h.value for h in plugin.hazards),
             "display_name": title,
             "description": description,
             "parameter_schema": schema,
-            "required_when_enabled": sorted(plugin.required_when_enabled),
+            "required_when_selected": sorted(plugin.required_when_selected),
             "parameter_defaults": {
                 key: value.get_default(call_default_factory=True)
                 for key, value in plugin.parameter_model.model_fields.items()
                 if not value.is_required()
                 and value.get_default(call_default_factory=True) is not None
             },
-            "legacy_parameter_paths": {
-                key: list(value) for key, value in plugin.legacy_parameter_paths.items()
-            },
+            "data_kind": plugin.data_kind,
+            "transport_kind": plugin.transport_kind,
         }
     if len(json.dumps(result, ensure_ascii=False).encode("utf-8")) > 1_048_576:
         raise ValueError("Provider catalogue exceeds 1 MiB")

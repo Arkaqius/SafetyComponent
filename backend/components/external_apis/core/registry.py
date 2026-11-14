@@ -32,7 +32,11 @@ def register_api_component(
         raise ValueError(f"API component '{name}' must declare a provider capability")
     if name in _API_COMPONENT_REGISTRY:
         raise ValueError(f"API component '{name}' is already registered")
-    if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9]*", name):
+    if (
+        not isinstance(name, str)
+        or len(name) > 128
+        or not re.fullmatch(r"[A-Za-z][A-Za-z0-9]*", name)
+    ):
         raise ValueError("Provider ID must be a stable alphanumeric key")
     identity = provider_identity(name)
     if any(
@@ -58,19 +62,15 @@ def register_api_component(
         raise ValueError(f"API component '{name}' has incompatible hazard coverage")
     if any(not re.fullmatch(r"[A-Z]{2}", country) for country in cls.countries):
         raise ValueError(f"API component '{name}' has invalid country coverage")
-    if not cls.required_when_enabled.issubset(parameters.model_fields):
+    if not cls.required_when_selected.issubset(parameters.model_fields):
         raise ValueError(f"API component '{name}' declares unknown required parameters")
-    for field, path in cls.legacy_parameter_paths.items():
-        if (
-            field not in parameters.model_fields
-            or not path
-            or path[0] != "installation"
-            or len(path) > 16
-            or any(not isinstance(part, str) or len(part) > 128 for part in path)
-        ):
-            raise ValueError(
-                f"API component '{name}' has invalid legacy parameter paths"
-            )
+    if cls.data_kind not in {"live", "synthetic"} or cls.transport_kind not in {
+        "http",
+        "none",
+    }:
+        raise ValueError(
+            f"API component '{name}' declares invalid data or transport kind"
+        )
     _API_COMPONENT_REGISTRY[name] = cls
     return cls
 
@@ -93,14 +93,7 @@ def describe_provider_keys(schema: dict[str, Any]) -> None:
     schema["propertyNames"] = {"enum": sorted(_API_COMPONENT_REGISTRY)}
     schema["additionalProperties"] = False
     schema["properties"] = {
-        name: {
-            "type": "object",
-            "additionalProperties": False,
-            "properties": {
-                "enabled": {"type": "boolean"},
-                "parameters": parameter_schema(plugin),
-            },
-        }
+        name: parameter_schema(plugin)
         for name, plugin in sorted(_API_COMPONENT_REGISTRY.items())
     }
 
@@ -112,6 +105,21 @@ def provider_identity(name: str) -> tuple[str, str]:
         "ProviderHealth" + name.removesuffix("ApiComponent"),
         re.sub(r"(?<!^)(?=[A-Z])", "_", name.replace("ApiComponent", "")).lower(),
     )
+
+
+def describe_source_choices(schema: dict[str, Any]) -> None:
+    """Export explicit source choices scoped to each registered capability."""
+    schema["additionalProperties"] = False
+    for capability in ProviderCapability:
+        schema["properties"][capability.value] = {
+            "anyOf": [
+                {"type": "string", "enum": sorted(
+                    name for name, plugin in _API_COMPONENT_REGISTRY.items()
+                    if plugin.capability == capability
+                )},
+                {"type": "null"},
+            ]
+        }
 
 
 def parameter_schema(plugin: Type["ExternalApiComponent"]) -> dict[str, Any]:

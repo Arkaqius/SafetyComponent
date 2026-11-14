@@ -1,3 +1,5 @@
+import { EXTERNAL_CAPABILITIES, CATEGORY_LABELS, type ExternalCapability } from './providerConfiguration.js';
+
 export const HEALTH_ENTITY_ID = 'sensor.safety_app_health';
 export const SYSTEM_STATE_ENTITY_ID = 'sensor.safetysystem_state';
 export const FAULT_PREFIX = 'sensor.fault_';
@@ -214,9 +216,13 @@ export interface ExternalProviderView {
   lastSuccessAt?: string;
   consecutiveFailures: number;
   detailCode: string;
-  observationCount: number;
+  observationCount: number | null;
+  runtimeId?: string;
+  dataKind?: string;
+  staleAfterSeconds?: number;
   observations: ExternalObservationView[];
   warnings: OfficialWarningView[];
+  warningsComplete?: boolean;
   lastUpdated?: string;
 }
 
@@ -276,6 +282,48 @@ export interface ExternalHazardView {
   officialWarnings: OfficialWarningView[];
   officialWarningsConfigured: boolean;
   coverageDetails?: ExternalCoverageView[];
+  categories: ExternalCategoryView[];
+  monitoringActive: boolean;
+  monitoringEvaluated: boolean;
+  retainedWarnings: OfficialWarningView[];
+  retainedDanger: boolean;
+  runtimeId?: string;
+  testPreview?: ExternalTestPreview;
+}
+
+export interface ExternalCategoryView {
+  capability: ExternalCapability;
+  label: string;
+  provider: string | null;
+  name: string;
+  hazards: string[];
+  selectionState: 'enabled' | 'disabled' | 'component_disabled' | 'unknown' | 'test';
+  evidenceState:
+    | 'unknown'
+    | 'unsupported'
+    | 'awaiting_evidence'
+    | 'unavailable'
+    | 'stale'
+    | 'healthy_empty'
+    | 'active'
+    | 'available'
+    | 'not_evaluated';
+  currentCount: number | null;
+  diagnostic?: ExternalProviderView;
+}
+export interface ExternalTestPreview {
+  provider: string;
+  name: string;
+  scenario: string;
+  health: ExternalProviderStatus;
+  count: number;
+  observations: ExternalObservationView[];
+  warnings: OfficialWarningView[];
+}
+interface AppliedExternalSelection {
+  runtimeId: string;
+  componentEnabled: boolean;
+  selections: Record<ExternalCapability, { provider: string | null; data_kind: 'live' | 'synthetic' | null; hazards: string[] }>;
 }
 
 export interface ExternalCoverageView {
@@ -693,79 +741,276 @@ export function getSafetyDoors(entities: EntityMap): SafetyDoorView[] {
     );
 }
 
-export function getExternalHazardMonitoring(entities: EntityMap): ExternalHazardView {
+const externalHazards = new Set(['frost', 'wind', 'rain', 'storm', 'outdoor_air_pollution']);
+function objectAttribute(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+function boundedIdentity(value: unknown): value is string {
+  return typeof value === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(value) && !['__proto__', 'constructor', 'prototype'].includes(value);
+}
+function appliedExternalSelection(entity: EntitySnapshot | undefined): AppliedExternalSelection | undefined {
+  if (!entity || entity.state !== 'ready') return undefined;
+  const attributes = entity.attributes;
+  if (attributes.schema_version !== 1 || !boundedIdentity(attributes.runtime_id) || typeof attributes.component_enabled !== 'boolean')
+    return undefined;
+  const selections = objectAttribute(attributes.selections);
+  if (Object.keys(selections).length !== 3 || !EXTERNAL_CAPABILITIES.every(key => Object.prototype.hasOwnProperty.call(selections, key)))
+    return undefined;
+  for (const capability of EXTERNAL_CAPABILITIES) {
+    const choice = objectAttribute(selections[capability]);
+    if (
+      Object.keys(choice).some(key => !['provider', 'data_kind', 'hazards'].includes(key)) ||
+      !Array.isArray(choice.hazards) ||
+      choice.hazards.length > 5 ||
+      new Set(choice.hazards).size !== choice.hazards.length ||
+      choice.hazards.some(hazard => typeof hazard !== 'string' || !externalHazards.has(hazard))
+    )
+      return undefined;
+    if (choice.provider === null) {
+      if (choice.data_kind !== null || choice.hazards.length) return undefined;
+    } else if (!boundedIdentity(choice.provider) || !['live', 'synthetic'].includes(String(choice.data_kind)) || !choice.hazards.length)
+      return undefined;
+    if (
+      choice.hazards.some(hazard =>
+        capability === 'OutdoorAirQuality' ? hazard !== 'outdoor_air_pollution' : hazard === 'outdoor_air_pollution'
+      )
+    )
+      return undefined;
+  }
+  return {
+    runtimeId: attributes.runtime_id,
+    componentEnabled: attributes.component_enabled,
+    selections: selections as AppliedExternalSelection['selections'],
+  };
+}
+
+/** Project applied category selections; retained diagnostics never prove current monitoring. */
+export function getExternalHazardMonitoring(entities: EntityMap, now = Date.now()): ExternalHazardView {
   const aggregate = entities[EXTERNAL_HAZARD_ENTITY_ID];
   const normalizedState = normalizeState(aggregate?.state);
-  const status: ExternalHazardStatus =
-    normalizedState === 'clear' ||
-    normalizedState === 'watch' ||
-    normalizedState === 'warning' ||
-    normalizedState === 'severe' ||
-    normalizedState === 'unavailable'
-      ? normalizedState
-      : normalizedState
-        ? 'unknown'
-        : 'unavailable';
-  const enabledProviders = Array.isArray(aggregate?.attributes.enabled_providers)
-    ? new Set(stringArrayAttribute(aggregate, 'enabled_providers'))
-    : null;
-  const providers = Object.entries(entities)
-    .filter(
-      ([entityId, entity]) =>
-        entityId.startsWith(EXTERNAL_PROVIDER_PREFIX) && (!enabledProviders || enabledProviders.has(stringAttribute(entity, 'provider')))
-    )
+  const status: ExternalHazardStatus = ['clear', 'watch', 'warning', 'severe', 'unavailable'].includes(normalizedState)
+    ? (normalizedState as ExternalHazardStatus)
+    : normalizedState
+      ? 'unknown'
+      : 'unavailable';
+  const applied = appliedExternalSelection(entities['sensor.external_source_selection']);
+  const providers: ExternalProviderView[] = Object.entries(entities)
+    .filter(([id, entity]) => id.startsWith(EXTERNAL_PROVIDER_PREFIX) && entity.attributes.data_kind !== 'synthetic')
     .map(([entityId, entity]) => {
-      const providerState = normalizeState(entity.state);
-      const providerStatus: ExternalProviderStatus =
-        providerState === 'ok' || providerState === 'stale' || providerState === 'unavailable' || providerState === 'schema_error'
-          ? providerState
-          : 'unknown';
+      const state = normalizeState(entity.state);
       const provider = stringAttribute(entity, 'provider');
-      const name = friendlyEntityName(entityId, entity);
-      const capability =
-        stringAttribute(entity, 'capability') || (Array.isArray(entity.attributes.warnings) ? 'OfficialWeatherWarnings' : '');
+      const name = stringAttribute(entity, 'provider_name') || friendlyEntityName(entityId, entity);
+      const count = numericAttribute(entity, 'observation_count');
+      const warnings = officialWarningsAttribute(entity, provider, name);
+      const rawWarnings = entity.attributes.warnings;
       return {
         entityId,
         name,
         provider,
-        capability,
+        capability: stringAttribute(entity, 'capability'),
         hazards: stringArrayAttribute(entity, 'hazards'),
-        status: providerStatus,
+        status: (['ok', 'stale', 'unavailable', 'schema_error'].includes(state) ? state : 'unknown') as ExternalProviderStatus,
         state: entity.state,
         lastAttemptAt: optionalStringAttribute(entity, 'last_attempt_at'),
         lastSuccessAt: optionalStringAttribute(entity, 'last_success_at'),
         consecutiveFailures: numericAttribute(entity, 'consecutive_failures') ?? 0,
         detailCode: stringAttribute(entity, 'detail_code'),
-        observationCount: numericAttribute(entity, 'observation_count') ?? 0,
+        observationCount: count !== null && Number.isInteger(count) && count >= 0 ? count : null,
+        runtimeId: optionalStringAttribute(entity, 'runtime_id'),
+        dataKind: optionalStringAttribute(entity, 'data_kind'),
+        staleAfterSeconds: numericAttribute(entity, 'stale_after_seconds') ?? undefined,
         observations: externalObservationsAttribute(entity),
-        warnings: officialWarningsAttribute(entity, provider, name),
+        warnings,
+        warningsComplete: Array.isArray(rawWarnings) && rawWarnings.length <= 64 && warnings.length === rawWarnings.length,
         lastUpdated: entity.last_updated ?? entity.last_changed,
       };
-    })
-    .sort((left, right) => Number(left.status === 'ok') - Number(right.status === 'ok') || left.name.localeCompare(right.name, 'pl'));
-
-  const officialWarnings = providers
-    .filter(provider => provider.capability === 'OfficialWeatherWarnings')
+    });
+  const categories: ExternalCategoryView[] = EXTERNAL_CAPABILITIES.map(capability => {
+    const choice = applied?.selections[capability];
+    const base: ExternalCategoryView = {
+      capability,
+      label: CATEGORY_LABELS[capability],
+      provider: choice?.provider ?? null,
+      name: '',
+      hazards: choice?.hazards ?? [],
+      selectionState: 'unknown',
+      evidenceState: 'unknown',
+      currentCount: null,
+    };
+    if (!applied || !choice) return base;
+    if (!applied.componentEnabled) return { ...base, selectionState: 'component_disabled', evidenceState: 'not_evaluated' };
+    if (choice.provider === null) return { ...base, selectionState: 'disabled', evidenceState: 'not_evaluated' };
+    if (choice.data_kind === 'synthetic')
+      return { ...base, name: 'Źródło testowe', selectionState: 'test', evidenceState: 'not_evaluated' };
+    const diagnostic = providers.find(
+      provider =>
+        provider.provider === choice.provider &&
+        provider.capability === capability &&
+        provider.dataKind === 'live' &&
+        provider.runtimeId === applied.runtimeId
+    );
+    const active = { ...base, selectionState: 'enabled' as const, name: diagnostic?.name ?? choice.provider, diagnostic };
+    if (!diagnostic || diagnostic.status === 'unknown') return { ...active, evidenceState: 'awaiting_evidence' };
+    if (diagnostic.status === 'unavailable' || diagnostic.status === 'schema_error') return { ...active, evidenceState: 'unavailable' };
+    const success = diagnostic.lastSuccessAt ? Date.parse(diagnostic.lastSuccessAt) : Number.NaN;
+    const staleBudget = diagnostic.staleAfterSeconds;
+    const fresh =
+      Number.isFinite(success) &&
+      success <= now &&
+      typeof staleBudget === 'number' &&
+      staleBudget > 0 &&
+      now - success <= staleBudget * 1000;
+    if (diagnostic.status === 'stale' || !fresh)
+      return { ...active, diagnostic: { ...diagnostic, status: 'stale' }, evidenceState: 'stale' };
+    if (capability === 'OfficialWeatherWarnings') {
+      if (diagnostic.observationCount === null || !diagnostic.warningsComplete) return { ...active, evidenceState: 'awaiting_evidence' };
+      const count = diagnostic.warnings.filter(warning => warning.locallyApplicable).length || diagnostic.observationCount;
+      return { ...active, evidenceState: count === 0 ? 'healthy_empty' : 'active', currentCount: count };
+    }
+    return { ...active, evidenceState: 'available', currentCount: diagnostic.observationCount };
+  });
+  const official = categories.find(category => category.capability === 'OfficialWeatherWarnings')!;
+  const currentProvider =
+    official.selectionState === 'enabled' && ['healthy_empty', 'active'].includes(official.evidenceState) ? official.diagnostic : undefined;
+  const officialWarnings = (currentProvider?.warnings ?? []).filter(warning => warning.locallyApplicable);
+  const retainedWarnings = providers
+    .filter(provider => provider !== currentProvider)
     .flatMap(provider => provider.warnings)
     .filter(warning => warning.locallyApplicable);
-
+  const rawPreview = entities['sensor.external_hazard_test_state'];
+  const previewAttributes = rawPreview?.attributes;
+  const testChoice = categories.find(category => category.selectionState === 'test');
+  const previewHealth = previewAttributes?.health;
+  let testPreview: ExternalTestPreview | undefined;
+  if (
+    applied &&
+    testChoice &&
+    rawPreview &&
+    previewAttributes?.schema_version === 1 &&
+    previewAttributes.runtime_id === applied.runtimeId &&
+    previewAttributes.provider === testChoice.provider &&
+    previewAttributes.data_kind === 'synthetic' &&
+    ['empty', 'warning', 'unavailable', 'stale'].includes(String(previewAttributes.scenario)) &&
+    ['ok', 'stale', 'unavailable', 'schema_error'].includes(String(previewHealth)) &&
+    typeof previewAttributes.count === 'number' &&
+    Number.isInteger(previewAttributes.count) &&
+    previewAttributes.count >= 0 &&
+    previewAttributes.count <= 64 &&
+    Array.isArray(previewAttributes.observations) &&
+    previewAttributes.observations.length <= 64
+  ) {
+    const name = stringAttribute(rawPreview, 'provider_name') || 'Niemcy — źródło testowe';
+    testPreview = {
+      provider: testChoice.provider!,
+      name,
+      scenario: String(previewAttributes.scenario),
+      health: previewHealth as ExternalProviderStatus,
+      count: previewAttributes.count,
+      observations: externalObservationsAttribute(rawPreview),
+      warnings: officialWarningsAttribute(rawPreview, testChoice.provider!, name),
+    };
+    testChoice.name = name;
+  }
+  const activeHazards = stringArrayAttribute(aggregate, 'active_hazards');
+  const affectedOpenings = stringArrayAttribute(aggregate, 'affected_openings');
+  let retainedAssertionCount = 0;
+  for (const [id, entity] of Object.entries(entities)) {
+    if (
+      !id.startsWith(FAULT_PREFIX) ||
+      entity.attributes.active !== true ||
+      !['ExternalWeatherExposure', 'OutdoorAirQualityExposure'].includes(String(entity.attributes.fault_id))
+    )
+      continue;
+    const records = entity.attributes.retained_assertions;
+    const bounded = Array.isArray(records) && records.length <= 4096 ? records : [];
+    let accepted = 0;
+    for (const value of bounded) {
+      const record = objectAttribute(value);
+      if (
+        record.fault_id !== entity.attributes.fault_id ||
+        !boundedIdentity(record.symptom_id) ||
+        typeof record.hazard !== 'string' ||
+        !externalHazards.has(record.hazard)
+      )
+        continue;
+      accepted++;
+      if (!activeHazards.includes(record.hazard)) activeHazards.push(record.hazard);
+      const context = objectAttribute(record.context);
+      const opening =
+        typeof context.opening_name === 'string' ? context.opening_name : typeof record.opening === 'string' ? record.opening : '';
+      if (opening && opening.length <= 256 && !affectedOpenings.includes(opening)) affectedOpenings.push(opening);
+    }
+    if (accepted) retainedAssertionCount += accepted;
+    else if (entity.attributes.retained_hazard_unknown === true || (Array.isArray(records) && records.length > 0)) {
+      retainedAssertionCount++;
+      const label =
+        entity.attributes.fault_id === 'OutdoorAirQualityExposure'
+          ? 'Zachowane zagrożenie jakości powietrza'
+          : 'Zachowane zagrożenie pogodowe';
+      if (!activeHazards.includes(label)) activeHazards.push(label);
+    }
+  }
+  const monitoringActive = categories.some(category => category.selectionState === 'enabled');
+  const monitoringEvaluated =
+    aggregate?.attributes.runtime_id === applied?.runtimeId &&
+    categories.some(category => ['healthy_empty', 'active', 'available'].includes(category.evidenceState));
   return {
     entityId: EXTERNAL_HAZARD_ENTITY_ID,
-    status,
+    status: retainedAssertionCount && ['clear', 'unknown', 'unavailable'].includes(status) ? 'warning' : status,
     state: aggregate?.state ?? 'unavailable',
-    activeHazards: stringArrayAttribute(aggregate, 'active_hazards'),
-    affectedOpenings: stringArrayAttribute(aggregate, 'affected_openings'),
+    activeHazards,
+    affectedOpenings,
     adviceInhibition: adviceInhibitionAttribute(aggregate),
-    activeSymptomCount: numericAttribute(aggregate, 'active_symptom_count') ?? 0,
+    activeSymptomCount: Math.max(numericAttribute(aggregate, 'active_symptom_count') ?? 0, retainedAssertionCount),
     actuationMode: stringAttribute(aggregate, 'actuation_mode'),
     lastEvaluatedAt: optionalStringAttribute(aggregate, 'last_evaluated_at'),
     lastUpdated: aggregate?.last_updated ?? aggregate?.last_changed,
     providers,
     officialWarnings,
-    officialWarningsConfigured:
-      aggregate?.attributes.official_warnings_configured === true ||
-      providers.some(provider => provider.capability === 'OfficialWeatherWarnings'),
-    coverageDetails: externalCoverageAttribute(aggregate),
+    officialWarningsConfigured: official.selectionState === 'enabled',
+    categories,
+    monitoringActive,
+    monitoringEvaluated,
+    retainedWarnings,
+    retainedDanger: retainedAssertionCount > 0 || (activeHazards.length > 0 && (!monitoringActive || !monitoringEvaluated)),
+    runtimeId: applied?.runtimeId,
+    testPreview,
+    coverageDetails:
+      applied && aggregate?.attributes.runtime_id === applied.runtimeId
+        ? externalCoverageAttribute(aggregate).map(item => {
+            const choice = applied.selections[item.capability as ExternalCapability];
+            return applied.componentEnabled &&
+              choice.provider &&
+              choice.data_kind === 'live' &&
+              item.providers.every(id => id === choice.provider)
+              ? item
+              : { ...item, providers: [], status: 'not_configured' as const };
+          })
+        : [],
+  };
+}
+
+/** Invalidate current monitoring without discarding retained real hazard evidence. */
+export function invalidateExternalMonitoring(view: ExternalHazardView): ExternalHazardView {
+  return {
+    ...view,
+    monitoringActive: false,
+    monitoringEvaluated: false,
+    testPreview: undefined,
+    officialWarnings: [],
+    officialWarningsConfigured: false,
+    retainedWarnings: [...view.retainedWarnings, ...view.officialWarnings],
+    categories: view.categories.map(category => ({
+      ...category,
+      selectionState: 'unknown',
+      evidenceState: 'unknown',
+      currentCount: null,
+      diagnostic: undefined,
+    })),
+    providers: view.providers.map(provider => ({ ...provider, status: provider.status === 'ok' ? 'stale' : provider.status })),
+    status: view.status === 'clear' ? 'unavailable' : view.status,
+    coverageDetails: [],
+    retainedDanger: view.activeHazards.length > 0,
   };
 }
 
@@ -798,10 +1043,9 @@ function externalCoverageAttribute(entity: EntitySnapshot | undefined): External
 }
 
 export function getAirQualityPresentation(external: ExternalHazardView, now = Date.now()): AirQualityPresentation {
-  const openMeteo = external.providers.find(
-    provider =>
-      provider.capability === 'OutdoorAirQuality' || (!provider.capability && provider.provider === 'OpenMeteoAirQualityApiComponent')
-  );
+  const category = external.categories.find(item => item.capability === 'OutdoorAirQuality');
+  const selected = category?.selectionState === 'enabled' ? category.diagnostic : undefined;
+  const openMeteo = selected && category?.evidenceState === 'stale' ? { ...selected, status: 'stale' as const } : selected;
   const openMeteoObservation = openMeteo?.observations.find(observation => observation.hazardType === 'outdoor_air_pollution');
 
   const value = numericState(openMeteoObservation?.displayValue);
@@ -1182,7 +1426,7 @@ function adviceInhibitionAttribute(entity: EntitySnapshot | undefined): AdviceIn
 function officialWarningsAttribute(entity: EntitySnapshot, provider: string, sourceName: string): OfficialWarningView[] {
   const value = entity?.attributes.warnings;
   if (!Array.isArray(value)) return [];
-  return value.flatMap(item => {
+  return value.slice(0, 64).flatMap(item => {
     if (!item || typeof item !== 'object') return [];
     const record = item as Record<string, unknown>;
     const id = typeof record.id === 'string' ? record.id.trim() : '';
@@ -1212,7 +1456,7 @@ function officialWarningsAttribute(entity: EntitySnapshot, provider: string, sou
 function externalObservationsAttribute(entity: EntitySnapshot | undefined): ExternalObservationView[] {
   const value = entity?.attributes.observations;
   if (!Array.isArray(value)) return [];
-  return value.flatMap(item => {
+  return value.slice(0, 64).flatMap(item => {
     if (!item || typeof item !== 'object') return [];
     const record = item as Record<string, unknown>;
     const id = typeof record.id === 'string' ? record.id.trim() : '';

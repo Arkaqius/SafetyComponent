@@ -25,7 +25,7 @@ Note: This module is designed for internal use within the Home Assistant safety 
 
 import hashlib
 from datetime import datetime, timezone
-from typing import Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Mapping, Optional
 
 import appdaemon.plugins.hass.hassapi as hass
 
@@ -34,6 +34,8 @@ from components.core.event_bus import EventBus
 from components.core.mqtt_entity_manager import MqttEntityManager
 from components.core.fault_state_policy import FaultEvaluation, FaultEvaluationStatus
 from components.faults_manager.evidence import FaultEvidenceJournal
+if TYPE_CHECKING:
+    from components.safetycomponents.external_hazard.assertion_store import AssertionRecord
 
 
 SYSTEM_STATE_BY_FAULT_LEVEL = {
@@ -92,6 +94,48 @@ class FaultManager:
         self.evidence_journal = evidence_journal
         self.restriction_provider = restriction_provider
         self._symptom_contexts: dict[str, dict[str, str]] = {}
+        self._retained_external_records: dict[str, "AssertionRecord"] = {}
+
+    def restore_external_assertions(
+        self,
+        records: Mapping[str, "AssertionRecord"],
+        *,
+        uncertain_faults: set[str] | None = None,
+    ) -> None:
+        """Restore retained danger before publication without replaying responses."""
+        self._retained_external_records = dict(records)
+        for symptom_id, record in records.items():
+            fault = self.faults.get(record.fault_id)
+            if fault is None:
+                continue
+            fault.evaluation.bind(symptom_id)
+            fault.evaluation.active = True
+            fault.evaluation.active_contributors.add(symptom_id)
+            fault.evaluation.status = FaultEvaluationStatus.UNEVALUABLE
+
+            self._symptom_contexts[symptom_id] = {
+                str(key): str(value) for key, value in record.context.items()
+            }
+            if symptom_id in self.symptoms:
+                self.symptoms[symptom_id].state = FaultState.SET
+        for fault_id in uncertain_faults or set():
+            fault = self.faults.get(fault_id)
+            if fault is None:
+                continue
+            sentinel = f"RetainedUnknown{fault_id}"
+            fault.evaluation.bind(sentinel)
+            fault.evaluation.active = True
+            fault.evaluation.active_contributors.add(sentinel)
+            fault.evaluation.status = FaultEvaluationStatus.UNEVALUABLE
+
+    def retained_assertions(self, fault_id: str) -> list[dict[str, Any]]:
+        """Expose only unresolved assertions restored from an earlier runtime."""
+        return [record.model_dump(mode="json") for record in self._retained_external_records.values()
+                if record.fault_id == fault_id]
+
+    def acknowledge_external_evidence(self, symptom_id: str) -> None:
+        """Replace historical presentation after a newly qualified real decision."""
+        self._retained_external_records.pop(symptom_id, None)
 
     def get_fault_evaluation(self, fault_id: str) -> FaultEvaluation:
         """Return the authoritative fault-owned evaluation."""
@@ -117,6 +161,11 @@ class FaultManager:
             contributors=self._configured_contributors(fault),
             active_contributors=sorted(fault.evaluation.active_contributors),
         )
+        if fault.name in {"ExternalWeatherExposure", "OutdoorAirQualityExposure"}:
+            payload["retained_assertions"] = self.retained_assertions(fault.name)
+            payload["retained_hazard_unknown"] = any(
+                key.startswith("RetainedUnknown") for key in fault.evaluation.active_contributors
+            )
         evidence = (
             self.evidence_journal.get(fault.name)
             if self.evidence_journal is not None else None

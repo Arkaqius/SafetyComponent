@@ -92,6 +92,11 @@ class ExternalApiRuntime:
             return
         if self._stopping:
             return
+        if result.provider != provider or result.health.provider != provider:
+            self.hass_app.log(
+                f"External provider result identity mismatch for {provider}", level="ERROR"
+            )
+            return
         try:
             self._results.put_nowait(result)
         except Full:
@@ -115,7 +120,15 @@ class ExternalApiRuntime:
                 result = self._results.get_nowait()
             except Empty:
                 return
-            self.event_bus.publish("external_api_result", result=result)
+            component = self.components.get(result.provider)
+            if component is None:
+                continue
+            kind = component.data_kind
+            if kind not in {"live", "synthetic"}:
+                self.hass_app.log("Invalid trusted external provider data kind", level="ERROR")
+                continue
+            event = "external_api_test_result" if kind == "synthetic" else "external_api_result"
+            self.event_bus.publish(event, result=result)
 
     def stop(self) -> None:
         """Cancel schedules and reject further provider submissions."""

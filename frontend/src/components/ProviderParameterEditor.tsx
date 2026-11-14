@@ -18,7 +18,7 @@ export default function ProviderParameterEditor({ plugin, values, active, disabl
       {Object.entries(plugin.fields).map(([name, field]) => {
         const id = `${base}-${name}`;
         const messages = providerFieldErrors(errors, plugin, name);
-        const required = field.required || (active && plugin.requiredWhenEnabled.includes(name));
+        const required = field.required || (active && plugin.requiredWhenSelected.includes(name));
         const value = values[name];
         const common = {
           id,

@@ -246,6 +246,7 @@ def test_cli_prints_complete_user_schema(monkeypatch, capsys) -> None:
         "components_enabled",
         "notification",
         "installation",
+        "external_sources",
     }
     assert schema["additionalProperties"] is False
     assert "InstallationConfig" in schema["$defs"]
@@ -420,9 +421,7 @@ def test_v2_overrides_system_policy_defaults_from_installation(tmp_path) -> None
         },
         "outdoor_air_quality": {"warning_at": 55},
     }
-    source["user_config"]["providers"] = {
-        "ImgwWarningsApiComponent": {"enabled": False}
-    }
+    source["user_config"]["external_sources"]["OfficialWeatherWarnings"] = None
     user_path = tmp_path / "user.yml"
     user_path.write_text(yaml.safe_dump(source), encoding="utf-8")
 
@@ -527,51 +526,32 @@ def test_v2_requires_explicit_selection_for_every_component(tmp_path) -> None:
         compile_config(user_path=user_path)
 
 
-def test_canonical_and_preserved_legacy_sources_compile_to_same_runtime_contract():
-    """Changing parameter ownership preserves all generated runtime identities."""
-    canonical = compile_config(user_path=BACKEND_DIR / "config/user_config.example.yml")
-    legacy = compile_config(user_path=BACKEND_DIR / "tests/fixtures/external_apis/legacy_user_config.yml")
-    # The legacy alias remains in normalized site data for backwards compatibility.
-    canonical["SafetyFunctions"]["user_config"]["site"].pop("teryt_codes", None)
-    legacy["SafetyFunctions"]["user_config"]["site"].pop("teryt_codes", None)
-    assert canonical == legacy
+@pytest.mark.parametrize("codes", [["0001","0000"],[" 0001 ","0000"]])
+def test_canonical_teryt_resolves_without_source_rewrite(tmp_path, codes):
+    source=yaml.safe_load((BACKEND_DIR/"config/user_config.example.yml").read_text(encoding="utf-8"))
+    source["user_config"]["provider_parameters"]["ImgwWarningsApiComponent"]={"teryt_codes":codes}
+    path=tmp_path/"source.yml"
+    path.write_text(yaml.safe_dump(source),encoding="utf-8")
+    before=path.read_bytes()
+    runtime=compile_config(user_path=path)["SafetyFunctions"]["user_config"]
+    assert runtime["api_components"]["ImgwWarningsApiComponent"]["parameters"]["teryt_codes"]==["0001","0000"]
+    assert path.read_bytes()==before
 
-
-@pytest.mark.parametrize(
-    ("canonical", "legacy", "expected"),
-    [
-        (["0001", "0000"], None, ["0001", "0000"]),
-        (None, ["0001", "0000"], ["0001", "0000"]),
-        ([" 0001 ", "0000"], ["0000", "0001"], ["0001", "0000"]),
-    ],
-)
-def test_teryt_source_forms_resolve_before_active_requiredness(tmp_path, canonical, legacy, expected):
-    source = yaml.safe_load((BACKEND_DIR / "config/user_config.example.yml").read_text(encoding="utf-8"))
-    selection = source["user_config"]["providers"]["ImgwWarningsApiComponent"]
-    selection.pop("parameters", None)
-    site = source["user_config"]["installation"]["site"]
-    site.pop("teryt_codes", None)
-    if canonical is not None:
-        selection["parameters"] = {"teryt_codes": canonical}
-    if legacy is not None:
-        site["teryt_codes"] = legacy
-    path = tmp_path / "source.yml"
-    path.write_text(yaml.safe_dump(source), encoding="utf-8")
-    before = path.read_bytes()
-    runtime = compile_config(user_path=path)["SafetyFunctions"]["user_config"]
-    assert runtime["api_components"]["ImgwWarningsApiComponent"]["parameters"]["teryt_codes"] == expected
-    assert path.read_bytes() == before
-
-
-@pytest.mark.parametrize(("canonical", "legacy"), [(["0001"], ["0000"]), ([], None), (["0000", "0000"], None)])
-def test_invalid_teryt_forms_do_not_compile_or_rewrite_source(tmp_path, canonical, legacy):
-    source = yaml.safe_load((BACKEND_DIR / "config/user_config.example.yml").read_text(encoding="utf-8"))
-    source["user_config"]["providers"]["ImgwWarningsApiComponent"]["parameters"] = {"teryt_codes": canonical}
-    if legacy is not None:
-        source["user_config"]["installation"]["site"]["teryt_codes"] = legacy
-    path = tmp_path / "source.yml"
-    path.write_text(yaml.safe_dump(source), encoding="utf-8")
-    before = path.read_bytes()
+@pytest.mark.parametrize("obsolete", ["providers","site_alias","missing_category","multiple_sources"])
+def test_obsolete_selection_forms_are_rejected_without_rewrite(tmp_path,obsolete):
+    source=yaml.safe_load((BACKEND_DIR/"config/user_config.example.yml").read_text(encoding="utf-8"))
+    user=source["user_config"]
+    if obsolete=="providers":
+        user["providers"]={"ImgwWarningsApiComponent":{"enabled":True}}
+    elif obsolete=="site_alias":
+        user["installation"]["site"]["teryt_codes"]=["0000"]
+    elif obsolete=="missing_category":
+        user["external_sources"].pop("OfficialWeatherWarnings")
+    else:
+        user["external_sources"]["OfficialWeatherWarnings"]=["ImgwWarningsApiComponent"]
+    path=tmp_path/"source.yml"
+    path.write_text(yaml.safe_dump(source),encoding="utf-8")
+    before=path.read_bytes()
     with pytest.raises(ValueError):
         compile_config(user_path=path)
-    assert path.read_bytes() == before
+    assert path.read_bytes()==before

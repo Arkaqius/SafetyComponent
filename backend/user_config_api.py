@@ -133,7 +133,8 @@ class UserConfigStore:
             try:
                 resolve_provider_bindings(
                     provider_defaults,
-                    user_config.get("providers", {}),
+                    user_config.get("external_sources", {}),
+                    user_config.get("provider_parameters", {}),
                     user_config.get("installation", {}).get("site", {}) or {},
                     component_enabled=bool(user_config.get("components_enabled", {}).get("ExternalHazardComponent", False)),
                 )
@@ -163,7 +164,7 @@ class UserConfigStore:
                 if key in entity_monitor
             },
             "external_hazard": {
-                "provider_metadata_version": 1,
+                "provider_metadata_version": 2,
                 "provider_plugins": export_provider_catalogue(provider_defaults),
                 "weather": {
                     key: value

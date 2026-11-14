@@ -111,6 +111,10 @@ class SqliteStateDatabase:
             legacy_validator=legacy_validator,
         )
 
+    def record_store(self, name: str, *, max_bytes: int) -> SqliteStateStore:
+        """Bind a new bounded namespace without any legacy file import path."""
+        return SqliteStateStore(self, name, None, max_bytes=max_bytes)
+
 
 class SqliteStateStore:
     """Adapt existing snapshots to individually addressable collection records."""
@@ -119,14 +123,14 @@ class SqliteStateStore:
         self,
         database: SqliteStateDatabase,
         name: str,
-        legacy_path: str | Path,
+        legacy_path: str | Path | None,
         *,
         max_bytes: int | None = None,
         legacy_validator: Callable[[dict[str, Any]], Any] | None = None,
     ) -> None:
         self.database: SqliteStateDatabase = database
         self.name: str = name
-        self.legacy_path: Path = Path(legacy_path)
+        self.legacy_path: Path | None = Path(legacy_path) if legacy_path is not None else None
         self.max_bytes: int | None = max_bytes
         self.legacy_validator: Callable[[dict[str, Any]], Any] | None = legacy_validator
 
@@ -169,7 +173,7 @@ class SqliteStateStore:
             return
         payload: dict[str, Any] = {}
         digest = None
-        if self.legacy_path.exists():
+        if self.legacy_path is not None and self.legacy_path.exists():
             if (
                 self.max_bytes is not None
                 and self.legacy_path.stat().st_size > self.max_bytes
@@ -191,7 +195,7 @@ class SqliteStateStore:
                 return
             connection.execute(
                 "INSERT INTO stores VALUES (?,?,?)",
-                (self.name, str(self.legacy_path), digest),
+                (self.name, str(self.legacy_path) if self.legacy_path is not None else None, digest),
             )
             self._write(connection, payload)
 

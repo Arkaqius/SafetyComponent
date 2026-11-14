@@ -6,7 +6,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from math import ceil
 from time import monotonic
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 import appdaemon.plugins.hass.hassapi as hass  # type: ignore
 
@@ -167,10 +167,100 @@ class ExternalHazardComponent(SafetyComponent):
         self._last_context: dict[str, HazardContext] = {}
         self._provider_entity_ids: dict[str, str] = {}
         self._provider_plugins = get_registered_api_components()
+        self._test_provider_plugins: dict[str, Any] = {}
+        self._runtime_selections: dict[str, str | None] = {}
+        self.runtime_id = str(getattr(hass_app, "runtime_id", ""))
+        self.assertion_observer: Callable[[str, bool, HazardContext], bool] | None = None
+        self._test_entity_id: str | None = None
         self.enabled_providers: set[str] = set(self._provider_plugins)
         self._aggregate_entity_id: str | None = None
         self._inhibited_reasons: dict[str, dict[str, str]] = {}
         self.event_bus.subscribe("external_api_result", self.handle_external_api_result)
+        self.event_bus.subscribe("external_api_test_result", self.handle_external_api_test_result)
+
+    def configure_runtime(self, *, runtime_id: str, selections: Mapping[str, str | None]) -> None:
+        """Bind this start's applied choices without activating synthetic policy."""
+        if not runtime_id or len(runtime_id) > 128 or not runtime_id.isascii():
+            raise ValueError("Invalid external-hazard runtime_id")
+        if set(selections) != {capability.value for capability in ProviderCapability}:
+            raise ValueError("External source selection must contain all capabilities")
+        plugins = get_registered_api_components()
+        selected = {name for name in selections.values() if name is not None}
+        if not selected.issubset(plugins):
+            raise ValueError("Unknown external source selection")
+        self.runtime_id = runtime_id
+        self._runtime_selections = dict(selections)
+        self._provider_plugins = {
+            name: plugin for name, plugin in plugins.items()
+            if name in selected and plugin.data_kind == "live"
+        }
+        self._test_provider_plugins = {
+            name: plugin for name, plugin in plugins.items()
+            if name in selected and plugin.data_kind == "synthetic"
+        }
+        self.enabled_providers = set(self._provider_plugins)
+        if self._test_provider_plugins:
+            provider = next(iter(self._test_provider_plugins))
+            self._publish_test_preview(provider, None)
+
+    def restore_assertions(self, records: Mapping[str, HazardContext]) -> None:
+        """Retain confirmed real danger without replaying qualification or actions."""
+        for symptom_id, context in records.items():
+            if not symptom_id.startswith(("ExternalWeatherExposure", "OutdoorAirQualityExposure")):
+                continue
+            self.symptom_states[symptom_id] = FaultState.SET
+            self._last_context[symptom_id] = {**dict(context), "retained": True, "freshness": "unevaluable"}
+
+    def _record_assertion(self, symptom_id: str, active: bool, context: HazardContext) -> bool:
+        """Persist real assertion changes before they are published to consumers."""
+        if self.assertion_observer is None or symptom_id.startswith("ExternalHazardDataUnavailable"):
+            return True
+        try:
+            return self.assertion_observer(symptom_id, active, context)
+        except Exception as exc:
+            self.hass_app.log(f"External assertion persistence failed: {exc}", level="ERROR")
+            return False
+
+    def handle_external_api_test_result(self, *, result: ApiResult, **_: Any) -> None:
+        """Publish trusted synthetic previews without evaluating real safety policy."""
+        if self._stopped or result.provider not in self._test_provider_plugins:
+            return
+        if result.health.provider != result.provider:
+            return
+        plugin = self._test_provider_plugins[result.provider]
+        if any(observation.provider != result.provider or observation.authority_confirmed
+               or observation.hazard_type not in plugin.hazards
+               for observation in result.observations):
+            return
+        self._publish_test_preview(result.provider, result)
+
+    def _publish_test_preview(self, provider: str, result: ApiResult | None) -> None:
+        if self._test_entity_id is None:
+            self._test_entity_id = self.mqtt_entities.register_sensor(
+                "sensor.external_hazard_test_state", self._presentation_text("entity.external_hazard_test"),
+                icon="mdi:flask-outline", entity_category="diagnostic",
+            )
+        observations = result.observations[:MAX_DIAGNOSTIC_OBSERVATIONS] if result is not None else ()
+        plugin = self._test_provider_plugins[provider]
+        self.mqtt_entities.publish_sensor_state(
+            self._test_entity_id, result.health.state.value if result else "awaiting_evidence",
+            attributes={
+                "schema_version": 1, "runtime_id": self.runtime_id, "provider": provider,
+                "provider_name": self._provider_display_name(provider), "data_kind": "synthetic",
+                "scenario": result.evidence.get("scenario") if result else None,
+                "health": result.health.state.value if result else "awaiting_evidence",
+                "capability": plugin.capability.value,
+                "hazards": sorted(hazard.value for hazard in plugin.hazards),
+                "count": len(observations),
+                "observations": [self._observation_summary(item) for item in observations],
+                "warnings": [self._warning_summary(item) for item in observations],
+                "last_success_at": result.health.last_success_at.isoformat() if result and result.health.last_success_at else None,
+                "last_attempt_at": result.health.last_attempt_at.isoformat() if result and result.health.last_attempt_at else None,
+                "stale_after_seconds": result.health.stale_after_seconds if result else 180,
+                "detail_code": result.health.detail_code if result else None,
+                "test_label": self._presentation_text("provider.synthetic.label"),
+            },
+        )
 
     def get_symptoms_data(
         self,
@@ -182,6 +272,10 @@ class ExternalHazardComponent(SafetyComponent):
         self.policy = dict(component_cfg["policy"])
         self.enabled_providers = set(
             component_cfg.get("enabled_providers", self._provider_plugins)
+        )
+        self.enabled_providers.intersection_update(
+            name for name, plugin in self._provider_plugins.items()
+            if getattr(plugin, "data_kind", None) == "live"
         )
         self.openings = {
             name: dict(config) for name, config in component_cfg["openings"].items()
@@ -404,7 +498,20 @@ class ExternalHazardComponent(SafetyComponent):
         """Accept one complete provider snapshot and re-evaluate policy."""
 
         provider = result.provider
-        if self._stopped or provider not in self.enabled_providers:
+        plugin = self._provider_plugins.get(provider)
+        if (
+            self._stopped or provider not in self.enabled_providers or plugin is None
+            or getattr(plugin, "data_kind", None) != "live"
+            or result.health.provider != provider
+        ):
+            return
+        official = plugin.capability == ProviderCapability.OFFICIAL_WARNINGS
+        if any(
+            observation.provider != provider
+            or observation.hazard_type not in plugin.hazards
+            or observation.authority_confirmed != official
+            for observation in result.observations
+        ):
             return
         self._provider_seen.add(provider)
         self._health[provider] = result.health
@@ -542,6 +649,7 @@ class ExternalHazardComponent(SafetyComponent):
             context.get("source")
             for symptom_id, context in self._last_context.items()
             if self.symptom_states.get(symptom_id) == FaultState.SET
+            and symptom_id in self.safety_mechanisms
             and self.safety_mechanisms[symptom_id].sm_args.get("hazard") == hazard.value
         }
         unusable = False
@@ -693,6 +801,7 @@ class ExternalHazardComponent(SafetyComponent):
         return tuple(sorted(
             name for name, plugin in self._provider_plugins.items()
             if name in self.enabled_providers and plugin.capability in capabilities
+            and getattr(plugin, "data_kind", None) == "live"
             and (hazard is None or hazard in plugin.hazards)
         ))
 
@@ -824,6 +933,7 @@ class ExternalHazardComponent(SafetyComponent):
         current = self.symptom_states.get(symptom_id, FaultState.NOT_TESTED)
         if status == "active":
             self._cancel_clear(symptom_id)
+            self._record_assertion(symptom_id, True, context)
             if current == FaultState.SET:
                 self.record_symptom_observation(symptom_id, FaultState.SET, context)
             if current != FaultState.SET or self._last_context.get(symptom_id) != context:
@@ -872,6 +982,8 @@ class ExternalHazardComponent(SafetyComponent):
             self._publish_aggregate()
 
     def _publish_clear(self, symptom_id: str, context: HazardContext) -> None:
+        if not self._record_assertion(symptom_id, False, context):
+            return
         if self.symptom_states.get(symptom_id) == FaultState.CLEARED:
             self.record_symptom_observation(symptom_id, FaultState.CLEARED, context)
             return
@@ -956,6 +1068,8 @@ class ExternalHazardComponent(SafetyComponent):
             self._provider_entity_ids[provider] = entity_id
         health = result.health
         attributes: dict[str, Any] = {
+            "runtime_id": self.runtime_id,
+            "data_kind": "live",
             "provider": provider,
             "provider_name": provider_name,
             "state_label": self._presentation_text(f"provider.health.{health.state.value}"),
@@ -1086,6 +1200,11 @@ class ExternalHazardComponent(SafetyComponent):
             self._aggregate_entity_id,
             state,
             attributes={
+                "runtime_id": self.runtime_id,
+                "retained_assertions": [
+                    {"symptom_id": name, **context}
+                    for name, context in external_active if context.get("retained")
+                ],
                 "active_hazards": sorted({context.get("hazard", "") for _, context in external_active if context.get("hazard")}),
                 "affected_openings": sorted({context.get("openings", "") for _, context in external_active if context.get("openings")}),
                 "providers": providers,
@@ -1157,7 +1276,8 @@ class ExternalHazardComponent(SafetyComponent):
         translated = self._presentation_text(key)
         if translated != key:
             return translated
-        return str(getattr(self._provider_plugins[provider], "display_name", "") or provider)
+        plugin = self._provider_plugins.get(provider) or self._test_provider_plugins.get(provider)
+        return str(getattr(plugin, "display_name", "") or provider)
 
     @staticmethod
     def _pascal(value: str) -> str:

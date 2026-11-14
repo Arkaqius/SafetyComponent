@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import time
+from dataclasses import replace
 from concurrent.futures import Future
 from datetime import datetime, timezone
 from threading import Event
 from typing import Any
 from collections.abc import Callable
+
+import pytest
 
 from components.core.event_bus import EventBus
 from components.external_apis.core.api_runtime import ExternalApiRuntime
@@ -32,6 +35,7 @@ class RuntimeHass:
 
 
 class StubProvider:
+    data_kind = "live"
     def __init__(self, name: str, gate: Event | None = None) -> None:
         self.name = name
         self.gate = gate
@@ -120,14 +124,18 @@ def test_start_preserves_each_provider_schedule_and_stop_cancels_all() -> None:
     assert runtime.request_poll("FirstProvider") is False
 
 
-def test_stop_suppresses_in_flight_result_and_late_dispatch() -> None:
+@pytest.mark.parametrize("data_kind", ["live", "synthetic"])
+def test_stop_suppresses_in_flight_result_and_late_dispatch(data_kind) -> None:
     """A result completing after shutdown must never reach decision consumers."""
     hass = RuntimeHass()
     bus = EventBus()
     delivered: list[str] = []
     bus.subscribe("external_api_result", lambda *, result: delivered.append(result.provider))
+    bus.subscribe("external_api_test_result", lambda *, result: delivered.append(result.provider))
     gate = Event()
-    runtime = ExternalApiRuntime(hass, bus, {"SlowProvider": StubProvider("SlowProvider", gate)})
+    provider = StubProvider("SlowProvider", gate)
+    provider.data_kind = data_kind
+    runtime = ExternalApiRuntime(hass, bus, {"SlowProvider": provider})
     assert runtime.request_poll("SlowProvider")
     runtime.stop()
     gate.set()
@@ -179,3 +187,42 @@ def test_shutdown_during_worker_completion_cannot_enqueue_or_dispatch() -> None:
     runtime.drain_results()
     assert runtime._results.empty()
     assert delivered == []
+
+
+def test_synthetic_results_use_only_preview_event_and_spoofed_identity_is_rejected():
+    hass = RuntimeHass()
+    bus = EventBus()
+    live, previews = [], []
+    bus.subscribe("external_api_result", lambda *, result: live.append(result.provider))
+    bus.subscribe("external_api_test_result", lambda *, result: previews.append(result.provider))
+    synthetic = StubProvider("Synthetic")
+    synthetic.data_kind = "synthetic"
+    runtime = ExternalApiRuntime(hass, bus, {"Synthetic": synthetic})
+    try:
+        assert runtime.request_poll("Synthetic")
+        _wait_for(lambda: not runtime._in_flight)
+        runtime.drain_results()
+        assert previews == ["Synthetic"]
+        assert live == []
+        future = Future()
+        genuine = synthetic.poll()
+        future.set_result(replace(genuine, evidence={"data_kind": "live"}))
+        runtime._poll_completed("Synthetic", future)
+        runtime.drain_results()
+        assert previews == ["Synthetic", "Synthetic"]
+        assert live == []
+        future = Future()
+        future.set_result(StubProvider("SpoofedLive").poll())
+        runtime._poll_completed("Synthetic", future)
+        runtime.drain_results()
+        assert previews == ["Synthetic", "Synthetic"]
+        assert live == []
+        assert any("identity" in message.lower() for _, message in hass.logs)
+        future = Future()
+        future.set_result(replace(genuine, health=replace(genuine.health, provider="Other")))
+        runtime._poll_completed("Synthetic", future)
+        runtime.drain_results()
+        assert previews == ["Synthetic", "Synthetic"]
+        assert live == []
+    finally:
+        runtime.stop()

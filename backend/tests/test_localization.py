@@ -187,3 +187,17 @@ def test_private_locale_rejects_unknown_or_empty_entries(tmp_path, source: str) 
 def test_invalid_localization_settings_are_rejected(settings: dict) -> None:
     with pytest.raises(ValidationError):
         LocalizationSettings.model_validate(settings)
+
+
+def test_external_selection_and_synthetic_runtime_labels_have_locale_parity():
+    keys = {
+        "entity.external_source_selection", "entity.external_hazard_test",
+        "provider.GermanyDummyWarningsApiComponent.name", "provider.synthetic.label",
+        "provider.selection.disabled", "provider.selection.component_disabled",
+        "provider.selection.unknown", "provider.selection.test", "provider.retained.label",
+        "provider.parameter.region_code.label", "provider.parameter.region_code.help",
+        "provider.parameter.scenario.label", "provider.parameter.scenario.help",
+    }
+    for language in ("en", "pl", "de"):
+        assert keys.issubset(_TRANSLATIONS[language])
+        assert all(_TRANSLATIONS[language][key].strip() for key in keys)

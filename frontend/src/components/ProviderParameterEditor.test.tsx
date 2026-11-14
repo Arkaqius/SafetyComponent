@@ -5,16 +5,17 @@ import { decodeProviderCatalogue } from '../domain/providerConfiguration.js';
 import ProviderParameterEditor from './ProviderParameterEditor.js';
 
 const catalogue = decodeProviderCatalogue({
-  provider_metadata_version: 1,
+  provider_metadata_version: 2,
   provider_plugins: {
     RegionalWarningsApiComponent: {
-      enabled: false,
+      data_kind: 'synthetic',
+      transport_kind: 'none',
       countries: ['DE'],
       capability: 'OfficialWeatherWarnings',
       hazards: ['wind'],
       display_name: 'Ostrzeżenia regionalne',
       description: 'Dane dla wybranego regionu.',
-      required_when_enabled: ['region_code'],
+      required_when_selected: ['region_code'],
       parameter_defaults: {},
       parameter_schema: {
         type: 'object',
@@ -38,7 +39,7 @@ test('renders provider-owned typed fields, requirements, help and field errors',
       active
       errors={[
         {
-          path: ['user_config', 'providers', 'RegionalWarningsApiComponent', 'parameters', 'region_code'],
+          path: ['user_config', 'provider_parameters', 'RegionalWarningsApiComponent', 'region_code'],
           code: 'invalid',
           message: 'Nieprawidłowy region.',
         },

@@ -30,6 +30,7 @@ class OpenMeteoWeatherApiComponent(ExternalApiComponent):
     description = "Model pogody i prognoza dla współrzędnych Home Assistant."
 
     def fetch_payload(self) -> Any:
+        assert self.http_client is not None
         return self.http_client.get_json(
             self.provider_config["base_url"],
             params={

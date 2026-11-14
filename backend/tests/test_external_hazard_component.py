@@ -108,6 +108,132 @@ POLICY = {
 }
 
 
+@pytest.mark.parametrize("scenario,state,count", [
+    ("empty", "ok", 0), ("warning", "ok", 1),
+    ("unavailable", "unavailable", 0), ("stale", "stale", 1),
+])
+def test_synthetic_preview_does_not_mutate_real_policy_or_dispatch_symptoms(scenario, state, count):
+    from components.external_apis.germany_dummy_warnings.component import GermanyDummyWarningsApiComponent
+
+    component, hass, mqtt, events = _component()
+    provider = GermanyDummyWarningsApiComponent.component_name
+    selections = {cap.value: None for cap in ProviderCapability}
+    selections[ProviderCapability.OFFICIAL_WARNINGS.value] = provider
+    component.configure_runtime(runtime_id="preview-start", selections=selections)
+    adapter = GermanyDummyWarningsApiComponent(
+        provider_config={"poll_interval_seconds": 60, "stale_after_seconds": 180},
+        site_config={"country_code": "DE"}, parameters={"region_code": "Berlin", "scenario": scenario},
+    )
+    events.clear()
+    before_states = dict(component.symptom_states)
+    result = adapter.poll()
+    component.handle_external_api_result(result=result)
+    assert component._health == {}
+    assert component._observations == {}
+    component.handle_external_api_test_result(result=result)
+    assert component.symptom_states == before_states
+    assert events == []
+    assert component._inhibited_reasons == {}
+    assert hass.service_calls == []
+    preview_state, attributes = mqtt.states["sensor.external_hazard_test_state"]
+    assert preview_state == state
+    assert attributes["runtime_id"] == "preview-start"
+    assert attributes["data_kind"] == "synthetic"
+    assert attributes["count"] == count
+    assert attributes["scenario"] == scenario
+    assert provider not in component.enabled_providers
+
+
+def test_real_assertions_are_persisted_before_publication_and_failure_cannot_clear():
+    component, _, _, events = _component()
+    name = "ExternalWeatherExposureWindOfficeWindow"
+    writes = []
+    component.assertion_observer = lambda symptom_id, active, context: writes.append(
+        (symptom_id, active, dict(context), len(events))
+    ) or True
+    events.clear()
+    component._apply_state(name, "active", {"source": "ImgwWarningsApiComponent"})
+    assert writes[0][0:2] == (name, True)
+    assert writes[0][3] == 0
+    assert component.symptom_states[name] == FaultState.SET
+    component.assertion_observer = lambda *_: False
+    component._publish_clear(name, {"clear_evidence": "positive"})
+    assert component.symptom_states[name] == FaultState.SET
+    assert not any(event["state"] == FaultState.CLEARED for event in events)
+
+
+@pytest.mark.parametrize("defect", ["authority", "provider", "hazard", "health"])
+def test_malformed_synthetic_preview_is_rejected_without_real_effects(defect):
+    from components.external_apis.germany_dummy_warnings import GermanyDummyWarningsApiComponent
+
+    component, _, mqtt, events = _component()
+    provider = GermanyDummyWarningsApiComponent.component_name
+    choices = {cap.value: None for cap in ProviderCapability}
+    choices["OfficialWeatherWarnings"] = provider
+    component.configure_runtime(runtime_id="test-start", selections=choices)
+    adapter = GermanyDummyWarningsApiComponent(
+        provider_config={"poll_interval_seconds": 60, "stale_after_seconds": 180},
+        site_config={"country_code": "DE"}, parameters={"region_code": "Test", "scenario": "warning"},
+    )
+    result = adapter.poll()
+    event = result.observations[0]
+    if defect == "health":
+        result = replace(result, health=replace(result.health, provider="Spoofed"))
+    else:
+        changes = {"authority": {"authority_confirmed": True}, "provider": {"provider": "ImgwWarningsApiComponent"}, "hazard": {"hazard_type": HazardType.FROST}}
+        result = replace(result, observations=(replace(event, **changes[defect]),))
+    before = dict(mqtt.states)
+    events.clear()
+    component.handle_external_api_test_result(result=result)
+    assert mqtt.states == before
+    assert component._health == component._observations == {}
+    assert events == []
+
+
+def test_forged_live_result_does_not_replace_real_provider_health():
+    component, _, _, events = _component()
+    provider = "ImgwWarningsApiComponent"
+    observation = _observation("GermanyDummyWarningsApiComponent", HazardType.WIND, {}, confirmed=False)
+    events.clear()
+    component.handle_external_api_result(result=ApiResult(provider, (observation,), _health(provider)))
+    assert component._health == component._observations == {}
+    assert events == []
+
+
+def test_preview_summary_is_bounded_without_publishing_real_warning_counts():
+    from components.external_apis.germany_dummy_warnings import GermanyDummyWarningsApiComponent
+
+    component, _, mqtt, events = _component()
+    provider = GermanyDummyWarningsApiComponent.component_name
+    choices = {cap.value: None for cap in ProviderCapability}
+    choices["OfficialWeatherWarnings"] = provider
+    component.configure_runtime(runtime_id="bounded-preview", selections=choices)
+    adapter = GermanyDummyWarningsApiComponent(
+        provider_config={"poll_interval_seconds": 60, "stale_after_seconds": 180},
+        site_config={"country_code": "DE"}, parameters={"region_code": "Test", "scenario": "warning"},
+    )
+    result = adapter.poll()
+    result = replace(result, observations=tuple(replace(result.observations[0], observation_id=f"Synthetic{i}") for i in range(65)))
+    events.clear()
+    component.handle_external_api_test_result(result=result)
+    attributes = mqtt.states["sensor.external_hazard_test_state"][1]
+    assert attributes["count"] == len(attributes["observations"]) == len(attributes["warnings"]) == 64
+    assert provider not in component.enabled_providers
+    assert component._health == component._observations == {}
+    assert events == []
+
+
+def test_restored_removed_assertion_stays_visible_without_event_replay():
+    component, _, mqtt, events = _component()
+    events.clear()
+    name = "ExternalWeatherExposureWindRemovedWindow"
+    component.restore_assertions({name: {"hazard": "wind", "openings": "Removed", "source": "OldProvider", "severity": "warning"}})
+    component._publish_aggregate()
+    assert component.symptom_states[name] == FaultState.SET
+    assert events == []
+    assert mqtt.states["sensor.external_hazard_state"][0] == "warning"
+
+
 def test_confirmed_opening_declares_separate_recovery_health() -> None:
     """Contact and actuator failures have distinct component fault owners."""
 
@@ -481,6 +607,7 @@ def test_wind_only_empty_feed_cannot_supply_frost_clear_evidence() -> None:
     name = "WindOnlyApiComponent"
     component._provider_plugins = {
         name: SimpleNamespace(
+            data_kind="live",
             capability=ProviderCapability.OFFICIAL_WARNINGS,
             hazards=frozenset({HazardType.WIND}),
         )
@@ -500,10 +627,12 @@ def test_failed_wind_only_source_does_not_block_independent_frost_model() -> Non
     warnings = "WindOnlyApiComponent"
     component._provider_plugins = {
         model: SimpleNamespace(
+            data_kind="live",
             capability=ProviderCapability.WEATHER_MODEL,
             hazards=frozenset({HazardType.FROST}),
         ),
         warnings: SimpleNamespace(
+            data_kind="live",
             capability=ProviderCapability.OFFICIAL_WARNINGS,
             hazards=frozenset({HazardType.WIND}),
         ),
@@ -528,6 +657,7 @@ def test_coverage_projection_distinguishes_no_source_waiting_and_empty_feed() ->
     name = "WindOnlyApiComponent"
     component._provider_plugins = {
         name: SimpleNamespace(
+            data_kind="live",
             capability=ProviderCapability.OFFICIAL_WARNINGS,
             hazards=frozenset({HazardType.WIND}),
         ),
@@ -576,6 +706,7 @@ def test_provider_health_uses_plugin_display_name_for_new_plugins() -> None:
     component, _, mqtt, _ = _component()
     provider = "RegionalApiComponent"
     component._provider_plugins = {provider: SimpleNamespace(
+        data_kind="live",
         capability=ProviderCapability.OFFICIAL_WARNINGS,
         hazards=frozenset({HazardType.WIND}),
         display_name="Regional Weather Service",
@@ -591,6 +722,7 @@ def test_active_peer_reports_only_fresh_qualified_source_reevaluations() -> None
     component, _, _, _ = _component()
     names = ("RegionalApiComponent", "PeerApiComponent")
     component._provider_plugins = {name: SimpleNamespace(
+        data_kind="live",
         capability=ProviderCapability.OFFICIAL_WARNINGS,
         hazards=frozenset({HazardType.WIND}),
     ) for name in names}
@@ -633,6 +765,7 @@ def test_fresh_empty_peer_restores_coverage_while_other_peer_keeps_hazard_active
     component, _, _, _ = _component()
     names = ("RegionalApiComponent", "PeerApiComponent")
     definitions = {name: SimpleNamespace(
+        data_kind="live",
         capability=ProviderCapability.OFFICIAL_WARNINGS,
         hazards=frozenset({HazardType.WIND}),
     ) for name in names}
@@ -710,6 +843,7 @@ def test_capability_recovers_with_one_healthy_peer_without_clearing_hazard() -> 
     names = ("FirstWarningsApiComponent", "SecondWarningsApiComponent")
     component._provider_plugins = {
         name: SimpleNamespace(
+            data_kind="live",
             capability=ProviderCapability.OFFICIAL_WARNINGS,
             hazards=frozenset({HazardType.WIND}),
         )

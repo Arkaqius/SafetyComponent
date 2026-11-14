@@ -33,23 +33,32 @@ def test_shared_catalogue_matches_live_definitions_and_source_schema(monkeypatch
     monkeypatch.setattr(registry, "_API_COMPONENT_REGISTRY", dict(production))
     registry.register_api_component(RegionalWarnings)
     registry.register_api_component(PeerRegionalWarnings)
-    system = yaml.safe_load((ROOT / "backend/config/system_config.yml").read_text(encoding="utf-8"))
+    system = yaml.safe_load(
+        (ROOT / "backend/config/system_config.yml").read_text(encoding="utf-8")
+    )
     policies = system["runtime_cfg"]["providers"]
     policies[RegionalWarnings.component_name] = provider_policy(feed_variant="regional")
     policies[PeerRegionalWarnings.component_name] = provider_policy()
-    fixture = json.loads((FIXTURES / "provider_contract.json").read_text(encoding="utf-8"))
-    assert fixture == {"provider_metadata_version": 1, "provider_plugins": export_provider_catalogue(policies)}
+    fixture = json.loads(
+        (FIXTURES / "provider_contract.json").read_text(encoding="utf-8")
+    )
+    assert fixture == {
+        "provider_metadata_version": 2,
+        "provider_plugins": export_provider_catalogue(policies),
+    }
     schema = UserConfigurationV2.model_json_schema()
     serialized = json.dumps(schema)
     for name in fixture["provider_plugins"]:
         assert name in serialized
     regional = fixture["provider_plugins"][RegionalWarnings.component_name]
     assert regional["hazards"] == ["wind"]
-    assert regional["required_when_enabled"] == ["region_code"]
+    assert regional["required_when_selected"] == ["region_code"]
     assert policies[RegionalWarnings.component_name]["feed_variant"] == "regional"
 
 
-@pytest.mark.parametrize(("key", "limit"), [("title", 256), ("description", 2048), ("pattern", 256)])
+@pytest.mark.parametrize(
+    ("key", "limit"), [("title", 256), ("description", 2048), ("pattern", 256)]
+)
 def test_schema_text_budgets_accept_limit_and_reject_one_over(key, limit):
     _validate_schema_budget({key: "x" * limit})
     with pytest.raises(ValueError):
@@ -104,19 +113,29 @@ def test_field_error_budgets_are_bounded_without_losing_legacy_envelope():
     assert payload["message"] == "configuration rejected"
     assert len(payload["field_errors"]) == 32
     assert all(len(item["path"]) == 16 for item in payload["field_errors"])
-    assert all(len(part) == 128 for item in payload["field_errors"] for part in item["path"])
-    assert all(len(item["code"]) == 128 and len(item["message"]) == 512 for item in payload["field_errors"])
+    assert all(
+        len(part) == 128 for item in payload["field_errors"] for part in item["path"]
+    )
+    assert all(
+        len(item["code"]) == 128 and len(item["message"]) == 512
+        for item in payload["field_errors"]
+    )
     assert configuration_error_payload(ValueError("old server error")) == {
-        "error": "invalid_configuration", "message": "old server error"
+        "error": "invalid_configuration",
+        "message": "old server error",
     }
 
 
-def test_catalogue_accepts_sixty_four_valid_entries_then_rejects_sixty_five(monkeypatch):
+def test_catalogue_accepts_sixty_four_valid_entries_then_rejects_sixty_five(
+    monkeypatch,
+):
     production = registry.get_registered_api_components()
     monkeypatch.setattr(registry, "_API_COMPONENT_REGISTRY", dict(production))
     policies = {}
     for i in range(65):
-        plugin = type(f"Controlled{i}", (RegionalWarnings,), {"component_name": f"Controlled{i}"})
+        plugin = type(
+            f"Controlled{i}", (RegionalWarnings,), {"component_name": f"Controlled{i}"}
+        )
         registry.register_api_component(plugin)
         policies[plugin.component_name] = provider_policy()
         if i == 63:
