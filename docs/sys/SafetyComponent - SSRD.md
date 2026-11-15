@@ -69,7 +69,18 @@ The implementation assumes:
 | `Localizer` | Translate presentation text while retaining stable internal codes. |
 
 Event ordering is deterministic: the FaultManager processes symptom events;
-for fault events, NotificationManager runs before RecoveryManager.
+for fault events, NotificationManager admits its lifecycle update before
+RecoveryManager handles the event. Admission shall not wait for notification
+transport or diagnostic publication. Failure in one response consumer shall be
+isolated so remaining eligible consumers still receive the event; ordering does
+not make one consumer's successful delivery a prerequisite for another.
+
+All Safety Components shall use the shared `SafetyMechanism` lifecycle and
+execution-outcome contract. Domain rules and qualification intervals shall remain
+with their owning components. FaultManager shall own fault aggregation,
+RecoveryManager authorization and execution policy, NotificationManager delivery
+lifecycle, and MqttEntityManager diagnostic publication. These responsibilities
+shall remain separate despite sharing lifecycle infrastructure.
 
 ## 4. Software safety requirements
 
@@ -85,6 +96,17 @@ for fault events, NotificationManager runs before RecoveryManager.
 | SWR-CFG-006 | At startup the application shall resolve every configured `area_id` with Home Assistant `area_name(...)`; an unknown area shall invalidate the configuration. | `AppCfgValidator._resolve_area_names` |
 | SWR-CFG-007 | A validation failure shall publish health state `invalid_cfg`, include `configuration_error`, keep MQTT reporting available for diagnosis, and shall not enable safety mechanisms. | `SafetyFunctions.initialize` |
 | SWR-CFG-008 | Successful initialization shall publish health state `running` only after managers, event subscriptions, entities, and mechanisms are initialized and enabled. | `SafetyFunctions.initialize` |
+
+### 4.1.1 Shared safety-mechanism lifecycle and execution
+
+| ID | Requirement | Responsible element |
+| --- | --- | --- |
+| SWR-SM-001 | Every installed temperature, Safety Doors, Entity Monitor, heating, indoor environmental hazard and external hazard mechanism shall use the shared SafetyMechanism lifecycle contract. Domain-specific evaluation and qualification shall remain component-owned; infrastructure reuse shall add no generic assertion debounce or weaken an allocated deadline. | `SafetyMechanism`, `SafetyComponent`, domain components |
+| SWR-SM-002 | Mechanisms shall declare monitored entity inputs explicitly and separately from descriptive or policy parameters. Location, friendly names and arbitrary strings shall not implicitly create state subscriptions. Each owned subscription shall have a retained cancellation handle. | mechanism configuration and listener ownership |
+| SWR-SM-003 | Lifecycle start, enable/disable and stop shall have consistent eligibility semantics. Stop shall be idempotent, release owned subscriptions and qualification timers, and invalidate pending execution identities. A callback or completion from a stopped or superseded session shall not change symptom/fault state or authorize an action. | mechanism and component lifecycle |
+| SWR-SM-004 | Disabling or stopping a mechanism shall cancel its pending qualification without clearing active assertions, retained incidents or independently latched restrictions. Restoration and valid positive recovery shall retain their owner-specific contracts. | `SafetyComponent` and domain assertion owners |
+| SWR-SM-005 | Event-triggered and scheduled execution shall distinguish valid positive/negative evaluation from unevaluable, inhibited and disabled outcomes and report execution failure consistently. Missing evidence and execution exceptions shall not be interpreted as a valid negative or recovery proof. | shared execution result and diagnostics |
+| SWR-SM-006 | Shared lifecycle integration shall preserve stable mechanism/symptom identifiers and existing registration contracts across all six component families. Acceptance shall cover repeated start/stop, late listeners/timers, disable during qualification and descriptive-text changes, with no duplicate logical evaluation or unintended monitored input. | mechanism integration and contract tests |
 
 ### 4.2 Temperature monitoring
 
@@ -192,6 +214,15 @@ The existing `ForeCast` capitalization is part of the runtime contract.
 | SWR-FLT-024 | The first transition to an active fault shall capture one versioned, allowlisted freeze frame before asynchronous response handling. It shall retain the original captured evidence through contributor changes, shadowing, and quiet notification refresh; valid clear shall retain it until the next activation replaces it. The capture shall exclude secrets and unbounded Home Assistant attributes, and shall be stored independently of notification history. API fault records and MQTT fault attributes shall expose capture and lifecycle metadata in one `freeze_frame` object, shown in one Freeze frame section in the frontend. | `FaultManager`, fault evidence journal, frontend |
 | SWR-FLT-025 | The same freeze frame shall retain bounded first/last activation times, last valid pass, activation count, last diagnostic reason, and active duration only when a continuous monotonic observation permits it. Lifecycle metadata may update on valid clear or restart without rewriting the captured evidence. After restart, duration shall be unknown until a new activation; no downtime observation or fault-episode identity shall be invented. The per-frame byte bound shall apply to activation-capture fields; separately validated lifecycle fields shall count toward the total serialized evidence-content bound, independently of the database's physical size. Schema migration shall preserve validated legacy capture and lifecycle data within their original bounds without creating an activation. Evidence capacity shall evict the oldest inactive record before active records; if capacity is occupied by active records, losing a new diagnostic capture shall not block fault handling. Storage failure shall contribute to App Health durability and shall not clear active safety evidence. | fault evidence journal, App Health |
 
+FaultManager shall commit qualified fault state and admit its response event
+independently of diagnostic publication. An isolated response-consumer failure
+shall not prevent other eligible consumers from receiving that event.
+
+| ID | Requirement | Responsible element |
+| --- | --- | --- |
+| SWR-FLT-026 | MQTT or other diagnostic publication failure shall not prevent qualified fault activation or admission to notification and recovery processing. Fault state shall remain authoritative in memory, publication failure shall remain diagnosable, and publication retry shall not replay fault transitions, notification commands or actuator actions. | `FaultManager`, response-event routing, diagnostic publisher |
+| SWR-FLT-027 | Response routing shall preserve deterministic per-incident lifecycle order and isolate each consumer's failure. Remaining eligible consumers shall still receive the event; consumer error shall be recorded independently rather than treated as successful handling or alarm clearance. Retry shall preserve logical event identity and shall not duplicate authorized actions. | EventBus and response consumers |
+
 ### 4.5 Notifications and recovery
 
 | ID | Requirement | Responsible element |
@@ -204,7 +235,7 @@ The existing `ForeCast` capitalization is part of the runtime contract.
 | SWR-NOT-006 | Mobile delivery shall use one or more explicitly configured `notify/<service>` targets and shall reject the ambiguous `notify/notify` service. | `MobilePushConfig`, `MobilePushProvider` |
 | SWR-NOT-007 | A shadowed fault shall remove its mobile notification by sending `message: clear_notification` with the stable tag. | `MobilePushProvider.clear` |
 | SWR-NOT-008 | Levels 1 through 3 shall use separately configured Android and iOS profiles. A newly active fault or same-tag increase in urgency may alert audibly; repeated context and recovery-guidance updates at the same severity shall use a quiet profile and shall not reactivate local annunciators. An update shall not downgrade a still-pending new-alert attempt for an undelivered target to quiet. | `MobileProfile`, `MobilePushProvider`, `LocalAnnunciator` |
-| SWR-NOT-009 | Mobile submission shall use the bundled AppDaemon-compatible service shape without `return_result`, `timeout`, or `hass_timeout`. An explicit AppDaemon failure shall be retried as a transport failure; a submission returning no result shall be reported as `accepted_by_home_assistant` and shall not be represented as confirmed phone delivery. | delivery result and diagnostics contract |
+| SWR-NOT-009 | Mobile submission shall use the bundled AppDaemon-compatible service shape without `return_result`, `timeout`, or `hass_timeout`, using reviewed background completion callbacks. Immediate scheduling return shall not establish acceptance. An explicit completed failure shall be a transport failure; a completed call returning no result shall retain the reviewed `accepted_by_home_assistant` interpretation without claiming phone delivery. An unresolved timed-out resource lease shall not permit an overlapping retry. | delivery result and diagnostics contract |
 | SWR-NOT-010 | Failed target submissions shall be retried independently with bounded exponential backoff. Failure of one target shall not prevent submission to another configured target. A newer lifecycle state or content update for the same tag shall replace superseded queued submissions. | `PendingDelivery`, scheduler |
 | SWR-NOT-011 | When configured WAN state is not positively online, remote notification submissions shall remain queued. The queue shall be flushed after confirmed WAN recovery. Unknown, unavailable, or malformed WAN state shall not be treated as online. | WAN state handler and delivery queue |
 | SWR-NOT-012 | Home Assistant acceptance later than 10 seconds for L1 or 30 seconds for L2/L3 shall increment deadline-miss telemetry without blocking fault or recovery processing. | retry deadlines and diagnostics |
@@ -212,7 +243,7 @@ The existing `ForeCast` capitalization is part of the runtime contract.
 | SWR-NOT-014 | L1 repeats shall use a configurable interval and finite maximum count. Clearing, shadowing, or acknowledging the fault shall cancel pending repeats. | `LevelOneRepeatPolicy` |
 | SWR-NOT-015 | Active records, acknowledgement, pending deliveries, repeat state, counters, and last transport result shall be restored from a versioned atomic state snapshot after AppDaemon reload or restart. A restored active record shall remain fail-safe until a current authoritative fault event confirms or clears it. | `NotificationStateStore`, fault-event reconciliation |
 | SWR-NOT-016 | Only configured allowlisted detail fields shall be included in mobile payloads or persistent notification state. | `_filter_details` |
-| SWR-NOT-017 | Mobile transport, local light/alarm outputs, and persistence shall be isolated adapters. Failure in one adapter shall not block fault state, recovery policy, or another delivery adapter. | notification adapter boundaries |
+| SWR-NOT-017 | Mobile transport, local light/alarm outputs, persistence and diagnostic publication shall be isolated adapters. A failed or stalled adapter shall not block fault processing, recovery policy or another independent adapter beyond its allocated deadline. Fault-event admission shall not wait for service submission completion. Pending work and retries shall be bounded, overload and deadline failure shall be visible, and obsolete completions shall not rewrite a newer incident/runtime outcome. Existing output restrictions and confirmation requirements shall remain effective. | notification adapter boundaries and completion handling |
 | SWR-NOT-018 | `sensor.notification_delivery_health` shall expose active, acknowledged, queued, accepted, failed, deadline-miss and exhausted counts; stable tags for currently acknowledged active notifications; per-service status, attempt time and error; plus the last Home Assistant acceptance result and error. | MQTT delivery diagnostics |
 | SWR-NOT-019 | The notification journal shall retain the latest 100 individual target submission attempts, including failures and retries, and shall restore them using the existing notification persistence configuration. A compatible snapshot without history shall restore an empty journal while preserving lifecycle state. | `NotificationManager`, `NotificationStateStore` |
 | SWR-NOT-020 | Each journal entry shall identify its UUID, stable tag, submission kind, fault state, title and message bounded to 2048 characters each, severity, UTC ISO creation and attempt timestamps, attempt number, actual target service, acceptance or failure result, and deadline-miss status. Raw transport exceptions and unfiltered fault events shall not enter the journal. | notification history entry contract |
@@ -275,6 +306,7 @@ The shared action allocation and completion semantics are defined in
 | SWR-MQTT-004 | Availability shall be `offline` during initialization and `online` after successful startup or diagnostic invalid-configuration startup. | `SafetyFunctions` |
 | SWR-MQTT-005 | The heartbeat period shall remain shorter than `expire_after` so unchanged entities do not become unavailable. | `heartbeat_seconds`, `expire_after` |
 | SWR-MQTT-006 | Application termination shall publish health and system state `stopped` before publishing availability `offline`. | `SafetyFunctions.terminate` |
+| SWR-MQTT-007 | MQTT diagnostics shall remain a projection of authoritative domain state, not a prerequisite for accepting danger or admitting response processing. Publication failure shall be surfaced independently without fabricating clear, healthy coverage or successful delivery. Publication retry/coalescing shall preserve current lifecycle order and shall not repeat household actions or fault-response commands. | `MqttEntityManager`, FaultManager and diagnostic callers |
 
 ### 4.8 External Hazard Monitoring
 
@@ -578,6 +610,7 @@ valid measure of safety-logic verification.
 | --- | --- |
 | SWR-ROUTINE-* | `test_safety_routines.py`, `test_safetyFunctions.py`, `test_localization.py`, frontend `safetyRoutines.test.ts` and `safety-routines.spec.ts` |
 | SWR-CFG-* | `test_app_cfg_validator.py`, `test_component_schema_validation.py` |
+| SWR-SM-* | shared lifecycle and execution contract tests across all six component families: repeated start/stop, explicit input binding, metadata-only changes, disabled/obsolete callback rejection, owned handle cancellation and domain timing preservation |
 | SWR-TEMP-* | `test_temperatureComponent.py`, `test_derivative_monitor.py`, `test_safetyFunctions.py` |
 | SWR-DOOR-* | `test_safety_doors_component.py`, `test_app_cfg_validator.py` |
 | SWR-FLT-* | `test_fault_manager.py`, `test_fault_evidence.py`, `test_degradation.py`, `test_self_diagnostics.py`, `test_system_notification_recovery.py` |

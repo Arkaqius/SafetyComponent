@@ -84,9 +84,11 @@ and available location only after an authoritative clear.
 - sends the Companion command `message: clear_notification` with the stable
   tag when a notification must be removed;
 - submits through the bundled AppDaemon-compatible service shape without
-  `return_result`, `timeout`, or `hass_timeout`; an explicit AppDaemon failure
-  is retryable, while a submission returning no result is recorded as accepted
-  by Home Assistant but never as confirmed device delivery.
+  `return_result`, `timeout`, or `hass_timeout`, using supported background
+  completion callbacks; immediate scheduling return is not delivery acceptance.
+  An explicit completed failure is retryable only when no unresolved resource
+  lease would overlap the retry. A completed call returning no result retains
+  the reviewed acceptance meaning, never confirmed device delivery.
 
 The provider shall never fall back to `notify.notify`. Installation routing
 shall use an explicit group such as `notify/safety_recipients` or an explicit
@@ -348,6 +350,16 @@ periodic-test records. The frontend shall obtain explicit confirmation because
 the old journal is removed and active warnings may be sent again.
 
 ## 5. Failure behavior
+
+Fault event handling shall admit notification lifecycle work without waiting for
+transport completion, persistence or MQTT. Completion callbacks shall only enqueue
+immutable results for application-owned reconciliation. A stalled target shall
+retain its resource lease across app reload; timeout shall not authorize an
+overlapping call or create replacement workers. Failed consumer admission shall
+be diagnosed without blocking independent recovery handling. The
+[response isolation contract](004-safety-timing-alarm-retention/contracts/response-isolation.md)
+defines resource bounds, old-generation fencing, publication ordering and the
+distinction between scheduling, acceptance and physical effects.
 
 - Failure of one configured target shall not prevent attempts to other targets.
 - A partial target failure is `degraded`, not `healthy`.
