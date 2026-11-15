@@ -97,3 +97,64 @@ Limit each diagnostic payload to 64 KiB and 64 detailed records; publish total a
 omitted counts and aggregate danger/inhibition over all records. Detail omission
 must never remove a fault contribution. A disabled monitor with retained danger
 cannot appear healthy. Runtime strings maintain EN/PL/DE parity; frontend Polish.
+
+## Lifecycle Scope and Execution Outcome
+
+`LifecycleScope`: owner identity, runtime/generation, phase (constructed, started,
+stopped), enabled eligibility and uniquely owned typed registration handles.
+Mechanism identity is stable; generation changes on stop/restart. Parent component
+scopes may share input subscriptions across children. Current domain timers are
+registered rather than duplicated. Failure to cancel never invalidates fencing.
+
+`ExecutionOutcome`: mechanism/symptom ID, generation, observed-at receiver time,
+eligible-positive/negative versus unevaluable/inhibited/disabled, bounded evidence
+and diagnostic reason. An absent/failed result never becomes eligible-negative.
+Simulation has separate read-only intent and cannot produce live lifecycle events.
+No new externally published raw state values are introduced.
+
+## Fault Response Event
+
+Immutable event ID, runtime/incident, monotonic transition revision, fault/symptom
+IDs, current severity/state and allowlisted context. Context is capped at 16 KiB;
+total event at 32 KiB. Drop excessive detail with an omission indicator rather than
+dropping activation, identity or response admission. Transport references only
+identities and copied values, never mutable component instances. Recovery resolves
+current domain objects through its authoritative registry before authorization.
+
+Consumer admission tracks current incident revision and failure independently.
+Duplicate completion does not duplicate logical handling. Receipt history keeps
+only latest current consumer revision per known fault/incident; it is not an
+unbounded durable event archive or permission to replay actions after restart.
+
+## Service Intent, Lease and Completion
+
+`ServiceIntent`: operation ID, owner runtime/generation, incident/tag revision,
+target resource and allowlisted service/payload, enqueue/deadline times and any
+current authorization token reference. No raw secret or token is published in
+diagnostics. Application pending intents: 1024 records / 4 MiB, payload <=64 KiB.
+
+`ServiceLease`: process-owned resource key, operation and old/current generation,
+in-flight/quarantined state, deadline and reserved completion credit. It survives
+app reload and is not released by an application timeout. Across all generations,
+at most 64 credits exist. Hold each until its completion is drained; unresolved
+retired resources stay counted. See [response isolation](contracts/response-isolation.md)
+for reserved lanes and overload behavior.
+
+`ServiceCompletion`: immutable matching lease/operation/generation, completion
+time, bounded disposition/error, duplicate marker. Scheduling return and completion
+are distinct. Late old completion may release a lease but cannot revise new domain
+truth. Queue credit prevents dropped completion or unbounded callback buffering.
+
+## Publication Group and Snapshot Generation
+
+`PublicationGroup`: entity ID, desired revision and coherent discovery/attributes/
+state or lifecycle barrier, plus accepted revision only after completion. Bound
+4096 pending groups / 8 MiB / 256 KiB per group. Preserve entity discovery ordering,
+availability generation fences and latest desired heartbeat state independently
+of authoritative fault state. Failed publication is not successful cache acceptance.
+
+`SnapshotGeneration`: owner namespace, immutable bounded snapshot, generation and
+acknowledgement. Notification persistence has one in-flight and one coalesced
+pending snapshot. Recovery commands wait for exact durable authorization; indoor
+CLEAR waits for its existing durable candidate. No cross-namespace atomicity is
+invented, and enqueueing never counts as persistence acknowledgement.

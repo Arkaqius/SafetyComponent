@@ -45,6 +45,15 @@ partially replaced namespace. Saves of different namespaces are separate
 transactions; a notification save and recovery save are not one cross-domain
 commit.
 
+Response-path notification snapshots shall be immutable and handed to one bounded
+writer with one coalesced pending generation. Enqueue is not durable success.
+Generation-specific acknowledgement shall return to the application owner before
+it authorizes a recovery command or an indoor CLEAR requiring durable evidence.
+Notification durability failure shall not suppress current danger or independent
+response adapters. The [response isolation contract](004-safety-timing-alarm-retention/contracts/response-isolation.md)
+preserves each owner's atomic store contract while separating I/O completion from
+fault-event admission; it does not introduce a cross-manager transaction.
+
 SQLite uses write-ahead logging and `synchronous=FULL`. Writer lock waiting is
 bounded to 50 ms. A locked, corrupt, incompatible, or unwritable database raises
 a storage error to the owning manager's existing App Health diagnostics; it

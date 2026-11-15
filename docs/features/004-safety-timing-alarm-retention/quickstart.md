@@ -29,9 +29,52 @@ Assistant session, detector stimulation or household command is required.
    file absence is not proof of a first installation.
 5. Inspect frontend retained/disabled-but-active diagnostics and EN/PL/DE runtime
    labels. Assert zero actuator calls and no historical notification replay.
+6. Parametrize temperature, doors, Entity Monitor, heating, indoor alarms and
+   external hazards against the [shared lifecycle](contracts/shared-mechanism-lifecycle.md).
+   Repeat start/stop and same-instance restart, disable during qualification,
+   deliver late callbacks and change only a location label. Confirm exact intended
+   subscriptions, released owned handles, zero obsolete effects and no extra input.
+   Recovery simulation must report unevaluable distinctly and have no live effects.
+7. Inject an MQTT exception at the original pre-fault-event failure point and a
+   throwing first response consumer. Confirm authoritative danger, independent
+   consumer admission and local failure evidence under the
+   [isolation contract](contracts/response-isolation.md). No diagnostic retry may
+   duplicate an alarm transition or action.
+8. Use a non-household supported packaged AppDaemon/HASS harness with callback
+   service completion: immediate callback, None result, explicit failure, delayed
+   result and one never-completing target. Confirm scheduling return is not
+   acceptance, healthy independent targets/recovery proceed within their budgets,
+   and no forbidden service parameters are sent. Repeat app reload while the old
+   lease remains unresolved; verify fixed process-wide credits, quarantine,
+   byte/count limits, overload and duplicate/obsolete completion handling.
+9. Race queued local-output intent with gas inhibition and recovery command with
+   token expiry/new restrictions. Observe immutable writer acknowledgement and
+   current authorization before any mocked dispatch. A timeout cannot prove
+   physical cancellation, so no automatic command replay is allowed. Test MQTT
+   discovery/attributes/state/availability ordering across old/new generations,
+   failure and heartbeat; desired projection is not accepted publication.
 
 These scenarios become regression cases during implementation; passing the
 current baseline suite alone does not establish that these defects are fixed.
+
+The fake service transport implements the same callback contract as the supported
+runtime and records bounded submission/completion times. Ordinary AppDaemon stub
+tests alone cannot establish real HASS callback forwarding semantics. The declared
+dependency is >=4.5,<5; a local installed version outside that range is not runtime
+admission evidence. No test harness may connect to the household instance.
+
+## Evidence Matrix
+
+| Scope | Acceptance evidence |
+| --- | --- |
+| FR-001..003; SC-001 | Scenario 1, full 120 s timeline and invalid overrides |
+| FR-004..007; SC-002/003 | Scenario 2, authority/session and exact recovery boundaries |
+| FR-008..012; SC-004/005 | Scenarios 3/4/9, owner bootstrap, durable CLEAR and crash ordering |
+| FR-013; SC-004/005 | Scenario 5, operator states, bounded payloads and runtime translation parity |
+| FR-014/015/023; SC-006/010 | All scenarios, no real commands/replay and unchanged domain safety semantics |
+| FR-016/017; SC-007 | Scenario 7, response ordering and publication/consumer exception isolation |
+| FR-018; SC-008 | Scenarios 8/9, hung target, bounded resource capacity and independent progress |
+| FR-019..022; SC-009/010 | Scenario 6, six-family lifecycle and typed execution/simulation outcomes |
 
 ## Required Commands
 
