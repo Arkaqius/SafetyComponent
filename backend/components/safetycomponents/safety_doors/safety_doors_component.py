@@ -33,6 +33,8 @@ class DoorRuntime:
     opened_at: datetime | None = None
     timer_handle: Any | None = None
     active: bool = False
+    qualification_interrupted: bool = False
+    qualification_floor: datetime | None = None
 
 
 @register_safety_component
@@ -196,6 +198,7 @@ class SafetyDoorsComponent(SafetyComponent):
             callback=self.sm_safety_door_open_timeout,
             name=name,
             isEnabled=False,
+            scope=self.scope.child(name),
             monitored_entities=list(dict.fromkeys(monitored_entities)),
         )
         mechanism.sm_args.update(
@@ -209,6 +212,7 @@ class SafetyDoorsComponent(SafetyComponent):
             }
         )
         self.safety_mechanisms[name] = mechanism
+        mechanism.start()
         self.symptom_states[name] = FaultState.NOT_TESTED
         self._door_runtime[name] = DoorRuntime()
 
@@ -230,17 +234,32 @@ class SafetyDoorsComponent(SafetyComponent):
             )
             return False
         if state == SMState.ENABLED:
+            self.start()
+            mechanism.start()
+            runtime = self._door_runtime[name]
+            if runtime.qualification_interrupted:
+                runtime.qualification_floor = self._now()
+                runtime.qualification_interrupted = False
             mechanism.isEnabled = True
             return True
         if state == SMState.DISABLED:
             mechanism.isEnabled = False
             self._cancel_timer(name)
+            self._door_runtime[name].opened_at = None
+            self._door_runtime[name].qualification_interrupted = True
             return True
 
         self.hass_app.log(
             f"Invalid state {state} for safety mechanism {name}", level="ERROR"
         )
         return False
+
+    def stop(self) -> None:
+        """Discard qualification duration while retaining active door assertions."""
+        super().stop()
+        for runtime in self._door_runtime.values():
+            runtime.timer_handle = runtime.opened_at = None
+            runtime.qualification_interrupted = True
 
     def sm_safety_door_open_timeout(
         self,
@@ -274,7 +293,7 @@ class SafetyDoorsComponent(SafetyComponent):
             if opened_at is None:
                 active_since_candidates = [
                     changed_at
-                    for changed_at in (door_last_changed, condition_last_changed)
+                    for changed_at in (door_last_changed, condition_last_changed, runtime.qualification_floor)
                     if changed_at is not None
                 ]
                 opened_at = (
@@ -352,7 +371,7 @@ class SafetyDoorsComponent(SafetyComponent):
         if runtime.opened_at is None:
             active_since_candidates = [
                 changed_at
-                for changed_at in (door_last_changed, condition_last_changed)
+                for changed_at in (door_last_changed, condition_last_changed, runtime.qualification_floor)
                 if changed_at is not None
             ]
             runtime.opened_at = (
@@ -362,7 +381,7 @@ class SafetyDoorsComponent(SafetyComponent):
             0, int((now - runtime.opened_at).total_seconds())
         )
 
-        if elapsed_seconds >= timeout_seconds:
+        if elapsed_seconds >= timeout_seconds or runtime.active:
             self._cancel_timer(sm.name)
             runtime.active = True
             self._publish_symptom(
@@ -413,7 +432,8 @@ class SafetyDoorsComponent(SafetyComponent):
         self, mechanism: SafetyMechanism, delay_seconds: int
     ) -> None:
         self._cancel_timer(mechanism.name)
-        self._door_runtime[mechanism.name].timer_handle = self.hass_app.run_in(
+        self._door_runtime[mechanism.name].timer_handle = mechanism.run_in(
+            "door_timeout",
             self._timeout_reached,
             max(1, delay_seconds),
             sm_name=mechanism.name,
@@ -423,15 +443,8 @@ class SafetyDoorsComponent(SafetyComponent):
         runtime = self._door_runtime.get(sm_name)
         if runtime is None or runtime.timer_handle is None:
             return
-        handle = runtime.timer_handle
         runtime.timer_handle = None
-        try:
-            self.hass_app.cancel_timer(handle)
-        except Exception as exc:
-            self.hass_app.log(
-                f"Unable to cancel Safety Doors timer {sm_name}: {exc}",
-                level="WARNING",
-            )
+        self.safety_mechanisms[sm_name].scope.cancel("timer:door_timeout")
 
     def _publish_symptom(
         self,

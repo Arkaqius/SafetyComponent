@@ -196,7 +196,8 @@ class HeatingSystemMonitorComponent(SafetyComponent):
         self._restore()
         self._last_tick = self._monotonic()
         if self._config.systems:
-            self._timer = self.hass_app.run_every(
+            self._timer = self.own_interval(
+                "sampler",
                 self._tick,
                 self._now()
                 + timedelta(seconds=self._config.evaluation_interval_seconds),
@@ -213,8 +214,10 @@ class HeatingSystemMonitorComponent(SafetyComponent):
         if name not in self._bindings or sm_name != RULES[self._bindings[name][1]][0]:
             return False
         self.safety_mechanisms[name] = SafetyMechanism(
-            self.hass_app, self._evaluate_mechanism, name, False, monitored_entities=[]
+            self.hass_app, self._evaluate_mechanism, name, False, monitored_entities=[],
+            scope=self.scope.child(name),
         )
+        self.safety_mechanisms[name].start()
         self.symptom_states[name] = FaultState.NOT_TESTED
         return True
 
@@ -225,6 +228,9 @@ class HeatingSystemMonitorComponent(SafetyComponent):
             SMState.DISABLED,
         }:
             return False
+        if state == SMState.ENABLED:
+            self.start()
+            self.safety_mechanisms[name].start()
         self.safety_mechanisms[name].isEnabled = state == SMState.ENABLED
         return True
 
@@ -1144,9 +1150,8 @@ class HeatingSystemMonitorComponent(SafetyComponent):
 
     def stop(self) -> None:
         """Release the sampling timer and commit remaining durable state."""
-        if self._timer is not None:
-            self.hass_app.cancel_timer(self._timer)
-            self._timer = None
+        super().stop()
+        self._timer = None
         self._persist()
 
     @staticmethod

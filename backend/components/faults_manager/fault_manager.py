@@ -937,6 +937,7 @@ class FaultManager:
 
                 # Fetch and update the state of the safety mechanism directly
                 sm_fcn = getattr(symptom_data.module, symptom_data.sm_name)
+                evaluation_serial = getattr(symptom_data.module, "_evaluation_serial", 0)
                 try:
                     sm_fcn(symptom_data.module.safety_mechanisms[symptom_data.name])
                 except Exception:
@@ -944,13 +945,13 @@ class FaultManager:
                     self.event_bus.publish("evaluation_unavailable", symptom_id=sm_name)
                     self.mark_evaluation_unavailable(sm_name)
                     recorder = getattr(symptom_data.module, "record_evaluation", None)
-                    if callable(recorder):
+                    if callable(recorder) and getattr(symptom_data.module, "_evaluation_serial", 0) == evaluation_serial:
                         recorder(success=False)
                     raise
                 else:
                     self.event_bus.publish("evaluation_succeeded", symptom_id=sm_name)
                     recorder = getattr(symptom_data.module, "record_evaluation", None)
-                    if callable(recorder):
+                    if callable(recorder) and getattr(symptom_data.module, "_evaluation_serial", 0) == evaluation_serial:
                         recorder()
             else:
                 symptom_data.sm_state = SMState.ERROR

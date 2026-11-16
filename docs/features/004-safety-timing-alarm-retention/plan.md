@@ -1,6 +1,6 @@
 # Implementation Plan: Safety Timing and Indoor Alarm Retention
 
-**Branch**: `codex/003-heating-monitoring` | **Date**: 2026-11-14
+**Branch**: `codex/004-safety-timing-alarm-retention` | **Date**: 2026-11-14
 
 **Input**: [Feature specification](spec.md)
 

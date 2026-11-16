@@ -175,8 +175,8 @@ class ExternalHazardComponent(SafetyComponent):
         self.enabled_providers: set[str] = set(self._provider_plugins)
         self._aggregate_entity_id: str | None = None
         self._inhibited_reasons: dict[str, dict[str, str]] = {}
-        self.event_bus.subscribe("external_api_result", self.handle_external_api_result)
-        self.event_bus.subscribe("external_api_test_result", self.handle_external_api_test_result)
+        self.event_bus.subscribe("external_api_result", self.handle_external_api_result, scope=self.scope)
+        self.event_bus.subscribe("external_api_test_result", self.handle_external_api_test_result, scope=self.scope)
 
     def configure_runtime(self, *, runtime_id: str, selections: Mapping[str, str | None]) -> None:
         """Bind this start's applied choices without activating synthetic policy."""
@@ -438,8 +438,8 @@ class ExternalHazardComponent(SafetyComponent):
         opening_name = parameters.get("opening_name")
         if isinstance(opening_name, str) and opening_name not in self._listened_openings:
             entity_id = str(self.openings[opening_name]["entity_id"])
-            self._opening_listeners[opening_name] = self.hass_app.listen_state(
-                self._opening_contact_changed, entity_id, opening_name=opening_name
+            self._opening_listeners[opening_name] = self.own_state_listener(
+                f"opening:{opening_name}", self._opening_contact_changed, entity_id, opening_name=opening_name
             )
             self._listened_openings.add(opening_name)
         mechanism = SafetyMechanism(
@@ -447,9 +447,12 @@ class ExternalHazardComponent(SafetyComponent):
             callback=self._opening_changed,
             name=name,
             isEnabled=False,
+            scope=self.scope.child(name),
+            monitored_entities=[],
         )
         mechanism.sm_args.update(parameters)
         self.safety_mechanisms[name] = mechanism
+        mechanism.start()
         self.symptom_states[name] = FaultState.NOT_TESTED
         self._ensure_aggregate_entity()
         return True
@@ -459,6 +462,8 @@ class ExternalHazardComponent(SafetyComponent):
         if mechanism is None:
             return False
         if state == SMState.ENABLED:
+            self.start()
+            mechanism.start()
             mechanism.isEnabled = True
             return True
         if state == SMState.DISABLED:
@@ -614,7 +619,8 @@ class ExternalHazardComponent(SafetyComponent):
             return True
         if opening_name not in self._opening_timers:
             token = object()
-            handle = self.hass_app.run_in(
+            handle = self.own_timeout(
+                f"opening:{opening_name}",
                 self._finish_opening_qualification,
                 ceil(remaining),
                 opening_name=opening_name,
@@ -767,7 +773,8 @@ class ExternalHazardComponent(SafetyComponent):
         if key in self._model_timers:
             return
         token = object()
-        handle = self.hass_app.run_in(
+        handle = self.own_timeout(
+            f"model:{key}",
             self._finish_model_qualification, ceil(remaining), key=key, token=token
         )
         self._model_timers[key] = (token, handle)
@@ -944,7 +951,8 @@ class ExternalHazardComponent(SafetyComponent):
         if current == FaultState.SET and int(self.policy.get("clear_delay_seconds", 0)) > 0:
             if symptom_id not in self._clear_handles:
                 token = object()
-                handle = self.hass_app.run_in(
+                handle = self.safety_mechanisms[symptom_id].run_in(
+                    "clear",
                     self._finish_clear,
                     int(self.policy["clear_delay_seconds"]),
                     symptom_id=symptom_id,
@@ -997,13 +1005,10 @@ class ExternalHazardComponent(SafetyComponent):
     def _cancel_clear(self, symptom_id: str) -> None:
         timer = self._clear_handles.pop(symptom_id, None)
         if timer is not None:
-            self._cancel_timer(timer[1])
+            self.safety_mechanisms[symptom_id].scope.cancel_handle(timer[1])
 
     def _cancel_timer(self, handle: Any) -> None:
-        try:
-            self.hass_app.cancel_timer(handle)
-        except Exception as exc:
-            self.hass_app.log(f"Unable to cancel external hazard timer: {exc}", level="WARNING")
+        self.scope.cancel_handle(handle)
 
     def _opening_state(
         self, opening_name: str, entities_changes: Mapping[str, str] | None
@@ -1238,10 +1243,16 @@ class ExternalHazardComponent(SafetyComponent):
         reasons = ", ".join(sorted(self._inhibited_reasons))
         return RecoveryPolicyDecision(False, f"open_external_opening inhibited by {reasons}")
 
+    def start(self) -> None:
+        """Start a new source generation without reviving old qualification timers."""
+        super().start()
+        self._stopped = False
+
     def stop(self) -> None:
         """Discard pending opening qualification and cancel component timers."""
 
         self._stopped = True
+        super().stop()
         for key in list(self._model_timers):
             self._cancel_model_timer(key)
         self._model_assertions.clear()
@@ -1249,11 +1260,6 @@ class ExternalHazardComponent(SafetyComponent):
             self._cancel_clear(symptom_id)
         for opening_name in list(self._opened_since):
             self._reset_opening_qualification(opening_name)
-        for handle in self._opening_listeners.values():
-            try:
-                self.hass_app.cancel_listen_state(handle)
-            except Exception as exc:
-                self.hass_app.log(f"Unable to cancel external opening listener: {exc}", level="WARNING")
         self._opening_listeners.clear()
 
     def _label(self, key: str) -> str:

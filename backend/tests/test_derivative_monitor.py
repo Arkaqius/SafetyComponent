@@ -77,12 +77,27 @@ def test_register_entity(setup_derivative_monitor):
         ]
     )
     mock_hass.run_every.assert_called_with(
-        derivative_monitor._calculate_diff,
+        mock_hass.run_every.call_args.args[0],
         "now",
         sample_time,
         entity_id=entity_id,
         sample_time=sample_time,
     )
+    from inspect import unwrap
+    assert unwrap(mock_hass.run_every.call_args.args[0]) == derivative_monitor._calculate_diff
+
+
+def test_restart_samples_a_new_baseline_without_slope_from_stopped_time(setup_derivative_monitor):
+    _, _, monitor, set_state = setup_derivative_monitor
+    entity = "sensor.fixture"
+    set_state(entity, "20")
+    monitor.register_entity(entity, 60, -5, 5)
+    monitor.stop()
+    set_state(entity, "30")
+    monitor.start()
+    assert monitor.get_first_derivative(entity) is None
+    monitor._calculate_diff(entity_id=entity, sample_time=60)
+    assert monitor.get_first_derivative(entity) == 0
 
 
 def test_registration_seeds_first_sample_before_scheduled_second_sample(

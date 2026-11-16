@@ -70,6 +70,7 @@ from components.external_apis.home_assistant_state_reader import HomeAssistantSt
 from components.external_apis.stable_releases import StableReleaseProvider
 from components.core.derivative_monitor import DerivativeMonitor
 from components.core.localization import LocalizationSettings
+from components.core.lifecycle import CancellationKind, LifecycleScope
 from components.core.mqtt_entity_manager import MqttEntityManager
 from components.core.self_diagnostics import SelfDiagnosticsComponent
 from components.core.sqlite_state_store import SqliteStateDatabase, state_database_path
@@ -126,6 +127,8 @@ class SafetyFunctions(hass.Hass):
         # pylint: disable=attribute-defined-outside-init
         self._coverage_reevaluation_enabled = False
         self.runtime_id = uuid4().hex
+        self._root_scope = LifecycleScope("SafetyFunctions", runtime_id=self.runtime_id, enabled=True)
+        self._root_scope.start()
         if not self._initialize_mqtt():
             self.stop_app(self.name)
             return
@@ -724,11 +727,12 @@ class SafetyFunctions(hass.Hass):
 
         # Announce successful startup and begin MQTT heartbeat reporting.
         if grace_seconds:
-            self._startup_grace_handle = self.run_in(
+            self._startup_grace_handle = self._owned_root_timeout(
+                "startup_grace",
                 self._finish_startup_grace, self.startup_grace.snapshot()["remaining_seconds"]
             )
         self._publish_evaluation_progress()
-        self.run_every(self._publish_evaluation_progress, "now", 15)
+        self._owned_root_interval("evaluation_progress", self._publish_evaluation_progress, 15)
         self._set_internal_entity("sensor.safety_app_health", "running")
         self._start_mqtt_reporting()
         self._coverage_reevaluation_enabled = True
@@ -965,11 +969,29 @@ class SafetyFunctions(hass.Hass):
                 "publication", False, detail="mqtt_heartbeat"
             )
         if self.mqtt_entities.settings.heartbeat_seconds > 0:
-            self.run_every(
-                self._mqtt_heartbeat,
-                "now",
-                1,
-            )
+            self._owned_root_interval("mqtt_heartbeat", self._mqtt_heartbeat, 1)
+
+    def _root_lifecycle(self) -> LifecycleScope:
+        """Resolve the root registration owner, including isolated test startup."""
+        scope = getattr(self, "_root_scope", None)
+        if scope is None:
+            scope = LifecycleScope("SafetyFunctions", enabled=True)
+            scope.start()
+            self._root_scope = scope
+        return scope
+
+    def _owned_root_interval(self, key: str, callback: Any, interval: float) -> None:
+        """Own periodic application callbacks so termination cannot revive output."""
+        self._root_lifecycle().declare(
+            key, CancellationKind.TIMER,
+            lambda cb: self.run_every(cb, "now", interval), callback, self.cancel_timer,
+        )
+
+    def _owned_root_timeout(self, channel: str, callback: Any, delay: float) -> Any:
+        """Own one pending root callback per declared purpose."""
+        return self._root_lifecycle().schedule(
+            channel, lambda cb: self.run_in(cb, delay), callback, self.cancel_timer,
+        )
 
     def _mqtt_heartbeat(self, **_: Any) -> None:
         """Refresh MQTT sensor states used by ``expire_after``."""
@@ -1024,15 +1046,14 @@ class SafetyFunctions(hass.Hass):
 
     def terminate(self) -> None:
         """Publish offline availability during a clean AppDaemon shutdown."""
+        self._coverage_reevaluation_enabled = False
+        root_scope = getattr(self, "_root_scope", None)
+        if root_scope is not None:
+            root_scope.stop()
         routines = getattr(self, "safety_routines", None)
         if routines is not None:
             routines.stop()
-        startup_handle = getattr(self, "_startup_grace_handle", None)
-        if startup_handle is not None:
-            cancel = getattr(self, "cancel_timer", None)
-            if callable(cancel):
-                cancel(startup_handle)
-            self._startup_grace_handle = None
+        self._startup_grace_handle = self._coverage_reevaluation_handle = None
         state_reader = getattr(self, "ha_state_reader", None)
         if state_reader is not None:
             state_reader.stop()
@@ -1152,8 +1173,8 @@ class SafetyFunctions(hass.Hass):
             and getattr(self, "_coverage_reevaluation_handle", None) is None
             and self.degradation.pending_reevaluations()
         ):
-            self._coverage_reevaluation_handle = self.run_in(
-                self._reevaluate_coverage, 0
+            self._coverage_reevaluation_handle = self._owned_root_timeout(
+                "coverage_reevaluation", self._reevaluate_coverage, 0
             )
 
     def _reevaluate_coverage(self, **_: Any) -> None:
@@ -1166,6 +1187,7 @@ class SafetyFunctions(hass.Hass):
                 symptom = self.symptoms[symptom_id]
                 if symptom.sm_state != SMState.ENABLED:
                     continue
+                evaluation_serial = getattr(symptom.module, "_evaluation_serial", 0)
                 try:
                     evaluator = getattr(symptom.module, symptom.sm_name)
                     evaluator(symptom.module.safety_mechanisms[symptom_id])
@@ -1191,7 +1213,8 @@ class SafetyFunctions(hass.Hass):
                     self.event_bus.publish(
                         "evaluation_exception", symptom_id=symptom_id
                     )
-                    symptom.module.record_evaluation(success=False)
+                    if getattr(symptom.module, "_evaluation_serial", 0) == evaluation_serial:
+                        symptom.module.record_evaluation(success=False)
                     self.log(
                         f"Coverage reevaluation failed for {symptom_id}: {exc}",
                         level="ERROR",

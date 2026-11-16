@@ -304,26 +304,29 @@ class EntityMonitorComponent(SafetyComponent):
             callback=self._evaluate_mechanism,
             name=name,
             isEnabled=False,
+            scope=self.scope.child(name),
             monitored_entities=[],
         )
+        self.safety_mechanisms[name].start()
         self.safety_mechanisms[name].sm_args.update(parameters)
         self.symptom_states[name] = FaultState.NOT_TESTED
 
         if runtime.listener_handle is None:
             entity_id = runtime.dependency.entity_id
             if entity_id not in self._entity_listener_handles:
-                self._entity_listener_handles[entity_id] = self.hass_app.listen_state(
-                    self._entity_changed, entity_id
+                self._entity_listener_handles[entity_id] = self.own_state_listener(
+                    f"source:{entity_id}", self._entity_changed, entity_id
                 )
             runtime.listener_handle = self._entity_listener_handles[entity_id]
         if self._timer_handle is None:
-            self._timer_handle = self.hass_app.run_every(
+            self._timer_handle = self.own_interval(
+                "sampler",
                 self._tick,
                 "now",
                 int(self._policy["evaluation_interval_seconds"]),
             )
         if self._has_short_budget(runtime.dependency) and self._fast_timer_handle is None:
-            self._fast_timer_handle = self.hass_app.run_every(self._fast_tick, "now", 5)
+            self._fast_timer_handle = self.own_interval("fast_sampler", self._fast_tick, "now", 5)
         return True
 
     def enable_safety_mechanism(self, name: str, state: SMState) -> bool:
@@ -333,6 +336,8 @@ class EntityMonitorComponent(SafetyComponent):
         if mechanism is None:
             return False
         if state == SMState.ENABLED:
+            self.start()
+            mechanism.start()
             mechanism.isEnabled = True
             mapping = self._symptom_to_check.get(name)
             if mapping is not None and mapping[1] == "recovery_command":
@@ -343,6 +348,10 @@ class EntityMonitorComponent(SafetyComponent):
             return True
         if state == SMState.DISABLED:
             mechanism.isEnabled = False
+            mapping = self._symptom_to_check.get(name)
+            if mapping is not None:
+                check = self._entities[mapping[0]].checks[mapping[1]]
+                check.pending_failure_since = check.pending_recovery_since = None
             return True
         return False
 
@@ -420,19 +429,13 @@ class EntityMonitorComponent(SafetyComponent):
     def stop(self) -> None:
         """Cancel listeners and the periodic evaluation timer."""
 
-        for handle in self._entity_listener_handles.values():
-            try:
-                self.hass_app.cancel_listen_state(handle)
-            except Exception:
-                pass
+        super().stop()
         self._entity_listener_handles.clear()
-        for handle in (self._timer_handle, self._fast_timer_handle):
-            if handle is None:
-                continue
-            try:
-                self.hass_app.cancel_timer(handle)
-            except Exception:
-                pass
+        self._timer_handle = self._fast_timer_handle = None
+        for runtime in self._entities.values():
+            runtime.listener_handle = None
+            for check in runtime.checks.values():
+                check.pending_failure_since = check.pending_recovery_since = None
 
     def _entity_changed(self, entity: str, *_: Any, **__: Any) -> None:
         """Evaluate the record associated with a changed Home Assistant entity."""

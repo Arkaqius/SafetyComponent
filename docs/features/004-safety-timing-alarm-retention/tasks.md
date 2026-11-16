@@ -1,6 +1,6 @@
 # Tasks: Safety Timing, Alarm Retention and Shared Backend Lifecycle
 
-**Branch**: `codex/003-heating-monitoring`
+**Branch**: `codex/004-safety-timing-alarm-retention`
 
 **Input**: [spec.md](spec.md), [plan.md](plan.md), [research.md](research.md),
 [data-model.md](data-model.md), [contracts](contracts/) and [quickstart.md](quickstart.md).
@@ -23,28 +23,76 @@ HA actions, household actuator tests or private configuration application.
 
 **Goal**: Establish the actual baseline and preserve the accepted safety scope.
 
-- [ ] T001 Inspect `AGENTS.md`, `CONTRIBUTING.md`, `.specify/memory/constitution.md` and `docs/features/004-safety-timing-alarm-retention/plan.md`; verify branch/status, checklist and feature-003 coexistence, preserve unrelated changes, and record scope/evidence in `docs/features/004-safety-timing-alarm-retention/tasks.md`.
-- [ ] T002 Reconcile `docs/sys/SafetyComponent - SSRD.md`, `docs/sys/SafetyConcept - SYS.md`, `docs/features/Mobile Notification Delivery - Architecture.md`, `docs/features/Runtime State Storage - Architecture.md` and the four feature contracts before implementation; retain HARA goals, stable IDs, notification acceptance meaning and existing recovery permissions.
-- [ ] T003 Inspect `backend/config/system_config.yml`, `backend/config/user_config.example.yml`, relevant tests and applicable ignored installation configuration without publishing private values; identify weather overrides needing explicit future correction and record baseline validation and supported-runtime evidence boundaries in `docs/features/004-safety-timing-alarm-retention/quickstart.md`.
+- [X] T001 Inspect `AGENTS.md`, `CONTRIBUTING.md`, `.specify/memory/constitution.md` and `docs/features/004-safety-timing-alarm-retention/plan.md`; verify branch/status, checklist and feature-003 coexistence, preserve unrelated changes, and record scope/evidence in `docs/features/004-safety-timing-alarm-retention/tasks.md`.
+- [X] T002 Reconcile `docs/sys/SafetyComponent - SSRD.md`, `docs/sys/SafetyConcept - SYS.md`, `docs/features/Mobile Notification Delivery - Architecture.md`, `docs/features/Runtime State Storage - Architecture.md` and the four feature contracts before implementation; retain HARA goals, stable IDs, notification acceptance meaning and existing recovery permissions.
+- [X] T003 Inspect `backend/config/system_config.yml`, `backend/config/user_config.example.yml`, relevant tests and applicable ignored installation configuration without publishing private values; identify weather overrides needing explicit future correction and record baseline validation and supported-runtime evidence boundaries in `docs/features/004-safety-timing-alarm-retention/quickstart.md`.
+
+### Setup evidence — 2026-11-16
+
+- Started from clean `main`, commit `f51035d` (merged feature 003), on
+  `codex/004-safety-timing-alarm-retention`. Requirements checklist: 16/16 PASS;
+  no extension hook configuration. Heating implementation remains in scope only
+  for shared lifecycle and startup coexistence.
+- Brownfield documentation review covered governance, SYS/SSRD, the mobile/storage
+  architectures and all four feature contracts. Reconciled independent weather/AQ
+  confirmation, independent response admission and storage cold-start semantics.
+  Existing HARA goals, identifiers, HA acceptance and recovery permissions remain.
+- Baseline backend: Ruff PASS; mypy PASS (13 configured source files); pytest
+  1440 passed, including a separate successful coverage run. No local installation
+  configuration exists at the ignored user/generated paths. Runtime admission and
+  frontend environment boundaries are recorded in the validation guide.
 
 ## Phase 2: Foundation — Shared Lifecycle and Deterministic Harness
 
 **Goal**: Shared execution infrastructure is safe before any story integration.
 Domain algorithms remain with their components. Complete this phase before US4.
 
-- [ ] T004 [P] Create `backend/tests/safety_lifecycle_support.py` with fictional six-family bindings, fake monotonic clock, owned listener/timer accounting, failure injection and a callback service adapter; support immediate, delayed, duplicate and never-completing callbacks without contacting HA.
-- [ ] T005 [P] Create `backend/tests/test_shared_safety_lifecycle.py` with self-contained core fakes (no dependency on the incomplete T004 helper), failing start/stop/generation, explicit-input and result-quality contract tests; include descriptive text resembling an entity and cancellation failure with effective generation fencing.
-- [ ] T006 Create typed `backend/components/core/lifecycle.py` with owner/runtime/generation, phase "constructed, started, stopped", independent enabled eligibility, typed cancellation handles and parent/child scopes; make start/stop idempotent, invalidate before cancellation, and bound resources to declared registrations plus one current qualification timer per channel.
-- [ ] T007 Refactor `backend/components/safetycomponents/core/safety_mechanism.py` to use the shared scope, inert construction and explicit `monitored_entities`; preserve stable names, constructor parameter keys and `isEnabled` access with writes delegated to lifecycle invalidation; never infer inputs from arbitrary strings and never clear retained danger on disable/stop.
+- [X] T004 [P] Create `backend/tests/safety_lifecycle_support.py` with fictional six-family bindings, fake monotonic clock, owned listener/timer accounting, failure injection and a callback service adapter; support immediate, delayed, duplicate and never-completing callbacks without contacting HA.
+- [X] T005 [P] Create `backend/tests/test_shared_safety_lifecycle.py` with self-contained core fakes (no dependency on the incomplete T004 helper), failing start/stop/generation, explicit-input and result-quality contract tests; include descriptive text resembling an entity and cancellation failure with effective generation fencing.
+- [X] T006 Create typed `backend/components/core/lifecycle.py` with owner/runtime/generation, phase "constructed, started, stopped", independent enabled eligibility, typed cancellation handles and parent/child scopes; make start/stop idempotent, invalidate before cancellation, and bound resources to declared registrations plus one current qualification timer per channel.
+- [X] T007 Refactor `backend/components/safetycomponents/core/safety_mechanism.py` to use the shared scope, inert construction and explicit `monitored_entities`; preserve stable names, constructor parameter keys and `isEnabled` access with writes delegated to lifecycle invalidation; never infer inputs from arbitrary strings and never clear retained danger on disable/stop.
 - [ ] T008 Normalize shared execution in `backend/components/safetycomponents/core/safety_component.py` and `backend/components/core/types_common.py`; distinguish "eligible-positive/negative versus unevaluable/inhibited/disabled", report each real evaluation once, preserve domain debounce and prohibit missing/failed evidence from becoming negative recovery.
-- [ ] T009 Add scope-owned unsubscribe tokens and registration identity to `backend/components/core/event_bus.py`, preserving existing priority/order and explicit prerequisite-error semantics; extend `backend/tests/test_event_bus.py` for subscription cancellation and no duplicate registration.
-- [ ] T010 Migrate explicit temperature/derivative and door/condition subscriptions plus timer ownership in `backend/components/safetycomponents/temperature/temperature_component.py` and `backend/components/safetycomponents/safety_doors/safety_doors_component.py`; preserve existing parameter names, callbacks and assertion timing.
+- [X] T009 Add scope-owned unsubscribe tokens and registration identity to `backend/components/core/event_bus.py`, preserving existing priority/order and explicit prerequisite-error semantics; extend `backend/tests/test_event_bus.py` for subscription cancellation and no duplicate registration.
+- [X] T010 Migrate explicit temperature/derivative and door/condition subscriptions plus timer ownership in `backend/components/safetycomponents/temperature/temperature_component.py` and `backend/components/safetycomponents/safety_doors/safety_doors_component.py`; preserve existing parameter names, callbacks and assertion timing.
 - [ ] T011 Migrate shared source listeners/samplers into parent lifecycle scopes in `backend/components/safetycomponents/entity_monitor/entity_monitor_component.py` and `backend/components/safetycomponents/heating/heating_system_monitor_component.py`; do not duplicate one physical listener per mechanism or implement feature-003 thermal functionality here.
 - [ ] T012 Migrate event/source-session/contact ownership in `backend/components/safetycomponents/internal_environmental_hazard/internal_environmental_hazard_monitor_component.py` and `backend/components/safetycomponents/external_hazard/external_hazard_component.py`; preserve full indoor event payloads, existing source continuity, immediate alarm ingestion and independent domain qualification timers.
 - [ ] T013 Integrate disabled-start, eligible-enable and quiescent stop ordering in `backend/SafetyFunctions.py`; stop ingress before owner write drain, preserve active assertions/output restrictions, retain process-owned external leases separately from scope handles and reject obsolete owner mutations/new dispatches.
 - [ ] T014 Add new typed modules and converted shared mechanism boundaries to `mypy.ini`, with purpose-oriented docstrings and no weakening flags; run the new lifecycle/EventBus tests plus existing component suites, fixing scoped regressions before advancing and recording the precise remaining legacy typing boundary in `docs/features/004-safety-timing-alarm-retention/quickstart.md`.
 
 ## Phase 3: US4 — Independent Warning and Recovery Paths (P1)
+
+### Foundation execution evidence — 2026-11-16
+
+- Added the fictional lifecycle/clock/service harness and reproduced failing
+  lifecycle, cancellation, unsubscribe and stale-result cases before fixes.
+- Implemented inert mechanisms with explicit inputs, owned scopes and generation
+  fencing. EventBus cancellation removes registrations permanently; ordinary
+  prerequisite failures still propagate. Parent source listeners remain shared.
+- Migrated source/timer ownership across the six adapters and root scheduled
+  callbacks. Temperature/door checks preserve initial assertion timing; interrupted
+  qualification receives no disabled-time credit. Restarted derivative sampling
+  seeds a new baseline rather than inventing a slope across the stopped interval.
+- T008 remains open: legacy temperature outcomes are normalized, but all direct
+  adapters still require explicit quality and consistent evaluation telemetry.
+  T011/T012 need complete six-family acceptance; T013 still needs the future
+  broker and state-owner shutdown ordering. T014 remains open until these
+  foundation acceptance gaps close, despite passing current regression checks.
+- Current checks: full backend 1467 passed with the supported runtime interpreter
+  configured, coverage 92.02%, Ruff PASS, mypy PASS for 18 configured files.
+  The packaged-runtime probe passed; its acceptance-policy conflict remains open.
+  Frontend on Node 20: 188 tests, typecheck, lint, build and 126 mock browser tests
+  passed. Formatting retains 116 baseline failures; unrelated files were not
+  reformatted. English documentation changed; Polish UI and EN/PL/DE runtime
+  translation content remain unchanged.
+- Documentation checks: 44 relative Markdown links and changed-document table
+  shapes validated; referenced new test/module paths exist; `git diff --check`
+  passed. No pre/post implementation extension hooks are configured.
+- Supported-runtime discovery exposed a contract conflict before US4 integration:
+  AppDaemon 4.5.13 returns bare callback `None` for disconnected and throwing
+  transport paths. A successful empty HA response instead contains explicit
+  `success: true`. The reproduction is in `backend/tests/test_appdaemon_service_contract.py`;
+  acceptance-policy reconciliation is awaiting the maintainer decision. T031 is
+  not complete: the probe does not prove the future dispatcher or admission gate.
 
 **Goal**: MQTT, a throwing consumer or stalled target cannot block other eligible
 response paths. **Independent test**: inject each failure during a new alarm and
@@ -222,6 +270,6 @@ household actuator or deployment permission.
 | Bounds, overflow and crash ordering | T016/T018/T020..T023/T027/T030, T052..T056/T060/T064/T077 |
 
 78 tasks; 13 marked `[P]`; story counts: US4 18, US1 10, US2 8, US3 14,
-US5 8; shared setup/foundation 14 and cross-cutting 6. All checkboxes start open.
-This is implementation readiness documentation, not evidence of implemented or
-deployed fixes.
+US5 8; shared setup/foundation 14 and cross-cutting 6. Checked tasks record only
+accepted work; open tasks and execution evidence retain the remaining scope.
+This partial implementation is not feature-004 acceptance or deployment evidence.

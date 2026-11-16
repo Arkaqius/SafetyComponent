@@ -257,14 +257,17 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
             callback=callback,
             name=name,
             isEnabled=False,
+            scope=self.scope.child(name),
             monitored_entities=[],
         )
         mechanism.sm_args.update(parameters)
         self.safety_mechanisms[name] = mechanism
+        mechanism.start()
         self.symptom_states[name] = FaultState.NOT_TESTED
 
         if runtime.listener_handle is None:
-            runtime.listener_handle = self.hass_app.listen_state(
+            runtime.listener_handle = self.own_state_listener(
+                f"source:{runtime.config['entity_id']}",
                 self._entity_changed,
                 str(runtime.config["entity_id"]),
                 attribute="all",
@@ -289,6 +292,8 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
             return False
         detector_key, kind = binding
         if state == SMState.ENABLED:
+            self.start()
+            mechanism.start()
             mechanism.isEnabled = True
             return True
         if state == SMState.DISABLED:
@@ -455,7 +460,8 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
             return
         self._cancel_timer(runtime, "health")
         runtime.health_timer_target = target
-        runtime.health_timer = self.hass_app.run_in(
+        runtime.health_timer = self._kind_mechanism(runtime, "health").run_in(
+            "qualification",
             self._health_timer_elapsed,
             delay,
             detector_key=runtime.key,
@@ -472,7 +478,8 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
         elapsed = max(0, int((self._now() - observed_at).total_seconds()))
         runtime.alarm_callback_running = True
         try:
-            runtime.alarm_timer = self.hass_app.run_in(
+            runtime.alarm_timer = self._kind_mechanism(runtime, "alarm").run_in(
+                "qualification",
                 self._alarm_clear_elapsed,
                 max(1, duration - elapsed),
                 detector_key=runtime.key,
@@ -755,6 +762,22 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
         mechanism = self.safety_mechanisms.get(symptom_name)
         return bool(mechanism and mechanism.isEnabled)
 
+    def _kind_mechanism(self, runtime: DetectorRuntime, kind: str) -> SafetyMechanism:
+        """Resolve the child owning this detector's independent qualification."""
+        name = self._symptom_name(
+            str(runtime.config["hazard"]) if kind == "alarm" else "detector_health",
+            runtime.key,
+        )
+        return self.safety_mechanisms[name]
+
+    def stop(self) -> None:
+        """Stop source ingress and qualifications while retaining danger and gas latch."""
+        super().stop()
+        for runtime in self._detectors.values():
+            runtime.alarm_timer = runtime.health_timer = runtime.listener_handle = None
+            runtime.health_timer_target = None
+            runtime.last_authoritative_clear_at = None
+
     def _cancel_timer(self, runtime: DetectorRuntime, kind: str) -> None:
         attribute = "alarm_timer" if kind == "alarm" else "health_timer"
         handle = getattr(runtime, attribute)
@@ -763,13 +786,7 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
         setattr(runtime, attribute, None)
         if kind == "health":
             runtime.health_timer_target = None
-        try:
-            self.hass_app.cancel_timer(handle)
-        except Exception as exc:
-            self.hass_app.log(
-                f"Unable to cancel internal hazard timer for {runtime.key}: {exc}",
-                level="WARNING",
-            )
+        self._kind_mechanism(runtime, kind).scope.cancel_handle(handle)
 
     def _classify(
         self, runtime: DetectorRuntime, raw: Any

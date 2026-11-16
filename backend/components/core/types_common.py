@@ -19,6 +19,7 @@ fault management and safety mechanism state tracking. This centralizes state def
 facilitating easier maintenance and updates.
 """
 
+from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Any, NamedTuple, Dict, List
 
@@ -31,6 +32,52 @@ from components.core.fault_state_policy import (
 
 if TYPE_CHECKING:
     from components.safetycomponents.core.safety_component import SafetyComponent
+
+
+class OutcomeKind(str, Enum):
+    """Internal evidence quality, independent of published raw state codes."""
+
+    ELIGIBLE_POSITIVE = "eligible-positive"
+    ELIGIBLE_NEGATIVE = "eligible-negative"
+    UNEVALUABLE = "unevaluable"
+    INHIBITED = "inhibited"
+    DISABLED = "disabled"
+
+
+@dataclass(frozen=True)
+class ExecutionOutcome:
+    """Immutable observation identity and quality checked before live application."""
+
+    mechanism_id: str
+    generation: int
+    observed_at: float
+    kind: OutcomeKind
+    reason: str = ""
+
+    @property
+    def is_evaluable(self) -> bool:
+        """Only eligible positive/negative evidence supports a safety decision."""
+        return self.kind in {OutcomeKind.ELIGIBLE_POSITIVE, OutcomeKind.ELIGIBLE_NEGATIVE}
+
+    @property
+    def result(self) -> bool | None:
+        """Keep missing, inhibited and disabled evidence distinct from negative."""
+        if not self.is_evaluable:
+            return None
+        return self.kind == OutcomeKind.ELIGIBLE_POSITIVE
+
+    @classmethod
+    def from_result(
+        cls, mechanism_id: str, generation: int, observed_at: float,
+        result: bool, *, evaluable: bool = True, reason: str = "",
+    ) -> "ExecutionOutcome":
+        """Normalize a legacy predicate without interpreting failure as clear."""
+        if not isinstance(result, bool):
+            raise TypeError("Safety mechanism result must be bool")
+        kind = (
+            OutcomeKind.ELIGIBLE_POSITIVE if result else OutcomeKind.ELIGIBLE_NEGATIVE
+        ) if evaluable else OutcomeKind.UNEVALUABLE
+        return cls(mechanism_id, generation, observed_at, kind, reason[:256])
 
 
 class FaultState(Enum):
@@ -136,7 +183,7 @@ class Symptom:
         self,
         name: str,
         sm_name: str,
-        module: "SafetyComponent",  # type: ignore
+        module: "SafetyComponent",
         parameters: dict,
     ) -> None:
         self.name: str = name

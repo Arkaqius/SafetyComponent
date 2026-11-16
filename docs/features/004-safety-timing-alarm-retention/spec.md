@@ -1,6 +1,6 @@
 # Feature Specification: Safety Timing and Indoor Alarm Retention
 
-**Feature Branch**: `codex/003-heating-monitoring`
+**Feature Branch**: `codex/004-safety-timing-alarm-retention`
 
 **Created**: 2026-11-14
 

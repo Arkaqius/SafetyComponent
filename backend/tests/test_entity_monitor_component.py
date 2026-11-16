@@ -1,6 +1,7 @@
 """Behavior tests for Entity Health Monitoring."""
 
 from datetime import datetime, timedelta, timezone
+from inspect import unwrap
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -73,6 +74,32 @@ def _component(mocked_hass_app_basic):
         MqttEntityManager(app),
     )
     return app, event_bus, component
+
+
+@pytest.mark.parametrize("transition", ["disable", "stop"])
+def test_entity_qualification_restarts_after_eligibility_gap(mocked_hass_app_basic, transition):
+    app, _, component = _component(mocked_hass_app_basic)
+    clock = [datetime(2026, 10, 7, 7, 49, 3, tzinfo=timezone.utc)]
+    component._now = lambda: clock[0]
+    app.get_state = MagicMock(return_value=None)
+    symptoms, _ = component.get_symptoms_data({component.component_name: component}, _config())
+    for symptom in symptoms.values():
+        component.init_safety_mechanism(symptom.sm_name, symptom.name, symptom.parameters)
+        component.enable_safety_mechanism(symptom.name, SMState.ENABLED)
+    name = component._symptom_name("TemperatureOffice", "availability")
+    component._evaluate_entity("TemperatureOffice")
+    clock[0] += timedelta(seconds=5)
+    if transition == "disable":
+        component.enable_safety_mechanism(name, SMState.DISABLED)
+    else:
+        component.stop()
+    clock[0] += timedelta(seconds=100)
+    component.enable_safety_mechanism(name, SMState.ENABLED)
+    component._evaluate_entity("TemperatureOffice")
+    assert not component._entities["TemperatureOffice"].checks["availability"].active
+    clock[0] += timedelta(seconds=10)
+    component._evaluate_entity("TemperatureOffice")
+    assert component._entities["TemperatureOffice"].checks["availability"].active
 
 
 def _mqtt_topic_calls(app, topic: str) -> list:
@@ -311,8 +338,8 @@ def test_minute_evaluation_preserves_fast_dependencies(mocked_hass_app_basic):
     assert component._report_groups["sensor.office_temperature"] == "EntityMonitorComponent:120"
     assert component._report_groups["binary_sensor.window"] == "EntityMonitorComponent:5"
     scheduled = app.run_every.call_args_list
-    assert any(call.args == (component._tick, "now", 60) for call in scheduled)
-    assert any(call.args == (component._fast_tick, "now", 5) for call in scheduled)
+    assert any((unwrap(call.args[0]), *call.args[1:]) == (component._tick, "now", 60) for call in scheduled)
+    assert any((unwrap(call.args[0]), *call.args[1:]) == (component._fast_tick, "now", 5) for call in scheduled)
     component._evaluate_entity = MagicMock()
     component._fast_tick()
     component._evaluate_entity.assert_called_once_with("TemperatureWindowOffice")

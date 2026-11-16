@@ -882,8 +882,9 @@ and [ADR-0001](../adr/0001-external-provider-plugins.md).
 - Weather policy: frost watch/warning temperature, wind/gust thresholds,
   rain/precipitation policy, forecast horizon, hysteresis, persistence, and
   clear delay.
-- Outdoor AQ policy: European AQI standard and warning threshold. Modeled
-  outdoor AQ and weather share the configured persistence interval.
+- Outdoor AQ policy: European AQI standard, warning threshold and independent
+  persistence interval (default 300 seconds). Weather confirmation has its own
+  default of 75 seconds within the total 120-second response allocation.
 - Per-provider base URL where applicable, poll interval, request timeout, retry
   count and stale timeout belong to application policy. Explicit provider-or-null
   selection, location and station selection belong to installation configuration. Each

@@ -4,6 +4,7 @@
 from typing import Iterator, List
 from copy import deepcopy
 from datetime import datetime
+from inspect import unwrap
 import pytest
 from components.core.fault_state_policy import FaultEvaluationStatus
 from components.core.types_common import FaultState, SMState
@@ -130,7 +131,7 @@ def test_forecast_requalifies_on_rate_change_without_temperature_change(
     listeners = [
         call.args[0] for call in app.listen_state.call_args_list
         if len(call.args) > 1 and call.args[1] == "sensor.office_temperature_rate"
-        and getattr(call.args[0], "__self__", None) is mechanism
+        and getattr(unwrap(call.args[0]), "__self__", None) is mechanism
     ]
     assert len(listeners) == 1
     states["sensor.office_temperature_rate"] = rate

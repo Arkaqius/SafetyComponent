@@ -23,6 +23,8 @@ This module streamlines the creation of safety mechanisms, emphasizing reliabili
 """
 
 from collections.abc import Iterable
+from functools import wraps
+from time import monotonic
 from typing import (
     Type,
     Any,
@@ -32,7 +34,6 @@ from typing import (
     Callable,
     Optional,
     NamedTuple,
-    Literal,
 )
 from enum import Enum
 
@@ -41,8 +42,11 @@ import appdaemon.plugins.hass.hassapi as hass  # type: ignore
 from components.core.common_entities import CommonEntities
 from components.core.derivative_monitor import DerivativeMonitor
 from components.core.event_bus import EventBus
+from components.core.lifecycle import CancellationKind, LifecycleScope
 from components.core.mqtt_entity_manager import MqttEntityManager
-from components.core.types_common import FaultState, Symptom, RecoveryAction, SMState
+from components.core.types_common import (
+    ExecutionOutcome, OutcomeKind, FaultState, Symptom, RecoveryAction, SMState,
+)
 
 UNAVAILABLE_NUMERIC_STATES = frozenset({"", "none", "unknown", "unavailable"})
 
@@ -160,6 +164,12 @@ class SafetyComponent:
         self.event_bus: EventBus = event_bus
         self.mqtt_entities: MqttEntityManager = mqtt_entities
         self.symptom_states: dict[str, FaultState] = {}
+        runtime_id = getattr(hass_app, "runtime_id", None)
+        self.scope = LifecycleScope(
+            self.component_name, runtime_id=runtime_id if isinstance(runtime_id, str) else None,
+            enabled=True,
+        )
+        self.scope.start()
         self.init_common_data()
         self.derivative_monitor = DerivativeMonitor(hass_app, mqtt_entities)
 
@@ -168,9 +178,53 @@ class SafetyComponent:
         self.safety_mechanisms: dict = {}
         self.debounce_states: dict = {}
 
+    def start(self) -> None:
+        """Start owned source registrations; mechanisms remain explicitly enabled."""
+        self.scope.start()
+        self.scope.set_enabled(True)
+        for mechanism in self.safety_mechanisms.values():
+            mechanism.start()
+
+    def stop(self) -> None:
+        """Fence ingress and all child qualification without clearing assertions."""
+        self.scope.stop()
+        for mechanism in self.safety_mechanisms.values():
+            mechanism.stop()
+
+    def own_state_listener(
+        self, key: str, callback: Callable[..., Any], entity: str, **kwargs: Any,
+    ) -> Any:
+        """Register one parent-owned source shared by its child mechanisms."""
+        self.scope.declare(
+            key, CancellationKind.STATE,
+            lambda cb: self.hass_app.listen_state(cb, entity, **kwargs),
+            callback, self.hass_app.cancel_listen_state,
+        )
+        return self.scope.handle(key)
+
+    def own_interval(
+        self, key: str, callback: Callable[..., Any], start: Any, interval: float,
+    ) -> Any:
+        """Own one shared periodic sampler under a stable registration identity."""
+        self.scope.declare(
+            key, CancellationKind.TIMER,
+            lambda cb: self.hass_app.run_every(cb, start, interval),
+            callback, self.hass_app.cancel_timer,
+        )
+        return self.scope.handle(key)
+
+    def own_timeout(
+        self, channel: str, callback: Callable[..., Any], delay: float, **kwargs: Any,
+    ) -> Any:
+        """Own a parent qualification channel without duplicating domain timers."""
+        return self.scope.schedule(
+            channel, lambda cb: self.hass_app.run_in(cb, delay, **kwargs),
+            callback, self.hass_app.cancel_timer,
+        )
+
     def record_evaluation(self, *, success: bool = True) -> None:
         """Report one completed component evaluation to the application monitor."""
-
+        self._evaluation_serial = getattr(self, "_evaluation_serial", 0) + 1
         reporter = getattr(self.hass_app, "record_safety_evaluation", None)
         if callable(reporter):
             reporter(self.component_name, success=success)
@@ -377,9 +431,7 @@ class SafetyComponent:
         """
         if pr_test:
             new_counter: int = min(debounce_limit, current_counter + 1)
-            action: (
-                Literal[DebounceAction.symptom_SET] | Literal[DebounceAction.NO_ACTION]
-            ) = (
+            action: DebounceAction = (
                 DebounceAction.symptom_SET
                 if new_counter >= debounce_limit
                 else DebounceAction.NO_ACTION
@@ -521,126 +573,84 @@ class SafetyComponent:
 
 
 def safety_mechanism_decorator(func: Callable) -> Callable:
-    """
-    The safety_mechanism_decorator is a decorator designed to enhance the execution of safety mechanism functions by
-    adding pre- and post-execution logic.    This decorator simplifies the handling of safety mechanisms, particularly
-    when they need to be called either explicitly by the system or scheduled for repeated execution.
+    """Normalize legacy predicates while keeping their domain debounce unchanged."""
 
-    Key Features:
-        Logging: Logs the start and end of the function execution, providing visibility into the operation of the safety mechanism.
-        Conditional Execution: Checks whether the safety mechanism is enabled before execution. If it is disabled, the function exits early without performing any actions.
-        Debouncing and Symptom Processing: Handles debouncing logic to stabilize the detection of safety conditions over time. This prevents rapid toggling of states due to transient conditions.
-        Scheduler Integration: If the safety mechanism requires re-evaluation after a delay, the decorator schedules the sm_recalled function to run the safety mechanism again.
-            This is particularly useful for mechanisms that need to assess conditions over time, such as monitoring temperature changes.
-
-    Workflow:
-        Initial Logging: Logs that the safety mechanism function has started.
-        Check if Enabled: The function checks if the safety mechanism is enabled. If not, it logs this and exits.
-        Execute Function: Calls the safety mechanism function and processes the result.
-        Debouncing Logic: Uses the process_symptom method to update the debounce counter and determine if any action needs to be taken (e.g., setting or clearing a fault condition).
-        Force Re-Evaluation: If the safety mechanism needs to be evaluated again (due to the debouncing logic), the decorator schedules the sm_recalled function to re-execute the safety mechanism after a short delay.
-        Final Logging: Logs the completion of the safety mechanism function.
-
-    This decorator effectively manages the complex scheduling requirements of safety mechanisms by ensuring that they are called at appropriate intervals and that their execution is properly logged and controlled. It provides a robust solution for integrating safety mechanisms into a dynamic environment like Home Assistant, where conditions can change rapidly and require careful monitoring.
-
-    Args:
-        func (Callable): The safety mechanism function to be decorated.
-
-    Returns:
-        Callable: A wrapped version of the input function with added pre- and post-execution logic.
-    """
-
+    @wraps(func)
     def safety_mechanism_wrapper(
-        self: "SafetyComponent",
-        sm: Any,
+        self: "SafetyComponent", sm: Any,
         entities_changes: dict[str, str] | None = None,
-    ) -> Any:
-        """
-        Wrapper function for the safety mechanism.
-
-        :param self: The instance of the class where the function is defined.
-        :param sm: Safety mechanism instance.
-        :param entities_changes: Changes in entities, if any.
-        :return: The result of the safety mechanism function.
-        """
-        self.hass_app.log(f"{func.__name__} was started!", level="DEBUG")
-
-        def evaluate_predicate() -> SafetyMechanismResult:
-            try:
-                result = func(self, sm, entities_changes)
-                if not isinstance(result.result, bool):
-                    raise TypeError("Safety mechanism result must be bool")
-                if entities_changes is None:
-                    if not result.is_evaluable:
-                        self._invalidate_evaluation(sm.name)
-                    self.event_bus.publish("evaluation_succeeded", symptom_id=sm.name)
-                return result
-            except Exception:
-                if entities_changes is None:
-                    self.event_bus.publish("evaluation_exception", symptom_id=sm.name)
-                    self._invalidate_evaluation(sm.name)
-                raise
-
-        if not sm.isEnabled:
-            self.hass_app.log(
-                f"{func.__name__} is disabled, skipping execution.", level="DEBUG"
-            )
+    ) -> bool:
+        """Evaluate once and recheck owner generation before any live application."""
+        live = entities_changes is None
+        scope = getattr(sm, "scope", None)
+        generation = scope.generation if scope is not None else 0
+        if not sm.isEnabled or (scope is not None and not scope.eligible):
             return False
-
-        if entities_changes is None:
-            # Retrieve the current debounce state for this mechanism
-            current_state: DebounceState = self.debounce_states[sm.name]
-
-            # Get sm result!
-            sm_return = evaluate_predicate()
-
-            if not sm_return.is_evaluable:
-                self.record_evaluation()
+        success = False
+        try:
+            result = func(self, sm, entities_changes)
+            outcome = ExecutionOutcome.from_result(
+                sm.name, generation, monotonic(), result.result,
+                evaluable=result.is_evaluable,
+            )
+            success = True
+            if not live:
+                return bool(outcome.result)
+            if scope is not None and (
+                not scope.eligible or scope.generation != generation
+            ):
                 return False
-
-            # Perform SM logic
-            debounce_limit = sm.sm_args.get("debounce_limit", 2)
-            new_debounce: tuple[int, bool] = self.process_symptom(
-                symptom_id=sm.name,
-                current_counter=current_state.debounce,
-                pr_test=sm_return.result,
-                additional_info=sm_return.additional_info,
-                debounce_limit=debounce_limit,
-                diagnostic_evidence=sm_return.diagnostic_evidence,
+            sm.last_outcome = outcome
+            if not outcome.is_evaluable:
+                self._invalidate_evaluation(sm.name)
+                self.event_bus.publish("evaluation_succeeded", symptom_id=sm.name)
+                return False
+            self.event_bus.publish("evaluation_succeeded", symptom_id=sm.name)
+            if scope is not None and (
+                not scope.eligible or scope.generation != generation
+            ):
+                return False
+            current = self.debounce_states[sm.name]
+            counter, force = self.process_symptom(
+                symptom_id=sm.name, current_counter=current.debounce,
+                pr_test=result.result, additional_info=result.additional_info,
+                debounce_limit=sm.sm_args.get("debounce_limit", 2),
+                diagnostic_evidence=result.diagnostic_evidence,
             )
-
-            # Update the debounce state with the new values
-            self.debounce_states[sm.name] = DebounceState(
-                debounce=new_debounce[0], force_sm=new_debounce[1]
-            )
-            if new_debounce[1]:
-                delay_seconds = sm.sm_args.get("re_eval_delay_seconds", 30)
-                self.hass_app.log(
-                    f"Scheduling {func.__name__} to run again in {delay_seconds} seconds.",
-                    level="DEBUG",
+            if scope is not None and (
+                not scope.eligible or scope.generation != generation
+            ):
+                return False
+            self.debounce_states[sm.name] = DebounceState(counter, force)
+            if force:
+                delay = sm.sm_args.get("re_eval_delay_seconds", 30)
+                arguments = dict(sm_method=func.__name__, sm_name=sm.name,
+                                 entities_changes=None)
+                if scope is None:
+                    self.hass_app.run_in(self.sm_recalled, delay, **arguments)
+                else:
+                    sm.run_in("debounce", self.sm_recalled, delay, **arguments)
+            elif scope is not None:
+                scope.cancel("timer:debounce")
+            return result.result
+        except Exception:
+            success = False
+            if live and (scope is None or (
+                scope.eligible and scope.generation == generation
+            )):
+                sm.last_outcome = ExecutionOutcome(
+                    sm.name, generation, monotonic(), OutcomeKind.UNEVALUABLE,
+                    "evaluation_failed",
                 )
-                self.hass_app.run_in(
-                    self.sm_recalled,
-                    delay_seconds,
-                    sm_method=func.__name__,
-                    sm_name=sm.name,
-                    entities_changes=entities_changes,
-                )
+                self.event_bus.publish("evaluation_exception", symptom_id=sm.name)
+                self._invalidate_evaluation(sm.name)
+            raise
+        finally:
+            if live:
+                self.record_evaluation(success=success)
 
-        else:
-            self.hass_app.log(
-                f"{func.__name__} running in dry mode with changes: {entities_changes}",
-                level="DEBUG",
-            )
-            sm_return = evaluate_predicate()
-
-        self.hass_app.log(f"{func.__name__} was ended!", level="DEBUG")
-        if entities_changes is None:
-            self.record_evaluation()
-        return sm_return.result
-
+    safety_mechanism_wrapper.__dict__["manages_evaluation"] = True
     return safety_mechanism_wrapper
-
 
 class SafetyMechanismResult(NamedTuple):
     result: bool

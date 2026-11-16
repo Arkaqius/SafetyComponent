@@ -2,6 +2,7 @@
 
 from datetime import datetime, timezone
 from types import SimpleNamespace
+from inspect import unwrap
 from unittest.mock import Mock
 
 import pytest
@@ -170,7 +171,8 @@ def test_restored_dependency_schedules_real_unchanged_evaluation_after_startup()
     clock[0] = 600
     grace.finish()
     assert registry.snapshot()["state"] == "UNKNOWN"
-    app.run_in.assert_called_once_with(app._reevaluate_coverage, 0)
+    app.run_in.assert_called_once_with(app.run_in.call_args.args[0], 0)
+    assert unwrap(app.run_in.call_args.args[0]) == app._reevaluate_coverage
     count = len(transitions)
     app._reevaluate_coverage()
     assert registry.snapshot()["state"] == "FULL"
@@ -192,7 +194,8 @@ def test_coverage_recheck_waits_for_completed_application_initialization():
     app.run_in.assert_not_called()
     app._coverage_reevaluation_enabled = True
     app._on_coverage_changed()
-    app.run_in.assert_called_once_with(app._reevaluate_coverage, 0)
+    app.run_in.assert_called_once_with(app.run_in.call_args.args[0], 0)
+    assert unwrap(app.run_in.call_args.args[0]) == app._reevaluate_coverage
 
 
 def test_pending_reevaluations_uses_stable_copy_during_evidence_changes():

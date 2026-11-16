@@ -65,6 +65,69 @@ admission evidence. No test harness may connect to the household instance.
 
 ## Evidence Matrix
 
+### Implementation baseline — 2026-11-16
+
+Python 3.10.5: `python -m ruff check backend` and `python -m mypy` passed;
+the configured mypy scope contains 13 source files. Both backend pytest runs
+passed (1440 tests), including `--cov=backend --cov-report=term-missing`.
+These establish a baseline, not feature-004 acceptance.
+
+The public configuration/schema still use weather persistence 300 seconds and
+have no independent AQ persistence field. The coordinated T035/T036 changes
+must replace that default; an installed explicit override above the allocation
+must be rejected and corrected in a later authorized installation workflow.
+Neither ignored `backend/config/user_config.yml` nor `backend/app_cfg.yaml`
+exists locally; no private installation values were read or changed.
+
+Three ignored historical deployment snapshots were inspected only for aggregate
+weather timing policy. None has an explicit persistence override; they do not
+establish the configuration of the current deployment. No snapshot was changed
+or included in source control.
+
+Installed AppDaemon 4.4.2 is outside `>=4.5,<5`; it cannot satisfy T031/T049.
+The initial Node 18.20.8 also differs from `frontend/.nvmrc` (20). Its frontend
+test failures and refusal to run Playwright require rechecking under Node 20;
+they do not establish a product regression. Existing formatter failures are
+tracked separately from changed files.
+
+### Packaged callback evidence and unresolved acceptance policy
+
+The offline [adapter regression](../../../backend/tests/test_appdaemon_service_contract.py)
+exercises actual packaged AppDaemon 4.5.13 HASS, service and websocket result
+processing with only a fictional socket substituted. It confirms:
+
+| Case | Scheduling return | Callback result |
+| --- | --- | --- |
+| Successful HA response without a body | `None` | Envelope with `success: true`, `result: null`, `ad_status: OK` |
+| HA rejection | `None` | Envelope with `success: false` and error |
+| Response timeout | `None` | Envelope with `success: false`, `ad_status: TIMEOUT` |
+| Disconnected plugin | `None` | Bare `None`; zero socket requests |
+| Transport exception | `None` | Bare `None`; runtime catches the exception |
+| Stalled fictional send | `None` | No completion before explicit harness cleanup |
+
+Completion runs on the AppDaemon event-loop thread, distinct from the invoking
+application worker. Callbacks must enqueue results for owner validation.
+Bare `None` is ambiguous and cannot establish HA acceptance from this adapter.
+The planned preservation of its old acceptance meaning therefore remains an
+unresolved implementation admission decision. This probe does not complete T031
+or authorize a dispatcher integration, successful-delivery claim or deployment.
+
+Reproduce without connecting to Home Assistant:
+
+```powershell
+$serviceContractEnv = Join-Path ([IO.Path]::GetTempPath()) 'safetycomponent-service-contract'
+python -m venv $serviceContractEnv
+$env:SAFETY_APPDAEMON_PYTHON = Join-Path $serviceContractEnv 'Scripts/python.exe'
+& $env:SAFETY_APPDAEMON_PYTHON -m pip install -r safety_component/requirements.txt
+pytest backend/tests/test_appdaemon_service_contract.py -q
+```
+
+The test subprocess uses Python isolated mode so the bundled test stub cannot
+shadow the installed adapter. Without the interpreter variable this test skips;
+a skipped/stub-only run is not supported-runtime evidence.
+
+### Acceptance allocation
+
 | Scope | Acceptance evidence |
 | --- | --- |
 | FR-001..003; SC-001 | Scenario 1, full 120 s timeline and invalid overrides |
