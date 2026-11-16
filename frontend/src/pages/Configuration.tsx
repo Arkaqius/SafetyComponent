@@ -9,7 +9,12 @@ import HelpTooltip from '../components/HelpTooltip';
 import { ConfigurationEntityContext } from '../components/configurationEntityContext';
 import { configurationEntityOptions } from '../domain/configurationEntities';
 import type { EntityMap } from '../domain/safety';
-import { externalTimingFields, normalizeMonitorConfiguration, registrySchemas, validateExternalTimingDraft } from '../components/configurationFieldSchemas';
+import {
+  externalTimingFields,
+  normalizeMonitorConfiguration,
+  registrySchemas,
+  validateExternalTimingDraft,
+} from '../components/configurationFieldSchemas';
 import { effectiveFunctionalSafetySettings, functionalSafetySettings } from '../domain/functionalSafetySettings';
 import {
   importUserConfiguration,
@@ -875,9 +880,9 @@ export default function Configuration() {
         <fieldset className='configuration-fieldset'>
           <legend>Zagrożenia zewnętrzne</legend>
           <p className='configuration-field-help'>
-            Pogoda jest potwierdzana domyślnie przez 75 s. Kwalifikacja otwartych drzwi i bram przez 60 s biegnie równolegle.
-            Limit 120 s obejmuje cały przepływ do przyjęcia powiadomienia przez HA lub zgłoszenia błędu. Jakość powietrza ma osobne 300 s,
-            a wycofanie alarmu wymaga oddzielnych 120 s wiarygodnego ustąpienia warunku.
+            Pogoda jest potwierdzana domyślnie przez 75 s. Kwalifikacja otwartych drzwi i bram przez 60 s biegnie równolegle. Limit 120 s
+            obejmuje cały przepływ do przyjęcia powiadomienia przez HA lub zgłoszenia błędu. Jakość powietrza ma osobne 300 s, a wycofanie
+            alarmu wymaga oddzielnych 120 s wiarygodnego ustąpienia warunku.
           </p>
           <div className='configuration-grid'>
             {(
@@ -919,7 +924,9 @@ export default function Configuration() {
               defaultValue={String(airQualitySystem.default_persistence_seconds ?? 300)}
               help={externalTimingFields.outdoor_air_quality.help}
               value={numberValue(airQualitySettings.persistence_seconds)}
-              onChange={value => update(['installation', 'component_settings', 'external_hazard', 'outdoor_air_quality', 'persistence_seconds'], value)}
+              onChange={value =>
+                update(['installation', 'component_settings', 'external_hazard', 'outdoor_air_quality', 'persistence_seconds'], value)
+              }
             />
           </div>
         </fieldset>

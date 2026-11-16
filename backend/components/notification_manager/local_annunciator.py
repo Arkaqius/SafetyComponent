@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-import appdaemon.plugins.hass.hassapi as hass  # type: ignore
+import appdaemon.plugins.hass.hassapi as hass
 
 from components.core.service_dispatcher import (
     Admission, CompletionStatus, ServiceCompletion, ServiceDispatcher, ServiceIntent,

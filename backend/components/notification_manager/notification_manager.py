@@ -12,7 +12,7 @@ from dataclasses import replace
 from typing import Any, Optional
 from uuid import uuid4
 
-import appdaemon.plugins.hass.hassapi as hass  # type: ignore
+import appdaemon.plugins.hass.hassapi as hass
 
 from components.core.localization import Localizer
 from components.core.lifecycle import CancellationKind, LifecycleScope

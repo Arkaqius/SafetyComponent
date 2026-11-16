@@ -9,7 +9,7 @@ import time
 from typing import Any, Callable
 from uuid import uuid4
 
-import appdaemon.plugins.hass.hassapi as hass  # type: ignore
+import appdaemon.plugins.hass.hassapi as hass
 
 from components.core.common_entities import CommonEntities
 from components.core.event_bus import EventBus

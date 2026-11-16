@@ -37,7 +37,7 @@ from typing import (
 )
 from enum import Enum
 
-import appdaemon.plugins.hass.hassapi as hass  # type: ignore
+import appdaemon.plugins.hass.hassapi as hass
 
 from components.core.common_entities import CommonEntities
 from components.core.derivative_monitor import DerivativeMonitor
@@ -454,7 +454,7 @@ class SafetyComponent:
         return True
 
     @staticmethod
-    def get_num_sensor_val(hass_app: hass, sensor_id: str) -> float | None:
+    def get_num_sensor_val(hass_app: hass.Hass, sensor_id: str) -> float | None:
         """Fetch and convert temperature from a sensor."""
         raw_value = hass_app.get_state(sensor_id)
         if raw_value is None or str(raw_value).strip().casefold() in UNAVAILABLE_NUMERIC_STATES:

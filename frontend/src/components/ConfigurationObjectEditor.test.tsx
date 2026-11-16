@@ -2,12 +2,26 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { renderToStaticMarkup } from 'react-dom/server';
 import ConfigurationObjectEditor from './ConfigurationObjectEditor.js';
-import { externalTimingFields, initialObject, normalizeMonitorConfiguration, registrySchemas, updateObjectField, validateExternalTimingDraft } from './configurationFieldSchemas.js';
+import {
+  externalTimingFields,
+  initialObject,
+  normalizeMonitorConfiguration,
+  registrySchemas,
+  updateObjectField,
+  validateExternalTimingDraft,
+} from './configurationFieldSchemas.js';
 
 test('weather timing validates independently from AQ and preserves installed overrides', () => {
-  const draft = { installation: { component_settings: { external_hazard: {
-    weather: { persistence_seconds: 75 }, outdoor_air_quality: { persistence_seconds: 300 },
-  } } } };
+  const draft = {
+    installation: {
+      component_settings: {
+        external_hazard: {
+          weather: { persistence_seconds: 75 },
+          outdoor_air_quality: { persistence_seconds: 300 },
+        },
+      },
+    },
+  };
   assert.deepEqual(validateExternalTimingDraft(draft), []);
   assert.equal(externalTimingFields.weather.maximum, 75);
   for (const value of [120, 76, 0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, true, '75']) {

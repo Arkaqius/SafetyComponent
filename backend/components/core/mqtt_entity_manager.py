@@ -10,7 +10,7 @@ from collections import deque
 from functools import wraps
 from typing import Any, Mapping
 
-import appdaemon.plugins.hass.hassapi as hass  # type: ignore
+import appdaemon.plugins.hass.hassapi as hass
 from pydantic import (
     Field,
     StrictBool,

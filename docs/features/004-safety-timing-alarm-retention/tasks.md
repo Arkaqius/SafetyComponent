@@ -18,6 +18,12 @@ desktop/mobile browser cases. Full formatting reports 112 existing files, down
 from the 116-file baseline after formatting the four changed indoor UI files.
 Mypy last passed 33 source files; Ruff passed before the final delivery edits.
 No household alarm injection, routine or actuator test was executed.
+PR [#52](https://github.com/Arkaqius/SafetyComponent/pull/52) is open. Its first
+automatic CI run exposed supported-runtime import/type narrowing differences
+and formatting in five weather UI files. The follow-up removes obsolete import
+ignores, uses the actual Hass class annotation, explicitly narrows current
+proposal dictionaries and formats those changed files. No local tests are added
+or rerun for this delivery follow-up.
 
 **Input**: [spec.md](spec.md), [plan.md](plan.md), [research.md](research.md),
 [data-model.md](data-model.md), [contracts](contracts/) and [quickstart.md](quickstart.md).

@@ -247,7 +247,10 @@ export async function saveUserConfiguration(userConfig: ConfigurationMap, revisi
     const catalogue = decodeProviderCatalogue(mockDocument.system_defaults?.external_hazard ?? {});
     const installation = userConfig.installation as ConfigurationMap | undefined;
     const site = installation?.site as ConfigurationMap | undefined;
-    const fieldErrors = [...validateProviderDraft(catalogue, userConfig, typeof site?.country_code === 'string' ? site.country_code : ''), ...validateExternalTimingDraft(userConfig)];
+    const fieldErrors = [
+      ...validateProviderDraft(catalogue, userConfig, typeof site?.country_code === 'string' ? site.country_code : ''),
+      ...validateExternalTimingDraft(userConfig),
+    ];
     if (fieldErrors.length) throw new ConfigurationApiError('Sprawdź parametry źródeł danych.', 'invalid_configuration', 422, fieldErrors);
     mockDocument = {
       user_config: structuredClone(userConfig),

@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from math import ceil
 from typing import Any, Callable, Mapping, Optional
 
-import appdaemon.plugins.hass.hassapi as hass  # type: ignore
+import appdaemon.plugins.hass.hassapi as hass
 
 from components.core.common_entities import CommonEntities
 from components.core.degradation import DegradationRegistry
@@ -937,6 +937,7 @@ class RecoveryManager:
                 if mechanism is None or not callable(simulator):
                     return True
                 identity = mechanism.scope._identity()
+                mechanism_name = mechanism.name
                 try:
                     outcome = simulator(mechanism, entities_changes, evaluator=sm_fcn)
                 except Exception:
@@ -949,7 +950,7 @@ class RecoveryManager:
                     or symptom_data.module is not module
                     or module.safety_mechanisms.get(symptom_data.name) is not mechanism
                     or scope._identity() != identity
-                    or not scope.eligible or outcome.mechanism_id != mechanism.name
+                    or not scope.eligible or outcome.mechanism_id != mechanism_name
                     or outcome.generation != scope.generation
                     or outcome.runtime_id != scope.runtime_id
                     or outcome.result is not False
@@ -1407,12 +1408,15 @@ class RecoveryManager:
 
     def _async_command_eligible(self, name: str, pending: dict[str, Any]) -> bool:
         generation = self.scope.generation
+        proposal = pending.get("proposal")
+        if not isinstance(proposal, dict):
+            return False
         if (not self.scope.eligible or not self._storage_available
                 or self._pending_async_commands.get(name) is not pending
-                or self._proposals.get(name) is not pending["proposal"]
-                or pending["proposal"].get("status") != RecoveryActionState.EXECUTING.name
+                or self._proposals.get(name) is not proposal
+                or proposal.get("status") != RecoveryActionState.EXECUTING.name
                 or time.time() >= pending["authorization_expires"]
-                or self._proposal_expired(pending["proposal"])):
+                or self._proposal_expired(proposal)):
             return False
         symptom = self.fm.symptoms.get(name)
         if symptom is None or symptom.state != FaultState.SET:
@@ -1434,13 +1438,13 @@ class RecoveryManager:
         return bool(
             not unnecessary and self.scope.eligible and self.scope.generation == generation
             and self._storage_available and self._pending_async_commands.get(name) is pending
-            and self._proposals.get(name) is pending["proposal"]
-            and pending["proposal"].get("status") == RecoveryActionState.EXECUTING.name
+            and self._proposals.get(name) is proposal
+            and proposal.get("status") == RecoveryActionState.EXECUTING.name
             and self.fm.symptoms.get(name) is symptom and symptom.state == FaultState.SET
             and original is not None and incident is not None and original[:2] == incident[:2]
             and incident[2] >= original[2]
             and time.time() < pending["authorization_expires"]
-            and not self._proposal_expired(pending["proposal"])
+            and not self._proposal_expired(proposal)
         )
 
     def _current_incident(self, symptom: Symptom) -> tuple[str, str, int] | None:
@@ -1648,7 +1652,9 @@ class RecoveryManager:
 
     def _finish_report_write(self, name: str, pending: dict[str, Any], error: str | None) -> None:
         self._pending_report_receipts.pop(name, None)
-        proposal = pending["proposal"]
+        proposal = pending.get("proposal")
+        if not isinstance(proposal, dict):
+            return
         if self._proposals.get(name) is not proposal:
             return
         if error is not None:

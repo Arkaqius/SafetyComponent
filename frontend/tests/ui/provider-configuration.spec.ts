@@ -216,11 +216,21 @@ test('keyboard labels and narrow layout stay usable', async ({ page }) => {
 
 test('preserves an invalid installed weather interval until correction and saves AQ independently', async ({ page }) => {
   const base = fixture();
-  const document = { ...base, user_config: { ...base.user_config, installation: {
-    ...base.user_config.installation, component_settings: { external_hazard: {
-      weather: { persistence_seconds: 120 }, outdoor_air_quality: { persistence_seconds: 300 },
-    } },
-  } } };
+  const document = {
+    ...base,
+    user_config: {
+      ...base.user_config,
+      installation: {
+        ...base.user_config.installation,
+        component_settings: {
+          external_hazard: {
+            weather: { persistence_seconds: 120 },
+            outdoor_air_quality: { persistence_seconds: 300 },
+          },
+        },
+      },
+    },
+  };
   await openConfiguration(page, document);
   await page.getByRole('link', { name: 'Ustawienia komponentów', exact: true }).click();
   const weather = page.getByLabel('Potwierdzenie warunku pogodowego (s)', { exact: true });
@@ -240,6 +250,7 @@ test('preserves an invalid installed weather interval until correction and saves
   const saved = await page.evaluate(() => window.__safetyHomeConfigurationMock!.snapshot());
   expect(saved.user_config.external_sources).toEqual(base.user_config.external_sources);
   expect((saved.user_config.installation as typeof document.user_config.installation).component_settings.external_hazard).toEqual({
-    weather: { persistence_seconds: 75 }, outdoor_air_quality: { persistence_seconds: 420 },
+    weather: { persistence_seconds: 75 },
+    outdoor_air_quality: { persistence_seconds: 420 },
   });
 });

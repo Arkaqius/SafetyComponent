@@ -47,28 +47,40 @@ const yesNo = (label: string): FieldSpec => ({ label, kind: 'boolean', initial: 
 
 export const externalTimingFields = {
   weather: {
-    ...number('Potwierdzenie warunku pogodowego (s)', 'Domyślnie 75 s; zakres 1–75 s. Łączny limit 120 s obejmuje też przyjęcie powiadomienia przez HA lub zgłoszenie błędu.'),
-    initial: 75, minimum: 1, maximum: 75,
+    ...number(
+      'Potwierdzenie warunku pogodowego (s)',
+      'Domyślnie 75 s; zakres 1–75 s. Łączny limit 120 s obejmuje też przyjęcie powiadomienia przez HA lub zgłoszenie błędu.'
+    ),
+    initial: 75,
+    minimum: 1,
+    maximum: 75,
   },
   outdoor_air_quality: {
-    ...number('Potwierdzenie jakości powietrza (s)', 'Domyślnie 300 s. Czas potwierdzenia AQI jest niezależny od pogody i wycofania alarmu.'),
-    initial: 300, minimum: 1,
+    ...number(
+      'Potwierdzenie jakości powietrza (s)',
+      'Domyślnie 300 s. Czas potwierdzenia AQI jest niezależny od pogody i wycofania alarmu.'
+    ),
+    initial: 300,
+    minimum: 1,
   },
 };
 
 export function validateExternalTimingDraft(source: Record<string, unknown>): ProviderFieldError[] {
   const asMap = (value: unknown): Record<string, unknown> =>
-    value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+    value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
   const policy = asMap(asMap(asMap(source.installation).component_settings).external_hazard);
   const errors: ProviderFieldError[] = [];
   for (const key of ['weather', 'outdoor_air_quality'] as const) {
     const value = asMap(policy[key]).persistence_seconds;
     if (value === undefined || value === null) continue;
-    if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1 || key === 'weather' && value > 75) {
+    if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1 || (key === 'weather' && value > 75)) {
       errors.push({
         path: ['user_config', 'installation', 'component_settings', 'external_hazard', key, 'persistence_seconds'],
         code: 'invalid_confirmation_timing',
-        message: key === 'weather' ? 'Potwierdzenie pogody wymaga całkowitej liczby sekund od 1 do 75; cały przepływ ma limit 120 s.' : 'Potwierdzenie jakości powietrza wymaga dodatniej całkowitej liczby sekund.',
+        message:
+          key === 'weather'
+            ? 'Potwierdzenie pogody wymaga całkowitej liczby sekund od 1 do 75; cały przepływ ma limit 120 s.'
+            : 'Potwierdzenie jakości powietrza wymaga dodatniej całkowitej liczby sekund.',
       });
     }
   }
