@@ -36,6 +36,8 @@ def test_desired_projection_is_detached_and_cache_acknowledges_whole_completed_g
     manager.projections.tick()
     broker.tick()
     assert len(transport.calls) == 1 and manager.accepted_states == {}
+    # Later topics can be handed off by the completion drain itself.
+    transport.mode, transport.result = "immediate", {"success": True}
     transport.complete(0, {"success": True})
     broker.tick()
     assert manager.accepted_states == {}

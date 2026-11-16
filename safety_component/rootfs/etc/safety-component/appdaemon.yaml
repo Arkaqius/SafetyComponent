@@ -4,6 +4,7 @@ appdaemon:
   elevation: __HOME_ASSISTANT_ELEVATION__
   time_zone: __HOME_ASSISTANT_TIME_ZONE__
   app_dir: /run/safety-component/apps
+  production_mode: true
   plugins:
     HASS:
       type: hass
