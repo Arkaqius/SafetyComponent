@@ -87,8 +87,10 @@ and available location only after an authoritative clear.
   `return_result`, `timeout`, or `hass_timeout`, using supported background
   completion callbacks; immediate scheduling return is not delivery acceptance.
   An explicit completed failure is retryable only when no unresolved resource
-  lease would overlap the retry. A completed call returning no result retains
-  the reviewed acceptance meaning, never confirmed device delivery.
+  lease would overlap the retry. Only a completed envelope with Boolean
+  `success: true` establishes Home Assistant acceptance; `result: null` inside
+  that envelope is valid. Bare `None` or an absent/ambiguous completion shall
+  remain uncertain, never accepted or confirmed device delivery.
 
 The provider shall never fall back to `notify.notify`. Installation routing
 shall use an explicit group such as `notify/safety_recipients` or an explicit

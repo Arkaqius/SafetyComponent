@@ -41,6 +41,30 @@ def test_example_installation_config_compiles() -> None:
     assert compiled["SafetyFunctions"]["app_config"]["calibration"]["functional_safety"]["battery_fault_catalog_file"] == "/config/appdaemon/battery_fault_catalog.json"
 
 
+def test_weather_and_aqi_confirmation_compile_independently(tmp_path) -> None:
+    source = yaml.safe_load((BACKEND_DIR / "config/user_config.example.yml").read_text(encoding="utf-8"))
+    settings = source["user_config"]["installation"]["component_settings"]["external_hazard"]
+    settings.update(weather={"persistence_seconds": 60}, outdoor_air_quality={"persistence_seconds": 240})
+    path = tmp_path / "user.yml"
+    path.write_text(yaml.safe_dump(source), encoding="utf-8")
+    policy = compile_config(user_path=path)["SafetyFunctions"]["app_config"]["external_hazard_policy"]
+    assert policy["weather"]["persistence_seconds"] == 60
+    assert policy["outdoor_air_quality"]["persistence_seconds"] == 240
+    assert policy["clear_delay_seconds"] == 120
+
+
+@pytest.mark.parametrize("value", [120, float("inf"), float("nan"), -1, 0])
+def test_installed_over_budget_weather_override_is_rejected_without_clamping(tmp_path, value) -> None:
+    source = yaml.safe_load((BACKEND_DIR / "config/user_config.example.yml").read_text(encoding="utf-8"))
+    source["user_config"]["installation"]["component_settings"]["external_hazard"]["weather"] = {"persistence_seconds": value}
+    path = tmp_path / "user.yml"
+    path.write_text(yaml.safe_dump(source), encoding="utf-8")
+    before = path.read_bytes()
+    with pytest.raises(ValueError):
+        compile_config(user_path=path)
+    assert path.read_bytes() == before
+
+
 def test_packaged_priorities_separate_warnings_from_information() -> None:
     """The shipped policy raises maintenance warnings while batteries stay informational."""
     compiled = compile_config(user_path=BACKEND_DIR / "config" / "user_config.example.yml")

@@ -13,7 +13,7 @@ from components.core.common_entities import CommonEntities
 from components.core.degradation import DiagnosticBinding, DegradationTarget, RestrictionEffect
 from components.core.event_bus import EventBus
 from components.core.mqtt_entity_manager import MqttEntityManager
-from components.core.types_common import FaultState, RecoveryAction, SMState, Symptom
+from components.core.types_common import FaultState, OutcomeKind, RecoveryAction, SMState, Symptom
 from components.recovery_manager.manual_actions import manual_action
 from components.external_apis.home_assistant_state_reader import (
     HomeAssistantStateReader,
@@ -22,6 +22,9 @@ from components.external_apis.home_assistant_state_reader import (
 )
 from components.safetycomponents.core.safety_component import (
     SafetyComponent,
+    SafetyMechanismResult,
+    evaluation_entry,
+    qualified_safety_mechanism_decorator,
     register_safety_component,
 )
 from components.safetycomponents.core.safety_mechanism import SafetyMechanism
@@ -437,6 +440,7 @@ class EntityMonitorComponent(SafetyComponent):
             for check in runtime.checks.values():
                 check.pending_failure_since = check.pending_recovery_since = None
 
+    @evaluation_entry
     def _entity_changed(self, entity: str, *_: Any, **__: Any) -> None:
         """Evaluate the record associated with a changed Home Assistant entity."""
 
@@ -444,6 +448,7 @@ class EntityMonitorComponent(SafetyComponent):
             if runtime.dependency.entity_id == entity:
                 self._evaluate_entity(key)
 
+    @evaluation_entry
     def _tick(self, **_: Any) -> None:
         """Evaluate elapsed freshness and debounce deadlines."""
 
@@ -479,31 +484,33 @@ class EntityMonitorComponent(SafetyComponent):
             interval = min(interval, max(5, int(freshness["max_silence_seconds"]) // 2))
         return interval
 
+    @evaluation_entry
     def _fast_tick(self, **_: Any) -> None:
         """Reconcile short safety deadlines independently of ordinary diagnostics."""
         for key, runtime in self._entities.items():
             if self._has_short_budget(runtime.dependency):
                 self._evaluate_entity(key)
 
+    @qualified_safety_mechanism_decorator
     def _evaluate_mechanism(
         self,
         mechanism: SafetyMechanism,
         entities_changes: dict[str, str] | None = None,
-    ) -> bool:
+    ) -> SafetyMechanismResult:
         """Evaluate one check, including side-effect-free recovery dry-runs."""
 
         if not mechanism.isEnabled:
-            return False
+            return SafetyMechanismResult(False, outcome_kind=OutcomeKind.DISABLED)
         entity_key = str(mechanism.sm_args["entity_key"])
         check_key = str(mechanism.sm_args["check_key"])
         runtime = self._entities[entity_key]
 
         if check_key == "recovery_command":
-            return runtime.checks[check_key].active
+            return self._check_outcome(runtime.checks[check_key])
 
         if entities_changes is None:
             self._evaluate_entity(entity_key)
-            return runtime.checks[check_key].active
+            return self._check_outcome(runtime.checks[check_key])
 
         entity_id = runtime.dependency.entity_id
         now = self._now()
@@ -518,7 +525,8 @@ class EntityMonitorComponent(SafetyComponent):
 
         availability = self._check_availability(snapshot)
         if check_key == "availability":
-            return availability[0]
+            return SafetyMechanismResult(availability[0] is True, is_evaluable=availability[0] is not None,
+                                         reason=availability[1])
 
         dry_runtime = EntityRuntime(
             dependency=runtime.dependency,
@@ -538,8 +546,10 @@ class EntityMonitorComponent(SafetyComponent):
             now,
             available=availability[0] is False,
         )
-        return result[0] is True
+        return SafetyMechanismResult(result[0] is True, is_evaluable=result[0] is not None,
+                                     reason=result[1])
 
+    @evaluation_entry
     def _evaluate_entity(self, entity_key: str) -> None:
         runtime = self._entities[entity_key]
         runtime.snapshot = self._read_snapshot(runtime.dependency.entity_id)
@@ -585,8 +595,20 @@ class EntityMonitorComponent(SafetyComponent):
                 continue
             self._apply_result(runtime, check_name, result, now)
 
+        for mechanism in self.safety_mechanisms.values():
+            if mechanism.sm_args.get("entity_key") == entity_key:
+                check = runtime.checks[str(mechanism.sm_args["check_key"])]
+                self.observe_outcome(mechanism, self._check_outcome(check))
         self._publish_entity(runtime)
         self._publish_summary()
+
+    @staticmethod
+    def _check_outcome(check: CheckRuntime) -> SafetyMechanismResult:
+        """Keep pending/unavailable evidence distinct from a qualified negative."""
+        return SafetyMechanismResult(
+            check.active, is_evaluable=check.result in {"failed", "passed"},
+            reason=check.reason,
+        )
 
     def _apply_result(
         self,

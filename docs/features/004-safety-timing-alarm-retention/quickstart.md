@@ -72,10 +72,11 @@ the configured mypy scope contains 13 source files. Both backend pytest runs
 passed (1440 tests), including `--cov=backend --cov-report=term-missing`.
 These establish a baseline, not feature-004 acceptance.
 
-The public configuration/schema still use weather persistence 300 seconds and
-have no independent AQ persistence field. The coordinated T035/T036 changes
-must replace that default; an installed explicit override above the allocation
-must be rejected and corrected in a later authorized installation workflow.
+At baseline, the public configuration/schema used weather persistence 300 seconds
+and had no independent AQ persistence field. T035/T036 change the default to 75 s
+and give AQ a separate 300 s interval; installed explicit weather overrides above
+the allocation are rejected and require correction in an authorized installation
+workflow.
 Neither ignored `backend/config/user_config.yml` nor `backend/app_cfg.yaml`
 exists locally; no private installation values were read or changed.
 
@@ -90,7 +91,7 @@ test failures and refusal to run Playwright require rechecking under Node 20;
 they do not establish a product regression. Existing formatter failures are
 tracked separately from changed files.
 
-### Packaged callback evidence and unresolved acceptance policy
+### Packaged callback evidence and approved acceptance policy
 
 The offline [adapter regression](../../../backend/tests/test_appdaemon_service_contract.py)
 exercises actual packaged AppDaemon 4.5.13 HASS, service and websocket result
@@ -108,9 +109,12 @@ processing with only a fictional socket substituted. It confirms:
 Completion runs on the AppDaemon event-loop thread, distinct from the invoking
 application worker. Callbacks must enqueue results for owner validation.
 Bare `None` is ambiguous and cannot establish HA acceptance from this adapter.
-The planned preservation of its old acceptance meaning therefore remains an
-unresolved implementation admission decision. This probe does not complete T031
-or authorize a dispatcher integration, successful-delivery claim or deployment.
+On 2026-11-16 the maintainer approved requiring Boolean `success: true` in the
+completion envelope. A successful empty body (`result: null`) is valid within
+that envelope. The extended T031 probe verifies the actual packaged HASS path
+through the service broker as well as directly. It checks owner-only application,
+lease-before-completion and unresolved-resource quarantine. It does not establish
+whole-manager isolation, successful phone delivery or deployment readiness.
 
 Reproduce without connecting to Home Assistant:
 
@@ -125,6 +129,45 @@ pytest backend/tests/test_appdaemon_service_contract.py -q
 The test subprocess uses Python isolated mode so the bundled test stub cannot
 shadow the installed adapter. Without the interpreter variable this test skips;
 a skipped/stub-only run is not supported-runtime evidence.
+
+Broker and mobile-target regressions run without the packaged interpreter:
+
+```powershell
+pytest backend/tests/test_service_dispatcher.py backend/tests/test_mobile_push_dispatch.py
+```
+
+Their fake-clock results establish bounded infrastructure and target independence.
+Production bootstrap injects the broker into NotificationManager, local outputs,
+MQTT and recovery. The snapshot writer and root stalled-target admission are
+covered by the US4 tests; the complete weather/indoor response timelines remain
+separate acceptance gates. The adapter's legacy direct interface is tested only
+as a compatibility boundary.
+
+### Shared lifecycle implementation boundary
+
+The six-family foundation matrix verifies scope registration idempotence, owned
+handle release and old-generation entry rejection across stop/restart. Qualified
+domain outcomes remain separate from the legacy Boolean callback API; the typed
+simulation boundary preserves unevaluable/inhibited/disabled states and performs
+no publication, qualification or telemetry. Recovery requires a current typed
+negative to exclude another hazard. Heating's unsupported hypothetical kernel
+remains explicitly unevaluable, preserving its domain and durable-time contract.
+
+The foundation checkpoint checked 18 files, including the shared lifecycle, EventBus, outcomes,
+mechanism and component boundary. The six legacy domain adapter implementations,
+manager glue and derivative sampler are not claimed as fully mypy-verified.
+The full SC-009/010 failure/load matrix and the new asynchronous owner shutdown
+acceptance remain allocated to their later feature tasks.
+
+The configured mypy scope is now 29 files, including immutable response events,
+the service broker, snapshot writer, coherent MQTT projection queue,
+MqttEntityManager, NotificationManager, RecoveryManager and both notification
+adapters and ExternalApiRuntime. The six legacy domain adapters remain outside that configured typing
+boundary. Production bootstrap injects the asynchronous adapters; queue admission
+is distinct from HA acceptance and durable snapshot acknowledgement. Root tests
+drive completion drains explicitly. A stopped owner cannot revoke a physical
+effect already handed off; offline MQTT barriers remain process-owned and wait
+behind the existing lease. The complete weather/indoor acceptance remains open.
 
 ### Acceptance allocation
 

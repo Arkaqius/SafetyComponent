@@ -12,10 +12,12 @@ from components.core.common_entities import CommonEntities
 from components.core.entity_names import friendly_entity_name
 from components.core.event_bus import EventBus
 from components.core.mqtt_entity_manager import MqttEntityManager
-from components.core.types_common import FaultState, RecoveryAction, SMState, Symptom
+from components.core.types_common import FaultState, OutcomeKind, RecoveryAction, SMState, Symptom
 from components.recovery_manager.manual_actions import manual_action
 from components.safetycomponents.core.safety_component import (
     SafetyComponent,
+    SafetyMechanismResult,
+    qualified_safety_mechanism_decorator,
     register_safety_component,
 )
 from components.safetycomponents.core.safety_mechanism import SafetyMechanism
@@ -261,11 +263,12 @@ class SafetyDoorsComponent(SafetyComponent):
             runtime.timer_handle = runtime.opened_at = None
             runtime.qualification_interrupted = True
 
+    @qualified_safety_mechanism_decorator
     def sm_safety_door_open_timeout(
         self,
         sm: SafetyMechanism,
         entities_changes: dict[str, str] | None = None,
-    ) -> bool:
+    ) -> SafetyMechanismResult:
         """Evaluate whether one door has remained open beyond its timeout.
 
         When ``entities_changes`` is provided, evaluate the proposed states
@@ -274,7 +277,7 @@ class SafetyDoorsComponent(SafetyComponent):
         proposed action does not introduce another fault.
         """
         if not sm.isEnabled:
-            return False
+            return SafetyMechanismResult(False, outcome_kind=OutcomeKind.DISABLED)
 
         runtime = self._door_runtime[sm.name]
         now = self._now()
@@ -287,8 +290,12 @@ class SafetyDoorsComponent(SafetyComponent):
         )
 
         if entities_changes is not None:
-            if condition_result != "pass" or door_state != "open":
-                return False
+            if condition_result == "blocked":
+                return SafetyMechanismResult(False, outcome_kind=OutcomeKind.INHIBITED)
+            if condition_result != "pass" or door_state == "unavailable":
+                return SafetyMechanismResult(False, is_evaluable=False)
+            if door_state == "closed":
+                return SafetyMechanismResult(False)
             opened_at = runtime.opened_at
             if opened_at is None:
                 active_since_candidates = [
@@ -301,7 +308,9 @@ class SafetyDoorsComponent(SafetyComponent):
                     if active_since_candidates
                     else now
                 )
-            return int((now - opened_at).total_seconds()) >= timeout_seconds
+            qualified = int((now - opened_at).total_seconds()) >= timeout_seconds
+            return SafetyMechanismResult(qualified, is_evaluable=qualified,
+                                         reason="" if qualified else "qualification_pending")
 
         if condition_result == "blocked":
             self._cancel_timer(sm.name)
@@ -321,7 +330,7 @@ class SafetyDoorsComponent(SafetyComponent):
                 condition_state=condition_state,
                 now=now,
             )
-            return False
+            return SafetyMechanismResult(False, outcome_kind=OutcomeKind.INHIBITED)
 
         if condition_result == "unavailable":
             self._cancel_timer(sm.name)
@@ -334,7 +343,7 @@ class SafetyDoorsComponent(SafetyComponent):
                 condition_state=condition_state,
                 now=now,
             )
-            return runtime.active
+            return SafetyMechanismResult(runtime.active, is_evaluable=False)
 
         if door_state == "unavailable":
             self._cancel_timer(sm.name)
@@ -346,7 +355,7 @@ class SafetyDoorsComponent(SafetyComponent):
                 condition_state=condition_state,
                 now=now,
             )
-            return runtime.active
+            return SafetyMechanismResult(runtime.active, is_evaluable=False)
 
         if door_state == "closed":
             self._cancel_timer(sm.name)
@@ -366,7 +375,7 @@ class SafetyDoorsComponent(SafetyComponent):
                 condition_state=condition_state,
                 now=now,
             )
-            return False
+            return SafetyMechanismResult(False)
 
         if runtime.opened_at is None:
             active_since_candidates = [
@@ -398,7 +407,7 @@ class SafetyDoorsComponent(SafetyComponent):
                 condition_state=condition_state,
                 now=now,
             )
-            return True
+            return SafetyMechanismResult(True)
 
         runtime.active = False
         self._publish_symptom(
@@ -416,7 +425,7 @@ class SafetyDoorsComponent(SafetyComponent):
             condition_state=condition_state,
             now=now,
         )
-        return False
+        return SafetyMechanismResult(False, is_evaluable=False, reason="qualification_pending")
 
     def _timeout_reached(self, **kwargs: Any) -> None:
         """Re-evaluate a door when its configured open timeout expires."""
@@ -426,7 +435,6 @@ class SafetyDoorsComponent(SafetyComponent):
             return
         self._door_runtime[sm_name].timer_handle = None
         self.sm_safety_door_open_timeout(mechanism)
-        self.record_evaluation()
 
     def _schedule_timeout(
         self, mechanism: SafetyMechanism, delay_seconds: int

@@ -146,6 +146,8 @@ class SafetyComponent:
     """
 
     component_name: str = "UNKNOWN"  # Default value for the parent class
+    _evaluation_depth: int = 0
+    _evaluation_success: bool = True
 
     def __init__(
         self,
@@ -224,10 +226,56 @@ class SafetyComponent:
 
     def record_evaluation(self, *, success: bool = True) -> None:
         """Report one completed component evaluation to the application monitor."""
+        if getattr(self, "_evaluation_depth", 0):
+            self._evaluation_success = getattr(self, "_evaluation_success", True) and success
+            return
         self._evaluation_serial = getattr(self, "_evaluation_serial", 0) + 1
         reporter = getattr(self.hass_app, "record_safety_evaluation", None)
         if callable(reporter):
             reporter(self.component_name, success=success)
+
+    def execution_outcome(
+        self, mechanism: Any, value: "SafetyMechanismResult",
+    ) -> ExecutionOutcome:
+        """Copy bounded domain evidence into an immutable internal result."""
+        scope = getattr(mechanism, "scope", None)
+        return ExecutionOutcome.from_result(
+            mechanism.name, scope.generation if scope is not None else 0,
+            monotonic(), value.result, evaluable=value.is_evaluable,
+            kind=value.outcome_kind, reason=value.reason,
+            runtime_id=scope.runtime_id if scope is not None else "",
+            evidence=value.diagnostic_evidence or value.additional_info,
+        )
+
+    def observe_outcome(self, mechanism: Any, value: "SafetyMechanismResult") -> None:
+        """Record current qualified evidence without adding debounce or applying HEAL."""
+        scope = getattr(mechanism, "scope", None)
+        if scope is None or scope.eligible:
+            mechanism.last_outcome = self.execution_outcome(mechanism, value)
+
+    def simulate(
+        self, mechanism: Any, changes: dict[str, str], *, evaluator: Callable[..., Any] | None = None,
+    ) -> ExecutionOutcome:
+        """Evaluate an explicitly supported hypothetical kernel without live effects."""
+        scope = getattr(mechanism, "scope", None)
+        if not mechanism.isEnabled or (scope is not None and not scope.eligible):
+            return self.execution_outcome(mechanism, SafetyMechanismResult(
+                False, outcome_kind=OutcomeKind.DISABLED,
+            ))
+        predicate = getattr(evaluator or mechanism.callback, "__wrapped__", None)
+        if predicate is None:
+            return self.execution_outcome(mechanism, SafetyMechanismResult(
+                False, is_evaluable=False, reason="simulation_unsupported",
+            ))
+        try:
+            result = predicate(self, mechanism, changes)
+            if not isinstance(result, SafetyMechanismResult):
+                raise TypeError("Simulation requires typed domain evidence")
+            return self.execution_outcome(mechanism, result)
+        except Exception:
+            return self.execution_outcome(mechanism, SafetyMechanismResult(
+                False, is_evaluable=False, reason="simulation_failed",
+            ))
 
     def record_symptom_observation(
         self, symptom_id: str, state: FaultState,
@@ -589,10 +637,7 @@ def safety_mechanism_decorator(func: Callable) -> Callable:
         success = False
         try:
             result = func(self, sm, entities_changes)
-            outcome = ExecutionOutcome.from_result(
-                sm.name, generation, monotonic(), result.result,
-                evaluable=result.is_evaluable,
-            )
+            outcome = self.execution_outcome(sm, result)
             success = True
             if not live:
                 return bool(outcome.result)
@@ -657,3 +702,62 @@ class SafetyMechanismResult(NamedTuple):
     additional_info: Optional[dict[str, Any]] = None
     is_evaluable: bool = True
     diagnostic_evidence: Optional[dict[str, Any]] = None
+    outcome_kind: OutcomeKind | None = None
+    reason: str = ""
+
+
+def evaluation_entry(func: Callable[..., Any]) -> Callable[..., Any]:
+    """Report one owner evaluation across nested timer, source and batch paths."""
+    @wraps(func)
+    def wrapped(self: SafetyComponent, *args: Any, **kwargs: Any) -> Any:
+        outer = getattr(self, "_evaluation_depth", 0) == 0
+        if outer:
+            self._evaluation_success = True
+        self._evaluation_depth = getattr(self, "_evaluation_depth", 0) + 1
+        success = False
+        try:
+            result = func(self, *args, **kwargs)
+            success = True
+            return result
+        except Exception:
+            if outer:
+                for mechanism in self.safety_mechanisms.values():
+                    if mechanism.isEnabled:
+                        self.observe_outcome(mechanism, SafetyMechanismResult(
+                            False, is_evaluable=False, reason="evaluation_failed",
+                        ))
+            raise
+        finally:
+            self._evaluation_depth -= 1
+            if outer:
+                self.record_evaluation(success=success and self._evaluation_success)
+    return wrapped
+
+
+def qualified_safety_mechanism_decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+    """Normalize already-qualified domain results without introducing debounce."""
+    @wraps(func)
+    def wrapped(
+        self: SafetyComponent, mechanism: Any,
+        entities_changes: dict[str, str] | None = None, *args: Any, **kwargs: Any,
+    ) -> bool:
+        scope = getattr(mechanism, "scope", None)
+        if not mechanism.isEnabled or (scope is not None and not scope.eligible):
+            return False
+        generation = scope.generation if scope is not None else 0
+
+        @evaluation_entry
+        def live_entry(owner: SafetyComponent) -> bool:
+            value = func(owner, mechanism, entities_changes, *args, **kwargs)
+            if not isinstance(value, SafetyMechanismResult):
+                raise TypeError("Qualified evaluation requires typed domain evidence")
+            if scope is None or (scope.eligible and scope.generation == generation):
+                owner.observe_outcome(mechanism, value)
+            return value.result
+
+        if entities_changes is not None:
+            value = func(self, mechanism, entities_changes, *args, **kwargs)
+            return value.result
+        return live_entry(self)
+    wrapped.__dict__["manages_evaluation"] = True
+    return wrapped

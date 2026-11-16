@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from concurrent.futures import Future
 from dataclasses import dataclass
 from typing import Any
 
@@ -121,3 +122,21 @@ class CallbackServiceAdapter:
         """Complete a recorded operation; repeated calls model duplicate delivery."""
         if self.mode != "never":
             self.callbacks[index](result)
+
+
+class ControlledExecutor:
+    """Run exactly one admitted storage job when the test requests completion."""
+
+    def __init__(self) -> None:
+        self.jobs: list[tuple[Future, Callable[..., Any], tuple[Any, ...]]] = []
+
+    def submit(self, function: Callable[..., Any], *args: Any) -> Future:
+        """Retain a job without starting any real worker or storage operation."""
+        future: Future = Future()
+        self.jobs.append((future, function, args))
+        return future
+
+    def finish(self, index: int) -> None:
+        """Complete a fictional worker job independently of owner admission."""
+        future, function, args = self.jobs[index]
+        future.set_result(function(*args))

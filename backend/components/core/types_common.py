@@ -21,6 +21,7 @@ facilitating easier maintenance and updates.
 
 from dataclasses import dataclass
 from enum import Enum
+import json
 from typing import TYPE_CHECKING, Any, NamedTuple, Dict, List
 
 from components.core.fault_state_policy import (
@@ -53,6 +54,8 @@ class ExecutionOutcome:
     observed_at: float
     kind: OutcomeKind
     reason: str = ""
+    runtime_id: str = ""
+    evidence_json: str = "{}"
 
     @property
     def is_evaluable(self) -> bool:
@@ -70,14 +73,31 @@ class ExecutionOutcome:
     def from_result(
         cls, mechanism_id: str, generation: int, observed_at: float,
         result: bool, *, evaluable: bool = True, reason: str = "",
+        runtime_id: str = "", evidence: dict[str, Any] | None = None,
+        kind: OutcomeKind | None = None,
     ) -> "ExecutionOutcome":
         """Normalize a legacy predicate without interpreting failure as clear."""
         if not isinstance(result, bool):
             raise TypeError("Safety mechanism result must be bool")
-        kind = (
+        if kind is not None and not isinstance(kind, OutcomeKind):
+            raise TypeError("Safety mechanism quality must be an OutcomeKind")
+        if not evaluable and kind in {OutcomeKind.ELIGIBLE_POSITIVE, OutcomeKind.ELIGIBLE_NEGATIVE}:
+            kind = OutcomeKind.UNEVALUABLE
+        if (kind == OutcomeKind.ELIGIBLE_POSITIVE and not result) or (
+            kind == OutcomeKind.ELIGIBLE_NEGATIVE and result
+        ):
+            raise ValueError("Contradictory safety mechanism evidence")
+        normalized = kind or ((
             OutcomeKind.ELIGIBLE_POSITIVE if result else OutcomeKind.ELIGIBLE_NEGATIVE
-        ) if evaluable else OutcomeKind.UNEVALUABLE
-        return cls(mechanism_id, generation, observed_at, kind, reason[:256])
+        ) if evaluable else OutcomeKind.UNEVALUABLE)
+        try:
+            serialized = json.dumps(evidence or {}, ensure_ascii=False, allow_nan=False)
+            if len(serialized.encode("utf-8")) > 4096:
+                serialized = '{"detail_omitted":true}'
+        except (ValueError, TypeError, RecursionError):
+            serialized = '{"detail_omitted":true}'
+        return cls(mechanism_id, generation, observed_at, normalized, reason[:256],
+                   runtime_id, serialized)
 
 
 class FaultState(Enum):

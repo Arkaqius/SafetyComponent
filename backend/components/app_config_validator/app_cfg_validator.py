@@ -16,6 +16,7 @@ from components.external_apis.core.configuration import resolve_provider_binding
 from components.safetycomponents.external_hazard.schema import (
     COMPONENT_NAME as EXTERNAL_HAZARD_COMPONENT_NAME,
     validate_external_hazard_config,
+    validate_weather_response_budget,
 )
 from components.safetycomponents.entity_monitor.schema import (
     COMPONENT_NAME as ENTITY_MONITOR_COMPONENT_NAME,
@@ -438,6 +439,11 @@ def _to_runtime(
         strict_validation=strict_validation,
         log=log,
     )
+    if cfg.app_config.external_hazard_policy is not None:
+        validate_weather_response_budget(
+            cfg.app_config.external_hazard_policy.weather.persistence_seconds,
+            runtime_user_cfg["notification"]["retry"]["deadlines_seconds"][2],
+        )
 
     runtime["user_config"] = runtime_user_cfg
     runtime["app_config"]["faults"] = validate_faults_config(

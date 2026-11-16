@@ -41,6 +41,9 @@ def test_external_hazard_config_normalizes_all_three_independent_providers() -> 
         "ExternalHazardComponent"
     ]
     assert external["policy"]["actuation_mode"] == "manual_and_user_confirmed"
+    assert external["policy"]["weather"]["persistence_seconds"] == 75
+    assert external["policy"]["outdoor_air_quality"]["persistence_seconds"] == 300
+    assert external["policy"]["clear_delay_seconds"] == 120
     assert external["enabled_providers"] == [
         "ImgwWarningsApiComponent",
         "OpenMeteoAirQualityApiComponent",
@@ -51,6 +54,21 @@ def test_external_hazard_config_normalizes_all_three_independent_providers() -> 
         opening["actuator_entity_id"] is None
         for opening in external["openings"].values()
     )
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), -1, 0, True, 76, 120])
+def test_weather_confirmation_rejects_invalid_or_over_budget_values(value) -> None:
+    config = _example_config()
+    config["app_config"]["external_hazard_policy"]["weather"]["persistence_seconds"] = value
+    with pytest.raises(AppCfgValidationError):
+        AppCfgValidator.validate(config)
+
+
+def test_notification_allowance_is_part_of_total_weather_response_budget() -> None:
+    config = _example_config()
+    config["user_config"]["notification"]["retry"]["deadlines_seconds"][2] = 31
+    with pytest.raises(AppCfgValidationError, match="120"):
+        AppCfgValidator.validate(config)
 
 
 def test_enabled_external_hazard_rejects_a_missing_provider_binding() -> None:

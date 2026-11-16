@@ -21,8 +21,10 @@ This module's approach to fault recovery empowers developers to construct robust
 """
 
 import secrets
+import json
 import time
 from datetime import datetime, timezone
+from dataclasses import dataclass
 from math import ceil
 from typing import Any, Callable, Mapping, Optional
 
@@ -32,8 +34,14 @@ from components.core.common_entities import CommonEntities
 from components.core.degradation import DegradationRegistry
 from components.core.fault_state_policy import FaultCategory
 from components.core.localization import Localizer
+from components.core.lifecycle import CancellationKind, LifecycleScope
+from components.core.service_dispatcher import (
+    Admission, CompletionStatus, ServiceCompletion, ServiceDispatcher, ServiceIntent,
+)
+from components.core.snapshot_writer import SnapshotWriter, process_snapshot_writer
 from components.core.mqtt_entity_manager import MqttEntityManager
 from components.core.types_common import (
+    ExecutionOutcome,
     Fault,
     FaultState,
     RecoveryAction,
@@ -66,6 +74,13 @@ class ComponentRecoveryError(RuntimeError):
     """A component-owned recovery policy failed, not the shared dispatcher."""
 
 
+@dataclass(frozen=True)
+class OwnedRecoveryListener:
+    """Keep the scope registration identity separate from the adapter handle."""
+
+    key: str
+
+
 class RecoveryManager:
     """
     Manages the recovery processes for faults within the safety management system.
@@ -96,6 +111,8 @@ class RecoveryManager:
         command_observer: Callable[[str, str, bool, str], None] | None = None,
         timing: Mapping[str, Any] | None = None,
         restore_excluded_symptoms: frozenset[str] = frozenset(),
+        dispatcher: ServiceDispatcher | None = None,
+        snapshot_writer: SnapshotWriter | None = None,
     ) -> None:
         """
         Initializes the RecoveryManager with the necessary application context and recovery configuration.
@@ -145,6 +162,18 @@ class RecoveryManager:
         self._validation_reasons: dict[str, str] = {}
         self._policy_evaluators: list[RecoveryPolicyEvaluator] = []
         self._started = False
+        self.scope = LifecycleScope("recovery_manager", enabled=True)
+        self.dispatcher = dispatcher
+        self._writer = snapshot_writer or (process_snapshot_writer("recovery_state") if dispatcher is not None else None)
+        self._write_owner = secrets.token_hex(16)
+        self._write_revision = 0
+        self._write_error_revision = 0
+        self._durable_revision = 0
+        self._pending_async_commands: dict[str, dict[str, Any]] = {}
+        self._pending_report_receipts: dict[str, dict[str, Any]] = {}
+        self._restore_attempted = False
+        if self._writer is not None:
+            self._writer.claim(self._write_owner)
 
         self._init_all_rec_entities()
 
@@ -153,15 +182,32 @@ class RecoveryManager:
 
         if self._started:
             return
+        self.scope.enabled = True
+        self.scope.start()
         self._started = True
         listen_event = getattr(self.hass_app, "listen_event", None)
         if callable(listen_event):
-            listen_event(
-                self.handle_recovery_confirmation,
-                "safety_recovery_confirm",
+            for event, callback in (
+                ("safety_recovery_confirm", self.handle_recovery_confirmation),
+                ("safety_recovery_report", self.handle_manual_work_report),
+            ):
+                def register_event(handler: Callable[..., Any], name: str = event) -> Any:
+                    return listen_event(handler, name)
+
+                self.scope.declare(
+                    event, CancellationKind.EVENT,
+                    register_event,
+                    callback, self.hass_app.cancel_listen_event,
+                )
+        if self._writer is not None:
+            self.scope.declare(
+                "write_drain", CancellationKind.TIMER,
+                lambda callback: self.hass_app.run_every(callback, "now", 1),
+                self._drain_writes, self.hass_app.cancel_timer,
             )
-            listen_event(self.handle_manual_work_report, "safety_recovery_report")
-        self._restore_state()
+        if not self._restore_attempted:
+            self._restore_attempted = True
+            self._restore_state()
         self.invalidate_restricted_proposals()
 
     def invalidate_restricted_proposals(self) -> None:
@@ -185,6 +231,13 @@ class RecoveryManager:
     def stop(self) -> None:
         """Persist active proposals during controlled shutdown."""
 
+        self.scope.stop()
+        self._started = False
+        self._pending_async_commands.clear()
+        for symptom_name in tuple(self._recovery_deadline_handles):
+            self._cancel_recovery_deadline(symptom_name)
+        for symptom_name in tuple(self._recovery_confirmation_handles):
+            self._cancel_recovery_confirmation_listeners(symptom_name)
         for key in tuple(self._command_failure_handles):
             self._cancel_command_failure_watch(key)
         self._persist_state()
@@ -196,13 +249,12 @@ class RecoveryManager:
             return False
         self._saving_state = True
         try:
-            self.state_store.save(
-                {
+            snapshot = {
                     "version": 1,
                     "recent_outcomes": self._recent_outcomes,
                     "proposals": [
                         {
-                            **self._public_proposal(record),
+                            **self._public_proposal(record, for_storage=True),
                             "action_name": record.get("action_name"),
                             "fault_tag": record.get("fault_tag"),
                             "expected_postconditions": record.get(
@@ -211,6 +263,10 @@ class RecoveryManager:
                             "actuator_targets": record.get("actuator_targets", {}),
                             "report_user_id": record.get("report_user_id", ""),
                             "outcome_recorded": record.get("outcome_recorded", False),
+                            "incident_runtime_id": record.get("incident_runtime_id", ""),
+                            "incident_id": record.get("incident_id", ""),
+                            "incident_revision": record.get("incident_revision", 0),
+                            "authorization_expires_at": record.get("authorization_expires_at"),
                         }
                         for record in self._proposals.values()
                     ],
@@ -226,7 +282,22 @@ class RecoveryManager:
                         for (symptom_id, entity_id), detail in sorted(self._command_failures.items())
                     ],
                 }
-            )
+            if self._writer is not None:
+                self._write_revision += 1
+                revision = self._write_revision
+                if not self._writer.enqueue(self._write_owner, revision, snapshot, self.state_store.save):
+                    self._storage_available = False
+                    self._write_error_revision = revision
+                    if self.diagnostics_observer is not None:
+                        self.diagnostics_observer("persistence", True, detail="recovery_state", operation="save")
+                    return False
+                for pending in self._pending_async_commands.values():
+                    if not pending["admitted"]:
+                        pending["write_revision"] = revision
+                for pending in self._pending_report_receipts.values():
+                    pending["write_revision"] = revision
+                return True
+            self.state_store.save(snapshot)
         except Exception as exc:
             self._storage_available = False
             if self.diagnostics_observer is not None:
@@ -240,6 +311,32 @@ class RecoveryManager:
             return True
         finally:
             self._saving_state = False
+
+    def _drain_writes(self, **_: Any) -> None:
+        """Require the exact current consumed-permission snapshot before dispatch."""
+        if self._writer is None or not self.scope.eligible:
+            return
+        result = self._writer.drain(self._write_owner)
+        if result is None:
+            return
+        if result.revision >= self._write_error_revision:
+            self._storage_available = result.error is None
+            if result.error is not None:
+                self._write_error_revision = result.revision
+        if result.error is None:
+            self._durable_revision = max(self._durable_revision, result.revision)
+        for name, pending in tuple(self._pending_async_commands.items()):
+            if pending["admitted"] or pending["write_revision"] != result.revision:
+                continue
+            if result.error is not None:
+                self._fail_async_command(name, pending, "authorization_write_failed")
+            else:
+                self._admit_async_command(name, pending)
+        for name, pending in tuple(self._pending_report_receipts.items()):
+            if pending["write_revision"] == result.revision:
+                self._finish_report_write(name, pending, result.error)
+        if self.diagnostics_observer is not None:
+            self.diagnostics_observer("persistence", not self._storage_available, detail="recovery_state", operation="save")
 
     def _restore_state(self) -> None:
         """Restore visible active state without replaying actuator commands."""
@@ -420,7 +517,8 @@ class RecoveryManager:
         handles: list[Any] = []
         self._command_failure_handles[key] = handles
         for source, value in expected.items():
-            handles.append(self.hass_app.listen_state(
+            handles.append(self._listen_state_owned(
+                f"failure:{key[0]}:{key[1]}:{source}",
                 self._command_failure_postcondition_changed,
                 source,
                 new=value,
@@ -460,7 +558,7 @@ class RecoveryManager:
     def _cancel_command_failure_watch(self, key: tuple[str, str]) -> None:
         for handle in self._command_failure_handles.pop(key, []):
             try:
-                self.hass_app.cancel_listen_state(handle)
+                self._cancel_listener_owned(handle)
             except Exception as exc:
                 self.hass_app.log(
                     f"Unable to cancel recovery command listener: {exc}",
@@ -676,7 +774,10 @@ class RecoveryManager:
                 proposal.pop("confirmation_token", None)
         recent_outcomes = [
             {key: value for key, value in record.items() if key != "report_user_id"} for record in reversed(self._recent_outcomes)
-            if record.get("action_name") == recovery.name
+            if record.get("action_name") == recovery.name and not any(
+                report["proposal"].get("proposal_instance_id") == record.get("proposal_instance_id")
+                for report in self._pending_report_receipts.values()
+            )
         ][:3]
         state_priority = {
             RecoveryActionState.FAILED.name: 0,
@@ -722,7 +823,7 @@ class RecoveryManager:
         self.mqtt_entities.publish_sensor_state(sensor_name, sensor_value)
 
     @staticmethod
-    def _public_proposal(record: dict[str, Any]) -> dict[str, Any]:
+    def _public_proposal(record: dict[str, Any], *, for_storage: bool = False) -> dict[str, Any]:
         """Return the allowlisted MQTT/frontend representation of a proposal."""
 
         allowed = (
@@ -756,7 +857,10 @@ class RecoveryManager:
             "consent_timeout_seconds",
             "effect_timeout_seconds",
         )
-        return {key: record.get(key) for key in allowed if record.get(key) not in (None, "")}
+        public = {key: record.get(key) for key in allowed if record.get(key) not in (None, "")}
+        if record.get("_durable_confirmation_pending") and not for_storage:
+            public.update(status=RecoveryActionState.TO_PERFORM.name, report_status="awaiting_evidence")
+        return public
 
     def _execute_entity_action(self, entity: str, value: str) -> None:
         """Execute a supported recovery action through a native HA service."""
@@ -823,17 +927,31 @@ class RecoveryManager:
                 )
                 if owner is None or owner.category != FaultCategory.H:
                     continue
-                # Force each sm to get state if possible
+                if symptom_name == prefaul_name:
+                    continue
+                # Only current typed negative evidence can exclude another hazard.
                 sm_fcn = getattr(symptom_data.module, symptom_data.sm_name)
-                isFaultTrigged = sm_fcn(
-                    symptom_data.module.safety_mechanisms[symptom_data.name],
-                    entities_changes,
-                )
-                if isFaultTrigged and symptom_name != prefaul_name:
+                mechanism = symptom_data.module.safety_mechanisms.get(symptom_data.name)
+                simulator = getattr(symptom_data.module, "simulate", None)
+                if mechanism is None or not callable(simulator):
+                    return True
+                try:
+                    outcome = simulator(mechanism, entities_changes, evaluator=sm_fcn)
+                except Exception:
+                    return True
+                if not isinstance(outcome, ExecutionOutcome):
+                    return True
+                scope = mechanism.scope
+                if (
+                    not scope.eligible or outcome.mechanism_id != mechanism.name
+                    or outcome.generation != scope.generation
+                    or outcome.runtime_id != scope.runtime_id
+                    or outcome.result is not False
+                ):
                     return True
         return False
 
-    def recovery(self, symptom: Symptom, fault_tag) -> None:
+    def recovery(self, symptom: Symptom, fault_tag: str) -> None:
         """
         Executes the appropriate recovery action for the given symptom.
 
@@ -1134,6 +1252,13 @@ class RecoveryManager:
         """Executes the recovery action for a given symptom."""
         if self._execution_contract_reason(recovery_result):
             raise ValueError("Invalid recovery execution contract")
+        if any(
+            self._command_failures.get((symptom.name, entity)) in {
+                "execution_unknown", "postcondition_timeout", "postcondition_unverified_after_restart",
+            }
+            for entity in recovery_result.changed_actuators
+        ):
+            return
         self.hass_app.log(
             f"Executing recovery for symptom: {symptom.name}", level="DEBUG"
         )
@@ -1174,6 +1299,10 @@ class RecoveryManager:
                 f"Recovery {symptom.name} awaits explicit frontend confirmation",
                 level="INFO",
             )
+            return
+
+        if self.dispatcher is not None and recovery_result.changed_actuators:
+            self._stage_async_command(symptom, recovery_result, proposal)
             return
 
         if recovery_result.changed_actuators:
@@ -1224,6 +1353,168 @@ class RecoveryManager:
         ):
             self._schedule_recovery_deadline(symptom.name, max(1, ceil(proposal["expires_at"] - time.time())))
         self.hass_app.log(f"Listeners set for symptom: {symptom.name}", level="DEBUG")
+
+    @staticmethod
+    def _command_fingerprint(result: RecoveryResult) -> str:
+        """Bind authorization to the exact resource, policy and postcondition contract."""
+        return json.dumps({
+            "targets": result.changed_actuators, "postconditions": result.changed_sensors,
+            "policy": result.execution_policy, "source": result.source,
+            "valid_until": result.valid_until, "purpose": result.purpose,
+            "completion": result.completion_condition,
+        }, sort_keys=True, allow_nan=False)
+
+    def _stage_async_command(
+        self, symptom: Symptom, result: RecoveryResult, proposal: dict[str, Any],
+    ) -> None:
+        """Consume permission in a detached durable snapshot before queue admission."""
+        dispatcher = self.dispatcher
+        if dispatcher is None or not self.scope.eligible:
+            return
+        authorization_expires = float(proposal["expires_at"])
+        incident = self._current_incident(symptom)
+        effect = int(proposal["effect_timeout_seconds"])
+        proposal.update(status=RecoveryActionState.EXECUTING.name, confirmation_token="",
+                        expires_at=time.time() + effect, authorization_expires_at=authorization_expires,
+                        incident_runtime_id=incident[0] if incident else "",
+                        incident_id=incident[1] if incident else "",
+                        incident_revision=incident[2] if incident else 0)
+        pending = {
+            "proposal": proposal, "fingerprint": self._command_fingerprint(result),
+            "targets": dict(result.changed_actuators),
+            "expected": dict(result.changed_sensors) or self._actuator_postconditions(result.changed_actuators),
+            "authorization_expires": authorization_expires,
+            "deadline_at": dispatcher.clock() + min(effect, max(0, authorization_expires - time.time())),
+            "admitted": False, "write_revision": 0,
+            "incident": incident,
+        }
+        self._pending_async_commands[symptom.name] = pending
+        self._set_rec_entity(self.recovery_actions[symptom.name])
+        if not self._persist_state():
+            self._fail_async_command(symptom.name, pending, "authorization_write_failed")
+            return
+        self._schedule_recovery_deadline(symptom.name, max(1, ceil(min(effect, authorization_expires - time.time()))))
+
+    def _async_command_eligible(self, name: str, pending: dict[str, Any]) -> bool:
+        generation = self.scope.generation
+        if (not self.scope.eligible or not self._storage_available
+                or self._pending_async_commands.get(name) is not pending
+                or self._proposals.get(name) is not pending["proposal"]
+                or pending["proposal"].get("status") != RecoveryActionState.EXECUTING.name
+                or time.time() >= pending["authorization_expires"]
+                or self._proposal_expired(pending["proposal"])):
+            return False
+        symptom = self.fm.symptoms.get(name)
+        if symptom is None or symptom.state != FaultState.SET:
+            return False
+        result = self._get_potential_recovery_action(symptom)
+        if (result is None or self._command_fingerprint(result) != pending["fingerprint"]
+                or not self._validate_recovery_action(symptom, result)):
+            return False
+        # A changed physical postcondition can make a queued command unnecessary.
+        expected = pending["expected"]
+        unnecessary = expected and all(
+            self._postcondition_matches(name, self.hass_app.get_state(entity), value)
+            for entity, value in expected.items()
+        )
+        # Policy/provider/read adapters can reenter lifecycle handling. Recheck
+        # the owner and authoritative incident after every such callback returns.
+        incident = self._current_incident(symptom)
+        original = pending["incident"]
+        return bool(
+            not unnecessary and self.scope.eligible and self.scope.generation == generation
+            and self._storage_available and self._pending_async_commands.get(name) is pending
+            and self._proposals.get(name) is pending["proposal"]
+            and pending["proposal"].get("status") == RecoveryActionState.EXECUTING.name
+            and self.fm.symptoms.get(name) is symptom and symptom.state == FaultState.SET
+            and original is not None and incident is not None and original[:2] == incident[:2]
+            and incident[2] >= original[2]
+            and time.time() < pending["authorization_expires"]
+            and not self._proposal_expired(pending["proposal"])
+        )
+
+    def _current_incident(self, symptom: Symptom) -> tuple[str, str, int] | None:
+        fault = self.fm.found_mapped_fault(symptom.name, symptom.sm_name)
+        if fault is None or fault.evaluation.active is not True or fault.evaluation.shadowed_by:
+            return None
+        identity = self.fm.response_identity(fault.name) if fault is not None else None
+        if (isinstance(identity, tuple) and len(identity) == 3
+                and isinstance(identity[0], str) and isinstance(identity[1], str)
+                and isinstance(identity[2], int)):
+            return identity
+        return None
+
+    def _admit_async_command(self, name: str, pending: dict[str, Any]) -> None:
+        dispatcher = self.dispatcher
+        if dispatcher is None or not self._async_command_eligible(name, pending):
+            self._fail_async_command(name, pending, "dispatch_ineligible")
+            return
+        pending["admitted"] = True
+        for entity, value in pending["targets"].items():
+            service = self._resolve_entity_action(entity, value)
+            request = dispatcher.make_intent(
+                resource=entity, service=service, payload={"entity_id": entity}, tag=name,
+                revision=dispatcher.next_revision(entity, name),
+                deadline_at=pending["deadline_at"],
+                incident_id=str(pending["proposal"]["proposal_instance_id"]),
+            )
+
+            def eligible(_: ServiceIntent, owner: str = name, candidate: dict[str, Any] = pending) -> bool:
+                if not self._async_command_eligible(owner, candidate):
+                    return False
+                if not candidate.get("effect_started"):
+                    candidate["effect_started"] = True
+                    effect = int(candidate["proposal"]["effect_timeout_seconds"])
+                    candidate["proposal"]["expires_at"] = time.time() + effect
+                    self._schedule_recovery_deadline(owner, effect)
+                return True
+
+            def completed(
+                result: ServiceCompletion, owner: str = name,
+                candidate: dict[str, Any] = pending, target: str = entity,
+            ) -> None:
+                if self._pending_async_commands.get(owner) is not candidate:
+                    return
+                proposal = candidate["proposal"]
+                if self._proposals.get(owner) is not proposal:
+                    return
+                if result.status != CompletionStatus.ACCEPTED or result.deadline_missed:
+                    if result.handed_off:
+                        self._record_command_outcome(owner, target, True, "execution_unknown" if result.status in {
+                            CompletionStatus.UNKNOWN, CompletionStatus.DEADLINE_MISSED,
+                        } else "command_failed")
+                    self._fail_async_command(owner, candidate, result.status.value)
+                    return
+                candidate.setdefault("accepted", set()).add(target)
+                if candidate["accepted"] == set(candidate["targets"]):
+                    self._pending_async_commands.pop(owner, None)
+                    symptom = self.fm.symptoms.get(owner)
+                    if symptom is not None:
+                        self._listen_to_changes(symptom, candidate["expected"], candidate["targets"])
+                    self._persist_state()
+
+            callback = self.scope.guard(completed)
+            admission = dispatcher.enqueue(
+                request, before_dispatch=eligible, on_complete=callback, on_deadline=callback,
+            )
+            if admission not in {Admission.QUEUED, Admission.COALESCED}:
+                self._fail_async_command(name, pending, admission.value)
+                return
+
+    def _fail_async_command(self, name: str, pending: dict[str, Any], reason: str) -> None:
+        """Deny unsent work or retain execution uncertainty; never replay permission."""
+        if self._pending_async_commands.get(name) is not pending:
+            return
+        self._pending_async_commands.pop(name, None)
+        self._cancel_recovery_deadline(name)
+        proposal = self._proposals.get(name)
+        if proposal is pending["proposal"]:
+            proposal.update(status=RecoveryActionState.FAILED.name, confirmation_token="",
+                            blocked_reason_code="diagnostic_restriction",
+                            blocked_reason=Localizer().text("recovery.blocked_diagnostic_restriction"))
+            self._validation_reasons[name] = reason
+            self._set_rec_entity(self.recovery_actions[name])
+            self._persist_state()
 
     def _create_proposal(
         self,
@@ -1311,7 +1602,7 @@ class RecoveryManager:
         fault = self.fm.found_mapped_fault(symptom.name, symptom.sm_name) if symptom else None
         evaluation = getattr(fault, "evaluation", None)
         if (
-            result is None or not result.manual_report_allowed or not self._validate_recovery_action(symptom, result)
+            symptom is None or result is None or not result.manual_report_allowed or not self._validate_recovery_action(symptom, result)
             or result.completion_condition != proposal.get("completion_condition")
             or result.changed_sensors != proposal.get("expected_postconditions", {})
             or result.changed_actuators
@@ -1329,6 +1620,14 @@ class RecoveryManager:
             self._record_final_outcome(proposal, "completed", "operator_report")
         else:
             proposal["report_status"] = "awaiting_evidence"
+        if self._writer is not None:
+            proposal["_durable_confirmation_pending"] = True
+            pending = {"proposal": proposal, "previous": previous, "write_revision": 0}
+            self._pending_report_receipts[proposal_id] = pending
+            if not self._persist_state():
+                self._finish_report_write(proposal_id, pending, "snapshot_admission_rejected")
+            self._set_rec_entity(self.recovery_actions[proposal_id])
+            return
         if not self._persist_state():
             self._proposals[proposal_id] = previous
             self._recent_outcomes = previous_outcomes
@@ -1336,6 +1635,22 @@ class RecoveryManager:
             self._cancel_recovery_deadline(proposal_id)
             self.nm.remove_recovery_guidance(proposal_id, str(proposal.get("fault_tag", "")))
         self._set_rec_entity(self.recovery_actions[proposal_id])
+
+    def _finish_report_write(self, name: str, pending: dict[str, Any], error: str | None) -> None:
+        self._pending_report_receipts.pop(name, None)
+        proposal = pending["proposal"]
+        if self._proposals.get(name) is not proposal:
+            return
+        if error is not None:
+            self._proposals[name] = pending["previous"]
+            self._recent_outcomes = [record for record in self._recent_outcomes if
+                                     record.get("proposal_instance_id") != proposal.get("proposal_instance_id")]
+        else:
+            proposal.pop("_durable_confirmation_pending", None)
+            if proposal.get("completion_condition") == "operator_report":
+                self._cancel_recovery_deadline(name)
+                self.nm.remove_recovery_guidance(name, str(proposal.get("fault_tag", "")))
+        self._set_rec_entity(self.recovery_actions[name])
 
     def handle_recovery_confirmation(
         self,
@@ -1407,6 +1722,10 @@ class RecoveryManager:
             self._recovery_clear_by_name(proposal_id, reason="superseded")
             return
 
+        if self.dispatcher is not None:
+            self._stage_async_command(symptom, recovery_result, proposal)
+            return
+
         proposal["status"] = RecoveryActionState.EXECUTING.name
         proposal["expires_at"] = time.time() + int(proposal.get("effect_timeout_seconds", self.timing.effect_timeout_seconds))
         if not self._persist_state():
@@ -1453,15 +1772,23 @@ class RecoveryManager:
         self._cancel_recovery_deadline(symptom_name)
         run_in = getattr(self.hass_app, "run_in", None)
         if callable(run_in):
-            self._recovery_deadline_handles[symptom_name] = run_in(
-                self._recovery_deadline_reached,
-                timeout_seconds,
-                symptom_name=symptom_name,
-            )
+            schedule: Callable[..., Any] = run_in
+            if self.dispatcher is not None:
+                handle = self.scope.schedule(
+                    symptom_name,
+                    lambda callback: schedule(callback, timeout_seconds, symptom_name=symptom_name),
+                    self._recovery_deadline_reached, self.hass_app.cancel_timer,
+                )
+            else:
+                handle = run_in(self._recovery_deadline_reached, timeout_seconds, symptom_name=symptom_name)
+            self._recovery_deadline_handles[symptom_name] = handle
 
     def _cancel_recovery_deadline(self, symptom_name: str) -> None:
         handle = self._recovery_deadline_handles.pop(symptom_name, None)
         if handle is None:
+            return
+        if self.dispatcher is not None:
+            self.scope.cancel_handle(handle)
             return
         cancel_timer = getattr(self.hass_app, "cancel_timer", None)
         if callable(cancel_timer):
@@ -1534,6 +1861,8 @@ class RecoveryManager:
 
     def _recovery_clear_by_name(self, symptom_name: str, *, reason: str = "withdrawn") -> None:
         """Withdraw one proposal and all guidance/timers it owns."""
+        self._pending_async_commands.pop(symptom_name, None)
+        self._pending_report_receipts.pop(symptom_name, None)
 
         if symptom_name in self.recovery_actions:
             self._cancel_recovery_confirmation_listeners(symptom_name)
@@ -1625,7 +1954,8 @@ class RecoveryManager:
         self._recovery_confirmation_handles[symptom.name] = handles
         for entity_id, expected_state in expected_changes.items():
             options = {} if self._proposals.get(symptom.name, {}).get("completion_condition") == "opening_closed" else {"new": str(expected_state)}
-            handle = self.hass_app.listen_state(
+            handle = self._listen_state_owned(
+                f"confirmation:{symptom.name}:{entity_id}",
                 self._recovery_performed,
                 entity_id,
                 **options,
@@ -1651,12 +1981,29 @@ class RecoveryManager:
             return
         for handle in handles:
             try:
-                cancel_listener(handle)
+                self._cancel_listener_owned(handle)
             except Exception as exc:
                 self.hass_app.log(
                     f"Failed to cancel recovery listener: {exc}",
                     level="WARNING",
                 )
+
+    def _listen_state_owned(self, key: str, callback: Callable[..., Any], entity: str, **options: Any) -> Any:
+        if self.dispatcher is None:
+            return self.hass_app.listen_state(callback, entity, **options)
+        self.scope.undeclare(key)
+        self.scope.declare(
+            key, CancellationKind.STATE,
+            lambda handler: self.hass_app.listen_state(handler, entity, **options),
+            callback, self.hass_app.cancel_listen_state,
+        )
+        return OwnedRecoveryListener(key)
+
+    def _cancel_listener_owned(self, handle: Any) -> None:
+        if isinstance(handle, OwnedRecoveryListener):
+            self.scope.undeclare(handle.key)
+        else:
+            self.hass_app.cancel_listen_state(handle)
 
     @staticmethod
     def _actuator_postconditions(

@@ -2,7 +2,26 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { renderToStaticMarkup } from 'react-dom/server';
 import ConfigurationObjectEditor from './ConfigurationObjectEditor.js';
-import { initialObject, normalizeMonitorConfiguration, registrySchemas, updateObjectField } from './configurationFieldSchemas.js';
+import { externalTimingFields, initialObject, normalizeMonitorConfiguration, registrySchemas, updateObjectField, validateExternalTimingDraft } from './configurationFieldSchemas.js';
+
+test('weather timing validates independently from AQ and preserves installed overrides', () => {
+  const draft = { installation: { component_settings: { external_hazard: {
+    weather: { persistence_seconds: 75 }, outdoor_air_quality: { persistence_seconds: 300 },
+  } } } };
+  assert.deepEqual(validateExternalTimingDraft(draft), []);
+  assert.equal(externalTimingFields.weather.maximum, 75);
+  for (const value of [120, 76, 0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, true, '75']) {
+    const invalid = { installation: { component_settings: { external_hazard: { weather: { persistence_seconds: value } } } } };
+    const original = structuredClone(invalid);
+    const errors = validateExternalTimingDraft(invalid);
+    assert.equal(errors.length, 1);
+    assert.equal(errors[0].path.at(-2), 'weather');
+    assert.deepEqual(invalid, original);
+  }
+  draft.installation.component_settings.external_hazard.outdoor_air_quality.persistence_seconds = 420;
+  assert.deepEqual(validateExternalTimingDraft(draft), []);
+  assert.deepEqual(validateExternalTimingDraft({}), []);
+});
 
 test('renders registry values as fields rather than raw JSON', () => {
   const html = renderToStaticMarkup(

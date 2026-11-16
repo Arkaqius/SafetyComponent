@@ -161,7 +161,7 @@ Frontend tests shall cover configuration and the internal-hazard projections.
    and supported HA callback adapter. Adapt notification targets, local outputs,
    MQTT desired/accepted projections and snapshot writers. Keep recovery consent/
    command persistence ordering. Prove stalled target, repeated reload, overflow,
-   duplicate/late completion and unchanged service payload acceptance semantics.
+   duplicate/late completion and explicit Boolean `success: true` acceptance.
 5. **Weather timing**: separate AQ policy and apply 75 s weather confirmation,
    concurrent 60 s opening and unchanged positive-clear delay. Validate all timing
    overrides against the full 120 s pipeline with the real in-process dispatcher.
@@ -196,7 +196,8 @@ The existing Mobile Notification Delivery and Runtime State Storage architecture
 descriptions carry the corresponding admission/completion and durable-generation
 requirements. Keep their examples and verification mapping synchronized during
 implementation, including desired/accepted publication distinctions.
-Existing local service acceptance and public IDs are preserved; queue admission
+Public IDs and local output permissions are preserved; HA acceptance requires an
+explicit successful completion envelope. Queue admission
 never becomes proof of phone delivery, physical postcondition or durable storage.
 
 Post-design constitution gate: all FR-001..023 and SC-001..010 have contract/test

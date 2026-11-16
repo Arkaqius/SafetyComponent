@@ -602,23 +602,33 @@ def test_restored_retry_uses_current_explicit_service_configuration() -> None:
     )
 
 
-def test_appdaemon_submission_without_result_is_accepted() -> None:
+@pytest.mark.parametrize("response", [None, {}, {"success": False}, {"success": 1}, {"success": "true"}])
+def test_appdaemon_submission_without_explicit_success_is_not_accepted(response) -> None:
     hass = make_hass()
-    hass.call_service.return_value = None
+    hass.call_service.return_value = response
     manager = NotificationManager(hass, {})
 
     manager.notify("Fault", 3, FaultState.SET, None, "legacy-tag")
 
-    assert manager.pending_deliveries == {}
+    assert manager.pending_deliveries
+    assert manager._last_result != "accepted_by_home_assistant"
+    assert manager._counters["accepted_attempts"] == 0
+    assert manager._counters["failed_attempts"] == 1
+    assert manager._last_success_at is None
+
+
+def test_explicit_success_with_empty_response_body_is_accepted() -> None:
+    hass = make_hass()
+    hass.call_service.return_value = {"success": True, "result": None}
+    manager = NotificationManager(hass, {})
+    manager.notify("Fault", 3, FaultState.SET, None, "explicit-tag")
+    assert not manager.pending_deliveries
     assert manager._last_result == "accepted_by_home_assistant"
-    assert manager._counters["accepted_attempts"] == 1
-    assert manager._counters["failed_attempts"] == 0
-    assert manager._last_success_at is not None
 
 
 def test_notify_submissions_never_probe_unsupported_result_options() -> None:
     hass = make_hass()
-    hass.call_service.side_effect = [None, None]
+    hass.call_service.side_effect = [{"success": True}, {"success": True}]
     manager = NotificationManager(hass, {})
 
     manager.notify("Fault", 3, FaultState.SET, None, "submission-one")
@@ -667,12 +677,9 @@ def test_start_registers_companion_and_safetyhome_acknowledgement_events() -> No
 
     manager.start()
 
-    assert call(
-        manager.handle_mobile_action, "mobile_app_notification_action"
-    ) in hass.listen_event.call_args_list
-    assert call(
-        manager.handle_ui_acknowledgement, "safety_notification_acknowledge"
-    ) in hass.listen_event.call_args_list
+    registered = {(item.args[0].__wrapped__, item.args[1]) for item in hass.listen_event.call_args_list}
+    assert (manager.handle_mobile_action, "mobile_app_notification_action") in registered
+    assert (manager.handle_ui_acknowledgement, "safety_notification_acknowledge") in registered
 
 
 def test_start_registers_mobile_and_safetyhome_acknowledgement_events() -> None:
@@ -681,12 +688,9 @@ def test_start_registers_mobile_and_safetyhome_acknowledgement_events() -> None:
 
     manager.start()
 
-    assert call(
-        manager.handle_mobile_action, "mobile_app_notification_action"
-    ) in hass.listen_event.call_args_list
-    assert call(
-        manager.handle_ui_acknowledgement, "safety_notification_acknowledge"
-    ) in hass.listen_event.call_args_list
+    registered = {(item.args[0].__wrapped__, item.args[1]) for item in hass.listen_event.call_args_list}
+    assert (manager.handle_mobile_action, "mobile_app_notification_action") in registered
+    assert (manager.handle_ui_acknowledgement, "safety_notification_acknowledge") in registered
 
 
 def test_local_annunciator_ownership_restores_with_manager_state() -> None:

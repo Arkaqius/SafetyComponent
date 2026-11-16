@@ -13,10 +13,13 @@ from uuid import UUID, uuid4
 from components.core.localization import Localizer
 from components.core.entity_names import friendly_entity_name
 from components.core.sqlite_state_store import SqliteStateDatabase
-from components.core.types_common import FaultState, RecoveryAction, SMState, Symptom
+from components.core.types_common import FaultState, OutcomeKind, RecoveryAction, SMState, Symptom
 from components.recovery_manager.manual_actions import manual_action
 from components.safetycomponents.core.safety_component import (
     SafetyComponent,
+    SafetyMechanismResult,
+    evaluation_entry,
+    qualified_safety_mechanism_decorator,
     register_safety_component,
 )
 from components.safetycomponents.core.safety_mechanism import SafetyMechanism
@@ -234,15 +237,36 @@ class HeatingSystemMonitorComponent(SafetyComponent):
         self.safety_mechanisms[name].isEnabled = state == SMState.ENABLED
         return True
 
+    @qualified_safety_mechanism_decorator
     def _evaluate_mechanism(
         self, mechanism: SafetyMechanism, entities_changes: dict | None = None
-    ) -> bool:
+    ) -> SafetyMechanismResult:
         if entities_changes is not None:
             # Hypothetical recovery simulation must never fabricate a live result.
-            return False
+            return SafetyMechanismResult(False, is_evaluable=False, reason="simulation_unsupported")
         self._tick()
-        return mechanism.isEnabled
+        return self._latch_outcome(self._latches[mechanism.name])
 
+    def simulate(
+        self, mechanism: SafetyMechanism, changes: dict[str, str], *, evaluator: Any = None,
+    ) -> Any:
+        """Expose unsupported hypothetical thermal proof explicitly as unevaluable."""
+        return super().simulate(mechanism, changes, evaluator=self._evaluate_mechanism)
+
+    @staticmethod
+    def _latch_outcome(latch: HeatingLatch) -> SafetyMechanismResult:
+        """Normalize committed thermal status while preserving independent activity."""
+        kind = None
+        if latch.status in {"INHIBITED", "NOT_APPLICABLE"}:
+            kind = OutcomeKind.INHIBITED
+        elif latch.status == "DISABLED":
+            kind = OutcomeKind.DISABLED
+        return SafetyMechanismResult(
+            latch.active, is_evaluable=latch.status in {"PASS", "FAIL"},
+            outcome_kind=kind, reason=latch.reason,
+        )
+
+    @evaluation_entry
     def _tick(self, **_: Any) -> None:
         """Commit one coherent evaluation before publishing aggregate transitions."""
         previous = {name: replace(latch) for name, latch in self._latches.items()}
@@ -314,6 +338,8 @@ class HeatingSystemMonitorComponent(SafetyComponent):
             self.mqtt_entities.publish_sensor_state(
                 self._sensor_ids[key], state=state, attributes=attributes
             )
+        for name, mechanism in self.safety_mechanisms.items():
+            self.observe_outcome(mechanism, self._latch_outcome(self._latches[name]))
         self.record_evaluation(
             success=not bool(self._restore_error or self._save_error)
         )

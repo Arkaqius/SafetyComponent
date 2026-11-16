@@ -72,6 +72,7 @@ from components.core.derivative_monitor import DerivativeMonitor
 from components.core.localization import LocalizationSettings
 from components.core.lifecycle import CancellationKind, LifecycleScope
 from components.core.mqtt_entity_manager import MqttEntityManager
+from components.core.service_dispatcher import Lane, ResourceSpec, ServiceDispatcher
 from components.core.self_diagnostics import SelfDiagnosticsComponent
 from components.core.sqlite_state_store import SqliteStateDatabase, state_database_path
 from components.core.startup_grace import StartupGrace
@@ -92,6 +93,8 @@ from components.faults_manager.evidence_store import (
     InMemoryFaultEvidenceStore,
 )
 from components.notification_manager.notification_manager import NotificationManager
+from components.notification_manager.mobile_push_provider import MobilePushProvider
+from components.notification_manager.local_annunciator import LocalAnnunciator
 from components.notification_manager.state_store import (
     InMemoryNotificationStateStore,
 )
@@ -547,6 +550,7 @@ class SafetyFunctions(hass.Hass):
             self.log(f"Rejected degradation binding {source}: {error}", level="ERROR")
 
         persistence_cfg = self.notification_cfg["persistence"]
+        self._configure_response_resources()
         notification_state_store = (
             self.state_database.store("notification_state", persistence_cfg["state_file"])
             if persistence_cfg["enabled"]
@@ -561,6 +565,12 @@ class SafetyFunctions(hass.Hass):
             state_store=notification_state_store,
             mqtt_entities=self.mqtt_entities,
             diagnostics_observer=self.self_diagnostics.record_app_cause,
+            mobile_provider=MobilePushProvider(self, self.notification_cfg["mobile"], dispatcher=self.service_dispatcher),
+            local_annunciator=LocalAnnunciator(
+                self, self.notification_cfg["local"], self.self_diagnostics.record_app_cause,
+                dispatcher=self.service_dispatcher,
+            ),
+            snapshot_writer=self.__dict__.get("_snapshot_writers", {}).get("notification_state"),
         )
         for fault_name in retired_battery_faults:
             self.notify_man.retire_fault(self.fm._generate_fault_tag(fault_name))
@@ -616,6 +626,8 @@ class SafetyFunctions(hass.Hass):
                 if entity_monitor is not None else None
             ),
             timing=self.runtime_config["user_config"].get("recovery", {}).get("timing", {}),
+            dispatcher=self.service_dispatcher,
+            snapshot_writer=self.__dict__.get("_snapshot_writers", {}).get("recovery_state"),
         )
         for component in self.sm_modules.values():
             if callable(getattr(component, "evaluate_recovery_policy", None)):
@@ -645,9 +657,10 @@ class SafetyFunctions(hass.Hass):
             "qualified_evaluation_unavailable", self.fm.mark_evaluation_unavailable, priority=0
         )
         self.event_bus.subscribe(
-            "fault", self.notify_man.handle_fault_event, priority=0
+            "fault", self.notify_man.handle_fault_event, priority=0, isolated=True, scope=self._root_scope
         )
-        self.event_bus.subscribe("fault", self.reco_man.handle_fault_event, priority=1)
+        self.event_bus.subscribe("fault", self.reco_man.handle_fault_event, priority=1,
+                                 isolated=True, scope=self._root_scope)
 
         # Publish system and fault entities before mechanisms begin evaluation.
         self.register_entities()
@@ -723,6 +736,10 @@ class SafetyFunctions(hass.Hass):
                 self.event_bus,
                 self.api_modules,
             )
+            external_component = self.sm_modules.get("ExternalHazardComponent")
+            continuity_probe = getattr(self.external_api_runtime, "continuity_state", None)
+            if external_component is not None and callable(continuity_probe):
+                external_component.dispatch_continuity_probe = continuity_probe
             self.external_api_runtime.start()
 
         # Announce successful startup and begin MQTT heartbeat reporting.
@@ -942,12 +959,20 @@ class SafetyFunctions(hass.Hass):
                 context={"strict_validation": strict_validation},
             )
 
+            self.service_dispatcher = ServiceDispatcher(
+                self, [ResourceSpec("mqtt", Lane.MQTT, frozenset({"mqtt/publish"}))],
+                runtime_id=getattr(self, "runtime_id", None),
+                registry=self.__dict__.get("_service_registry"),
+            )
+            self.service_dispatcher.start()
             self.mqtt_entities = MqttEntityManager(
                 self,
                 raw_mqtt_cfg,
                 strict_validation=strict_validation,
                 localization=localization,
+                dispatcher=self.service_dispatcher,
             )
+            self.mqtt_entities.start()
             self.localizer = self.mqtt_entities.localizer
             self.mqtt_entities.publish_availability(False)
             self._register_health_entity()
@@ -960,13 +985,49 @@ class SafetyFunctions(hass.Hass):
             return False
         return True
 
+    def _configure_response_resources(self) -> None:
+        """Derive the finite service catalog from validated installation bindings."""
+        resources = {
+            service: ResourceSpec(service, Lane.MOBILE, frozenset({service}))
+            for service in self.notification_cfg["mobile"]["services"]
+        }
+        local = self.notification_cfg["local"]
+        light, alarm = local.get("light_entity"), local.get("alarm_entity")
+        if light:
+            resources[light] = ResourceSpec(light, Lane.LOCAL, frozenset({"light/turn_on", "light/turn_off"}))
+        if alarm:
+            resources[alarm] = ResourceSpec(alarm, Lane.LOCAL, frozenset({"alarm_control_panel/alarm_trigger"}))
+
+        def visit(value: Any) -> None:
+            if isinstance(value, Mapping):
+                for key, item in value.items():
+                    if key in {"actuator", "actuator_entity_id"} and isinstance(item, str) and item:
+                        services = frozenset({
+                            RecoveryManager._resolve_entity_action(item, "on"),
+                            RecoveryManager._resolve_entity_action(item, "off"),
+                        })
+                        if item in resources:
+                            previous = resources[item]
+                            resources[item] = ResourceSpec(item, previous.lane, previous.services | services)
+                        else:
+                            resources[item] = ResourceSpec(item, Lane.RECOVERY, services)
+                    else:
+                        visit(item)
+            elif isinstance(value, (list, tuple)):
+                for item in value:
+                    visit(item)
+
+        visit(self.safety_components_cfg)
+        self.service_dispatcher.add_resources(list(resources.values()))
+
     def _start_mqtt_reporting(self) -> None:
         """Make MQTT entities available and keep their states fresh."""
         self.mqtt_entities.publish_availability(True)
         diagnostics = getattr(self, "self_diagnostics", None)
         if diagnostics is not None:
+            projections = self.mqtt_entities.projections
             diagnostics.record_app_cause(
-                "publication", False, detail="mqtt_heartbeat"
+                "publication", bool(projections and projections.uncertain), detail="mqtt_heartbeat"
             )
         if self.mqtt_entities.settings.heartbeat_seconds > 0:
             self._owned_root_interval("mqtt_heartbeat", self._mqtt_heartbeat, 1)
@@ -1014,8 +1075,13 @@ class SafetyFunctions(hass.Hass):
             return
         diagnostics = getattr(self, "self_diagnostics", None)
         if diagnostics is not None:
+            projections = self.mqtt_entities.projections
+            broker = self.service_dispatcher
             diagnostics.record_app_cause(
-                "publication", False, detail="mqtt_heartbeat"
+                "publication", bool(
+                    projections and projections.uncertain or broker.service_failures.get("mqtt")
+                    or broker.registry.resource_quarantined("mqtt")
+                ), detail="mqtt_heartbeat"
             )
 
     def record_safety_evaluation(self, component: str, *, success: bool) -> None:
@@ -1050,6 +1116,12 @@ class SafetyFunctions(hass.Hass):
         root_scope = getattr(self, "_root_scope", None)
         if root_scope is not None:
             root_scope.stop()
+        # Fence every monitor before any component drains its durable owner state.
+        # Service leases belong to the process broker, never to these input scopes.
+        for component in getattr(self, "sm_modules", {}).values():
+            scope = getattr(component, "scope", None)
+            if isinstance(scope, LifecycleScope):
+                scope.stop()
         routines = getattr(self, "safety_routines", None)
         if routines is not None:
             routines.stop()
@@ -1122,8 +1194,13 @@ class SafetyFunctions(hass.Hass):
                     "sensor.safetysystem_state", "stopped"
                 )
             mqtt_entities.publish_availability(False)
+            mqtt_entities.stop()
         except Exception as exc:
             self.log(f"Unable to publish MQTT offline state: {exc}", level="ERROR")
+        finally:
+            dispatcher = getattr(self, "service_dispatcher", None)
+            if dispatcher is not None:
+                dispatcher.stop()
 
     def _register_health_entity(self) -> None:
         """Register the app health entity through MQTT discovery."""

@@ -16,10 +16,13 @@ from components.core.localization import Localizer
 from components.core.mqtt_entity_manager import MqttEntityManager
 from components.core.types_common import FaultState, RecoveryAction, RecoveryResult, SMState, Symptom
 from components.external_apis import get_registered_api_components
-from components.external_apis.core.models import ApiResult, ExternalObservation, HazardType, ProviderCapability, ProviderHealth, ProviderHealthState
+from components.external_apis.core.models import ApiResult, DispatchTiming, ExternalObservation, HazardType, ProviderCapability, ProviderHealth, ProviderHealthState
 from components.recovery_manager.policy import RecoveryPolicyDecision
 from components.recovery_manager.manual_actions import manual_action
-from components.safetycomponents.core.safety_component import SafetyComponent, register_safety_component
+from components.safetycomponents.core.safety_component import (
+    SafetyComponent, SafetyMechanismResult, evaluation_entry,
+    qualified_safety_mechanism_decorator, register_safety_component,
+)
 from components.safetycomponents.core.safety_mechanism import SafetyMechanism
 
 from .policy import HazardAssessment, evaluate_observation
@@ -159,8 +162,13 @@ class ExternalHazardComponent(SafetyComponent):
         self._listened_openings: set[str] = set()
         self._opening_listeners: dict[str, Any] = {}
         self._opened_since: dict[str, float] = {}
+        self._opening_available_since: dict[str, float] = {}
         self._opening_timers: dict[str, tuple[object, Any]] = {}
         self._model_assertions: dict[ModelKey, tuple[float, datetime]] = {}
+        self._model_response_since: dict[ModelKey, float] = {}
+        self._dispatch_timing: dict[str, DispatchTiming] = {}
+        self._continuity_uncertain: set[str] = set()
+        self.dispatch_continuity_probe: Callable[[str], str] | None = None
         self._model_timers: dict[ModelKey, tuple[object, Any]] = {}
         self._clear_handles: dict[str, tuple[object, Any]] = {}
         self._stopped = False
@@ -176,6 +184,7 @@ class ExternalHazardComponent(SafetyComponent):
         self._aggregate_entity_id: str | None = None
         self._inhibited_reasons: dict[str, dict[str, str]] = {}
         self.event_bus.subscribe("external_api_result", self.handle_external_api_result, scope=self.scope)
+        self.event_bus.subscribe("external_api_discontinuity", self.handle_dispatch_discontinuity, scope=self.scope)
         self.event_bus.subscribe("external_api_test_result", self.handle_external_api_test_result, scope=self.scope)
 
     def configure_runtime(self, *, runtime_id: str, selections: Mapping[str, str | None]) -> None:
@@ -465,6 +474,9 @@ class ExternalHazardComponent(SafetyComponent):
             self.start()
             mechanism.start()
             mechanism.isEnabled = True
+            opening_name = mechanism.sm_args.get("opening_name")
+            if isinstance(opening_name, str):
+                self._observe_opening(opening_name, self._opening_state(opening_name, None))
             return True
         if state == SMState.DISABLED:
             mechanism.isEnabled = False
@@ -486,18 +498,19 @@ class ExternalHazardComponent(SafetyComponent):
     ) -> bool:
         return self._evaluate_exposure(mechanism, entities_changes)
 
+    @qualified_safety_mechanism_decorator
     def sm_ext_provider_unavailable(
         self,
         mechanism: SafetyMechanism,
         entities_changes: dict[str, str] | None = None,
-    ) -> bool:
+    ) -> SafetyMechanismResult:
         dry_run = entities_changes is not None
         if dry_run:
-            return False
+            return SafetyMechanismResult(False, is_evaluable=False, reason="simulation_unsupported")
         status, context = self._capability_health(str(mechanism.sm_args["capability"]))
         if mechanism.isEnabled and not dry_run:
             self._apply_state(mechanism.name, status, context)
-        return status == "active"
+        return SafetyMechanismResult(status == "active", is_evaluable=status in {"active", "clear"}, reason=status)
 
     def handle_external_api_result(self, *, result: ApiResult, **_: Any) -> None:
         """Accept one complete provider snapshot and re-evaluate policy."""
@@ -519,6 +532,11 @@ class ExternalHazardComponent(SafetyComponent):
         ):
             return
         self._provider_seen.add(provider)
+        self._continuity_uncertain.discard(provider)
+        if result.dispatch_timing is not None:
+            self._dispatch_timing[provider] = result.dispatch_timing
+        else:
+            self._dispatch_timing.pop(provider, None)
         self._health[provider] = result.health
         if result.health.state == ProviderHealthState.OK:
             self._observations[provider] = {
@@ -529,6 +547,18 @@ class ExternalHazardComponent(SafetyComponent):
         else:
             self._provider_failure_since.setdefault(provider, self._now())
         self._publish_provider_health(result)
+        self._evaluate_all()
+
+    def handle_dispatch_discontinuity(self, *, provider: str, **_: Any) -> None:
+        """Invalidate pending continuity while preserving every active assertion."""
+        if provider not in self.enabled_providers:
+            return
+        self._continuity_uncertain.add(provider)
+        for key in tuple(self._model_assertions):
+            if key[0] == provider:
+                self._model_assertions.pop(key, None)
+                self._model_response_since.pop(key, None)
+                self._cancel_model_timer(key)
         self._evaluate_all()
 
     def _opening_changed(self, _: SafetyMechanism) -> None:
@@ -549,6 +579,14 @@ class ExternalHazardComponent(SafetyComponent):
                     self._cancel_clear(mechanism.name)
         self._evaluate_all()
 
+    def simulate(
+        self, mechanism: SafetyMechanism, changes: dict[str, str], *, evaluator: Any = None,
+    ) -> Any:
+        """Resolve the actual typed policy kernel without mutating provider evidence."""
+        predicate = self._evaluate_exposure if "hazard" in mechanism.sm_args else self.sm_ext_provider_unavailable
+        return super().simulate(mechanism, changes, evaluator=predicate)
+
+    @evaluation_entry
     def _evaluate_all(self) -> None:
         if self._stopped:
             return
@@ -567,22 +605,24 @@ class ExternalHazardComponent(SafetyComponent):
         self._publish_aggregate()
         self.record_evaluation()
 
+    @qualified_safety_mechanism_decorator
     def _evaluate_exposure(
         self,
         mechanism: SafetyMechanism,
         entities_changes: dict[str, str] | None,
         evidence: HazardEvidence | None = None,
-    ) -> bool:
+    ) -> SafetyMechanismResult:
         opening_name = str(mechanism.sm_args["opening_name"])
         hazard = HazardType(str(mechanism.sm_args["hazard"]))
         opening_entity = str(self.openings[opening_name]["entity_id"])
         if entities_changes is not None and opening_entity not in entities_changes:
-            return False
+            return SafetyMechanismResult(False, is_evaluable=False, reason="hypothetical_input_missing")
         opening_state = self._opening_state(opening_name, entities_changes)
         status, context, assessment = self._exposure_evidence(
             opening_name, hazard, opening_state, evidence, track=entities_changes is None
         )
         if entities_changes is None and mechanism.isEnabled:
+            self._observe_opening(opening_name, opening_state)
             qualified = self._opening_qualified(opening_name, opening_state)
             if (
                 status == "active"
@@ -590,9 +630,13 @@ class ExternalHazardComponent(SafetyComponent):
                 and self.symptom_states.get(mechanism.name) != FaultState.SET
                 and not (assessment and assessment.immediate_exposure)
             ):
-                return False
+                return SafetyMechanismResult(False, is_evaluable=False, reason="aperture_qualification_pending")
             self._apply_state(mechanism.name, status, context)
-        return status == "active"
+        clear_pending = entities_changes is None and mechanism.name in self._clear_handles
+        return SafetyMechanismResult(
+            status == "active", is_evaluable=status in {"active", "clear"} and not clear_pending,
+            reason="clear_qualification_pending" if clear_pending else status,
+        )
 
     def _exposure_evidence(
         self, opening_name: str, hazard: HazardType, opening_state: str,
@@ -604,7 +648,18 @@ class ExternalHazardComponent(SafetyComponent):
         if opening_state == "unavailable":
             return "unknown", context, None
         status, hazard_context, assessment = evidence or self._hazard_evidence(hazard, track=track)
+        if status == "active" and hazard != HazardType.OUTDOOR_AIR_POLLUTION:
+            onset = max(float(hazard_context.get("hazard_usable_received_monotonic", monotonic())),
+                        self._opening_available_since.get(opening_name, monotonic()))
+            hazard_context = {**hazard_context, "response_deadline_monotonic": onset + 120,
+                              "response_elapsed_seconds": max(0, monotonic() - onset)}
         return status, {**context, **hazard_context}, assessment
+
+    def _observe_opening(self, opening_name: str, opening_state: str) -> None:
+        if opening_state == "open":
+            self._opening_available_since.setdefault(opening_name, monotonic())
+        else:
+            self._opening_available_since.pop(opening_name, None)
 
     def _opening_qualified(self, opening_name: str, opening_state: str) -> bool:
         if self.openings[opening_name]["kind"] not in DEBOUNCED_OPENING_KINDS:
@@ -638,6 +693,7 @@ class ExternalHazardComponent(SafetyComponent):
         self._evaluate_all()
 
     def _reset_opening_qualification(self, opening_name: str) -> None:
+        self._opening_available_since.pop(opening_name, None)
         self._opened_since.pop(opening_name, None)
         timer = self._opening_timers.pop(opening_name, None)
         if timer is not None:
@@ -646,7 +702,8 @@ class ExternalHazardComponent(SafetyComponent):
     def _hazard_evidence(self, hazard: HazardType, *, track: bool = True) -> HazardEvidence:
         now = self._now()
         elapsed = monotonic()
-        persistence = int(self.policy["weather"].get("persistence_seconds", 300))
+        policy_key = "outdoor_air_quality" if hazard == HazardType.OUTDOOR_AIR_POLLUTION else "weather"
+        persistence = int(self.policy[policy_key].get("persistence_seconds", 300 if policy_key == "outdoor_air_quality" else 75))
         providers = self._providers_for(_HAZARD_CAPABILITIES[hazard], hazard=hazard)
         active: list[tuple[ExternalObservation, HazardAssessment]] = []
         reevaluated_sources: list[str] = []
@@ -661,6 +718,12 @@ class ExternalHazardComponent(SafetyComponent):
         unusable = False
         pending = False
         for provider in providers:
+            if self.dispatch_continuity_probe is not None and self.dispatch_continuity_probe(provider) == "pending":
+                # Wait for ordered review of the queued snapshot without
+                # restarting an otherwise continuous qualifying observation.
+                unusable = True
+                pending = True
+                continue
             official_warning = self._provider_plugins[provider].capability == ProviderCapability.OFFICIAL_WARNINGS
             health = self._health.get(provider)
             fresh = self._provider_snapshot_is_fresh(provider, now)
@@ -669,6 +732,7 @@ class ExternalHazardComponent(SafetyComponent):
             if valid_until < now:
                 started = elapsed
                 if track:
+                    self._model_response_since.pop(key, None)
                     self._cancel_model_timer(key)
             previously_active = provider in asserted_sources or (
                 key in self._model_assertions
@@ -722,12 +786,15 @@ class ExternalHazardComponent(SafetyComponent):
                 if source_ready and (provider_usable or official_warning):
                     reevaluated_sources.append(provider)
                 self._model_assertions.pop(key, None)
+                self._model_response_since.pop(key, None)
                 self._cancel_model_timer(key)
                 continue
             deadline = max(observation.valid_to for observation, _ in provider_active)
             if health is not None and health.last_success_at is not None and health.stale_after_seconds > 0:
                 deadline = min(deadline, health.last_success_at + timedelta(seconds=health.stale_after_seconds))
             remaining = persistence - (elapsed - started)
+            timing = self._dispatch_timing.get(provider)
+            self._model_response_since.setdefault(key, timing.received_monotonic if timing else elapsed)
             self._model_assertions[key] = (started, deadline)
             if remaining <= 0:
                 if source_ready and provider_usable:
@@ -756,6 +823,7 @@ class ExternalHazardComponent(SafetyComponent):
                 ),
             )
             context = self._evidence_context(observation, assessment)
+            context["hazard_usable_received_monotonic"] = self._model_response_since.get((observation.provider, hazard), elapsed)
             context["reevaluated_sources"] = reevaluated_sources
             return "active", context, assessment
 
@@ -808,6 +876,10 @@ class ExternalHazardComponent(SafetyComponent):
         ))
 
     def _provider_snapshot_is_fresh(self, provider: str, now: datetime) -> bool:
+        if provider in self._continuity_uncertain or (
+            self.dispatch_continuity_probe is not None and self.dispatch_continuity_probe(provider) in {"lost", "stopped"}
+        ):
+            return False
         health = self._health.get(provider)
         if health is None or health.last_success_at is None:
             return False
@@ -962,6 +1034,7 @@ class ExternalHazardComponent(SafetyComponent):
             return
         self._publish_clear(symptom_id, context)
 
+    @evaluation_entry
     def _finish_clear(self, **kwargs: Any) -> None:
         symptom_id = str(kwargs["symptom_id"])
         timer = self._clear_handles.get(symptom_id)
@@ -991,6 +1064,9 @@ class ExternalHazardComponent(SafetyComponent):
             self.record_symptom_observation(symptom_id, FaultState.CLEARED, context)
             return
         self.symptom_states[symptom_id] = FaultState.CLEARED
+        mechanism = self.safety_mechanisms.get(symptom_id)
+        if mechanism is not None:
+            self.observe_outcome(mechanism, SafetyMechanismResult(False))
         clear_context = dict(self._last_context.pop(symptom_id, context))
         clear_context.pop("reevaluated_sources", None)
         if "reevaluated_sources" in context:
@@ -1051,6 +1127,9 @@ class ExternalHazardComponent(SafetyComponent):
             "freshness": "fresh",
             "source_reference": observation.source_reference,
         }
+        timing = self._dispatch_timing.get(observation.provider)
+        if timing is not None:
+            context.update(dispatch_delay_seconds=timing.delay_seconds, dispatch_overrun=timing.overdue)
         return context
 
     def _publish_provider_health(self, result: ApiResult) -> None:
@@ -1256,6 +1335,10 @@ class ExternalHazardComponent(SafetyComponent):
         for key in list(self._model_timers):
             self._cancel_model_timer(key)
         self._model_assertions.clear()
+        self._model_response_since.clear()
+        self._opening_available_since.clear()
+        self._dispatch_timing.clear()
+        self._continuity_uncertain.clear()
         for symptom_id in list(self._clear_handles):
             self._cancel_clear(symptom_id)
         for opening_name in list(self._opened_since):

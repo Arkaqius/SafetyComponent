@@ -11,6 +11,7 @@ from SafetyFunctions import SafetyFunctions
 from components.core.fault_state_policy import FaultEvaluationStatus
 from components.core.degradation import RestrictionEffect
 from components.core.types_common import FaultState
+from .fixtures.hass_fixture import drain_responses, install_response_fakes
 
 
 @pytest.mark.parametrize("unwritable_database", [False, True])
@@ -85,7 +86,9 @@ def test_gas_alarm_reaches_l1_fault_without_co_consensus(tmp_path, monkeypatch, 
         (service, kwargs)
     )
 
+    install_response_fakes(app, app, capture_only=True)
     app.initialize()
+    drain_responses(app)
 
     assert app.degradation.binding_errors == {}
 

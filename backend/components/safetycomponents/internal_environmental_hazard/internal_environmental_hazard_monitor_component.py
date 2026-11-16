@@ -13,10 +13,13 @@ from components.core.common_entities import CommonEntities
 from components.core.event_bus import EventBus
 from components.core.mqtt_entity_manager import MqttEntityManager
 from components.core.sqlite_state_store import SqliteStateDatabase, state_database_path
-from components.core.types_common import FaultState, RecoveryAction, SMState, Symptom
+from components.core.types_common import FaultState, OutcomeKind, RecoveryAction, SMState, Symptom
 from components.recovery_manager.manual_actions import manual_action
 from components.safetycomponents.core.safety_component import (
     SafetyComponent,
+    SafetyMechanismResult,
+    evaluation_entry,
+    qualified_safety_mechanism_decorator,
     register_safety_component,
 )
 from components.safetycomponents.core.safety_mechanism import SafetyMechanism
@@ -347,29 +350,52 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
 
         return self._evaluate_mechanism(mechanism, entities_changes)
 
+    @qualified_safety_mechanism_decorator
     def _evaluate_mechanism(
         self,
         mechanism: SafetyMechanism,
         entities_changes: dict[str, str] | None = None,
-    ) -> bool:
+    ) -> SafetyMechanismResult:
         if not mechanism.isEnabled:
-            return False
+            return SafetyMechanismResult(False, outcome_kind=OutcomeKind.DISABLED)
         detector_key, kind = self._symptom_bindings[mechanism.name]
         runtime = self._detectors[detector_key]
         entity_id = str(runtime.config["entity_id"])
         if entities_changes is not None:
-            raw = entities_changes.get(entity_id, self._read_entity(entity_id))
+            raw = entities_changes[entity_id] if entity_id in entities_changes else self._read_entity(entity_id)
             classification, _, _ = self._classify(runtime, raw)
-            return (
-                classification == "alarm"
-                if kind == "alarm"
-                else classification in {"unavailable", "unevaluable"}
+            value = classification == "alarm" if kind == "alarm" else classification in {"unavailable", "unevaluable"}
+            return SafetyMechanismResult(
+                value, is_evaluable=kind == "health" or classification in {"alarm", "clear"},
+                outcome_kind=OutcomeKind.INHIBITED if kind == "alarm" and classification == "test" else None,
+                reason=classification,
             )
 
         raw = self._read_entity(entity_id)
         self._evaluate_runtime(runtime, raw, kinds={kind})
-        return runtime.alarm_active if kind == "alarm" else runtime.health_active
+        return self._runtime_outcome(runtime, kind)
 
+    def simulate(
+        self, mechanism: SafetyMechanism, changes: dict[str, str], *, evaluator: Any = None,
+    ) -> Any:
+        """Use the typed shared detector kernel for every indoor public callback."""
+        return super().simulate(mechanism, changes, evaluator=self._evaluate_mechanism)
+
+    def _runtime_outcome(self, runtime: DetectorRuntime, kind: str) -> SafetyMechanismResult:
+        """Separate alarm source authority from a valid detector-health failure."""
+        alarm = kind == "alarm"
+        active = runtime.alarm_active if alarm else runtime.health_active
+        pending = runtime.alarm_timer if alarm else runtime.health_timer
+        classification = runtime.last_classification
+        return SafetyMechanismResult(
+            active, is_evaluable=pending is None and (
+                not alarm or classification in {"alarm", "clear"}
+            ),
+            outcome_kind=OutcomeKind.INHIBITED if alarm and classification == "test" else None,
+            reason="qualification_pending" if pending is not None else classification,
+        )
+
+    @evaluation_entry
     def _entity_changed(
         self,
         entity: str,
@@ -385,6 +411,7 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
                 self._detectors[detector_key], new, kinds={"alarm", "health"}
             )
 
+    @evaluation_entry
     def _evaluate_runtime(
         self,
         runtime: DetectorRuntime,
@@ -401,6 +428,9 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
             self._evaluate_alarm(runtime, classification, observed_at)
         if "health" in kinds and self._kind_enabled(runtime.key, "health"):
             self._evaluate_health(runtime, classification, observed_at)
+        for kind in kinds:
+            if self._kind_enabled(runtime.key, kind):
+                self.observe_outcome(self._kind_mechanism(runtime, kind), self._runtime_outcome(runtime, kind))
         self._publish_diagnostics(runtime)
         self.record_evaluation()
 
@@ -487,6 +517,7 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
         finally:
             runtime.alarm_callback_running = False
 
+    @evaluation_entry
     def _alarm_clear_elapsed(self, **kwargs: Any) -> None:
         runtime = self._detectors.get(str(kwargs["detector_key"]))
         if runtime is None:
@@ -510,10 +541,12 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
             self._schedule_alarm_clear(runtime, clear_since)
             return
         runtime.alarm_active = False
+        self.observe_outcome(self._kind_mechanism(runtime, "alarm"), self._runtime_outcome(runtime, "alarm"))
         self._publish_symptom(runtime, "alarm", FaultState.CLEARED)
         self._persist_state()
         self._publish_diagnostics(runtime)
 
+    @evaluation_entry
     def _health_timer_elapsed(self, **kwargs: Any) -> None:
         runtime = self._detectors.get(str(kwargs["detector_key"]))
         if runtime is None:
@@ -532,6 +565,7 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
             self._publish_diagnostics(runtime)
             return
         self._apply_health_target(runtime, target)
+        self.observe_outcome(self._kind_mechanism(runtime, "health"), self._runtime_outcome(runtime, "health"))
         self._publish_diagnostics(runtime)
 
     def _apply_health_target(self, runtime: DetectorRuntime, target: str) -> None:

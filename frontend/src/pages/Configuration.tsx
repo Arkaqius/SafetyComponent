@@ -9,7 +9,7 @@ import HelpTooltip from '../components/HelpTooltip';
 import { ConfigurationEntityContext } from '../components/configurationEntityContext';
 import { configurationEntityOptions } from '../domain/configurationEntities';
 import type { EntityMap } from '../domain/safety';
-import { normalizeMonitorConfiguration, registrySchemas } from '../components/configurationFieldSchemas';
+import { externalTimingFields, normalizeMonitorConfiguration, registrySchemas, validateExternalTimingDraft } from '../components/configurationFieldSchemas';
 import { effectiveFunctionalSafetySettings, functionalSafetySettings } from '../domain/functionalSafetySettings';
 import {
   importUserConfiguration,
@@ -105,6 +105,12 @@ export default function Configuration() {
 
   const save = async () => {
     if (!draft || restarting) return;
+    const timingErrors = validateExternalTimingDraft(draft);
+    if (timingErrors.length) {
+      setFieldErrors(timingErrors);
+      setError(timingErrors.map(item => item.message).join(' '));
+      return;
+    }
     const country = stringValue(asMap(asMap(draft.installation).site).country_code)
       .trim()
       .toUpperCase();
@@ -869,7 +875,9 @@ export default function Configuration() {
         <fieldset className='configuration-fieldset'>
           <legend>Zagrożenia zewnętrzne</legend>
           <p className='configuration-field-help'>
-            Lista zagrożeń i horyzont prognozy są ustawieniami systemowymi. Poniżej można zmienić tylko progi dla tej instalacji.
+            Pogoda jest potwierdzana domyślnie przez 75 s. Kwalifikacja otwartych drzwi i bram przez 60 s biegnie równolegle.
+            Limit 120 s obejmuje cały przepływ do przyjęcia powiadomienia przez HA lub zgłoszenia błędu. Jakość powietrza ma osobne 300 s,
+            a wycofanie alarmu wymaga oddzielnych 120 s wiarygodnego ustąpienia warunku.
           </p>
           <div className='configuration-grid'>
             {(
@@ -879,7 +887,7 @@ export default function Configuration() {
                 ['gust_watch_m_s', 'Obserwacja porywów (m/s)'],
                 ['gust_warning_m_s', 'Ostrzeżenie o porywach (m/s)'],
                 ['precipitation_warning_mm_h', 'Ostrzeżenie o opadach (mm/h)'],
-                ['persistence_seconds', 'Trwałość warunku (s)'],
+                ['persistence_seconds', externalTimingFields.weather.label],
               ] as const
             ).map(([key, label]) => (
               <NumberField
@@ -887,7 +895,9 @@ export default function Configuration() {
                 label={label}
                 optional
                 defaultValue={String(weatherSystem[`default_${key}`] ?? '')}
-                help='Puste pole używa wartości systemowej.'
+                help={key === 'persistence_seconds' ? externalTimingFields.weather.help : 'Puste pole używa wartości systemowej.'}
+                minimum={key === 'persistence_seconds' ? 1 : undefined}
+                maximum={key === 'persistence_seconds' ? 75 : undefined}
                 value={numberValue(weatherSettings[key])}
                 onChange={value => update(['installation', 'component_settings', 'external_hazard', 'weather', key], value)}
               />
@@ -901,6 +911,15 @@ export default function Configuration() {
               onChange={value =>
                 update(['installation', 'component_settings', 'external_hazard', 'outdoor_air_quality', 'warning_at'], value)
               }
+            />
+            <NumberField
+              label={externalTimingFields.outdoor_air_quality.label}
+              optional
+              minimum={1}
+              defaultValue={String(airQualitySystem.default_persistence_seconds ?? 300)}
+              help={externalTimingFields.outdoor_air_quality.help}
+              value={numberValue(airQualitySettings.persistence_seconds)}
+              onChange={value => update(['installation', 'component_settings', 'external_hazard', 'outdoor_air_quality', 'persistence_seconds'], value)}
             />
           </div>
         </fieldset>
@@ -979,6 +998,8 @@ function NumberField({
   optional = false,
   help,
   defaultValue,
+  minimum,
+  maximum,
   onChange,
 }: {
   label: string;
@@ -986,6 +1007,8 @@ function NumberField({
   optional?: boolean;
   help?: string;
   defaultValue?: string;
+  minimum?: number;
+  maximum?: number;
   onChange: (value: number | undefined) => void;
 }) {
   const [text, setText] = useState(value === undefined ? '' : String(value));
@@ -998,6 +1021,7 @@ function NumberField({
     <label className='configuration-field'>
       <span title={help}>{label}</span>
       <input
+        aria-label={label}
         inputMode='decimal'
         onBlur={() => {
           if (text === '' && optional) onChange(undefined);
@@ -1010,6 +1034,8 @@ function NumberField({
           else if (Number.isFinite(Number(next))) onChange(Number(next));
         }}
         type='number'
+        min={minimum}
+        max={maximum}
         step='any'
         value={text}
       />

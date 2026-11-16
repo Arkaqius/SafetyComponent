@@ -1,6 +1,7 @@
 """System-level tests for notification and recovery manager integration."""
 
 import copy
+from time import perf_counter
 from typing import Any
 from unittest.mock import MagicMock, Mock
 
@@ -8,8 +9,10 @@ import pytest
 
 from components.core.types_common import FaultState, RecoveryActionState
 from components.core.fault_state_policy import FaultEvaluationStatus
+from safety_lifecycle_support import FakeMonotonicClock
 
 from .fixtures.hass_fixture import (
+    drain_responses,
     MockBehavior,
     default_mock_behaviors,
     mock_get_state,
@@ -72,11 +75,86 @@ def _install_stateful_hass(app_instance: Any, mock_behaviors: list[MockBehavior]
 
 
 def _notify_calls(app_instance: Any) -> list[Any]:
+    drain_responses(app_instance)
     return [
         call
         for call in app_instance.call_service.call_args_list
         if call.args and call.args[0] == "notify/mobile_app_example_phone"
     ]
+
+
+def test_throwing_response_consumer_does_not_block_notification_or_recovery(
+    mocked_hass_app_with_temp_component,
+):
+    app, *_ = mocked_hass_app_with_temp_component
+    _install_stateful_hass(app, default_mock_behaviors())
+    app.initialize()
+    admitted = []
+
+    def broken_consumer(*, fault_name, **_):
+        if fault_name != "RiskyTemperature":
+            return
+        admitted.append("broken")
+        raise RuntimeError("fictional consumer failure")
+
+    app.event_bus.subscribe("fault", broken_consumer, priority=-10, isolated=True)
+    app.event_bus.subscribe("fault", lambda **data: admitted.append("last")
+                            if data["fault_name"] == "RiskyTemperature" else None, priority=100)
+    app.fm.set_symptom("RiskyTemperatureOffice", {"location": "Office"})
+    assert admitted == ["broken", "last"]
+    assert app.event_bus.admission_failures == 1
+    assert app.notify_man.active_notification
+    assert app.faults["RiskyTemperature"].evaluation.active
+
+
+def test_root_stalled_target_and_storage_leave_healthy_target_and_recovery_admission_live(
+    mocked_hass_app_with_temp_component,
+):
+    app, *_ = mocked_hass_app_with_temp_component
+    app.args = copy.deepcopy(app.args)
+    app.args["user_config"]["notification"]["mobile"] = {
+        "services": ["notify/fixture_stalled", "notify/fixture_healthy"],
+    }
+    app.initialize()
+    clock = FakeMonotonicClock()
+    app.service_dispatcher.clock = clock
+    completions = []
+
+    def transport(service, **payload):
+        callback = payload["callback"]
+        if service == "notify/fixture_stalled":
+            completions.append(callback)
+        else:
+            callback({"success": True, "result": None})
+        return "scheduled-fixture"
+
+    app.call_service.side_effect = transport
+    admitted = []
+    app.event_bus.subscribe("fault", lambda **data: admitted.append(bool(app.notify_man.active_notification))
+                            if data["fault_name"] == "RiskyTemperature" else None, priority=5, isolated=True)
+    started = perf_counter()
+    app.fm.set_symptom("RiskyTemperatureOffice", {"location": "Office"})
+    assert perf_counter() - started < 1
+    assert admitted == [True] and app.faults["RiskyTemperature"].evaluation.active
+    assert not app.notify_man._durable_revision
+    # Deliberately leave the one storage job unfinished throughout this flow.
+    for _ in range(8):
+        app.mqtt_entities.projections.tick()
+        app.service_dispatcher.tick()
+    tag = app.fm._generate_fault_tag("RiskyTemperature")
+    healthy = [call for call in app.call_service.call_args_list if call.args[0] == "notify/fixture_healthy"
+               and call.kwargs["data"]["tag"] == tag]
+    assert len(healthy) == 1 and completions
+    assert app.notify_man._counters["accepted_attempts"] >= 1
+    assert len(app._snapshot_executors["notification_state"].jobs) == 1
+    clock.advance(121)
+    app.service_dispatcher.tick()
+    assert app.service_dispatcher.registry.quarantined_count >= 1
+    assert app.notify_man._counters["deadline_misses"] >= 1
+    completions[0]({"success": True})
+    app.service_dispatcher.tick()
+    assert not any(entry["service"] == "notify/fixture_stalled" and entry["tag"] == tag
+                   and entry["result"] == "accepted_by_home_assistant" for entry in app.notify_man.notification_history)
 
 
 def test_notification_updates_single_fault_notification_for_prefault_lifecycle(
@@ -204,6 +282,7 @@ def test_recovery_manager_sets_recovery_state_and_actuator_entities(
     )
     state_store = _install_stateful_hass(app_instance, mock_behaviors)
     state_store.set_state("cover.office_window", state="open")
+    state_store.set_state("binary_sensor.example_office_window", state="on")
 
     app_instance.initialize()
     for diagnostic_id, binding in app_instance.degradation._bindings.items():
@@ -224,7 +303,6 @@ def test_recovery_manager_sets_recovery_state_and_actuator_entities(
 
     app_instance.fm.set_symptom("RiskyTemperatureOffice", {"location": "Office"})
 
-    symptom = app_instance.symptoms["RiskyTemperatureOffice"]
     recovery_action = app_instance.reco_man.recovery_actions["RiskyTemperatureOffice"]
     assert recovery_action.current_status == RecoveryActionState.EXECUTING
     assert (
@@ -234,21 +312,15 @@ def test_recovery_manager_sets_recovery_state_and_actuator_entities(
         )[-1]
         == "EXECUTING"
     )
-    app_instance.call_service.assert_any_call(
-        "cover/close_cover", entity_id="cover.office_window"
-    )
+    cover_calls = [call for call in app_instance.call_service.call_args_list if call.args[0] == "cover/close_cover"]
+    assert len(cover_calls) == 1 and cover_calls[0].kwargs["entity_id"] == "cover.office_window"
     assert not mqtt_payloads(
         app_instance,
         "safety_component/command/cover_office_window/set",
     )
-    app_instance.listen_state.assert_any_call(
-        app_instance.reco_man._recovery_performed,
-        "binary_sensor.example_office_window",
-        new="off",
-        symptom_name=symptom.name,
-        confirmation_entity="binary_sensor.example_office_window",
-        expected_state="off",
-    )
+    listeners = [call for call in app_instance.listen_state.call_args_list if call.args[1] == "binary_sensor.example_office_window"]
+    assert any(getattr(call.args[0], "__wrapped__", None) == app_instance.reco_man._recovery_performed
+               and call.kwargs.get("expected_state") == "off" for call in listeners)
 
 
 @pytest.mark.parametrize(

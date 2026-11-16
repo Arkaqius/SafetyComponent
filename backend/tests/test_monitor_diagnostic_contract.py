@@ -132,7 +132,7 @@ def test_unrelated_diagnostic_families_share_source_but_retain_fault_ownership(m
     from inspect import unwrap
 
     app.listen_state.assert_called_once_with(app.listen_state.call_args.args[0], "sensor.office_temperature")
-    assert unwrap(app.listen_state.call_args.args[0]) == component._entity_changed
+    assert unwrap(app.listen_state.call_args.args[0]) == unwrap(component._entity_changed)
     component.stop()
     app.cancel_listen_state.assert_called_once()
 

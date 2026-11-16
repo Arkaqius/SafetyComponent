@@ -40,8 +40,11 @@ Acquire/register the lease and its completion credit before invoking AppDaemon;
 the test adapter may complete synchronously. Normalize completion/error fields to
 at most 4 KiB per record. A fast callback cannot race an absent lease or create an
 extra in-flight operation.
-Immediate scheduling return is not delivery acceptance; completion follows the
-existing AppDaemon acceptance interpretation and never proves phone delivery.
+Immediate scheduling return is not delivery acceptance. Only a completion envelope
+whose `success` field is the Boolean `true` establishes HA acceptance. A successful
+envelope may contain `result: null`; bare `None`, an absent/ambiguous completion or
+an explicit failure cannot establish acceptance. None of these results proves
+phone delivery or a physical postcondition.
 
 Retain unresolved leases in a lock-protected process-lifetime infrastructure
 registry across AppDaemon app reloads. Store no mutable domain state there. All

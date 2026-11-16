@@ -21,6 +21,9 @@ from configuration_model import (
     validate_user_configuration_v2,
 )
 from components.external_apis.core.configuration import resolve_provider_bindings
+from components.safetycomponents.external_hazard.schema import (
+    AirQualityPolicy, WeatherPolicy, validate_weather_response_budget,
+)
 from system_configuration import (
     FunctionalSafetyCalibrationSource,
     system_configuration_schema,
@@ -229,6 +232,9 @@ def _build_app_config(
         air_quality,
         user_external.outdoor_air_quality.model_dump(exclude_none=True),
     )
+    weather = WeatherPolicy.model_validate(weather).model_dump()
+    air_quality = AirQualityPolicy.model_validate(air_quality).model_dump()
+    validate_weather_response_budget(weather["persistence_seconds"], runtime_cfg["notification"]["retry"]["deadlines_seconds"][2])
     provider_policy = copy.deepcopy(runtime_cfg.get("providers", {}))
 
     functional_safety = deep_merge(

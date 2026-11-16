@@ -10,10 +10,16 @@ import pytest
 
 
 def _isolated_recovery_manager(app_instance):
-    """Exercise recovery mechanics with synthetic, unbound unit-test symptoms."""
+    """Exercise legacy service resolution with synthetic, unbound unit-test symptoms.
+
+    Production async authorization is covered by test_recovery_dispatch.py and
+    system integration; this compatibility kernel has no configured incident.
+    """
 
     manager = app_instance.reco_man
     manager.degradation = None
+    manager.dispatcher = None
+    manager._writer = None
     return manager
 
 
@@ -647,7 +653,7 @@ def test_failed_actuator_command_persists_and_notifies_diagnostic_owner(
 ):
     app_instance, _, __, ___, _ = mocked_hass_app_with_temp_component
     app_instance.initialize()
-    manager = app_instance.reco_man
+    manager = _isolated_recovery_manager(app_instance)
     manager.command_observer = Mock()
     manager.state_store = InMemoryRecoveryStateStore()
     symptom = Mock(name="symptom")
@@ -890,7 +896,7 @@ def test_user_confirmed_cover_recovery_never_actuates_before_valid_confirmation(
 ):
     app_instance, _, __, ___, _ = mocked_hass_app_with_temp_component
     app_instance.initialize()
-    recovery_manager = app_instance.reco_man
+    recovery_manager = _isolated_recovery_manager(app_instance)
     symptom = Mock()
     symptom.name = "ExternalWeatherExposureWindExternalGate"
     symptom.state = FaultState.SET
@@ -963,7 +969,7 @@ def test_confirmation_fail_closed_paths_and_deadline_state(
 ):
     app_instance, _, __, ___, _ = mocked_hass_app_with_temp_component
     app_instance.initialize()
-    manager = app_instance.reco_man
+    manager = _isolated_recovery_manager(app_instance)
     symptom = Mock()
     symptom.name = "ExternalWeatherExposureWindExternalGate"
     symptom.state = FaultState.SET
@@ -1373,7 +1379,7 @@ def test_actuator_only_cover_waits_for_closed_state(
 ):
     app_instance, _, __, ___, _ = mocked_hass_app_with_temp_component
     app_instance.initialize()
-    recovery_manager = app_instance.reco_man
+    recovery_manager = _isolated_recovery_manager(app_instance)
     recovery_manager.hass_app.listen_state.reset_mock()
 
     symptom = Mock()
@@ -1439,3 +1445,28 @@ def test_recovery_listeners_remain_active_until_all_postconditions_match(
         expected_state="off",
     )
     recovery_manager._recovery_clear.assert_called_once_with(symptom)
+@pytest.mark.parametrize("kind", ["unevaluable", "inhibited", "disabled"])
+def test_recovery_dry_run_rejects_nonnegative_proof(kind):
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+    from components.core.types_common import ExecutionOutcome, OutcomeKind, SMState
+    from components.core.fault_state_policy import FaultCategory
+    from components.safetycomponents.core.safety_mechanism import SafetyMechanism
+
+    mechanism = SafetyMechanism(Mock(), Mock(return_value=False), "other", True)
+    mechanism.start()
+    module = SimpleNamespace(
+        evaluate=Mock(return_value=False), safety_mechanisms={"other": mechanism},
+        simulate=Mock(return_value=ExecutionOutcome(
+            "other", mechanism.scope.generation, 0.0, OutcomeKind(kind),
+            runtime_id=mechanism.scope.runtime_id,
+        )),
+    )
+    symptom = SimpleNamespace(sm_state=SMState.ENABLED, module=module, sm_name="evaluate", name="other")
+    manager = RecoveryManager.__new__(RecoveryManager)
+    manager.fm = SimpleNamespace(
+        get_all_symptom=lambda: {"other": symptom},
+        found_mapped_fault=lambda *_: SimpleNamespace(category=FaultCategory.H),
+    )
+    assert manager._is_dry_test_failed("target", {"sensor.fixture": "unknown"}) is True
+    module.evaluate.assert_not_called()

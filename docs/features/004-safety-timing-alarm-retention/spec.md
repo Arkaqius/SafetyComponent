@@ -23,6 +23,12 @@ and diagnostic publication.
   A: Total to warning, preserving SYS. Confirmation must leave room for dispatch,
   scheduling, decision and notification.
 
+### Session 2026-11-16
+
+- Q: What establishes Home Assistant service acceptance?
+  A: Only a completed envelope with Boolean `success: true`. Bare `None` is
+  uncertain; an accepted envelope may contain `result: null`.
+
 ## User Scenarios & Testing
 
 ### User Story 1 - Receive weather warnings within the agreed budget (Priority: P1)
@@ -269,8 +275,9 @@ entity health, heating, indoor alarms and external hazards with delayed callback
 - Shared lifecycle corrections include heating infrastructure integration but do
   not expand the thermal functionality of feature 003. Domain evaluation may use
   distinct scheduling strategies under the same lifecycle and outcome contract.
-- Current recovery permissions, service allowlists, confirmation semantics and
-  notification acceptance meanings remain unchanged. Independent processing is
-  not permission to ignore output restrictions or execute a recovery command.
+- Current recovery permissions, service allowlists and confirmation semantics
+  remain unchanged. Notification acceptance requires an explicit successful
+  completion envelope. Independent processing does not grant permission to
+  ignore output restrictions or execute a recovery command.
 - This specification/plan does not authorize implementation, live detector tests,
   private configuration application or deployment.

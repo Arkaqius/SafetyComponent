@@ -79,6 +79,28 @@ def test_failed_cancellation_is_visible_but_old_callbacks_remain_fenced():
     assert scope.handle_count == 0
 
 
+def test_unprintable_cancellation_error_cannot_abort_remaining_cleanup():
+    class BrokenError(Exception):
+        def __str__(self):
+            raise RuntimeError("formatting failed")
+
+    source = Source()
+    scope = LifecycleScope("fixture", enabled=True)
+
+    def cancel(handle):
+        if handle == 1:
+            raise BrokenError()
+        source.cancel(handle)
+
+    scope.declare("first", CancellationKind.STATE, source.subscribe, lambda: None, cancel)
+    scope.declare("second", CancellationKind.STATE, source.subscribe, lambda: None, cancel)
+    scope.start()
+    scope.stop()
+    assert source.cancelled == [2]
+    assert scope.handle_count == 0
+    assert scope.cancellation_failures == 1
+
+
 def test_timer_replacement_fences_old_slot_and_releases_fired_handle():
     source, calls = Source(), []
     scope = LifecycleScope("fixture", enabled=True)
@@ -172,6 +194,13 @@ def test_only_valid_boolean_evidence_creates_eligible_positive_or_negative():
     assert missing.kind == OutcomeKind.UNEVALUABLE
     with pytest.raises(TypeError):
         ExecutionOutcome.from_result("fixture", 1, 0.0, None)
+    contradictory = ExecutionOutcome.from_result(
+        "fixture", 1, 0.0, False, evaluable=False, kind=OutcomeKind.ELIGIBLE_NEGATIVE,
+    )
+    assert contradictory.kind == OutcomeKind.UNEVALUABLE
+    assert contradictory.result is None
+    with pytest.raises(ValueError):
+        ExecutionOutcome.from_result("fixture", 1, 0.0, True, kind=OutcomeKind.ELIGIBLE_NEGATIVE)
 
 
 def test_stop_during_predicate_cannot_apply_a_negative_result():
@@ -267,3 +296,176 @@ def test_stop_from_evaluation_consumer_cannot_apply_negative_result():
     predicate(owner, mechanism)
     assert owner.symptom_states == {"fixture": FaultState.SET}
     assert owner.debounce_states == {"fixture": DebounceState(-1, False)}
+
+
+@pytest.mark.parametrize("kind", list(OutcomeKind))
+def test_qualified_boundary_preserves_quality_and_readonly_simulation(kind):
+    from unittest.mock import Mock
+    from components.core.event_bus import EventBus
+    from components.safetycomponents.core.safety_component import (
+        SafetyComponent, SafetyMechanismResult, qualified_safety_mechanism_decorator,
+    )
+
+    owner = SafetyComponent.__new__(SafetyComponent)
+    owner.hass_app, owner.event_bus = Mock(), EventBus()
+
+    @qualified_safety_mechanism_decorator
+    def predicate(self, mechanism, changes):
+        return SafetyMechanismResult(kind == OutcomeKind.ELIGIBLE_POSITIVE, outcome_kind=kind)
+
+    owner.evaluate = predicate.__get__(owner)
+    mechanism = SafetyMechanism(owner.hass_app, owner.evaluate, "fixture", True)
+    mechanism.start()
+    owner.evaluate(mechanism)
+    assert mechanism.last_outcome.kind == kind
+    owner.hass_app.record_safety_evaluation.assert_called_once()
+    before = mechanism.last_outcome
+    owner.hass_app.reset_mock()
+    result = owner.simulate(mechanism, {}, evaluator=owner.evaluate)
+    assert result.kind == kind
+    assert mechanism.last_outcome is before
+    owner.hass_app.record_safety_evaluation.assert_not_called()
+    owner.hass_app.run_in.assert_not_called()
+
+
+def test_nested_evaluation_entry_reports_exception_once_without_clearing_danger():
+    from unittest.mock import Mock
+    from components.core.event_bus import EventBus
+    from components.core.types_common import FaultState
+    from components.safetycomponents.core.safety_component import SafetyComponent, evaluation_entry
+
+    owner = SafetyComponent.__new__(SafetyComponent)
+    owner.hass_app, owner.event_bus = Mock(), EventBus()
+    owner.symptom_states = {"fixture": FaultState.SET}
+    mechanism = SafetyMechanism(owner.hass_app, lambda _: None, "fixture", True)
+    mechanism.start()
+    owner.safety_mechanisms = {"fixture": mechanism}
+
+    @evaluation_entry
+    def nested(self):
+        self.record_evaluation()
+        raise RuntimeError("failed evaluation")
+
+    @evaluation_entry
+    def outer(self):
+        nested(self)
+
+    with pytest.raises(RuntimeError, match="failed evaluation"):
+        outer(owner)
+    owner.hass_app.record_safety_evaluation.assert_called_once_with("UNKNOWN", success=False)
+    assert owner.symptom_states == {"fixture": FaultState.SET}
+    assert mechanism.last_outcome.kind == OutcomeKind.UNEVALUABLE
+
+
+def test_heating_simulation_does_not_claim_a_negative_for_unsupported_kernel(tmp_path):
+    from components.core.types_common import OutcomeKind
+    from test_heating_monitor import build_component
+
+    component, app, _, _ = build_component(tmp_path, {
+        "sensor.health": {"state": "ok", "attributes": {}},
+        "sensor.flow": {"state": "30", "attributes": {}},
+    })
+    mechanism = next(iter(component.safety_mechanisms.values()))
+    app.reset_mock()
+    before = mechanism.last_outcome
+    result = component.simulate(mechanism, {"sensor.health": "ok"})
+    assert result.kind == OutcomeKind.UNEVALUABLE
+    assert result.result is None
+    assert mechanism.last_outcome is before
+    app.call_service.assert_not_called()
+    app.run_in.assert_not_called()
+
+
+def test_indoor_unknown_is_alarm_uncertainty_but_can_be_health_failure():
+    from datetime import datetime, timezone
+    from components.core.types_common import OutcomeKind
+    from test_internal_environmental_hazard_component import _build_component, GAS_ENTITY
+
+    component, app, _ = _build_component({}, now=datetime.now(timezone.utc))
+    alarm = next(sm for name, sm in component.safety_mechanisms.items()
+                 if component._symptom_bindings[name][1] == "alarm")
+    health = next(sm for name, sm in component.safety_mechanisms.items()
+                  if component._symptom_bindings[name][0] == component._symptom_bindings[alarm.name][0]
+                  and component._symptom_bindings[name][1] == "health")
+    app.reset_mock()
+    changes = {GAS_ENTITY: "unknown"}
+    assert component.simulate(alarm, changes).kind == OutcomeKind.UNEVALUABLE
+    assert component.simulate(health, changes).kind == OutcomeKind.ELIGIBLE_POSITIVE
+    app.get_state.assert_not_called()
+    app.record_safety_evaluation.assert_not_called()
+
+
+def test_external_missing_hypothetical_input_does_not_prove_clear():
+    from components.core.types_common import OutcomeKind
+    from test_external_hazard_component import _component
+
+    component, _, _, _ = _component()
+    mechanism = next(sm for sm in component.safety_mechanisms.values() if "hazard" in sm.sm_args)
+    before = mechanism.last_outcome
+    result = component.simulate(mechanism, {})
+    assert result.kind == OutcomeKind.UNEVALUABLE
+    assert result.result is None
+    assert mechanism.last_outcome is before
+
+
+@pytest.mark.parametrize("family", ["temperature", "doors", "entity", "heating", "indoor", "external"])
+def test_real_family_scopes_stop_and_restart_without_obsolete_domain_entry(
+    family, mocked_hass_app_basic, tmp_path,
+):
+    from datetime import datetime, timezone
+    from components.core.types_common import SMState
+
+    now = datetime.now(timezone.utc)
+    if family == "temperature":
+        app, *_ = mocked_hass_app_basic
+        app.initialize()
+        component = app.sm_modules["TemperatureComponent"]
+    elif family == "doors":
+        from test_safety_doors_component import _build_component
+        component, _, _ = _build_component({"state": "closed", "last_changed": now.isoformat()}, now=now)
+    elif family == "entity":
+        from test_entity_monitor_component import _component, _config
+        _, _, component = _component(mocked_hass_app_basic)
+        symptoms, _ = component.get_symptoms_data({component.component_name: component}, _config())
+        for symptom in symptoms.values():
+            component.init_safety_mechanism(symptom.sm_name, symptom.name, symptom.parameters)
+            component.enable_safety_mechanism(symptom.name, SMState.ENABLED)
+    elif family == "heating":
+        from test_heating_monitor import build_component
+        component, _, _, _ = build_component(tmp_path, {
+            "sensor.health": {"state": "ok", "attributes": {}},
+            "sensor.flow": {"state": "30", "attributes": {}},
+        })
+    elif family == "indoor":
+        from test_internal_environmental_hazard_component import _build_component
+        component, _, _ = _build_component({}, now=now)
+    else:
+        from test_external_hazard_component import _component
+        component, _, _, _ = _component()
+    handles = (component.scope.handle_count,
+               sum(sm.scope.handle_count for sm in component.safety_mechanisms.values()))
+    component.start()
+    component.start()
+    assert handles == (component.scope.handle_count,
+                       sum(sm.scope.handle_count for sm in component.safety_mechanisms.values()))
+    old = [sm.scope.guard(lambda sm=sm: sm.callback(sm)) for sm in component.safety_mechanisms.values()]
+    for name in ("_tick", "_evaluate_all", "_entity_changed"):
+        callback = getattr(component, name, None)
+        if callable(callback):
+            old.append(component.scope.guard(callback))
+    component.stop()
+    component.stop()
+    assert component.scope.handle_count == 0
+    assert all(sm.scope.handle_count == 0 for sm in component.safety_mechanisms.values())
+    stopped = dict(component.symptom_states)
+    for callback in old:
+        callback()
+    assert component.symptom_states == stopped
+    component.start()
+    for name in component.safety_mechanisms:
+        component.enable_safety_mechanism(name, SMState.ENABLED)
+    restarted = dict(component.symptom_states)
+    for callback in old:
+        callback()
+    assert component.symptom_states == restarted
+    component.stop()

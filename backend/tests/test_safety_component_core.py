@@ -113,6 +113,31 @@ def test_sm_recalled_raises_not_implemented():
         component.sm_recalled()
 
 
+def test_unevaluable_simulation_is_not_negative_and_has_no_live_effects():
+    from components.core.types_common import OutcomeKind
+    from components.safetycomponents.core.safety_component import SafetyMechanismResult, safety_mechanism_decorator
+    from components.safetycomponents.core.safety_mechanism import SafetyMechanism
+
+    component = _make_component()
+
+    @safety_mechanism_decorator
+    def predicate(self, mechanism, changes):
+        return SafetyMechanismResult(False, is_evaluable=False)
+
+    mechanism = SafetyMechanism(component.hass_app, predicate.__get__(component), "fixture", True)
+    mechanism.start()
+    events = []
+    component.event_bus.subscribe("symptom", lambda **data: events.append(data))
+    before = (dict(component.symptom_states), dict(component.debounce_states), mechanism.last_outcome)
+    result = component.simulate(mechanism, {"sensor.fixture": "unknown"})
+    assert result.kind == OutcomeKind.UNEVALUABLE
+    assert result.result is None
+    assert before == (component.symptom_states, component.debounce_states, mechanism.last_outcome)
+    assert not events
+    component.hass_app.record_safety_evaluation.assert_not_called()
+    component.hass_app.run_in.assert_not_called()
+
+
 def test_unchanged_qualified_result_is_observed_without_lifecycle_transition():
     component = _make_component()
     transitions, observations = [], []

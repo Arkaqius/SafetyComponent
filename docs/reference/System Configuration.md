@@ -165,6 +165,14 @@ weather forecast horizon has no user override.
 | `outdoor_air_quality.default_standard` | `european_aqi` | `outdoor_air_quality.standard` |
 | `outdoor_air_quality.default_warning_at` | index `60` | `outdoor_air_quality.warning_at` |
 
+Weather confirmation requires an integer from 1 through 75 seconds. AQ
+confirmation requires a separate positive integer; an absent AQ override uses
+300 seconds. The combined weather allocation is 5 seconds dispatch plus the
+maximum of weather confirmation and 60-second aperture qualification, plus
+9 seconds reconciliation, 1 second decision and the configured L2 notification
+deadline. Values exceeding 120 seconds are rejected. The 120-second positive
+clear interval remains independent of assertion timing.
+
 The former `decision_timeout_seconds` field was removed because no runtime code
 consumed it. User-confirmed actuator proposals retain their separate,
 per-opening `confirmation_timeout_seconds` contract.

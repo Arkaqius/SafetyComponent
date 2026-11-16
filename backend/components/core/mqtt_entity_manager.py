@@ -7,6 +7,7 @@ import math
 import re
 import time
 from collections import deque
+from functools import wraps
 from typing import Any, Mapping
 
 import appdaemon.plugins.hass.hassapi as hass  # type: ignore
@@ -21,10 +22,35 @@ from pydantic import (
 
 from components.core.localization import Localizer, LocalizationSettings
 from components.core.pydantic_utils import StrictBaseModel
+from components.core.mqtt_projection import MqttProjectionQueue, ProjectionGroup
+from components.core.service_dispatcher import ServiceDispatcher
 
 
 _UNSET = object()
 _MQTT_TOPIC_FORBIDDEN_CHARACTERS = frozenset({"+", "#", "\x00"})
+
+
+def coherent_projection(method: Any) -> Any:
+    """Collect a public entity update before enqueueing its whole desired state."""
+    @wraps(method)
+    def apply(self: Any, entity_id: str, *args: Any, **kwargs: Any) -> Any:
+        outer = self._projection_depth == 0
+        self._projection_depth += 1
+        if outer:
+            self._projection_messages = []
+        try:
+            result = method(self, entity_id, *args, **kwargs)
+        finally:
+            self._projection_depth -= 1
+        if outer and self.projections is not None and self._projection_messages:
+            canonical = self.canonical_entity_id(entity_id, expected_domain="sensor")
+            if method.__name__ == "remove_sensor":
+                self._removed_projections[canonical] = list(self._projection_messages)
+                self.projections.enqueue(canonical, self._projection_messages, {"removed": True})
+            else:
+                self._queue_projection(canonical)
+        return result
+    return apply
 
 
 class MqttSettings(StrictBaseModel):
@@ -124,6 +150,7 @@ class MqttEntityManager:
         *,
         strict_validation: bool = True,
         localization: LocalizationSettings | Mapping[str, Any] | None = None,
+        dispatcher: ServiceDispatcher | None = None,
     ) -> None:
         self.hass_app = hass_app
         if isinstance(mqtt_config, MqttSettings):
@@ -152,15 +179,116 @@ class MqttEntityManager:
         self._heartbeat_queue: deque[tuple[str, bool]] = deque()
         self._heartbeat_due = 0.0
         self._heartbeat_batch_size = 16
+        self._projection_depth = 0
+        self._projection_messages: list[dict[str, Any]] = []
+        self._cleanup_pending: set[str] = set()
+        self.accepted_states: dict[str, Any] = {}
+        self.accepted_attributes: dict[str, dict[str, Any]] = {}
+        self.accepted_discovery: dict[str, str] = {}
+        self._removed_projections: dict[str, list[dict[str, Any]]] = {}
+        self.accepted_availability: bool | None = None
+        self._desired_availability: bool | None = None
+        self.projections = (
+            MqttProjectionQueue(dispatcher, self._accept_projection, self._queue_projection)
+            if dispatcher is not None else None
+        )
+
+    def start(self) -> None:
+        """Start owned asynchronous projection processing when configured."""
+        if self.projections is not None:
+            self.projections.start()
+
+    def stop(self) -> None:
+        """Fence future state traffic; offline awaits outstanding MQTT completion.
+
+        The process broker owns the barrier across app reloads. Remote offline
+        stays unconfirmed while an already-handed-off call remains unresolved.
+        """
+        if self.projections is None:
+            self.publish_availability(False)
+            return
+        self.projections.stop()
+        self.projections.dispatcher.registry.mqtt_offline_fence({
+            "topic": self.availability_topic, "payload": "offline", "retain": True, "qos": self.qos,
+        })
+        self.projections.dispatcher.tick()
+
+    def _queue_projection(self, entity_id: str) -> None:
+        if self.projections is None:
+            return
+        if entity_id == "availability" and self._desired_availability is not None:
+            self.publish_availability(self._desired_availability)
+            return
+        if entity_id in self._removed_projections and entity_id not in self.discovered_entities:
+            self.projections.enqueue(entity_id, self._removed_projections[entity_id], {"removed": True})
+            return
+        messages = []
+
+        def add(topic: str, payload: str, retain: bool) -> None:
+            messages.append({"topic": topic, "payload": payload, "retain": retain, "qos": self.qos})
+
+        if entity_id in self._cleanup_pending:
+            add(self.state_topic(entity_id), "", True)
+            add(self.attributes_topic(entity_id), "", True)
+        if entity_id in self._discovery_payloads:
+            add(self.discovery_topic(entity_id), self._discovery_payloads[entity_id], self.retain_discovery)
+        if entity_id in self.entity_attributes:
+            add(self.attributes_topic(entity_id), self._json_payload(self.entity_attributes[entity_id]), self.retain_state)
+        if entity_id in self.entity_states:
+            add(self.state_topic(entity_id), self._state_payload(self.entity_states[entity_id]), self.retain_state)
+        self.projections.enqueue(entity_id, messages, {
+            "discovery": self._discovery_payloads.get(entity_id),
+            "has_state": entity_id in self.entity_states,
+            "state": self.entity_states.get(entity_id),
+            "attributes": self.entity_attributes.get(entity_id),
+        })
+
+    def _accept_projection(self, group: ProjectionGroup) -> None:
+        snapshot = json.loads(group.snapshot_json)
+        if "availability" in snapshot:
+            self.accepted_availability = snapshot["availability"]
+            return
+        if snapshot.get("removed"):
+            self.accepted_states.pop(group.entity, None)
+            self.accepted_attributes.pop(group.entity, None)
+            self.accepted_discovery.pop(group.entity, None)
+            self._removed_projections.pop(group.entity, None)
+            if self.projections is not None:
+                self.projections.retire(group.entity)
+            return
+        self._cleanup_pending.discard(group.entity)
+        if snapshot.get("discovery") is not None:
+            self.accepted_discovery[group.entity] = snapshot["discovery"]
+        if snapshot.get("has_state"):
+            self.accepted_states[group.entity] = snapshot["state"]
+        if snapshot.get("attributes") is not None:
+            self.accepted_attributes[group.entity] = snapshot["attributes"]
 
     def publish_availability(self, online: bool = True) -> None:
         """Publish app availability to the configured MQTT availability topic."""
+        if self.projections is not None:
+            self._desired_availability = online
+            if not online:
+                self.projections.dispatcher.registry.mqtt_offline_fence({
+                    "topic": self.availability_topic, "payload": "offline", "retain": True, "qos": self.qos,
+                })
+                return
+            self.projections.enqueue("availability", [{
+                "topic": self.availability_topic, "payload": "online" if online else "offline",
+                "retain": True, "qos": self.qos,
+            }], {"availability": online, "barrier": {
+                entity: self.projections.desired_revisions[entity]
+                for entity in self.discovered_entities
+                if entity in self.projections.desired_revisions
+            }})
+            return
         self._publish(
             self.availability_topic,
             "online" if online else "offline",
             retain=True,
         )
 
+    @coherent_projection
     def register_sensor(
         self,
         entity_id: str,
@@ -224,6 +352,7 @@ class MqttEntityManager:
             self.publish_sensor_state(canonical_id, state)
         return canonical_id
 
+    @coherent_projection
     def publish_sensor_state(
         self,
         entity_id: str,
@@ -270,6 +399,7 @@ class MqttEntityManager:
         )
         self.entity_states[canonical_id] = state
 
+    @coherent_projection
     def publish_sensor_attributes(
         self, entity_id: str, attributes: Mapping[str, Any]
     ) -> None:
@@ -293,6 +423,10 @@ class MqttEntityManager:
 
     def publish_heartbeat(self) -> None:
         """Refresh cached state and attributes after restarts and for expiry."""
+        if self.projections is not None:
+            for entity in self.discovered_entities:
+                self._queue_projection(entity)
+            return
         for entity_id, state in list(self.entity_states.items()):
             self._publish(
                 self.state_topic(entity_id),
@@ -321,6 +455,10 @@ class MqttEntityManager:
             self._heartbeat_due = now + interval
         for _ in range(min(self._heartbeat_batch_size, len(self._heartbeat_queue))):
             entity_id, attributes = self._heartbeat_queue[0]
+            if self.projections is not None:
+                self._queue_projection(entity_id)
+                self._heartbeat_queue.popleft()
+                continue
             # Read at dispatch, never replay a snapshot from the cycle's start.
             cache = self.entity_attributes if attributes else self.entity_states
             if entity_id in cache:
@@ -342,6 +480,7 @@ class MqttEntityManager:
         canonical_id = self.canonical_entity_id(entity_id, expected_domain="sensor")
         return dict(self.entity_attributes.get(canonical_id, {}))
 
+    @coherent_projection
     def remove_sensor(self, entity_id: str, *, remove_legacy_topic: bool = False) -> None:
         """Remove a sensor's retained discovery, state, and attribute messages."""
         canonical_id = self.canonical_entity_id(entity_id, expected_domain="sensor")
@@ -392,6 +531,8 @@ class MqttEntityManager:
         if entity_id in self._prepared_entities:
             return
         if self.settings.clear_retained_state_on_start:
+            if self.projections is not None:
+                self._cleanup_pending.add(entity_id)
             self._publish(self.state_topic(entity_id), "", retain=True)
             self._publish(self.attributes_topic(entity_id), "", retain=True)
         self._prepared_entities.add(entity_id)
@@ -499,6 +640,11 @@ class MqttEntityManager:
         return json.dumps(dict(payload), sort_keys=True, default=str)
 
     def _publish(self, topic: str, payload: str, *, retain: bool) -> None:
+        if self.projections is not None:
+            self._projection_messages.append({
+                "topic": topic, "payload": payload, "retain": retain, "qos": self.qos,
+            })
+            return
         response = self.hass_app.call_service(
             "mqtt/publish",
             topic=topic,

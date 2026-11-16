@@ -338,8 +338,8 @@ def test_minute_evaluation_preserves_fast_dependencies(mocked_hass_app_basic):
     assert component._report_groups["sensor.office_temperature"] == "EntityMonitorComponent:120"
     assert component._report_groups["binary_sensor.window"] == "EntityMonitorComponent:5"
     scheduled = app.run_every.call_args_list
-    assert any((unwrap(call.args[0]), *call.args[1:]) == (component._tick, "now", 60) for call in scheduled)
-    assert any((unwrap(call.args[0]), *call.args[1:]) == (component._fast_tick, "now", 5) for call in scheduled)
+    assert any((unwrap(call.args[0]), *call.args[1:]) == (unwrap(component._tick), "now", 60) for call in scheduled)
+    assert any((unwrap(call.args[0]), *call.args[1:]) == (unwrap(component._fast_tick), "now", 5) for call in scheduled)
     component._evaluate_entity = MagicMock()
     component._fast_tick()
     component._evaluate_entity.assert_called_once_with("TemperatureWindowOffice")

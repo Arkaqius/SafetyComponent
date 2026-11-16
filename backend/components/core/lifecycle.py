@@ -193,7 +193,11 @@ class LifecycleScope:
                 raise RuntimeError("Adapter reported cancellation failure")
         except Exception as exc:
             self.cancellation_failures += 1
-            self.last_cancellation_error = f"{handle.kind.value}: {exc}"[:512]
+            try:
+                detail = str(exc)
+            except Exception:
+                detail = type(exc).__name__
+            self.last_cancellation_error = f"{handle.kind.value}: {detail}"[:512]
 
     def cancel_handle(self, value: Any) -> None:
         """Cancel a legacy raw handle through its sole owning resource slot."""

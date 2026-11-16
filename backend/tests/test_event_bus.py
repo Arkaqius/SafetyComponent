@@ -82,3 +82,42 @@ def test_public_unsubscribe_survives_scope_disable_and_restart():
     bus.publish("evt")
     assert not calls
     assert scope.handle_count == 0
+
+
+def test_reentrant_response_keeps_each_consumer_in_incident_order():
+    from components.core.response_events import FaultResponseEvent
+    from components.core.types_common import FaultState
+
+    bus, calls = EventBus(), []
+    bus.configure_response_catalog(frozenset({"Fixture"}), runtime_id="runtime")
+    events = [FaultResponseEvent.create(
+        runtime_id="runtime", incident_id="incident", revision=revision,
+        fault_id="Fixture", symptom_id="Symptom", state=state, level=2,
+    ) for revision, state in [(1, FaultState.SET), (2, FaultState.CLEARED)]]
+
+    def first(event):
+        calls.append(("first", event.revision))
+        if event.revision == 1:
+            bus.publish_response(events[1])
+
+    bus.subscribe_response(first)
+    bus.subscribe_response(lambda event: calls.append(("last", event.revision)), priority=1)
+    bus.publish_response(events[0])
+    assert calls == [("first", 1), ("last", 1), ("first", 2), ("last", 2)]
+
+
+def test_unprintable_consumer_exception_cannot_suppress_healthy_consumer():
+    class BrokenError(Exception):
+        def __str__(self):
+            raise RuntimeError("formatting also failed")
+
+    bus, calls = EventBus(), []
+
+    def first():
+        raise BrokenError()
+
+    bus.subscribe("fault", first, isolated=True)
+    bus.subscribe("fault", lambda: calls.append(1))
+    bus.publish("fault")
+    assert calls == [1]
+    assert bus.admission_failures == 1

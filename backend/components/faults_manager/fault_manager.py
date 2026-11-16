@@ -25,12 +25,14 @@ Note: This module is designed for internal use within the Home Assistant safety 
 
 import hashlib
 from datetime import datetime, timezone
+from uuid import uuid4
 from typing import TYPE_CHECKING, Any, Callable, Mapping, Optional
 
 import appdaemon.plugins.hass.hassapi as hass
 
 from components.core.types_common import FaultState, SMState, Symptom, Fault
 from components.core.event_bus import EventBus
+from components.core.response_events import FaultResponseEvent
 from components.core.mqtt_entity_manager import MqttEntityManager
 from components.core.fault_state_policy import FaultEvaluation, FaultEvaluationStatus
 from components.faults_manager.evidence import FaultEvidenceJournal
@@ -95,6 +97,12 @@ class FaultManager:
         self.restriction_provider = restriction_provider
         self._symptom_contexts: dict[str, dict[str, str]] = {}
         self._retained_external_records: dict[str, "AssertionRecord"] = {}
+        runtime = getattr(hass, "runtime_id", None)
+        self.runtime_id = runtime if isinstance(runtime, str) and runtime else uuid4().hex
+        self.projection_failures = 0
+        self.last_projection_error: str | None = None
+        self._response_state: dict[str, tuple[str, int, FaultState]] = {}
+        self.event_bus.configure_response_catalog(frozenset(self.faults), runtime_id=self.runtime_id)
 
     def restore_external_assertions(
         self,
@@ -142,7 +150,43 @@ class FaultManager:
 
         return self.faults[fault_id].evaluation
 
+    def response_identity(self, fault_id: str) -> tuple[str, str, int] | None:
+        """Return the authoritative runtime, incident and latest admitted revision."""
+        state = self._response_state.get(fault_id)
+        return (self.runtime_id, state[0], state[1]) if state is not None else None
+
+    def _projection_failed(self, operation: str, exc: Exception) -> None:
+        """Retain bounded local failure evidence without recursive publication."""
+        self.projection_failures += 1
+        self.last_projection_error = f"{operation}:{type(exc).__name__}"[:512]
+
+    def _emit_response(self, **payload: Any) -> None:
+        """Commit one immutable identity before admitting independent consumers."""
+        fault_id = str(payload["fault_name"])
+        state = payload["fault_state"]
+        previous = self._response_state.get(fault_id)
+        incident = previous[0] if previous else uuid4().hex
+        if previous and previous[2] == FaultState.CLEARED and state == FaultState.SET:
+            incident = uuid4().hex
+        revision = previous[1] + 1 if previous else 1
+        self._response_state = {key: value for key, value in self._response_state.items() if key in self.faults}
+        self._response_state[fault_id] = (incident, revision, state)
+        event = FaultResponseEvent.create(
+            runtime_id=self.runtime_id, incident_id=incident, revision=revision,
+            fault_id=fault_id, symptom_id=payload["symptom"].name,
+            state=state, level=payload["level"], context=payload.get("additional_info"),
+        )
+        self.event_bus.configure_response_catalog(frozenset(self.faults), runtime_id=self.runtime_id)
+        self.event_bus.publish_response(event, **payload)
+
     def _publish_fault(self, fault: Fault, attributes: dict | None = None) -> None:
+        """Project fault diagnostics independently of authoritative response admission."""
+        try:
+            self._project_fault(fault, attributes)
+        except Exception as exc:
+            self._projection_failed("fault_projection", exc)
+
+    def _project_fault(self, fault: Fault, attributes: dict | None = None) -> None:
         """Publish evaluation status and independent activation/shadow axes."""
 
         entity_id = "sensor.fault_" + fault.name
@@ -444,9 +488,10 @@ class FaultManager:
             was_active = fault.evaluation.active
             fault.evaluation.observe(symptom_id, True)
             if fault.evaluation.active and not was_active:
-                self._capture_activation(
-                    fault, symptom_id, additional_info, diagnostic_evidence
-                )
+                try:
+                    self._capture_activation(fault, symptom_id, additional_info, diagnostic_evidence)
+                except Exception as exc:
+                    self._projection_failed("activation_evidence", exc)
             if not fault.evaluation.active:
                 self._publish_fault(fault)
                 return
@@ -463,7 +508,6 @@ class FaultManager:
 
             # Generate a stable fault tag using the hash method
             fault_tag: str = self._generate_fault_tag(fault.name, additional_info)
-            self.update_system_state_entity()  # Update the system state entity
             self.hass.log(f"Fault {fault.name} was set", level="DEBUG")
 
             # Determinate additional info
@@ -481,11 +525,7 @@ class FaultManager:
             attributes: dict = info_to_send if info_to_send else {}
             attributes["notification_tag"] = fault_tag
 
-            # Set HA entity
-            self._publish_fault(fault, attributes)
-
-            self.event_bus.publish(
-                "fault",
+            self._emit_response(
                 fault_name=fault.name,
                 fault_friendly_name=fault.friendly_name,
                 level=fault.level,
@@ -497,6 +537,8 @@ class FaultManager:
                 symptom=self.symptoms[symptom_id],
                 should_notify=True,
             )
+            self.update_system_state_entity()
+            self._publish_fault(fault, attributes)
 
             self._apply_shadowing(fault, self.symptoms[symptom_id], additional_info)
 
@@ -531,7 +573,7 @@ class FaultManager:
                 Optional[dict]: The updated information as a dictionary, or None if there is no additional info.
             """
             # If no additional info is provided, return None
-            if not additional_info:
+            if not additional_info or fault_state not in {FaultState.SET, FaultState.CLEARED}:
                 return None
 
             # Retrieve the current state object for the entity
@@ -658,7 +700,6 @@ class FaultManager:
             additional_info (dict | None): Additional info to use for clearing notifications.
         """
         fault_tag: str = self._generate_fault_tag(fault.name, additional_info)
-        self.update_system_state_entity()
         self.hass.log(f"Fault {fault.name} was shadowed", level="DEBUG")
 
         entity_id = "sensor.fault_" + fault.name
@@ -672,10 +713,7 @@ class FaultManager:
         else:
             attributes = info_to_send
 
-        self._publish_fault(fault, attributes)
-
-        self.event_bus.publish(
-            "fault",
+        self._emit_response(
             fault_name=fault.name,
             fault_friendly_name=fault.friendly_name,
             level=fault.level,
@@ -685,6 +723,8 @@ class FaultManager:
             symptom=symptom,
             should_notify=True,
         )
+        self._publish_fault(fault, attributes)
+        self.update_system_state_entity()
 
     def _clear_fault(self, symptom_id: str, additional_info: dict) -> None:
         """
@@ -748,10 +788,7 @@ class FaultManager:
             attributes = info_to_send if info_to_send else {}
             attributes["notification_tag"] = fault_tag
 
-            self._publish_fault(fault, attributes)
-
-            self.event_bus.publish(
-                "fault",
+            self._emit_response(
                 fault_name=fault.name,
                 fault_friendly_name=fault.friendly_name,
                 level=fault.level,
@@ -763,6 +800,7 @@ class FaultManager:
                 symptom=self.symptoms[symptom_id],
                 should_notify=not evaluation.shadowed_by,
             )
+            self._publish_fault(fault, attributes)
             return
 
         if not has_active_related_symptoms and evaluation.active:
@@ -783,12 +821,9 @@ class FaultManager:
 
             # Clear HA entity
             evaluation.shadowed_by.clear()
-            self._publish_fault(fault, attributes)
-            self.update_system_state_entity()  # Update the system state entity
 
             should_notify = was_active and not was_shadowed
-            self.event_bus.publish(
-                "fault",
+            self._emit_response(
                 fault_name=fault.name,
                 fault_friendly_name=fault.friendly_name,
                 level=fault.level,
@@ -798,6 +833,8 @@ class FaultManager:
                 symptom=self.symptoms[symptom_id],
                 should_notify=should_notify,
             )
+            self._publish_fault(fault, attributes)
+            self.update_system_state_entity()
             self._restore_unshadowed_faults(fault.name)
 
     def _restore_unshadowed_faults(self, cleared_fault_name: str) -> None:
@@ -1003,7 +1040,7 @@ class FaultManager:
         if not merged_info:
             return additional_info
         return {
-            key: merged_info.get(key, value)
+            key: value if key.startswith("response_") else merged_info.get(key, value)
             for key, value in additional_info.items()
         }
     
@@ -1052,12 +1089,18 @@ class FaultManager:
 
     def _get_entity_attributes(self, entity_id: str) -> dict:
         """Return attributes cached for an internal MQTT entity."""
-        return self.mqtt_entities.get_attributes(entity_id)
+        try:
+            attributes = self.mqtt_entities.get_attributes(entity_id)
+            return attributes if isinstance(attributes, dict) else {}
+        except Exception as exc:
+            self._projection_failed("attribute_read", exc)
+            return {}
 
     def _set_internal_entity(
         self, entity_id: str, state: str, attributes: Optional[dict] = None
     ) -> None:
         """Publish an internal entity through MQTT."""
-        self.mqtt_entities.publish_sensor_state(
-            entity_id, state, attributes=attributes
-        )
+        try:
+            self.mqtt_entities.publish_sensor_state(entity_id, state, attributes=attributes)
+        except Exception as exc:
+            self._projection_failed("mqtt_publication", exc)

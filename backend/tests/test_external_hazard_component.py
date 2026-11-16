@@ -295,6 +295,7 @@ def _component(
     kind: str = "window",
     *,
     persistence: int = 0,
+    aq_persistence: int | None = None,
 ) -> tuple[ExternalHazardComponent, FakeHass, FakeMqtt, list[dict[str, Any]]]:
     hass = FakeHass()
     mqtt = FakeMqtt()
@@ -303,7 +304,8 @@ def _component(
     bus.subscribe("symptom", lambda **payload: events.append(payload))
     component = ExternalHazardComponent(hass, object(), bus, mqtt)
     config = {
-        "policy": {**POLICY, "weather": {**POLICY["weather"], "persistence_seconds": persistence}},
+        "policy": {**POLICY, "weather": {**POLICY["weather"], "persistence_seconds": persistence},
+                   "outdoor_air_quality": {**POLICY["outdoor_air_quality"], "persistence_seconds": persistence if aq_persistence is None else aq_persistence}},
         "openings": {
             "OfficeWindow": {
                 "area_id": "office",
@@ -371,19 +373,20 @@ def _pollution_result(aqi: float = 75) -> ApiResult:
 def test_modeled_hazards_qualify_at_deadline_without_another_poll(
     hazard: HazardType, values: dict[str, int], symptom_id: str, opening_clock: list[float],
 ) -> None:
-    component, hass, _, _ = _component(persistence=300)
+    component, hass, _, _ = _component(persistence=75, aq_persistence=300)
+    duration = 300 if hazard == HazardType.OUTDOOR_AIR_POLLUTION else 75
     provider = "OpenMeteoAirQualityApiComponent" if hazard == HazardType.OUTDOOR_AIR_POLLUTION else "OpenMeteoWeatherApiComponent"
     observation = _observation(provider, hazard, {name: Measurement(value) for name, value in values.items()})
     result = ApiResult(provider, (observation,), _health(provider))
     component.handle_external_api_result(result=result)
     callback, delay, kwargs = hass.timers[-1]
-    assert delay == 300
-    opening_clock[0] = 299
+    assert delay == duration
+    opening_clock[0] = duration - 0.001
     component.handle_external_api_result(result=result)
     assert len(hass.timers) == 1
     assert component.symptom_states[symptom_id] != FaultState.SET
 
-    opening_clock[0] = 300
+    opening_clock[0] = duration
     callback(**kwargs)
     assert component.symptom_states[symptom_id] == FaultState.SET
     assert hass.service_calls == []
@@ -557,7 +560,7 @@ def test_qualification_timer_rejects_unusable_provider_evidence(
 
 
 def test_valid_imgw_degree_three_waits_for_hazard_debounce(opening_clock: list[float]) -> None:
-    component, hass, _, events = _component("door", persistence=300)
+    component, hass, _, events = _component("door", persistence=75)
     wind = replace(
         _observation("ImgwWarningsApiComponent", HazardType.WIND, {}, confirmed=True),
         provider_level="3",
@@ -565,7 +568,7 @@ def test_valid_imgw_degree_three_waits_for_hazard_debounce(opening_clock: list[f
     )
     component.handle_external_api_result(result=ApiResult(wind.provider, (wind,), _health(wind.provider)))
     assert not any(event["state"] == FaultState.SET for event in events)
-    opening_clock[0] = 300
+    opening_clock[0] = 75
     component._evaluate_all()
     assert any(event["state"] == FaultState.SET for event in events)
     assert hass.service_calls == []
@@ -573,10 +576,10 @@ def test_valid_imgw_degree_three_waits_for_hazard_debounce(opening_clock: list[f
 
 @pytest.mark.parametrize("hazard", [HazardType.FROST, HazardType.WIND, HazardType.RAIN, HazardType.STORM])
 @pytest.mark.parametrize("urgency", [WarningUrgency.STANDARD, WarningUrgency.IMMEDIATE])
-def test_all_official_weather_warnings_require_five_minutes(
+def test_all_official_weather_warnings_require_75_observed_seconds(
     hazard: HazardType, urgency: WarningUrgency, opening_clock: list[float],
 ) -> None:
-    component, hass, _, _ = _component(persistence=300)
+    component, hass, _, _ = _component(persistence=75)
     warning = replace(
         _observation("ImgwWarningsApiComponent", hazard, {}, confirmed=True),
         warning_urgency=urgency,
@@ -586,11 +589,11 @@ def test_all_official_weather_warnings_require_five_minutes(
     symptom_id = f"ExternalWeatherExposure{hazard.value.capitalize()}OfficeWindow"
     assert component.symptom_states[symptom_id] != FaultState.SET
     callback, delay, kwargs = hass.timers[-1]
-    assert delay == 300
-    opening_clock[0] = 299
+    assert delay == 75
+    opening_clock[0] = 74.999
     component.handle_external_api_result(result=result)
     assert component.symptom_states[symptom_id] != FaultState.SET
-    opening_clock[0] = 300
+    opening_clock[0] = 75
     callback(**kwargs)
     assert component.symptom_states[symptom_id] == FaultState.SET
     assert hass.service_calls == []
@@ -600,7 +603,7 @@ def test_all_official_weather_warnings_require_five_minutes(
 def test_official_warning_debounce_restarts_after_interruption(
     interruption: str, opening_clock: list[float], monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    component, hass, _, _ = _component(persistence=300)
+    component, hass, _, _ = _component(persistence=75)
     provider = "ImgwWarningsApiComponent"
     warning = _observation(provider, HazardType.WIND, {}, confirmed=True)
     result = ApiResult(provider, (warning,), _health(provider))
@@ -620,12 +623,50 @@ def test_official_warning_debounce_restarts_after_interruption(
     component.handle_external_api_result(result=broken)
     component.handle_external_api_result(result=result)
     callback, delay, kwargs = hass.timers[-1]
-    assert delay == 300
-    opening_clock[0] = 300
+    assert delay == 75
+    opening_clock[0] = 174.999
     obsolete(**obsolete_kwargs)
     assert component.symptom_states["ExternalWeatherExposureWindOfficeWindow"] != FaultState.SET
-    opening_clock[0] = 400
+    opening_clock[0] = 175
     callback(**kwargs)
+    assert component.symptom_states["ExternalWeatherExposureWindOfficeWindow"] == FaultState.SET
+
+
+@pytest.mark.parametrize("kind", ["door", "garage_door", "gate"])
+@pytest.mark.parametrize("onset", ["opening_first", "weather_first", "simultaneous"])
+def test_weather_and_opening_qualifications_run_concurrently(kind, onset, opening_clock) -> None:
+    component, hass, _, _ = _component(kind, persistence=75, aq_persistence=300)
+    if onset == "opening_first":
+        component._evaluate_all()
+        opening_clock[0] = 10
+    elif onset == "weather_first":
+        hass.states["binary_sensor.office_window"] = "off"
+    component.handle_external_api_result(result=_wind_result())
+    if onset == "weather_first":
+        opening_clock[0] = 30
+        hass.change_contact("on")
+    deadline = {"opening_first": 85, "weather_first": 90, "simultaneous": 75}[onset]
+    opening_clock[0] = deadline - 0.001
+    component._evaluate_all()
+    symptom = "ExternalWeatherExposureWindOfficeWindow"
+    assert component.symptom_states[symptom] != FaultState.SET
+    opening_clock[0] = deadline
+    component._evaluate_all()
+    assert component.symptom_states[symptom] == FaultState.SET
+
+
+def test_door_requires_60_complete_seconds_even_after_weather_is_qualified(opening_clock) -> None:
+    component, hass, _, _ = _component("door", persistence=75)
+    hass.states["binary_sensor.office_window"] = "off"
+    component.handle_external_api_result(result=_wind_result())
+    opening_clock[0] = 75
+    component._evaluate_all()
+    hass.change_contact("on")
+    opening_clock[0] = 134.999
+    component._evaluate_all()
+    assert component.symptom_states["ExternalWeatherExposureWindOfficeWindow"] != FaultState.SET
+    opening_clock[0] = 135
+    component._evaluate_all()
     assert component.symptom_states["ExternalWeatherExposureWindOfficeWindow"] == FaultState.SET
 
 

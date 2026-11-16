@@ -91,6 +91,7 @@ class SafetyDoorCalibrationSource(SystemSourceModel):
 
 class WeatherCalibrationSource(SystemSourceModel):
     """Overridable weather-decision baselines."""
+    model_config = ConfigDict(allow_inf_nan=False)
 
     forecast_horizon_hours: int = Field(ge=1, le=72)
     default_frost_watch_c: float
@@ -98,15 +99,17 @@ class WeatherCalibrationSource(SystemSourceModel):
     default_gust_watch_m_s: float = Field(gt=0)
     default_gust_warning_m_s: float = Field(gt=0)
     default_precipitation_warning_mm_h: float = Field(gt=0)
-    default_persistence_seconds: int = Field(ge=0)
+    default_persistence_seconds: int = Field(ge=1, le=75, strict=True)
     default_hysteresis: dict[str, float]
 
 
 class AirQualityCalibrationSource(SystemSourceModel):
     """Overridable outdoor-air-quality decision baselines."""
+    model_config = ConfigDict(allow_inf_nan=False)
 
     default_standard: Literal["european_aqi"]
     default_warning_at: float = Field(gt=0)
+    default_persistence_seconds: int = Field(default=300, ge=1, strict=True)
 
 
 class ExternalHazardCalibrationSource(SystemSourceModel):

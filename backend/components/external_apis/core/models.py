@@ -91,6 +91,20 @@ class ProviderHealth:
 
 
 @dataclass(frozen=True)
+class DispatchTiming:
+    """Receiver-owned usable-input timing, independent of provider source time."""
+
+    received_monotonic: float
+    dispatched_monotonic: float
+    overdue: bool
+
+    @property
+    def delay_seconds(self) -> float:
+        """Count internal queueing before policy admission."""
+        return max(0, self.dispatched_monotonic - self.received_monotonic)
+
+
+@dataclass(frozen=True)
 class ApiResult:
     """One complete provider snapshot returned by a poll."""
 
@@ -98,6 +112,7 @@ class ApiResult:
     observations: tuple[ExternalObservation, ...]
     health: ProviderHealth
     evidence: Mapping[str, Any] = field(default_factory=dict)
+    dispatch_timing: DispatchTiming | None = None
 
 
 def utc_now() -> datetime:

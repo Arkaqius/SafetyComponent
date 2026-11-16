@@ -7,12 +7,14 @@ runtime. The subprocess uses -I so the bundled Hass stub cannot shadow it.
 from __future__ import annotations
 
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 import importlib.metadata
 import json
 import logging
 import os
 from pathlib import Path
 import subprocess
+import sys
 import threading
 from types import SimpleNamespace
 from typing import Any
@@ -48,7 +50,7 @@ class FictionalSocket:
         )
 
 
-async def probe_scenario(mode: str) -> dict[str, Any]:
+async def probe_scenario(mode: str, *, use_broker: bool = False) -> dict[str, Any]:
     """Call actual HASS, Services and websocket adapters without a HA connection."""
     from appdaemon.plugins.hass.hassapi import Hass
     from appdaemon.plugins.hass.hassplugin import HassPlugin
@@ -87,6 +89,22 @@ async def probe_scenario(mode: str) -> dict[str, Any]:
     received: list[Any] = []
     callback_threads: list[int] = []
     owner_threads: list[int] = []
+    broker: Any = None
+    receiver_time = [0.0]
+
+    if use_broker:
+        # Keep only backend on sys.path; never import the bundled test Hass stub.
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        from components.core.service_dispatcher import (
+            Lane, ProcessLeaseRegistry, ResourceSpec, ServiceDispatcher,
+        )
+        app.run_every = lambda *_args, **_kwargs: "fictional-timer"
+        app.cancel_timer = lambda *_args, **_kwargs: None
+        broker = ServiceDispatcher(
+            app, [ResourceSpec("notify/fixture", Lane.MOBILE, frozenset({"notify/fixture"}))],
+            registry=ProcessLeaseRegistry(), clock=lambda: receiver_time[0],
+        )
+        broker.start()
 
     def completed(result: Any) -> None:
         received.append(result)
@@ -94,24 +112,48 @@ async def probe_scenario(mode: str) -> dict[str, Any]:
 
     def invoke() -> Any:
         owner_threads.append(threading.get_ident())
+        if broker is not None:
+            request = broker.make_intent(
+                resource="notify/fixture", service="notify/fixture", payload={"message": "Fictional test"},
+                tag="fictional", revision=1, deadline_at=30,
+            )
+            broker.enqueue(request, on_complete=lambda receipt: completed({
+                "status": receipt.status.value, "deadline_missed": receipt.deadline_missed,
+            }))
+            broker.tick()
+            return None
         return app.call_service("notify/fixture", message="Fictional test", callback=completed)
 
-    scheduled = await asyncio.to_thread(invoke)
+    owner_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="fictional-app-owner")
+    scheduled = await asyncio.get_running_loop().run_in_executor(owner_pool, invoke)
     # Wait for the finite cases; the hung fake socket is released only for cleanup.
     for _ in range(100):
-        if received:
+        if received or (broker is not None and broker.registry.completion_count):
             break
         await asyncio.sleep(0.002)
         if mode == "never":
             break
+    before_owner_drain = len(received)
+    credits_before_owner_drain = broker.registry.lease_count if broker is not None else None
+    if broker is not None:
+        if mode == "never":
+            receiver_time[0] = 30
+        await asyncio.get_running_loop().run_in_executor(owner_pool, broker.tick)
     result = {
         "mode": mode, "scheduling_return": scheduled, "completion": list(received),
         "callback_on_owner": any(t == owner_threads[0] for t in callback_threads),
         "request_count": len(plugin.ws.requests),
+        "before_owner_drain": before_owner_drain,
+        "credits_before_owner_drain": credits_before_owner_drain,
+        "lease_count": broker.registry.lease_count if broker is not None else None,
+        "quarantined": broker.registry.quarantined_count if broker is not None else None,
     }
+    if broker is not None:
+        broker.stop()
     if mode == "never":
         plugin.ws.release.set()
         await asyncio.sleep(0.02)
+    owner_pool.shutdown(wait=True)
     return result
 
 
@@ -120,6 +162,9 @@ async def probe_packaged_runtime() -> dict[str, Any]:
     return {
         "version": importlib.metadata.version("appdaemon"),
         "scenarios": [await probe_scenario(mode) for mode in (
+            "success", "failure", "timeout", "disconnected", "throw", "never",
+        )],
+        "broker_scenarios": [await probe_scenario(mode, use_broker=True) for mode in (
             "success", "failure", "timeout", "disconnected", "throw", "never",
         )],
     }
@@ -149,6 +194,16 @@ def test_actual_packaged_callback_contract() -> None:
     assert cases["disconnected"]["request_count"] == 0
     assert cases["throw"]["request_count"] == 1
     assert cases["never"]["completion"] == []
+    broker_cases = {case["mode"]: case for case in evidence["broker_scenarios"]}
+    assert all(case["scheduling_return"] is None and case["before_owner_drain"] == 0
+               and case["credits_before_owner_drain"] == 1 for case in broker_cases.values())
+    assert broker_cases["success"]["completion"][0]["status"] == "accepted_by_home_assistant"
+    for name in ("failure", "timeout", "disconnected", "throw"):
+        assert broker_cases[name]["completion"][0]["status"] != "accepted_by_home_assistant"
+        assert broker_cases[name]["lease_count"] == 0
+        assert broker_cases[name]["callback_on_owner"]
+    assert broker_cases["never"]["completion"] == []
+    assert broker_cases["never"]["lease_count"] == broker_cases["never"]["quarantined"] == 1
 
 
 if __name__ == "__main__":
