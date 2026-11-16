@@ -188,6 +188,7 @@ class MqttEntityManager:
         self._removed_projections: dict[str, list[dict[str, Any]]] = {}
         self.accepted_availability: bool | None = None
         self._desired_availability: bool | None = None
+        self._online_barrier: dict[str, int] | None = None
         self.projections = (
             MqttProjectionQueue(dispatcher, self._accept_projection, self._queue_projection)
             if dispatcher is not None else None
@@ -269,18 +270,21 @@ class MqttEntityManager:
         if self.projections is not None:
             self._desired_availability = online
             if not online:
+                self._online_barrier = None
                 self.projections.dispatcher.registry.mqtt_offline_fence({
                     "topic": self.availability_topic, "payload": "offline", "retain": True, "qos": self.qos,
                 })
                 return
+            if self._online_barrier is None:
+                self._online_barrier = {
+                    entity: self.projections.desired_revisions[entity]
+                    for entity in self.discovered_entities
+                    if entity in self.projections.desired_revisions
+                }
             self.projections.enqueue("availability", [{
                 "topic": self.availability_topic, "payload": "online" if online else "offline",
                 "retain": True, "qos": self.qos,
-            }], {"availability": online, "barrier": {
-                entity: self.projections.desired_revisions[entity]
-                for entity in self.discovered_entities
-                if entity in self.projections.desired_revisions
-            }})
+            }], {"availability": online, "barrier": dict(self._online_barrier)})
             return
         self._publish(
             self.availability_topic,

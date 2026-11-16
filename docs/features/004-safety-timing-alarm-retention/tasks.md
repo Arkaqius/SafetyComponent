@@ -24,6 +24,13 @@ and formatting in five weather UI files. The follow-up removes obsolete import
 ignores, uses the actual Hass class annotation, explicitly narrows current
 proposal dictionaries and formats those changed files. No local tests are added
 or rerun for this delivery follow-up.
+The authorized live Dev70 startup then exposed catalogue publication paced at
+one MQTT topic per second and repeated writes for already-clear external
+channels. The delivery correction uses a bounded 50 ms owner completion drain,
+advances coherent topic groups on owner-drained success, preserves the initial
+availability revision barrier, and skips writes only when neither in-memory nor
+durable external danger exists. A retained/current active assertion still needs
+its actual durable transition. No local tests are run for this correction.
 
 **Input**: [spec.md](spec.md), [plan.md](plan.md), [research.md](research.md),
 [data-model.md](data-model.md), [contracts](contracts/) and [quickstart.md](quickstart.md).

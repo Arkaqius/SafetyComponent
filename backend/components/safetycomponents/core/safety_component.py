@@ -460,6 +460,8 @@ class SafetyComponent:
         if raw_value is None or str(raw_value).strip().casefold() in UNAVAILABLE_NUMERIC_STATES:
             return None
         try:
+            if isinstance(raw_value, dict):
+                raise TypeError("Sensor state is not a scalar")
             return float(raw_value)
         except (ValueError, TypeError) as e:
             hass_app.log(f"Conversion error: {e}", level="WARNING")

@@ -1435,6 +1435,14 @@ class SafetyFunctions(hass.Hass):
         """Persist real transitions; storage uncertainty can never acknowledge clear."""
         candidate = dict(self._external_assertions)
         try:
+            if (not active and symptom_id not in candidate
+                    and self.real_assertion_store is not None
+                    and symptom_id not in self.real_assertion_store.records):
+                # No active in-memory or durable assertion is being cleared.
+                # Avoid a write transaction for every already-clear channel;
+                # this does not acknowledge recovery of any retained danger.
+                self.fm.acknowledge_external_evidence(symptom_id)
+                return True
             if active:
                 symptom = self.symptoms[symptom_id]
                 hazard = str(symptom.parameters["hazard"])

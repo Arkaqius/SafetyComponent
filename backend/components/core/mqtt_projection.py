@@ -164,6 +164,10 @@ class MqttProjectionQueue:
                     self.uncertain.discard(group.entity)
                 self.active = None
                 self.on_accepted(group)
+            # Completion is already being drained on the application owner.
+            # Admit the next topic now instead of adding a one-second delay to
+            # every discovery/attribute/state message of the startup catalogue.
+            self.tick()
 
         callback = self.scope.guard(completed)
         admission = self.dispatcher.enqueue(
