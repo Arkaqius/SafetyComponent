@@ -18,6 +18,7 @@ class LocalAnnunciator:
         self, hass_app: hass.Hass, config: dict[str, Any],
         diagnostics_observer: Callable[..., None] | None = None,
         *, dispatcher: ServiceDispatcher | None = None,
+        restriction_provider: Callable[[], bool] | None = None,
     ) -> None:
         self.hass_app = hass_app
         self.light_entity = config.get("light_entity")
@@ -28,6 +29,7 @@ class LocalAnnunciator:
         self._inhibition_reason: str | None = None
         self._diagnostics_observer = diagnostics_observer
         self.dispatcher = dispatcher
+        self.restriction_provider = restriction_provider
         self._enabled = True
         self._generation = 0
         self._output_results: dict[str, dict[str, Any]] = {}
@@ -75,6 +77,13 @@ class LocalAnnunciator:
         def eligible(_: ServiceIntent) -> bool:
             if not self._enabled or self._generation != generation or self._switching_inhibited:
                 return False
+            if self.restriction_provider is not None:
+                try:
+                    restricted = self.restriction_provider()
+                except Exception:
+                    return False
+                if restricted or not self._enabled or self._generation != generation:
+                    return False
             if service == "alarm_control_panel/alarm_trigger":
                 return any(level == 1 for level in self._active_levels.values())
             return True

@@ -65,6 +65,35 @@ admission evidence. No test harness may connect to the household instance.
 
 ## Evidence Matrix
 
+### Indoor delivered-event contract
+
+The offline [packaged event probe](../../../backend/tests/test_appdaemon_indoor_event_contract.py)
+captures actual AppDaemon 4.5.13 HASS `receive_event`, event/state processing and
+plugin start/stop delivery. Its [sanitized fixture](../../../backend/tests/fixtures/indoor_event_contract.json)
+contains fictional alarm, clear, same-state and unknown-to-clear transitions.
+Initial namespace synchronization emits no state transition. The HASS adapter
+forwards `origin`, `time_fired` and `context` in `data.metadata`, together with
+the old/new HA state records. No physical producer epoch, sequence or timestamp
+is supplied or inferred from these HA fields.
+
+The packaged binary profile's `ha_state_changed_v1` contract admits a delivered
+LOCAL alarm-to-clear edge whose actual old-state watermark matches the accepted
+current-session alarm, with ordered HA transition/update/event times and context.
+It requires a complete newly observed monotonic 30-second interval and matching
+readback. A missing/unreviewed contract retains positive alarm admission but
+cannot authorize recovery. This proves HA event continuity within that contract;
+it does not prove physical detector heartbeat or original measurement freshness.
+Replay, cached/initial off, attribute-only off, interruption, reconnect and
+disable/re-enable do not create or resume a recovery interval.
+
+Run with the same isolated `SAFETY_APPDAEMON_PYTHON` interpreter used below:
+
+```powershell
+pytest backend/tests/test_appdaemon_indoor_event_contract.py backend/tests/test_indoor_clear_authority.py backend/tests/test_internal_environmental_hazard_component.py backend/tests/test_internal_environmental_hazard_startup.py
+```
+
+This source-admission evidence is separate from durable CLEAR acceptance (US3).
+
 ### Implementation baseline — 2026-11-16
 
 Python 3.10.5: `python -m ruff check backend` and `python -m mypy` passed;
@@ -143,31 +172,82 @@ covered by the US4 tests; the complete weather/indoor response timelines remain
 separate acceptance gates. The adapter's legacy direct interface is tested only
 as a compatibility boundary.
 
-### Shared lifecycle implementation boundary
+### Indoor persistence and restart admission
 
-The six-family foundation matrix verifies scope registration idempotence, owned
-handle release and old-generation entry rejection across stop/restart. Qualified
-domain outcomes remain separate from the legacy Boolean callback API; the typed
-simulation boundary preserves unevaluable/inhibited/disabled states and performs
-no publication, qualification or telemetry. Recovery requires a current typed
-negative to exclude another hazard. Heating's unsupported hypothetical kernel
-remains explicitly unevaluable, preserving its domain and durable-time contract.
+The owner loads before monitor enablement, inactive-fault filtering and first
+fault/global publication, even when the indoor monitor is absent. Version 2
+retains original known incident/binding identities, independent gas inhibition
+and historical clear proof. Version 1 lacks those original identity fields:
+`legacy_unattributed` preserves actual flags without assigning an invented
+hazard, entity, profile or incident to current replacement equipment.
 
-The foundation checkpoint checked 18 files, including the shared lifecycle, EventBus, outcomes,
-mechanism and component boundary. The six legacy domain adapter implementations,
-manager glue and derivative sampler are not claimed as fully mypy-verified.
-The full SC-009/010 failure/load matrix and the new asynchronous owner shutdown
-acceptance remain allocated to their later feature tasks.
+Dirty ownership is acknowledged through the process writer before source ingress.
+SET stays effective in memory when storage fails; CLEAR remains active until an
+exact successful snapshot acknowledgement and a final current-source/owner check.
+A newer SET or reentrant source change invalidates the older acknowledgement.
+One in-flight and one coalesced pending snapshot bound storage work. A clean
+shutdown marker is admitted only after ingress/candidates are fenced and earlier
+writes acknowledged. Admission alone is never claimed as successful persistence.
+If a retired owner's storage remains unfinished beyond the bounded startup wait,
+the replacement retains in-memory danger and uncertainty and admits no competing
+snapshot writes for that session. A later orderly reload can read the completed
+old snapshot; an earlier read must never overwrite its eventually durable alarm.
 
-The configured mypy scope is now 29 files, including immutable response events,
-the service broker, snapshot writer, coherent MQTT projection queue,
-MqttEntityManager, NotificationManager, RecoveryManager and both notification
-adapters and ExternalApiRuntime. The six legacy domain adapters remain outside that configured typing
-boundary. Production bootstrap injects the asynchronous adapters; queue admission
-is distinct from HA acceptance and durable snapshot acknowledgement. Root tests
-drive completion drains explicitly. A stopped owner cannot revoke a physical
-effect already handed off; offline MQTT barriers remain process-owned and wait
-behind the existing lease. The complete weather/indoor acceptance remains open.
+A single bounded process witness distinguishes the exact preceding owner and
+storage from an intervening failed-marker launch. **A full process restart loses
+this witness and restores unverified history and fail-closed gas restriction,
+even from a clean checkpoint.** A successful new marker does not remove that
+historical uncertainty. This is distinct from confirmed physical gas. It issues
+no off/reset command. Original durable records survive; details of a never-durable
+alarm cannot be reconstructed.
+
+`commissioned_checkpoint` and a current-launch receipt are internal offline
+admission boundaries for separately reviewed virgin-installation evidence, not
+an operator gas reset or an automatic empty-file rule. They must not overwrite
+retained state or conflict with any indoor journal history, including a CLEARED
+gas alarm. The repository adds no public control to release an independent latch
+or erase unknown prior history. Installation review remains necessary before
+deployment; test receipts refer only to fictional fixtures.
+
+Summary diagnostics include at most 64 detailed retained records and reserve
+60,000 bytes for that list within a 64 KiB payload. Fault details have their own
+smaller allowance alongside contributors and freeze frame. Total/omitted counts
+and danger/gas aggregation include every retained contribution. Polish UI shows
+retained/disabled states and pending durable clear; EN/PL/DE runtime labels have
+equivalent meaning. HEAL never grants safe re-entry.
+
+### Six-family lifecycle evidence
+
+The actual-registration matrix captures callbacks passed to each production
+registrar, repeats start/stop and same-instance restart, changes child eligibility
+and presentation metadata, injects cancellation failures and delivers old
+callbacks. It verifies zero obsolete state changes or new service submissions.
+Child stop/disable discards pending qualification while preserving shared inputs
+and active assertions. Independent regressions cover door, entity, indoor and
+external clear intervals and notification stop when final persistence throws.
+
+| Factory | Declared source ownership (domain timers are separate) |
+| --- | --- |
+| Temperature, two rooms | 12 child state inputs; two shared derivative samplers |
+| Doors | One child contact input; optional condition adds its explicit input |
+| Entity Monitor | One parent state input and normal/fast samplers; children share them |
+| Heating fixture | One parent sampler; no duplicated child source |
+| Indoor, two detectors | Two parent state inputs and three HA state/session event inputs |
+| External, one window | One parent contact input and three scoped EventBus subscriptions |
+
+The typed read-only simulation boundary preserves eligible negative,
+unevaluable/inhibited/disabled outcomes without publication, qualification or
+telemetry. Recovery rechecks current symptom/component/mechanism registries,
+runtime and generation after simulation; obsolete proof is denied. Heating's
+unsupported hypothetical kernel remains explicitly unevaluable.
+
+The configured mypy scope contains 33 files, including the indoor schema,
+observation, owner store and monitor, shared core, response managers/adapters,
+MQTT projection and ExternalApiRuntime. The other five domain adapters and
+derivative sampler are not claimed as fully mypy-verified. Queue admission is
+distinct from HA acceptance and snapshot acknowledgement. A stopped owner cannot
+revoke an already handed-off physical effect; process-owned leases and offline
+MQTT barriers remain tracked behind unresolved calls.
 
 ### Acceptance allocation
 

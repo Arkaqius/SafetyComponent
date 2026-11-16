@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import builtins
 from collections.abc import Callable, Mapping
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor, TimeoutError
 from dataclasses import dataclass
 import json
 from threading import RLock
@@ -56,6 +56,12 @@ class SnapshotWriter:
                 self._result = None
                 self._owner = owner
 
+    @property
+    def busy(self) -> bool:
+        """Expose unfinished process storage without transferring its ownership."""
+        with self._lock:
+            return self._future is not None and not self._future.done()
+
     def enqueue(
         self, owner: str, revision: int, snapshot: Mapping[str, Any],
         save: Callable[[Mapping[str, Any]], None],
@@ -81,6 +87,18 @@ class SnapshotWriter:
             result, self._result = self._result, None
             return result if result is not None and result.owner == owner else None
 
+    def wait_for_progress(self, timeout: float) -> bool:
+        """Wait only at startup/shutdown barriers; never on alarm ingress."""
+        with self._lock:
+            future = self._future
+            if future is None:
+                return self._result is not None
+        try:
+            future.result(timeout=max(0, timeout))
+        except TimeoutError:
+            return False
+        return True
+
     def _pump(self) -> None:
         if self._future is not None and self._future.done():
             self._result = self._future.result()
@@ -88,7 +106,11 @@ class SnapshotWriter:
         if self._future is None and self._pending is not None:
             request, save = self._pending
             self._pending = None
-            self._future = self._executor.submit(self._write, request, save)
+            try:
+                self._future = self._executor.submit(self._write, request, save)
+            except Exception as exc:
+                self._result = WriteResult(request.owner, request.revision, type(exc).__name__[:128])
+                return
             self._future.add_done_callback(self._completed)
 
     def _completed(self, _: Future[WriteResult]) -> None:

@@ -284,6 +284,10 @@ The runtime uses a separate `internal_environment_state` namespace in the
 [shared SQLite database](<Runtime State Storage - Architecture.md>), retaining
 the configured JSON state path for one-time import. Sharing storage does not
 merge detector-state validation with notification persistence.
+The version-2 envelope shall retain records independently of current bindings.
+Version-1 records that lack original hazard/source/profile/incident identity
+shall remain explicitly unattributed; matching their detector key to current
+equipment shall not reconstruct missing identity or authorize recovery.
 The snapshot shall also retain channel clear-order watermarks and any gas
 switching-inhibition latch/clearance evidence defined in section 7. These shall
 survive the associated fault's HEAL.
@@ -304,6 +308,13 @@ Reconnect and source-order uncertainty shall invalidate qualification. Durable
 clear acknowledgement shall precede HEAL; storage failure shall preserve current
 danger and restrictions. The detailed [recovery and retention contract](004-safety-timing-alarm-retention/contracts/indoor-recovery-retention.md)
 shall govern source admission, orphan identity, bounded state and operator projection.
+A prior clean checkpoint shall require independent preceding-owner continuity
+evidence. A full process restart without a surviving witness shall retain unknown
+history and fail-closed gas restriction, even when the previous checkpoint is
+clean. Reviewed first-installation admission shall not override existing retained
+records or an inactive gas journal. Operator projections shall include all-record
+danger/restriction totals and omission counts, with at most 64 detailed records
+and 64 KiB per diagnostic payload.
 
 | Path | Maximum interface budget | Example allocation, conditional on validated source/transport |
 | --- | --- | --- |

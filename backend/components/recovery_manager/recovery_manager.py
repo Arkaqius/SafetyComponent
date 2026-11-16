@@ -930,11 +930,13 @@ class RecoveryManager:
                 if symptom_name == prefaul_name:
                     continue
                 # Only current typed negative evidence can exclude another hazard.
-                sm_fcn = getattr(symptom_data.module, symptom_data.sm_name)
-                mechanism = symptom_data.module.safety_mechanisms.get(symptom_data.name)
-                simulator = getattr(symptom_data.module, "simulate", None)
+                module = symptom_data.module
+                sm_fcn = getattr(module, symptom_data.sm_name)
+                mechanism = module.safety_mechanisms.get(symptom_data.name)
+                simulator = getattr(module, "simulate", None)
                 if mechanism is None or not callable(simulator):
                     return True
+                identity = mechanism.scope._identity()
                 try:
                     outcome = simulator(mechanism, entities_changes, evaluator=sm_fcn)
                 except Exception:
@@ -943,11 +945,19 @@ class RecoveryManager:
                     return True
                 scope = mechanism.scope
                 if (
-                    not scope.eligible or outcome.mechanism_id != mechanism.name
+                    self.fm.get_all_symptom().get(symptom_name) is not symptom_data
+                    or symptom_data.module is not module
+                    or module.safety_mechanisms.get(symptom_data.name) is not mechanism
+                    or scope._identity() != identity
+                    or not scope.eligible or outcome.mechanism_id != mechanism.name
                     or outcome.generation != scope.generation
                     or outcome.runtime_id != scope.runtime_id
                     or outcome.result is not False
                 ):
+                    return True
+                catalog = getattr(self.fm, "sm_modules", None)
+                component_name = getattr(module, "component_name", None)
+                if isinstance(catalog, dict) and isinstance(component_name, str) and catalog.get(component_name) is not module:
                     return True
         return False
 

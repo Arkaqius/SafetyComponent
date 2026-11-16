@@ -25,6 +25,7 @@ from components.safetycomponents.entity_monitor.schema import (
 from components.safetycomponents.internal_environmental_hazard.schema import (
     COMPONENT_NAME as INTERNAL_ENVIRONMENTAL_HAZARD_COMPONENT_NAME,
     validate_internal_environmental_hazard_config,
+    InternalEnvironmentPersistence,
 )
 from components.safetycomponents.safety_doors.schema import (
     COMPONENT_NAME as SAFETY_DOORS_COMPONENT_NAME,
@@ -368,6 +369,9 @@ def _to_runtime(
 ) -> Dict[str, Any]:
     runtime = cfg.model_dump(by_alias=True)
     runtime_user_cfg = runtime.get("user_config", {})
+    indoor_source = cfg.user_config.safety_components.get(INTERNAL_ENVIRONMENTAL_HAZARD_COMPONENT_NAME, {})
+    runtime["app_config"]["indoor_state_policy"] = InternalEnvironmentPersistence.model_validate(
+        indoor_source.get("persistence", {})).model_dump()
 
     enabled_components = cfg.user_config.enabled_components()
     external_enabled = EXTERNAL_HAZARD_COMPONENT_NAME in enabled_components

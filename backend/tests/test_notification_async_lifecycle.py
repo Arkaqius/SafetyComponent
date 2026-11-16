@@ -1,6 +1,7 @@
 """Owner-side mobile receipts and bounded persistence during stalled responses."""
 
 from unittest.mock import Mock
+import pytest
 
 from components.core.service_dispatcher import Lane, ProcessLeaseRegistry, ResourceSpec, ServiceDispatcher
 from components.core.snapshot_writer import SnapshotWriter
@@ -44,6 +45,21 @@ def test_stalled_storage_and_mobile_target_do_not_block_admission_or_healthy_rec
     executor.finish(0)
     manager.tick()
     assert manager._durable_revision > 0 and len(executor.jobs) == 2
+
+
+def test_stop_fences_actual_ingress_and_unsent_work_even_when_final_snapshot_throws():
+    manager, broker, app, transport, _, _ = build_manager()
+    manager.notify("Fixture", 1, FaultState.SET, {}, "fixture")
+    callbacks = [record[1] for record in app.handles.values()]
+    manager._persist_state = Mock(side_effect=RuntimeError("fictional final snapshot failure"))
+    with pytest.raises(RuntimeError):
+        manager.stop()
+    assert not manager.scope.eligible and not manager._started
+    assert not manager.local_annunciator._enabled
+    for callback in callbacks:
+        callback()
+    broker.tick()
+    assert not transport.calls and "fixture" in manager.active_notification
 
 
 def test_ambiguous_completion_never_accepts_and_failed_write_stays_visible() -> None:

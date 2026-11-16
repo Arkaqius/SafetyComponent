@@ -86,6 +86,10 @@ An empty storage namespace does not prove a first indoor installation or release
 an independent gas restriction. The indoor owner shall require reviewed cold-start
 evidence and otherwise preserve uncertainty under the
 [indoor retention contract](004-safety-timing-alarm-retention/contracts/indoor-recovery-retention.md).
+A clean indoor checkpoint likewise requires independent preceding-owner
+continuity evidence. A full process restart loses the bounded process witness;
+the owner shall then retain unknown history and fail-closed gas restriction.
+Persisted commissioning metadata shall not be reused as current-launch proof.
 
 After successful initialization, SQLite is authoritative for that namespace.
 Later changes to a legacy file do not replace database state. Legacy JSON files

@@ -59,6 +59,19 @@ draining all writes/acknowledgements; any failed step leaves the session dirty.
 Test CLEAR commit -> newer SET -> crash
 before SET acknowledgement, including both storage and journal orderings.
 
+This includes failure before the marker itself becomes durable: an unchanged
+older clean checkpoint cannot exclude an intervening failed launch. Require an
+independent exact preceding-owner/storage witness to establish continuity.
+Without that witness, including a full process restart, retain unknown history
+and gas restriction. A saved commissioning identifier is historical metadata,
+not a current-launch witness. A reviewed virgin-installation receipt cannot
+override any retained owner state or conflicting indoor journal history.
+
+Version-1 migration shall retain every true alarm/health/gas flag without
+inventing missing original hazard/entity/profile/incident identities. Preserve
+these as `legacy_unattributed` records and trusted-catalog uncertainty. A reused
+detector key cannot grant them current-equipment recovery authority.
+
 Missing/corrupt prior checkpoint after alarm HEAL still leaves the independent
 gas latch unknown and fail-closed; an inactive journal is not release evidence.
 Proven first installation is a separate reviewed admission case: absence of a file

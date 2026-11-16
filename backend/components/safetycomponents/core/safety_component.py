@@ -204,6 +204,17 @@ class SafetyComponent:
         )
         return self.scope.handle(key)
 
+    def own_event_listener(
+        self, key: str, callback: Callable[..., Any], event: str, **kwargs: Any,
+    ) -> Any:
+        """Own raw adapter metadata and connection events across generations."""
+        self.scope.declare(
+            key, CancellationKind.EVENT,
+            lambda cb: self.hass_app.listen_event(cb, event, **kwargs),
+            callback, self.hass_app.cancel_listen_event,
+        )
+        return self.scope.handle(key)
+
     def own_interval(
         self, key: str, callback: Callable[..., Any], start: Any, interval: float,
     ) -> Any:
@@ -290,7 +301,7 @@ class SafetyComponent:
         )
 
     def get_symptoms_data(
-        self, modules: dict, component_cfg: list[dict[str, Any]]
+        self, modules: dict, component_cfg: Any
     ) -> tuple[dict[str, Symptom], dict[str, RecoveryAction]]:
         """
         Abstract method to retrieve symptom configurations and generate corresponding symptom and recovery action objects.

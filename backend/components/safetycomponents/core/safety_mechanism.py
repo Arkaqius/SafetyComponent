@@ -25,6 +25,7 @@ class SafetyMechanism:
         self.scope = scope or LifecycleScope(name, enabled=isEnabled)
         self.scope.set_enabled(isEnabled)
         self.last_outcome: ExecutionOutcome | None = None
+        self.on_invalidate: Callable[[], None] | None = None
         for entity in self.entities:
             self.scope.declare(
                 f"state:{entity}", CancellationKind.STATE,
@@ -44,7 +45,10 @@ class SafetyMechanism:
 
     @isEnabled.setter
     def isEnabled(self, enabled: bool) -> None:
+        invalidating = self.scope.enabled and not enabled
         self.scope.set_enabled(enabled)
+        if invalidating and self.on_invalidate is not None:
+            self.on_invalidate()
 
     def start(self) -> None:
         """Register explicit inputs once, without changing enabled intent."""
@@ -53,6 +57,8 @@ class SafetyMechanism:
     def stop(self) -> None:
         """Fence and cancel work without clearing domain danger."""
         self.scope.stop()
+        if self.on_invalidate is not None:
+            self.on_invalidate()
 
     def setup_listeners(self) -> None:
         """Retain the legacy registration entry point as idempotent start."""

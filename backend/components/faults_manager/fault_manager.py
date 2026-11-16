@@ -24,6 +24,7 @@ Note: This module is designed for internal use within the Home Assistant safety 
 """
 
 import hashlib
+import json
 from datetime import datetime, timezone
 from uuid import uuid4
 from typing import TYPE_CHECKING, Any, Callable, Mapping, Optional
@@ -97,6 +98,7 @@ class FaultManager:
         self.restriction_provider = restriction_provider
         self._symptom_contexts: dict[str, dict[str, str]] = {}
         self._retained_external_records: dict[str, "AssertionRecord"] = {}
+        self._retained_indoor_records: dict[str, Any] = {}
         runtime = getattr(hass, "runtime_id", None)
         self.runtime_id = runtime if isinstance(runtime, str) and runtime else uuid4().hex
         self.projection_failures = 0
@@ -111,7 +113,7 @@ class FaultManager:
         uncertain_faults: set[str] | None = None,
     ) -> None:
         """Restore retained danger before publication without replaying responses."""
-        self._retained_external_records = dict(records)
+        self._retained_external_records.update(records)
         for symptom_id, record in records.items():
             fault = self.faults.get(record.fault_id)
             if fault is None:
@@ -138,12 +140,52 @@ class FaultManager:
 
     def retained_assertions(self, fault_id: str) -> list[dict[str, Any]]:
         """Expose only unresolved assertions restored from an earlier runtime."""
-        return [record.model_dump(mode="json") for record in self._retained_external_records.values()
-                if record.fault_id == fault_id]
+        details = []
+        for record in (*self._retained_external_records.values(), *self._retained_indoor_records.values()):
+            if record.fault_id != fault_id:
+                continue
+            item = record.model_dump(mode="json")
+            if len(details) >= 64 or len(json.dumps(details + [item], ensure_ascii=False).encode("utf-8")) > 24_000:
+                break
+            details.append(item)
+        return details
+
+    def retained_assertion_counts(self, fault_id: str) -> dict[str, int]:
+        """Count every active contribution independently of bounded presentation."""
+        total = sum(record.fault_id == fault_id for record in (*self._retained_external_records.values(), *self._retained_indoor_records.values()))
+        return {"retained_assertions_total": total, "retained_assertions_omitted": total - len(self.retained_assertions(fault_id))}
+
+    def restore_indoor_assertions(self, records: Mapping[str, Any], *, uncertain_faults: set[str]) -> None:
+        """Restore exact original indoor contributions without replaying responses."""
+        for record in records.values():
+            if record.kind != "known" or not record.alarm_active:
+                continue
+            fault = self.faults.get(record.fault_id)
+            if fault is None:
+                continue
+            symptom_id = record.symptom_id
+            current = self.symptoms.get(symptom_id)
+            # A changed binding can reuse a stable symptom key. Its replacement
+            # cannot clear the old equipment's retained contribution.
+            monitor = getattr(current, "module", None)
+            owner = getattr(monitor, "_owner", None)
+            runtime = getattr(monitor, "_detectors", {}).get(record.detector_key)
+            exact = runtime is not None and runtime.record_id == record.record_id and owner is not None
+            contributor = symptom_id if exact else "RetainedIndoor" + hashlib.sha256(record.record_id.encode("utf-8")).hexdigest()
+            self._retained_indoor_records[contributor] = record
+            fault.evaluation.bind(contributor)
+            fault.evaluation.active = True
+            fault.evaluation.active_contributors.add(contributor)
+            fault.evaluation.status = FaultEvaluationStatus.UNEVALUABLE
+            self._symptom_contexts[contributor] = {str(key): str(value) for key, value in record.context.items()}
+            if exact:
+                current.state = FaultState.SET
+        self.restore_external_assertions({}, uncertain_faults=uncertain_faults)
 
     def acknowledge_external_evidence(self, symptom_id: str) -> None:
         """Replace historical presentation after a newly qualified real decision."""
         self._retained_external_records.pop(symptom_id, None)
+        self._retained_indoor_records.pop(symptom_id, None)
 
     def get_fault_evaluation(self, fault_id: str) -> FaultEvaluation:
         """Return the authoritative fault-owned evaluation."""
@@ -202,11 +244,14 @@ class FaultManager:
             latched=fault.evaluation.latched,
             level=f"level_{fault.level}",
             category=fault.category.value,
-            contributors=self._configured_contributors(fault),
-            active_contributors=sorted(fault.evaluation.active_contributors),
+            contributors=self._configured_contributors(fault)[:64],
+            contributors_total=len(self._configured_contributors(fault)),
+            active_contributors=sorted(fault.evaluation.active_contributors)[:64],
+            active_contributors_total=len(fault.evaluation.active_contributors),
         )
-        if fault.name in {"ExternalWeatherExposure", "OutdoorAirQualityExposure"}:
+        if fault.name in {"ExternalWeatherExposure", "OutdoorAirQualityExposure", "InternalSmokeDetected", "InternalFlammableGasDetected", "InternalCarbonMonoxideDetected", "WaterLeakDetected"}:
             payload["retained_assertions"] = self.retained_assertions(fault.name)
+            payload.update(self.retained_assertion_counts(fault.name))
             payload["retained_hazard_unknown"] = any(
                 key.startswith("RetainedUnknown") for key in fault.evaluation.active_contributors
             )
@@ -387,6 +432,7 @@ class FaultManager:
         """
         # Update symptom registry
         self.symptoms[symptom_id].state = FaultState.SET
+        self._retained_indoor_records.pop(symptom_id, None)
         if additional_info:
             self._symptom_contexts[symptom_id] = {
                 str(key): str(value) for key, value in additional_info.items()
@@ -416,6 +462,7 @@ class FaultManager:
         """
         # Update symptom registry
         self.symptoms[symptom_id].state = FaultState.CLEARED
+        self._retained_indoor_records.pop(symptom_id, None)
         self._symptom_contexts.pop(symptom_id, None)
 
         # Call Related Fault

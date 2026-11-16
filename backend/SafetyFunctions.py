@@ -86,6 +86,9 @@ from components.safetycomponents.external_hazard.assertion_store import (
     AssertionRecord,
     RealAssertionStore,
 )
+from components.safetycomponents.internal_environmental_hazard.state_store import (
+    INDOOR_FAULTS, MAX_BYTES as INDOOR_MAX_BYTES, IndoorStateOwner, InMemoryInternalEnvironmentStateStore, decode_checkpoint, current_launch_id,
+)
 from components.faults_manager import cfg_parser as cfg_pr
 from components.faults_manager.fault_manager import FaultManager, SYSTEM_STATE_BY_FAULT_LEVEL
 from components.faults_manager.evidence import FaultEvidenceJournal
@@ -198,6 +201,41 @@ class SafetyFunctions(hass.Hass):
                 self.runtime_config["app_config"]["fault_evidence"]["state_file"]
             )
         )
+        indoor_policy = self.runtime_config["app_config"]["indoor_state_policy"]
+        indoor_store = self.__dict__.get("_indoor_state_store")
+        if indoor_store is None:
+            indoor_store = (self.state_database.store("internal_environment_state", indoor_policy["state_file"], max_bytes=INDOOR_MAX_BYTES)
+                            if indoor_policy["enabled"] else InMemoryInternalEnvironmentStateStore())
+        # Only an explicitly supplied reviewed bootstrap receipt can prove a
+        # virgin installation. Never derive that proof from file absence.
+        receipt = self.__dict__.get("_indoor_initial_checkpoint")
+        reviewed_launch: str | None = None
+        prior_records: dict[str, Any] = {}
+        journal_uncertain = False
+        try:
+            evidence_policy = self.runtime_config["app_config"]["fault_evidence"]
+            prior_journal = (self.state_database.store("fault_evidence_state", evidence_policy["state_file"],
+                max_bytes=evidence_policy["max_total_bytes"]).load() if evidence_policy["enabled"] else {})
+            prior_records = prior_journal.get("records", {})
+            if not isinstance(prior_records, dict):
+                raise ValueError("Invalid prior journal records")
+            conflict = any(key in prior_records for key in INDOOR_FAULTS.values())
+            if receipt is not None:
+                if not conflict and not indoor_store.load():
+                    indoor_store.save(decode_checkpoint(receipt).model_dump(mode="json"))
+                    reviewed_launch = current_launch_id()
+        except Exception as exc:
+            journal_uncertain = True
+            self.log(f"Unable to reconcile indoor bootstrap history: {type(exc).__name__}", level="ERROR")
+        self.indoor_state_owner = IndoorStateOwner(indoor_store,
+            writer=self.__dict__.get("_snapshot_writers", {}).get("internal_environment_state"),
+            launch_receipt=reviewed_launch or self.__dict__.get("_indoor_launch_receipt"))
+        known_faults = {item.fault_id for item in self.indoor_state_owner.records.values() if item.kind == "known"}
+        if journal_uncertain or any(fault_id in prior_records and fault_id not in known_faults for fault_id in INDOOR_FAULTS.values()):
+            self.indoor_state_owner.history_unknown = self.indoor_state_owner.gas_history_unknown = True
+        self.indoor_state_owner.establish_session()
+        self._root_scope.declare("indoor:durability", CancellationKind.TIMER,
+            lambda cb: self.run_every(cb, "now", 1), self._drain_indoor_owner, self.cancel_timer)
 
         # Create access to installation-wide Home Assistant entities.
         self.common_entities: CommonEntities = CommonEntities(
@@ -292,10 +330,15 @@ class SafetyFunctions(hass.Hass):
             "fault_evidence_state",
             "safety_routines",
             "external_hazard_assertions",
+            "internal_environment_state",
         }
         indoor_monitor = self.sm_modules.get("InternalEnvironmentalHazardMonitorComponent")
         if indoor_monitor is not None:
             persistence_stores.add("internal_environment_state")
+        else:
+            self.mqtt_entities.register_sensor("sensor.internal_environment_summary", "Internal environment monitoring",
+                state="active_hazard" if any(item.alarm_active for item in self.indoor_state_owner.records.values()) else "degraded",
+                attributes=self.indoor_state_owner.projection({}, monitoring_enabled=False, localize=self.localizer.text), icon="mdi:home-alert", entity_category="diagnostic")
         if "HeatingSystemMonitorComponent" in self.sm_modules:
             persistence_stores.add("heating_monitor_state")
         functional_policy = self.runtime_config["app_config"]["calibration"].get(
@@ -402,6 +445,20 @@ class SafetyFunctions(hass.Hass):
         ))
         self.recovery_actions.update(self.self_diagnostics.get_recovery_actions())
 
+        evidence_cfg = self.runtime_config["app_config"]["fault_evidence"]
+        evidence_store = (self.state_database.store("fault_evidence_state", evidence_cfg["state_file"],
+                          max_bytes=evidence_cfg["max_total_bytes"]) if evidence_cfg["enabled"] else InMemoryFaultEvidenceStore())
+        self.fault_evidence = FaultEvidenceJournal(evidence_store,
+            max_records=evidence_cfg["max_records"], max_frame_bytes=evidence_cfg["max_frame_bytes"],
+            max_total_bytes=evidence_cfg["max_total_bytes"], log=self.log,
+            diagnostics_observer=self.self_diagnostics.record_app_cause,
+            schedule_flush=lambda callback, delay: self.run_in(lambda **_: callback(), delay))
+        retained_indoor_faults = {record.fault_id for record in self.indoor_state_owner.records.values() if record.alarm_active and record.fault_id}
+        retained_indoor_faults.update(fault_id for fault_id in INDOOR_FAULTS.values()
+                                     if (self.fault_evidence.get(fault_id) or {}).get("active"))
+        if self.indoor_state_owner.history_unknown or any(item.alarm_active and item.hazard is None for item in self.indoor_state_owner.records.values()):
+            retained_indoor_faults.update(INDOOR_FAULTS.values())
+        inactive_fault_names.difference_update(retained_indoor_faults)
         for fault_name in inactive_fault_names:
             if self.fault_dict.pop(fault_name, None) is not None:
                 self.mqtt_entities.remove_sensor(
@@ -492,26 +549,6 @@ class SafetyFunctions(hass.Hass):
             )
 
         # Create the fault aggregation and lifecycle manager.
-        evidence_cfg = self.runtime_config["app_config"]["fault_evidence"]
-        if evidence_cfg["enabled"]:
-            evidence_store = self.state_database.store(
-                "fault_evidence_state",
-                evidence_cfg["state_file"],
-                max_bytes=evidence_cfg["max_total_bytes"],
-            )
-        else:
-            evidence_store = InMemoryFaultEvidenceStore()
-        self.fault_evidence = FaultEvidenceJournal(
-            evidence_store,
-            max_records=evidence_cfg["max_records"],
-            max_frame_bytes=evidence_cfg["max_frame_bytes"],
-            max_total_bytes=evidence_cfg["max_total_bytes"],
-            log=self.log,
-            diagnostics_observer=self.self_diagnostics.record_app_cause,
-            schedule_flush=lambda callback, delay: self.run_in(
-                lambda **_: callback(), delay
-            ),
-        )
         self.fm: FaultManager = FaultManager(
             self,
             self.sm_modules,
@@ -522,6 +559,7 @@ class SafetyFunctions(hass.Hass):
             evidence_journal=self.fault_evidence,
         )
         self._restore_external_assertions()
+        self._restore_indoor_assertions()
         entity_monitor = self.sm_modules.get("EntityMonitorComponent")
         monitor_bindings = (
             entity_monitor.get_degradation_bindings()
@@ -569,11 +607,14 @@ class SafetyFunctions(hass.Hass):
             local_annunciator=LocalAnnunciator(
                 self, self.notification_cfg["local"], self.self_diagnostics.record_app_cause,
                 dispatcher=self.service_dispatcher,
+                restriction_provider=lambda: self.indoor_state_owner.gas_inhibited,
             ),
             snapshot_writer=self.__dict__.get("_snapshot_writers", {}).get("notification_state"),
         )
         for fault_name in retired_battery_faults:
             self.notify_man.retire_fault(self.fm._generate_fault_tag(fault_name))
+        if self.indoor_state_owner.gas_inhibited:
+            self.notify_man.inhibit_local_switching("active_or_unresolved_flammable_gas")
         for component in self.sm_modules.values():
             get_inhibitions = getattr(component, "get_output_inhibitions", None)
             if callable(get_inhibitions):
@@ -1151,6 +1192,9 @@ class SafetyFunctions(hass.Hass):
                         f"Unable to stop safety component {component.component_name}: {exc}",
                         level="ERROR",
                     )
+        indoor_owner = getattr(self, "indoor_state_owner", None)
+        if isinstance(indoor_owner, IndoorStateOwner):
+            indoor_owner.stop()
         notification_manager = getattr(self, "notify_man", None)
         if notification_manager is not None:
             try:
@@ -1299,6 +1343,47 @@ class SafetyFunctions(hass.Hass):
         finally:
             self._coverage_reevaluating = False
 
+
+    def _drain_indoor_owner(self, **_kwargs: Any) -> None:
+        """Drain storage on the root owner, including a disabled indoor monitor."""
+        owner = self.__dict__.get("indoor_state_owner")
+        if not isinstance(owner, IndoorStateOwner):
+            return
+        before = (owner.durable_revision, owner.persistence_error)
+        cleared = owner.drain()
+        if not cleared and before == (owner.durable_revision, owner.persistence_error):
+            return
+        monitor = self.sm_modules.get("InternalEnvironmentalHazardMonitorComponent")
+        if monitor is not None:
+            monitor.apply_durable_clears(cleared)
+        else:
+            self.mqtt_entities.publish_sensor_state("sensor.internal_environment_summary",
+                "active_hazard" if any(item.alarm_active for item in owner.records.values()) else "degraded",
+                attributes=owner.projection({}, monitoring_enabled=False, localize=self.localizer.text))
+        diagnostics = self.__dict__.get("self_diagnostics")
+        if diagnostics is not None:
+            diagnostics.record_app_cause("persistence", owner.persistence_error is not None,
+                detail="internal_environment_state", operation="save")
+        notification = self.__dict__.get("notify_man")
+        if notification is not None and owner.gas_inhibited:
+            notification.inhibit_local_switching("active_or_unresolved_flammable_gas")
+
+    def _restore_indoor_assertions(self) -> None:
+        """Merge trusted indoor retained evidence without replacing other owners."""
+        owner = self.indoor_state_owner
+        uncertain = set(INDOOR_FAULTS.values()) if owner.history_unknown else set()
+        for fault_id in INDOOR_FAULTS.values():
+            journal = self.fault_evidence.get(fault_id)
+            if journal and journal.get("active") and not any(item.fault_id == fault_id and item.alarm_active for item in owner.records.values()):
+                if owner.covers_older_journal_activation(fault_id, journal.get("freeze_frame", {})):
+                    self.fault_evidence.clear(fault_id)
+                else:
+                    uncertain.add(fault_id)
+        if any(item.kind == "legacy_unattributed" and item.alarm_active for item in owner.records.values()):
+            uncertain.update(INDOOR_FAULTS.values())
+        self.fm.restore_indoor_assertions(owner.records, uncertain_faults=uncertain)
+        self.self_diagnostics.record_app_cause("persistence", owner.persistence_error is not None,
+            detail="internal_environment_state", operation="load")
 
     def _restore_external_assertions(self) -> None:
         """Restore retained real danger before any initial fault state publication."""
@@ -1463,9 +1548,12 @@ class SafetyFunctions(hass.Hass):
                     "latched": fault.evaluation.latched,
                     "category": fault.category.value,
                     "fault_id": name,
-                    "contributors": contributors,
-                    "active_contributors": sorted(fault.evaluation.active_contributors),
+                    "contributors": contributors[:64],
+                    "contributors_total": len(contributors),
+                    "active_contributors": sorted(fault.evaluation.active_contributors)[:64],
+                    "active_contributors_total": len(fault.evaluation.active_contributors),
                     "retained_assertions": self.fm.retained_assertions(name),
+                    **self.fm.retained_assertion_counts(name),
                     "retained_hazard_unknown": any(
                         key.startswith("RetainedUnknown") for key in fault.evaluation.active_contributors
                     ),

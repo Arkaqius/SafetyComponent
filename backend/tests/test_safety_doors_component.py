@@ -417,7 +417,7 @@ def test_disabled_mechanism_does_not_evaluate_and_cancels_timer() -> None:
     assert events == []
 
 
-@pytest.mark.parametrize("transition", ["disable", "stop"])
+@pytest.mark.parametrize("transition", ["disable", "stop", "child_stop", "legacy_disable"])
 def test_door_qualification_receives_no_credit_for_disabled_interval(transition) -> None:
     now = datetime(2026, 7, 29, 12, 0, tzinfo=timezone.utc)
     component, _, _ = _build_component({"state": "open", "last_changed": now.isoformat()}, now=now)
@@ -428,6 +428,10 @@ def test_door_qualification_receives_no_credit_for_disabled_interval(transition)
     clock[0] += timedelta(seconds=20)
     if transition == "disable":
         component.enable_safety_mechanism(mechanism.name, SMState.DISABLED)
+    elif transition == "child_stop":
+        mechanism.stop()
+    elif transition == "legacy_disable":
+        mechanism.isEnabled = False
     else:
         component.stop()
     clock[0] += timedelta(seconds=100)

@@ -124,6 +124,16 @@ class CallbackServiceAdapter:
             self.callbacks[index](result)
 
 
+class InlineStorageExecutor:
+    """Complete explicitly fictional startup storage on the test thread."""
+
+    def submit(self, function: Callable[..., Any], *args: Any) -> Future:
+        """Preserve Future acknowledgements without production worker scheduling."""
+        future: Future = Future()
+        future.set_result(function(*args))
+        return future
+
+
 class ControlledExecutor:
     """Run exactly one admitted storage job when the test requests completion."""
 

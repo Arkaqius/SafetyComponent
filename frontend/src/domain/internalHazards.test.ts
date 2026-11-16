@@ -3,6 +3,52 @@ import test from 'node:test';
 import { getInternalEnvironmentMonitoring } from './internalHazards.js';
 import { type EntityMap } from './safety.js';
 
+test('disabled monitoring preserves orphan danger, all-record totals and independent gas uncertainty', () => {
+  const view = getInternalEnvironmentMonitoring({
+    'sensor.internal_environment_summary': entity('healthy', {
+      monitoring_enabled: false,
+      history_unknown: true,
+      gas_inhibition_unknown: true,
+      monitored_detectors: 0,
+      retained_active_hazards: 65,
+      retained_records_total: 70,
+      retained_records_omitted: 69,
+      retained_records: [
+        {
+          record_id: 'original',
+          detector: 'Poprzedni czujnik',
+          incident_id: 'original-incident',
+          alarm_active: true,
+          gas_switching_inhibited: true,
+          retention_status: 'orphan',
+          identity_available: true,
+        },
+      ],
+    }),
+  });
+  assert.equal(view.status, 'active_hazard');
+  assert.equal(view.monitoringEnabled, false);
+  assert.equal(view.monitoredDetectors, 0);
+  assert.equal(view.activeHazards, 65);
+  assert.equal(view.gasSwitchingInhibited, true);
+  assert.equal(view.retainedRecords[0].incidentId, 'original-incident');
+  assert.equal(view.retainedRecordsOmitted, 69);
+});
+
+test('unknown history denies healthy and a healed alarm does not release the gas latch', () => {
+  const view = getInternalEnvironmentMonitoring({
+    'sensor.internal_environment_summary': entity('healthy', {
+      monitoring_enabled: false,
+      gas_switching_inhibited: true,
+      history_unknown: true,
+      retained_records: [{ record_id: 'healed', alarm_active: false, gas_switching_inhibited: true, retention_status: 'orphan' }],
+    }),
+  });
+  assert.notEqual(view.status, 'healthy');
+  assert.equal(view.activeHazards, 0);
+  assert.equal(view.gasSwitchingInhibited, true);
+});
+
 test('detector labels use the source HA name and never promote raw IDs to operator names', () => {
   const entities: EntityMap = {
     'sensor.internal_environment_private_detector': entity('unavailable', {

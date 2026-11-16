@@ -90,6 +90,7 @@ calibration:
           - unavailable
         clear_duration_seconds: 30
         authoritative_clear: true
+        clear_event_contract: ha_state_changed_v1
     default_health_failure_debounce_seconds: 5
     default_health_recovery_debounce_seconds: 60
     persistence:

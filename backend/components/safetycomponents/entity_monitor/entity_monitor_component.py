@@ -311,6 +311,7 @@ class EntityMonitorComponent(SafetyComponent):
             monitored_entities=[],
         )
         self.safety_mechanisms[name].start()
+        self.safety_mechanisms[name].on_invalidate = lambda: self._interrupt_qualification(name)
         self.safety_mechanisms[name].sm_args.update(parameters)
         self.symptom_states[name] = FaultState.NOT_TESTED
 
@@ -357,6 +358,12 @@ class EntityMonitorComponent(SafetyComponent):
                 check.pending_failure_since = check.pending_recovery_since = None
             return True
         return False
+
+    def _interrupt_qualification(self, name: str) -> None:
+        """Reset a child's pending intervals while keeping shared source ingress."""
+        entity_key, check_key = self._symptom_to_check[name]
+        check = self._entities[entity_key].checks[check_key]
+        check.pending_failure_since = check.pending_recovery_since = None
 
     def initialize_recovery_commands(
         self, failures: dict[tuple[str, str], str] | None

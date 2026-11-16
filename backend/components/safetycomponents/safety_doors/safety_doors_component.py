@@ -217,6 +217,7 @@ class SafetyDoorsComponent(SafetyComponent):
         mechanism.start()
         self.symptom_states[name] = FaultState.NOT_TESTED
         self._door_runtime[name] = DoorRuntime()
+        mechanism.on_invalidate = lambda: self._interrupt_qualification(name)
 
         mqtt_entity_id = self.mqtt_entities.register_sensor(
             f"sensor.safety_door_{door_name}",
@@ -256,6 +257,12 @@ class SafetyDoorsComponent(SafetyComponent):
         )
         return False
 
+    def _interrupt_qualification(self, name: str) -> None:
+        """Discard only this child's elapsed qualification, retaining its assertion."""
+        runtime = self._door_runtime[name]
+        runtime.timer_handle = runtime.opened_at = None
+        runtime.qualification_interrupted = True
+
     def stop(self) -> None:
         """Discard qualification duration while retaining active door assertions."""
         super().stop()
@@ -281,6 +288,9 @@ class SafetyDoorsComponent(SafetyComponent):
 
         runtime = self._door_runtime[sm.name]
         now = self._now()
+        if entities_changes is None and runtime.qualification_interrupted:
+            runtime.qualification_floor = now
+            runtime.qualification_interrupted = False
         timeout_seconds = int(sm.sm_args["timeout_seconds"])
         condition_result, condition_state, condition_last_changed = (
             self._read_condition_state(sm, entities_changes)

@@ -188,6 +188,47 @@ test('L4 stays informational while L3 warnings still change the overall state', 
   await expect(notice).toHaveClass(/fault-info/);
 });
 
+test('disabled indoor monitoring preserves orphan danger and gas restrictions', async ({ page }) => {
+  await openMock(page, '/internal-hazards');
+  await page.evaluate(() => {
+    const entities = window.__safetyHomeMock.snapshot();
+    for (const id of Object.keys(entities)) if (id.startsWith('sensor.internal_environment_')) delete entities[id];
+    entities['sensor.internal_environment_summary'] = {
+      state: 'active_hazard',
+      attributes: {
+        monitoring_enabled: false,
+        monitored_detectors: 0,
+        retained_active_hazards: 1,
+        gas_switching_inhibited: true,
+        gas_inhibition_unknown: true,
+        retained_records_total: 1,
+        retained_records_omitted: 0,
+        retained_records: [
+          {
+            record_id: 'original',
+            detector: 'Poprzedni czujnik gazu',
+            source_entity_id: 'binary_sensor.original_gas',
+            incident_id: 'original-incident',
+            alarm_active: true,
+            gas_switching_inhibited: true,
+            retention_status: 'orphan',
+            identity_available: true,
+          },
+        ],
+      },
+    };
+    window.__safetyHomeMock.update({ entities });
+  });
+  await expect(page.getByText('Monitorowanie wyłączone', { exact: true })).toBeVisible();
+  const retained = page.getByRole('region', { name: 'Zachowane alarmy i blokady' });
+  await expect(retained).toContainText('Poprzedni czujnik gazu');
+  await expect(retained).toContainText('ustąpienie niepotwierdzone');
+  await expect(retained).toContainText('Blokada wyjść aktywna');
+  await expect(retained).toContainText('nie potwierdza bezpiecznego powrotu');
+  await expect(page.getByText('ten stan nie potwierdza obecności gazu', { exact: false })).toBeVisible();
+  expect(await page.evaluate(() => window.__safetyHomeMock.messages.filter(message => message.type === 'call_service'))).toEqual([]);
+});
+
 test('device contact does not turn an unknown water alarm into a clear alarm', async ({ page }, testInfo) => {
   await openMock(page, '/internal-hazards');
   await page.evaluate(() => {

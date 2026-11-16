@@ -76,7 +76,7 @@ def _component(mocked_hass_app_basic):
     return app, event_bus, component
 
 
-@pytest.mark.parametrize("transition", ["disable", "stop"])
+@pytest.mark.parametrize("transition", ["disable", "stop", "child_stop", "legacy_disable"])
 def test_entity_qualification_restarts_after_eligibility_gap(mocked_hass_app_basic, transition):
     app, _, component = _component(mocked_hass_app_basic)
     clock = [datetime(2026, 10, 7, 7, 49, 3, tzinfo=timezone.utc)]
@@ -91,6 +91,10 @@ def test_entity_qualification_restarts_after_eligibility_gap(mocked_hass_app_bas
     clock[0] += timedelta(seconds=5)
     if transition == "disable":
         component.enable_safety_mechanism(name, SMState.DISABLED)
+    elif transition == "child_stop":
+        component.safety_mechanisms[name].stop()
+    elif transition == "legacy_disable":
+        component.safety_mechanisms[name].isEnabled = False
     else:
         component.stop()
     clock[0] += timedelta(seconds=100)

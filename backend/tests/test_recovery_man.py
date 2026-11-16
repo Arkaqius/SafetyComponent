@@ -1470,3 +1470,38 @@ def test_recovery_dry_run_rejects_nonnegative_proof(kind):
     )
     assert manager._is_dry_test_failed("target", {"sensor.fixture": "unknown"}) is True
     module.evaluate.assert_not_called()
+
+
+@pytest.mark.parametrize("mismatch", ["generation", "runtime", "mechanism", "symptom_registry", "component_registry", "mechanism_registry", "reentrant_disable"])
+def test_recovery_simulation_requires_current_registry_and_generation(mismatch):
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+    from components.core.types_common import ExecutionOutcome, OutcomeKind, SMState
+    from components.core.fault_state_policy import FaultCategory
+    from components.safetycomponents.core.safety_mechanism import SafetyMechanism
+    mechanism = SafetyMechanism(Mock(), Mock(return_value=False), "other", True)
+    mechanism.start()
+    module = SimpleNamespace(component_name="Fixture", evaluate=Mock(), safety_mechanisms={"other": mechanism})
+    symptom = SimpleNamespace(sm_state=SMState.ENABLED, module=module, sm_name="evaluate", name="other")
+    registry = {"other": symptom}
+    catalog = {"Fixture": module}
+    def simulate(*args, **kwargs):
+        outcome = ExecutionOutcome("obsolete" if mismatch == "mechanism" else "other",
+            mechanism.scope.generation - 1 if mismatch == "generation" else mechanism.scope.generation,
+            0.0, OutcomeKind.ELIGIBLE_NEGATIVE,
+            runtime_id="old-runtime" if mismatch == "runtime" else mechanism.scope.runtime_id)
+        if mismatch == "symptom_registry":
+            registry["other"] = SimpleNamespace()
+        elif mismatch == "component_registry":
+            catalog["Fixture"] = SimpleNamespace()
+        elif mismatch == "mechanism_registry":
+            module.safety_mechanisms["other"] = SimpleNamespace()
+        elif mismatch == "reentrant_disable":
+            mechanism.isEnabled = False
+            mechanism.isEnabled = True
+        return outcome
+    module.simulate = simulate
+    manager = RecoveryManager.__new__(RecoveryManager)
+    manager.fm = SimpleNamespace(get_all_symptom=lambda: registry, sm_modules=catalog,
+        found_mapped_fault=lambda *_: SimpleNamespace(category=FaultCategory.H))
+    assert manager._is_dry_test_failed("target", {"sensor.fixture": "off"})

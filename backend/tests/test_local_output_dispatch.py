@@ -37,6 +37,16 @@ def test_gas_inhibition_after_admission_denies_all_unsent_electrical_commands() 
     assert not transport.calls and output.snapshot()["switching_inhibited"]
 
 
+def test_latest_owner_uncertainty_denies_handoff_before_periodic_projection():
+    output, broker, _, transport, _ = build_output()
+    restriction = [False]
+    output.restriction_provider = lambda: restriction[0]
+    output.activate(1, "smoke")
+    restriction[0] = True
+    broker.tick()
+    assert not transport.calls
+
+
 def test_latest_activation_supersedes_unsent_light_restore_and_targets_are_independent() -> None:
     output, broker, _, transport, observed = build_output()
     output.activate(2, "first")

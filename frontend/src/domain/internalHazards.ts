@@ -22,6 +22,7 @@ export interface InternalDetectorView {
   healthFaultActive: boolean;
   gasSwitchingInhibited: boolean;
   pendingAlarmClear: boolean;
+  durableClearPending: boolean;
   lastObservedAt?: string;
   lastAuthoritativeClearAt?: string;
   lastUpdated?: string;
@@ -38,6 +39,23 @@ export interface InternalEnvironmentView {
   gasSwitchingInhibited: boolean;
   persistenceError?: string;
   lastUpdated?: string;
+  monitoringEnabled: boolean;
+  historyUnknown: boolean;
+  gasInhibitionUnknown: boolean;
+  retainedRecords: RetainedIndoorView[];
+  retainedRecordsTotal: number;
+  retainedRecordsOmitted: number;
+}
+
+export interface RetainedIndoorView {
+  recordId: string;
+  name: string;
+  sourceEntityId?: string;
+  incidentId?: string;
+  alarmActive: boolean;
+  gasSwitchingInhibited: boolean;
+  status: string;
+  identityAvailable: boolean;
 }
 
 export function getInternalEnvironmentMonitoring(entities: EntityMap): InternalEnvironmentView {
@@ -89,6 +107,7 @@ export function getInternalEnvironmentMonitoring(entities: EntityMap): InternalE
         healthFaultActive,
         gasSwitchingInhibited: booleanAttribute(entity.attributes.gas_switching_inhibited),
         pendingAlarmClear: booleanAttribute(entity.attributes.pending_alarm_clear),
+        durableClearPending: booleanAttribute(entity.attributes.durable_clear_pending),
         lastObservedAt: optionalStringAttribute(entity.attributes.last_observed_at),
         lastAuthoritativeClearAt: optionalStringAttribute(entity.attributes.last_authoritative_clear_at),
         lastUpdated: entity.last_updated,
@@ -98,31 +117,70 @@ export function getInternalEnvironmentMonitoring(entities: EntityMap): InternalE
     .sort((left, right) => hazardPriority(left.hazard) - hazardPriority(right.hazard) || left.name.localeCompare(right.name, 'pl'));
 
   const fallbackActive = detectors.filter(detector => detector.alarmActive).length;
+  const retainedRecords = readRetainedRecords(summary?.attributes.retained_records);
   const fallbackUnavailable = detectors.filter(detector => detector.healthStatus === 'unavailable').length;
-  const activeHazards = Math.max(numericAttribute(summary?.attributes.active_hazards) ?? 0, fallbackActive);
+  const activeHazards = Math.max(
+    numericAttribute(summary?.attributes.active_hazards) ?? 0,
+    numericAttribute(summary?.attributes.retained_active_hazards) ?? 0,
+    fallbackActive,
+    retainedRecords.filter(record => record.alarmActive).length
+  );
   const unavailableDetectors = Math.max(numericAttribute(summary?.attributes.unavailable_detectors) ?? 0, fallbackUnavailable);
   const status = internalEnvironmentStatus(summary?.state, detectors, activeHazards, unavailableDetectors);
+  const historyUnknown = booleanAttribute(summary?.attributes.history_unknown);
+  const gasInhibitionUnknown = booleanAttribute(summary?.attributes.gas_inhibition_unknown);
+  const monitoringEnabled = summary?.attributes.monitoring_enabled !== false;
 
   return {
     entityId: INTERNAL_ENVIRONMENT_SUMMARY_ID,
     status:
-      status === 'healthy' && (numericAttribute(summary?.attributes.monitored_detectors) ?? detectors.length) > detectors.length
+      status === 'healthy' &&
+      (historyUnknown ||
+        gasInhibitionUnknown ||
+        !monitoringEnabled ||
+        (numericAttribute(summary?.attributes.monitored_detectors) ?? detectors.length) > detectors.length)
         ? 'degraded'
         : status,
     detectors,
-    monitoredDetectors: Math.max(
-      numericAttribute(summary?.attributes.monitored_detectors) ?? 0,
-      detectors.length,
-      activeHazards,
-      unavailableDetectors
-    ),
+    monitoredDetectors: Math.max(numericAttribute(summary?.attributes.monitored_detectors) ?? 0, detectors.length),
     activeHazards,
     unavailableDetectors,
     gasSwitchingInhibited:
-      booleanAttribute(summary?.attributes.gas_switching_inhibited) || detectors.some(detector => detector.gasSwitchingInhibited),
+      gasInhibitionUnknown ||
+      booleanAttribute(summary?.attributes.gas_switching_inhibited) ||
+      detectors.some(detector => detector.gasSwitchingInhibited) ||
+      retainedRecords.some(record => record.gasSwitchingInhibited),
+    monitoringEnabled,
+    historyUnknown,
+    gasInhibitionUnknown,
+    retainedRecords,
+    retainedRecordsTotal: Math.max(numericAttribute(summary?.attributes.retained_records_total) ?? 0, retainedRecords.length),
+    retainedRecordsOmitted: numericAttribute(summary?.attributes.retained_records_omitted) ?? 0,
     persistenceError: optionalStringAttribute(summary?.attributes.persistence_error),
     lastUpdated: summary?.last_updated ?? latestDetectorUpdate(detectors),
   };
+}
+
+function readRetainedRecords(value: unknown): RetainedIndoorView[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 64).flatMap(raw => {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return [];
+    const record = raw as Record<string, unknown>;
+    const recordId = stringAttribute(record.record_id).slice(0, 128);
+    if (!recordId) return [];
+    return [
+      {
+        recordId,
+        name: stringAttribute(record.detector).slice(0, 256) || 'Zachowany alarm bez nazwy',
+        sourceEntityId: optionalStringAttribute(record.source_entity_id),
+        incidentId: optionalStringAttribute(record.incident_id),
+        alarmActive: booleanAttribute(record.alarm_active),
+        gasSwitchingInhibited: booleanAttribute(record.gas_switching_inhibited),
+        status: stringAttribute(record.retention_status),
+        identityAvailable: record.identity_available === true,
+      },
+    ];
+  });
 }
 
 function findHealthEntityId(entities: EntityMap, sourceEntityId: string): string | undefined {

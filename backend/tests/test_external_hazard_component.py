@@ -144,6 +144,23 @@ def test_synthetic_preview_does_not_mutate_real_policy_or_dispatch_symptoms(scen
     assert provider not in component.enabled_providers
 
 
+def test_direct_child_stop_restarts_full_clear_without_stale_bookkeeping():
+    component, hass, _, _ = _component()
+    name = "ExternalWeatherExposureWindOfficeWindow"
+    component.policy["clear_delay_seconds"] = 120
+    component._apply_state(name, "active", {"source": "ImgwWarningsApiComponent"})
+    component._apply_state(name, "clear", {})
+    old = hass.timers[-1]
+    mechanism = component.safety_mechanisms[name]
+    mechanism.stop()
+    component.enable_safety_mechanism(name, SMState.ENABLED)
+    component._apply_state(name, "clear", {})
+    assert len(hass.timers) == 2
+    assert hass.timers[-1][1] == 120
+    old[0](**old[2])
+    assert component.symptom_states[name] == FaultState.SET
+
+
 def test_real_assertions_are_persisted_before_publication_and_failure_cannot_clear():
     component, _, _, events = _component()
     name = "ExternalWeatherExposureWindOfficeWindow"

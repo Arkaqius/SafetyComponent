@@ -190,13 +190,17 @@ class NotificationManager:
     def stop(self) -> None:
         """Fence callbacks and admit a final snapshot without claiming its durability."""
 
-        self._persist_state()
         self.scope.stop()
-        self.mobile_provider.stop()
-        self.local_annunciator.stop()
-        self._async_pending.clear()
-        self._async_deadlines.clear()
-        self._started = False
+        try:
+            self.mobile_provider.stop()
+        finally:
+            try:
+                self.local_annunciator.stop()
+            finally:
+                self._async_pending.clear()
+                self._async_deadlines.clear()
+                self._started = False
+                self._persist_state()
 
     def retire_fault(self, tag: str) -> None:
         """Retire lifecycle state without asserting recovery or erasing history."""

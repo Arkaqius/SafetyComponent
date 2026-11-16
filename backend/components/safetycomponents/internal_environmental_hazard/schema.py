@@ -17,16 +17,18 @@ _DETECTOR_KEY = re.compile(r"^[A-Za-z0-9]+$")
 class BinaryDetectorProfile(StrictBaseModel):
     """System-owned interpretation contract for one binary detector family."""
 
-    version: str
-    provenance: str
+    version: str = Field(min_length=1, max_length=128)
+    provenance: str = Field(min_length=1, max_length=256)
     alarm_states: list[str] = Field(min_length=1)
     clear_states: list[str] = Field(min_length=1)
     test_states: list[str] = Field(default_factory=list)
+    hush_states: list[str] = Field(default_factory=list)
     unavailable_states: list[str] = Field(
         default_factory=lambda: ["unknown", "unavailable"]
     )
     clear_duration_seconds: int = Field(default=30, ge=1, le=3600)
     authoritative_clear: bool = True
+    clear_event_contract: Literal["unverified", "ha_state_changed_v1"] = "unverified"
 
     @field_validator(
         "version",
@@ -43,6 +45,7 @@ class BinaryDetectorProfile(StrictBaseModel):
         "alarm_states",
         "clear_states",
         "test_states",
+        "hush_states",
         "unavailable_states",
     )
     @classmethod
@@ -60,6 +63,7 @@ class BinaryDetectorProfile(StrictBaseModel):
             "alarm": set(self.alarm_states),
             "clear": set(self.clear_states),
             "test": set(self.test_states),
+            "hush": set(self.hush_states),
             "unavailable": set(self.unavailable_states),
         }
         names = list(state_sets)
@@ -71,21 +75,17 @@ class BinaryDetectorProfile(StrictBaseModel):
                         f"profile {left_name}/{right_name} states overlap: "
                         f"{sorted(overlap)}"
                     )
-        if not self.authoritative_clear:
-            raise ValueError(
-                "enabled binary profiles require authoritative clear semantics"
-            )
         return self
 
 
 class InternalDetectorConfig(StrictBaseModel):
     """Installation binding for one hazard channel."""
 
-    area_id: str
-    entity_id: str
-    friendly_name: str
+    area_id: str = Field(min_length=1, max_length=128)
+    entity_id: str = Field(min_length=1, max_length=255)
+    friendly_name: str = Field(min_length=1, max_length=256)
     hazard: HazardKind
-    profile: str
+    profile: str = Field(min_length=1, max_length=128)
     gas_identity: str | None = None
     enabled: bool = True
 
@@ -136,7 +136,7 @@ class InternalEnvironmentalHazardMonitorConfig(StrictBaseModel):
     """Top-level policy and detector bindings for the internal monitor."""
 
     profiles: dict[str, BinaryDetectorProfile] = Field(min_length=1)
-    detectors: dict[str, InternalDetectorConfig] = Field(min_length=1)
+    detectors: dict[str, InternalDetectorConfig] = Field(default_factory=dict)
     health_failure_debounce_seconds: int = Field(default=5, ge=0, le=60)
     health_recovery_debounce_seconds: int = Field(default=60, ge=1, le=3600)
     persistence: InternalEnvironmentPersistence = Field(
@@ -150,8 +150,6 @@ class InternalEnvironmentalHazardMonitorConfig(StrictBaseModel):
             for key, detector in self.detectors.items()
             if detector.enabled
         }
-        if not enabled:
-            raise ValueError("at least one internal detector must be enabled")
         if len(enabled) > self.persistence.maximum_detectors:
             raise ValueError("enabled detector count exceeds persistence bound")
 
@@ -161,6 +159,8 @@ class InternalEnvironmentalHazardMonitorConfig(StrictBaseModel):
                 raise ValueError(
                     f"detector key '{key}' must contain only ASCII letters and digits"
                 )
+            if max(len(f"InternalEnv_{detector.hazard}_{key}"), len(f"InternalEnv_detector_health_{key}")) > 128:
+                raise ValueError("detector identity exceeds 128-character symptom bound")
             if detector.profile not in self.profiles:
                 raise ValueError(
                     f"detector '{key}' references unknown profile "

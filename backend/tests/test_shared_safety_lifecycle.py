@@ -409,8 +409,9 @@ def test_external_missing_hypothetical_input_does_not_prove_clear():
 
 
 @pytest.mark.parametrize("family", ["temperature", "doors", "entity", "heating", "indoor", "external"])
+@pytest.mark.parametrize("failed_cancellation", [False, True])
 def test_real_family_scopes_stop_and_restart_without_obsolete_domain_entry(
-    family, mocked_hass_app_basic, tmp_path,
+    family, mocked_hass_app_basic, tmp_path, failed_cancellation,
 ):
     from datetime import datetime, timezone
     from components.core.types_common import SMState
@@ -442,13 +443,48 @@ def test_real_family_scopes_stop_and_restart_without_obsolete_domain_entry(
     else:
         from test_external_hazard_component import _component
         component, _, _, _ = _component()
+    from dataclasses import replace
+    component.stop()
+    captured = []
+    scopes = [component.scope, *(sm.scope for sm in component.safety_mechanisms.values())]
+    for scope in scopes:
+        for key, registration in tuple(scope._declarations.items()):
+            def register(callback, original=registration.register):
+                captured.append(callback)
+                return original(callback)
+            def cancel(handle, original=registration.cancel):
+                if failed_cancellation:
+                    raise RuntimeError("fictional cancellation failure")
+                return original(handle)
+            scope._declarations[key] = replace(registration, register=register, cancel=cancel)
+    component.start()
+    for name in component.safety_mechanisms:
+        component.enable_safety_mechanism(name, SMState.ENABLED)
+    expected_inputs = {"temperature": 12, "doors": 1, "entity": 3, "heating": 1, "indoor": 5, "external": 4}
+    assert sum(len(scope._declarations) for scope in scopes) == expected_inputs[family]
+    assert len(captured) == expected_inputs[family]
     handles = (component.scope.handle_count,
                sum(sm.scope.handle_count for sm in component.safety_mechanisms.values()))
+    # Child eligibility changes retain every still-required shared parent input.
+    for name, mechanism in component.safety_mechanisms.items():
+        parent_handles = component.scope.handle_count
+        component.enable_safety_mechanism(name, SMState.DISABLED)
+        assert component.scope.handle_count == parent_handles
+        assert not mechanism.scope.eligible
+        component.enable_safety_mechanism(name, SMState.ENABLED)
+        assert mechanism.scope.eligible
+    # Presentation metadata must not add input dependencies or subscriptions.
+    declarations = sum(len(scope._declarations) for scope in scopes)
+    for mechanism in component.safety_mechanisms.values():
+        mechanism.sm_args["area_name"] = "Updated display label"
+    assert sum(len(scope._declarations) for scope in scopes) == declarations
     component.start()
     component.start()
-    assert handles == (component.scope.handle_count,
-                       sum(sm.scope.handle_count for sm in component.safety_mechanisms.values()))
-    old = [sm.scope.guard(lambda sm=sm: sm.callback(sm)) for sm in component.safety_mechanisms.values()]
+    assert handles[0] == component.scope.handle_count
+    # Eligibility invalidation may discard domain timers, but never duplicates
+    # declarations; each live source has at most one current owned handle.
+    assert sum(len(scope._declarations) for scope in scopes) == declarations
+    old = list(captured)
     for name in ("_tick", "_evaluate_all", "_entity_changed"):
         callback = getattr(component, name, None)
         if callable(callback):
@@ -457,15 +493,27 @@ def test_real_family_scopes_stop_and_restart_without_obsolete_domain_entry(
     component.stop()
     assert component.scope.handle_count == 0
     assert all(sm.scope.handle_count == 0 for sm in component.safety_mechanisms.values())
+    if failed_cancellation:
+        assert sum(scope.cancellation_failures for scope in scopes) > 0
     stopped = dict(component.symptom_states)
+    def submission_count():
+        app = component.hass_app
+        calls = getattr(app, "service_calls", None)
+        if isinstance(calls, list):
+            return len(calls)
+        return len(getattr(app.call_service, "call_args_list", []))
+    before_submissions = submission_count()
     for callback in old:
         callback()
     assert component.symptom_states == stopped
+    assert submission_count() == before_submissions
     component.start()
     for name in component.safety_mechanisms:
         component.enable_safety_mechanism(name, SMState.ENABLED)
     restarted = dict(component.symptom_states)
+    before_submissions = submission_count()
     for callback in old:
         callback()
     assert component.symptom_states == restarted
+    assert submission_count() == before_submissions
     component.stop()

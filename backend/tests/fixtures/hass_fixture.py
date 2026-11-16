@@ -9,7 +9,9 @@ from SafetyFunctions import SafetyFunctions
 from components.core.mqtt_entity_manager import MqttEntityManager
 from components.core.service_dispatcher import ProcessLeaseRegistry
 from components.core.snapshot_writer import SnapshotWriter
-from safety_lifecycle_support import ControlledExecutor
+from safety_lifecycle_support import ControlledExecutor, InlineStorageExecutor
+from components.safetycomponents.internal_environmental_hazard.state_store import commissioned_checkpoint, InMemoryInternalEnvironmentStateStore, current_launch_id
+from datetime import datetime, timezone
 
 
 @pytest.fixture
@@ -131,8 +133,14 @@ def install_response_fakes(app_instance: Any, mocked_hass: Any, *, capture_only:
     app_instance._snapshot_writers = {
         namespace: SnapshotWriter(executor) for namespace, executor in app_instance._snapshot_executors.items()
     }
+    app_instance._snapshot_writers["internal_environment_state"] = SnapshotWriter(InlineStorageExecutor())
     mocked_hass._response_app = app_instance
     app_instance._response_transport = app_instance.call_service
+    if "_indoor_initial_checkpoint" not in app_instance.__dict__:
+        app_instance._indoor_initial_checkpoint = commissioned_checkpoint("reviewed-fictional-installation", datetime(2026, 11, 16, tzinfo=timezone.utc))
+    if "InternalEnvironmentalHazardMonitorComponent" not in app_instance.args.get("user_config", {}).get("safety_components", {}):
+        app_instance._indoor_state_store = InMemoryInternalEnvironmentStateStore(app_instance._indoor_initial_checkpoint)
+        app_instance._indoor_launch_receipt = current_launch_id() if app_instance._indoor_initial_checkpoint else None
 
 
 def drain_responses(hass_app: Any, limit: int = 2000) -> None:
@@ -158,6 +166,8 @@ def drain_responses(hass_app: Any, limit: int = 2000) -> None:
         recovery = app.__dict__.get("reco_man")
         if recovery is not None and recovery.scope.eligible:
             recovery._drain_writes()
+        if "indoor_state_owner" in app.__dict__:
+            app._drain_indoor_owner()
         mqtt = app.__dict__.get("mqtt_entities")
         projection = mqtt.projections if mqtt is not None else None
         if projection is not None:

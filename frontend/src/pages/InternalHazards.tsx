@@ -10,7 +10,7 @@ import { useSafetyEntities } from '../hooks/useSafetyEntities';
 const summaryPresentation: Record<InternalEnvironmentStatus, { label: string; detail: string; tone: StatusTone }> = {
   active_hazard: {
     label: 'Aktywne zagrożenie',
-    detail: 'Co najmniej jeden niezależny czujnik zgłasza alarm.',
+    detail: 'Co najmniej jeden alarm pozostaje aktywny lub zachowany bez potwierdzonego ustąpienia.',
     tone: 'critical',
   },
   healthy: {
@@ -81,7 +81,7 @@ export default function InternalHazards() {
         <Metric
           label='Ochrona wyjść lokalnych'
           value={internalEnvironment.gasSwitchingInhibited ? 'Aktywna' : 'Nieaktywna'}
-          detail='blokada po alarmie gazowym'
+          detail={internalEnvironment.gasInhibitionUnknown ? 'historia blokady niepotwierdzona' : 'niezależna blokada po alarmie gazowym'}
         />
       </section>
 
@@ -92,6 +92,54 @@ export default function InternalHazards() {
             <strong>{presentation.label}</strong>
             <p>{presentation.detail} Postępuj zgodnie z komunikatem alarmowym i opuść zagrożony obszar.</p>
           </div>
+        </section>
+      )}
+
+      {(!internalEnvironment.monitoringEnabled || internalEnvironment.historyUnknown || internalEnvironment.gasInhibitionUnknown) && (
+        <section className='panel internal-persistence-warning'>
+          <strong>
+            {internalEnvironment.monitoringEnabled ? 'Historia bezpieczeństwa wymaga weryfikacji' : 'Monitorowanie wyłączone'}
+          </strong>
+          <p>Wyłączenie monitorowania lub brak czujnika w konfiguracji nie kasuje wcześniejszych alarmów ani blokady wyjść.</p>
+          {internalEnvironment.gasInhibitionUnknown && (
+            <p>Historia blokady po gazie jest niepotwierdzona. Wyjścia pozostają zablokowane; ten stan nie potwierdza obecności gazu.</p>
+          )}
+        </section>
+      )}
+
+      {internalEnvironment.retainedRecordsTotal > 0 && (
+        <section className='panel' aria-label='Zachowane alarmy i blokady'>
+          <h2>Zachowane alarmy i blokady</h2>
+          <p>
+            Alarm może pozostać zapisany po usunięciu lub wymianie czujnika. Ustąpienie alarmu nie zwalnia niezależnej blokady po gazie i
+            nie potwierdza bezpiecznego powrotu.
+          </p>
+          {internalEnvironment.retainedRecords
+            .filter(record => record.status !== 'current')
+            .map(record => (
+              <article key={record.recordId} className='internal-retained-record'>
+                <h3>{record.name}</h3>
+                <p>
+                  {record.alarmActive ? 'Alarm zachowany — ustąpienie niepotwierdzone' : 'Alarm nieaktywny'}
+                  {record.gasSwitchingInhibited ? ' · Blokada wyjść aktywna' : ''}
+                </p>
+                <p>
+                  {record.status === 'orphan' ? 'Brak zgodnego czujnika w bieżącej konfiguracji.' : 'Bieżące źródło wymaga weryfikacji.'}
+                </p>
+                {!record.identityAvailable && <p>Stary zapis nie zawiera pełnej tożsamości źródła ani incydentu.</p>}
+                <details>
+                  <summary>Tożsamość zachowanego wpisu</summary>
+                  <p>{record.sourceEntityId || 'Źródło nieznane'}</p>
+                  <p>{record.incidentId || 'Identyfikator incydentu nieznany'}</p>
+                </details>
+              </article>
+            ))}
+          {internalEnvironment.retainedRecordsOmitted > 0 && (
+            <p>
+              Pominięte szczegóły: {internalEnvironment.retainedRecordsOmitted}. Podsumowanie uwzględnia wszystkie{' '}
+              {internalEnvironment.retainedRecordsTotal} wpisów.
+            </p>
+          )}
         </section>
       )}
 
@@ -189,6 +237,13 @@ function DetectorCard({ detector, onSelectEntity }: { detector: InternalDetector
       </dl>
       {detector.lastContactAt && !alarmKnown && (
         <p>Urządzenie zgłosiło kontakt, ale nie udostępnia stanu alarmowego. Nie można potwierdzić braku zagrożenia.</p>
+      )}
+      {(detector.pendingAlarmClear || detector.durableClearPending) && (
+        <p>
+          {detector.durableClearPending
+            ? 'Ustąpienie oczekuje na potwierdzony zapis. Alarm pozostaje aktywny.'
+            : 'Trwa nowy pełny okres potwierdzania ustąpienia alarmu.'}
+        </p>
       )}
       {detector.hazard === 'flammable_gas' && (
         <div className={`internal-switching-state${detector.gasSwitchingInhibited ? ' switching-inhibited' : ''}`}>

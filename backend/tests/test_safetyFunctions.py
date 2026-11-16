@@ -365,6 +365,7 @@ def test_fault_and_symptom_registration(mocked_hass_app_with_temp_component):
                 "AppHealthPersistenceFaultEvidenceState",
                 "AppHealthPersistenceSafetyRoutines",
                 "AppHealthPersistenceExternalHazardAssertions",
+                "AppHealthPersistenceInternalEnvironmentState",
             }
             or symptom_name.startswith(("AppHealthEvaluation_", "AppHealthRecovery_"))
             else FaultState.NOT_TESTED

@@ -461,6 +461,7 @@ class ExternalHazardComponent(SafetyComponent):
         )
         mechanism.sm_args.update(parameters)
         self.safety_mechanisms[name] = mechanism
+        mechanism.on_invalidate = lambda: self._cancel_clear(name)
         mechanism.start()
         self.symptom_states[name] = FaultState.NOT_TESTED
         self._ensure_aggregate_entity()

@@ -15,7 +15,10 @@ from components.safetycomponents.internal_environmental_hazard.internal_environm
 )
 from components.safetycomponents.internal_environmental_hazard.state_store import (
     InMemoryInternalEnvironmentStateStore,
+    IndoorStateOwner, commissioned_checkpoint, current_launch_id,
 )
+from components.core.snapshot_writer import SnapshotWriter
+from safety_lifecycle_support import ControlledExecutor
 
 
 GAS_ENTITY = "binary_sensor.bathroom_gasleak_detector"
@@ -35,6 +38,8 @@ def _configuration(*, health_failure_seconds: int = 5, include_leak: bool = Fals
                 "unavailable_states": ["unknown", "unavailable"],
                 "clear_duration_seconds": 30,
                 "authoritative_clear": True,
+                "clear_event_contract": "ha_state_changed_v1",
+                "hush_states": ["hush"],
             }
         },
         "detectors": {
@@ -93,8 +98,16 @@ def _build_component(
     now: datetime,
     health_failure_seconds: int = 5,
     include_leak: bool = False,
+    hazard_override: str | None = None,
 ) -> tuple[InternalEnvironmentalHazardMonitorComponent, MagicMock, list[dict]]:
     hass_app = MagicMock()
+    executor = ControlledExecutor()
+    hass_app.indoor_state_owner = IndoorStateOwner(InMemoryInternalEnvironmentStateStore(
+        commissioned_checkpoint("reviewed-component-fixture", now)), writer=SnapshotWriter(executor), launch_receipt=current_launch_id())
+    hass_app.indoor_state_owner.begin()
+    executor.finish(0)
+    hass_app.indoor_state_owner.drain()
+    hass_app._indoor_test_executor = executor
     hass_app.localizer = None
     hass_app.get_state.side_effect = lambda entity_id, **_kwargs: states.get(entity_id)
     hass_app.run_in.side_effect = lambda callback, delay, **kwargs: (
@@ -112,9 +125,15 @@ def _build_component(
         MqttEntityManager(hass_app),
     )
     component._now = lambda: now  # type: ignore[method-assign]
+    component._monotonic = lambda: 0.0
+    config = _configuration(health_failure_seconds=health_failure_seconds, include_leak=include_leak)
+    if hazard_override is not None:
+        config["detectors"]["BathroomFlammableGas"]["hazard"] = hazard_override
+        if hazard_override != "flammable_gas":
+            config["detectors"]["BathroomFlammableGas"].pop("gas_identity")
     symptoms, recovery = component.get_symptoms_data(
         {component.component_name: component},
-        _configuration(health_failure_seconds=health_failure_seconds, include_leak=include_leak),
+        config,
     )
     assert set(recovery) == set(symptoms)
     for symptom in symptoms.values():
@@ -135,6 +154,25 @@ def _build_component(
 
 def _event(events: list[dict], symptom_id: str) -> dict:
     return next(event for event in reversed(events) if event["symptom_id"] == symptom_id)
+
+
+def _live(component, entity, old, new, *, context="fixture-edge"):
+    component._now = lambda: datetime.fromisoformat(new["last_updated"])
+    component._source_event("state_changed", dict(entity_id=entity, old_state=old, new_state=new,
+        metadata=dict(origin="LOCAL", time_fired=new["last_updated"], context=dict(id=context))))
+
+
+def _expire(component, key):
+    candidate = component._detectors[key].authority.candidate
+    assert candidate is not None
+    component._alarm_clear_elapsed(detector_key=key, candidate_token=candidate.token)
+    executor = component.hass_app._indoor_test_executor
+    # Finish only storage: no source/qualification timer or wall time advances.
+    for _ in range(5):
+        for index, (future, _, _) in enumerate(tuple(executor.jobs)):
+            if not future.done():
+                executor.finish(index)
+        component._drain_state()
 
 
 def test_device_contact_does_not_clear_a_latched_water_alarm_with_unknown_state() -> None:
@@ -238,6 +276,18 @@ def test_water_leak_unavailable_does_not_clear_until_authoritative_off() -> None
     assert component.sm_iehm_water_leak(mechanism)
     component._now = lambda: clear_at + timedelta(seconds=30)  # type: ignore[method-assign]
     component._alarm_clear_elapsed(detector_key="UtilityLeak")
+    assert _event(events, leak_name)["state"] == FaultState.SET
+    assert component._detectors["UtilityLeak"].authority.candidate is None
+    alarm_at = clear_at + timedelta(seconds=31)
+    prior = states[LEAK_ENTITY]
+    states[LEAK_ENTITY] = _snapshot("on", alarm_at)
+    _live(component, LEAK_ENTITY, prior, states[LEAK_ENTITY])
+    prior = states[LEAK_ENTITY]
+    states[LEAK_ENTITY] = _snapshot("off", alarm_at + timedelta(seconds=1))
+    component._monotonic = lambda: 1.0
+    _live(component, LEAK_ENTITY, prior, states[LEAK_ENTITY])
+    component._monotonic = lambda: 31.0
+    _expire(component, "UtilityLeak")
     assert _event(events, leak_name)["state"] == FaultState.CLEARED
 
 
@@ -304,13 +354,99 @@ def test_authoritative_clear_requires_full_profile_interval() -> None:
     component._now = lambda: clear_at  # type: ignore[method-assign]
     component.sm_iehm_flammable_gas(mechanism)
     assert component._detectors["BathroomFlammableGas"].alarm_active is True
+    component._monotonic = lambda: 1.0
+    _live(component, GAS_ENTITY, _snapshot("on", now), states[GAS_ENTITY])
+    component._monotonic = lambda: 30.999
+    _expire(component, "BathroomFlammableGas")
+    assert component._detectors["BathroomFlammableGas"].alarm_active is True
 
     component._now = lambda: clear_at + timedelta(seconds=30)  # type: ignore[method-assign]
-    component._alarm_clear_elapsed(detector_key="BathroomFlammableGas")
+    component._monotonic = lambda: 31.0
+    _expire(component, "BathroomFlammableGas")
 
     assert component._detectors["BathroomFlammableGas"].alarm_active is False
     assert _event(events, mechanism.name)["state"] == FaultState.CLEARED
     assert component._detectors["BathroomFlammableGas"].gas_switching_inhibited is True
+
+
+@pytest.mark.parametrize("hazard", ["smoke", "flammable_gas", "carbon_monoxide", "water_leak"])
+def test_old_off_cannot_erase_fresh_alarm_and_live_clear_requires_thirty_seconds(hazard):
+    now = datetime(2026, 11, 16, tzinfo=timezone.utc)
+    states = {GAS_ENTITY: _snapshot("on", now), CO_ENTITY: _snapshot("off", now)}
+    component, _, events = _build_component(states, now=now, hazard_override=hazard)
+    runtime = component._detectors["BathroomFlammableGas"]
+    mechanism = component.safety_mechanisms[f"InternalEnv_{hazard}_BathroomFlammableGas"]
+    component._evaluate_mechanism(mechanism)
+    states[GAS_ENTITY] = _snapshot("off", now - timedelta(days=1))
+    component._evaluate_mechanism(mechanism)
+    assert runtime.alarm_active and runtime.authority.candidate is None
+    _live(component, GAS_ENTITY, states[GAS_ENTITY], states[GAS_ENTITY])
+    assert runtime.authority.candidate is None
+    # A fresh positive reestablishes the exact source watermark after ambiguity.
+    states[GAS_ENTITY] = _snapshot("on", now + timedelta(seconds=1))
+    component._evaluate_mechanism(mechanism)
+    prior = states[GAS_ENTITY]
+    states[GAS_ENTITY] = _snapshot("off", now + timedelta(seconds=2))
+    component._monotonic = lambda: 2.0
+    _live(component, GAS_ENTITY, prior, states[GAS_ENTITY])
+    component._monotonic = lambda: 31.999
+    _expire(component, runtime.key)
+    assert runtime.alarm_active
+    component._monotonic = lambda: 32.0
+    _expire(component, runtime.key)
+    assert not runtime.alarm_active
+    assert _event(events, mechanism.name)["state"] == FaultState.CLEARED
+
+
+@pytest.mark.parametrize("hazard", ["smoke", "flammable_gas", "carbon_monoxide", "water_leak"])
+@pytest.mark.parametrize("interruption", ["unknown", "unavailable", "test", "hush", "on", "reconnect", "stop"])
+def test_clear_interruption_retains_alarm_and_rejects_obsolete_timer(hazard, interruption):
+    now = datetime(2026, 11, 16, tzinfo=timezone.utc)
+    states = {GAS_ENTITY: _snapshot("on", now), CO_ENTITY: _snapshot("off", now)}
+    component, hass_app, events = _build_component(states, now=now, hazard_override=hazard)
+    runtime = component._detectors["BathroomFlammableGas"]
+    name = f"InternalEnv_{hazard}_BathroomFlammableGas"
+    component._evaluate_mechanism(component.safety_mechanisms[name])
+    prior = states[GAS_ENTITY]
+    states[GAS_ENTITY] = _snapshot("off", now + timedelta(seconds=1))
+    component._monotonic = lambda: 1.0
+    _live(component, GAS_ENTITY, prior, states[GAS_ENTITY])
+    callback, _, kwargs = hass_app.run_in.call_args.args[0], hass_app.run_in.call_args.args[1], hass_app.run_in.call_args.kwargs
+    token = runtime.authority.candidate.token
+    if interruption == "reconnect":
+        component._source_session_changed("plugin_stopped", {})
+        component._source_session_changed("plugin_started", {})
+    elif interruption == "stop":
+        component.stop()
+        component.start()
+    else:
+        prior = states[GAS_ENTITY]
+        states[GAS_ENTITY] = _snapshot(interruption, now + timedelta(seconds=2))
+        _live(component, GAS_ENTITY, prior, states[GAS_ENTITY])
+    component._monotonic = lambda: 40.0
+    callback(**kwargs)
+    component._alarm_clear_elapsed(detector_key=runtime.key, candidate_token=token)
+    assert runtime.alarm_active
+    assert not any(item["state"] == FaultState.CLEARED and item["symptom_id"] == name for item in events)
+
+
+def test_reentrant_disable_during_clear_read_denies_heal():
+    now = datetime(2026, 11, 16, tzinfo=timezone.utc)
+    states = {GAS_ENTITY: _snapshot("on", now), CO_ENTITY: _snapshot("off", now)}
+    component, hass_app, _ = _build_component(states, now=now)
+    runtime = component._detectors["BathroomFlammableGas"]
+    mechanism = component.safety_mechanisms["InternalEnv_flammable_gas_BathroomFlammableGas"]
+    component._evaluate_mechanism(mechanism)
+    prior = states[GAS_ENTITY]
+    states[GAS_ENTITY] = _snapshot("off", now + timedelta(seconds=1))
+    _live(component, GAS_ENTITY, prior, states[GAS_ENTITY])
+    component._monotonic = lambda: 30.0
+    def disabling_read(*args, **kwargs):
+        mechanism.isEnabled = False
+        return states[GAS_ENTITY]
+    hass_app.get_state.side_effect = disabling_read
+    _expire(component, runtime.key)
+    assert runtime.alarm_active
 
 
 def test_alarm_state_is_healthy_detector_operation() -> None:
@@ -381,9 +517,12 @@ def test_persisted_alarm_is_reasserted_when_current_state_is_unknown(tmp_path, d
         "InternalEnv_flammable_gas_BathroomFlammableGas"
     ]
 
-    assert component.sm_iehm_flammable_gas(mechanism) is True
-    assert _event(events, mechanism.name)["state"] == FaultState.SET
-    assert component._detectors["BathroomFlammableGas"].gas_switching_inhibited is True
+    # Legacy v1 never stored original hazard/entity/profile/incident. The key
+    # alone must not assign this danger to current replacement equipment.
+    component.sm_iehm_flammable_gas(mechanism)
+    assert any(item.kind == "legacy_unattributed" and item.alarm_active for item in component._owner.records.values())
+    assert component.get_output_inhibitions() == ("active_or_unresolved_flammable_gas",)
+    assert component._summary_state() == "active_hazard"
 
 
 def test_group_b_dependencies_are_diagnostic_only_and_keep_stable_fault_owner() -> None:

@@ -387,6 +387,10 @@ class TemperatureComponent(SafetyComponent):
         )
         return self._init_sm(name, parameters, sm_method, required_keys)
 
+    def _interrupt_qualification(self, name: str) -> None:
+        """Discard pending debounce while preserving the authoritative symptom."""
+        self.debounce_states[name] = DebounceState(0, False)
+
     def enable_safety_mechanism(self, name: str, state: SMState) -> bool:
         """
         Enables or disables a safety mechanism based on the provided state.
@@ -979,6 +983,7 @@ class TemperatureComponent(SafetyComponent):
             name, sm_method, extracted_params
         )
         self.safety_mechanisms[name] = sm_instance
+        sm_instance.on_invalidate = lambda: self._interrupt_qualification(name)
         sm_instance.start()
 
         # Initialize the debounce state for this mechanism

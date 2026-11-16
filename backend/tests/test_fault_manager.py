@@ -326,6 +326,8 @@ def test_set_fault(fault_manager, mocked_hass_app, fault):
             "category": "H",
             "contributors": ["RiskyTemperatureOffice"],
             "active_contributors": ["RiskyTemperatureOffice"],
+            "contributors_total": 1,
+            "active_contributors_total": 1,
             "active": True,
             "shadowed_by": [],
             "latched": False,
@@ -367,6 +369,7 @@ def test_clear_fault(fault_manager, mocked_hass_app, fault):
             "fault_id": "RiskyTemperature",
             "level": "level_2", "category": "H",
             "contributors": ["RiskyTemperatureOffice"], "active_contributors": [],
+            "contributors_total": 1, "active_contributors_total": 0,
         }
     )
     fault_manager.notify_spy.assert_any_call(
@@ -451,6 +454,8 @@ def test_fault_manager_multiple_symptoms(fault_manager, mocked_hass_app, fault):
             "category": "H",
             "contributors": ["RiskyTemperatureKitchen", "RiskyTemperatureOffice"],
             "active_contributors": ["RiskyTemperatureOffice"],
+            "contributors_total": 2,
+            "active_contributors_total": 1,
             "active": True,
             "shadowed_by": [],
             "latched": False,
@@ -484,6 +489,8 @@ def test_fault_manager_multiple_symptoms(fault_manager, mocked_hass_app, fault):
             "category": "H",
             "contributors": ["RiskyTemperatureKitchen", "RiskyTemperatureOffice"],
             "active_contributors": ["RiskyTemperatureKitchen", "RiskyTemperatureOffice"],
+            "contributors_total": 2,
+            "active_contributors_total": 2,
             "active": True,
             "shadowed_by": [],
             "latched": False,
@@ -520,6 +527,8 @@ def test_fault_manager_multiple_symptoms(fault_manager, mocked_hass_app, fault):
             "contributors": ["RiskyTemperatureKitchen", "RiskyTemperatureOffice"],
             "fault_id": "RiskyTemperature",
             "active_contributors": [],
+            "contributors_total": 2,
+            "active_contributors_total": 0,
         },
     )
     fault_manager.notify_spy.assert_any_call(
