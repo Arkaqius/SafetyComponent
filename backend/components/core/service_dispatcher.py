@@ -355,7 +355,7 @@ class ServiceDispatcher:
         self.service_failures: dict[str, str] = {}
         self.scope.declare(
             "completion_drain", CancellationKind.TIMER,
-            lambda cb: app.run_every(cb, "now", 0.05), self.tick, app.cancel_timer,
+            lambda cb: app.run_every(cb, "now", 0.05, __silent=True), self.tick, app.cancel_timer,
         )
 
     @staticmethod

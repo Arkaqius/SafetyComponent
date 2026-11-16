@@ -135,7 +135,12 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
         self._health_recovery_seconds = 60
         self._receiver_session = uuid4().hex
         self._monotonic: Callable[[], float] = time.monotonic
-        self.own_event_listener("indoor:state_changed", self._source_event, "state_changed")
+        # Filter in AppDaemon before dispatch: observing our own MQTT sensors
+        # would report another evaluation and publish progress recursively.
+        self.own_event_listener(
+            "indoor:state_changed", self._source_event, "state_changed",
+            entity_id=lambda value: isinstance(value, str) and value in self._entity_to_detectors,
+        )
         self.own_event_listener("indoor:connected", self._source_session_changed, "plugin_started")
         self.own_event_listener("indoor:disconnected", self._source_session_changed, "plugin_stopped")
 

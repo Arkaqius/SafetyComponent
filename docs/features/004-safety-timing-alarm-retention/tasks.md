@@ -37,6 +37,13 @@ enables immediate completion before the owner hands off the next topic. The
 packaged AppDaemon configuration also enables production mode: live logs showed
 continuous file-change scans starving callbacks in the immutable App runtime.
 These delivery corrections are not locally rerun-verified.
+Live follow-up identified a publication feedback loop: the indoor raw-event
+listener received the application's own MQTT state changes and reported each
+as a completed evaluation, publishing evaluation progress again. Its AppDaemon
+subscription now filters to configured detector sources before owner dispatch.
+The fast infrastructure drain skips AppDaemon's per-tick administrative state
+bookkeeping using the supported `__silent` timer option. Domain completion,
+explicit-success receipts and generation fencing remain unchanged.
 
 **Input**: [spec.md](spec.md), [plan.md](plan.md), [research.md](research.md),
 [data-model.md](data-model.md), [contracts](contracts/) and [quickstart.md](quickstart.md).
