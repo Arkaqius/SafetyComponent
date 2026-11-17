@@ -169,7 +169,7 @@ test('L4 stays informational while L3 warnings still change the overall state', 
   await expect(page.locator('.fault-panel .count-badge-alert')).toHaveCount(0);
   await expect(page.locator('.fault-panel .panel-header')).toContainText('1 informacja');
   await expect(notice).toHaveClass(/fault-info/);
-  await expect(notice).toContainText('Informacja potwierdzona');
+  await expect(notice).toContainText('Usterka informacyjna potwierdzona');
   await expect(notice.locator('summary .status-danger, summary .status-critical')).toHaveCount(0);
   await expect(notice.locator('.fault-contributor-active')).toHaveCSS('border-color', 'rgb(111, 181, 255)');
   await expect(notice).toContainText('Sprawdź baterię pilota');
