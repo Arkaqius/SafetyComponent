@@ -481,6 +481,15 @@ defines mechanism/fault identities, inputs, lifecycle, timing and verification.
 | SWR-IEHM-024 | System configuration shall own rules, profiles, thresholds, timing, severities and output policy; user configuration shall own detector/entity/area bindings and selection. Validation shall reject incomplete channels, contradictory state sets, wrong pollutant units, unsafe timing and unreviewed gas-output policy. | compiler and configuration schema |
 | SWR-IEHM-025 | The component shall supply hazard-specific manual response and detector-repair recovery, and make no detector hush/reset, fan, purifier, valve, lock, cover or HVAC call. Manual reports shall not clear an alarm or authorize re-entry. Bounded isolated adapters shall keep binary alarms responsive during PM load or storage failures; tests/maintenance shall not downgrade live alarms. | lifecycle, RecoveryManager, isolation and negative-actuation tests |
 
+Historical continuity uncertainty shall be exposed separately from current
+detector availability and actual write/acknowledgement failures. It shall not by
+itself synthesize active smoke, gas, CO or water-leak faults, including channels
+absent from the installation. Concrete active records and active journal
+evidence shall remain unresolved until their own recovery contract is satisfied;
+independent gas switching restrictions shall remain enforced. A successful
+current write shall not be labelled as a database failure because earlier
+history remains unverified.
+
 ### 4.11.1 Water-Leak Alarm Channel (C-LEAK)
 
 The shared binary-detector runtime shall implement the independent C-LEAK

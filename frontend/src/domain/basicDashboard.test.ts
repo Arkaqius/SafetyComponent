@@ -42,7 +42,7 @@ test('information stays in the event list without becoming the headline incident
   assert.equal(brief.activeFaultCount, 1);
 });
 
-test('brief keeps failed and uncertain recommendations visible, excluding completed and unnecessary actions', () => {
+test('brief keeps failed actions but excludes missing catalogue sensors and completed actions', () => {
   const recoveries = getRecoveries({
     'sensor.recovery_done': { state: 'CONFIRMED', attributes: {} },
     'sensor.recovery_none': { state: 'DO_NOT_PERFORM', attributes: {} },
@@ -54,7 +54,10 @@ test('brief keeps failed and uncertain recommendations visible, excluding comple
     'sensor.recovery_missing': { state: 'unavailable', attributes: {} },
   });
   const brief = basicDashboardItems([], recoveries);
-  assert.deepEqual(brief.attentionRecoveries.map(recovery => recovery.status).sort(), ['failed', 'unavailable']);
+  assert.deepEqual(
+    brief.attentionRecoveries.map(recovery => recovery.status),
+    ['failed']
+  );
   assert.ok(brief.primaryRecovery);
 });
 

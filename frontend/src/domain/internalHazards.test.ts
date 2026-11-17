@@ -35,18 +35,20 @@ test('disabled monitoring preserves orphan danger, all-record totals and indepen
   assert.equal(view.retainedRecordsOmitted, 69);
 });
 
-test('unknown history denies healthy and a healed alarm does not release the gas latch', () => {
+test('unknown history denies healthy without misreporting a committed write as failed', () => {
   const view = getInternalEnvironmentMonitoring({
     'sensor.internal_environment_summary': entity('healthy', {
       monitoring_enabled: false,
       gas_switching_inhibited: true,
       history_unknown: true,
+      persistence_error: 'history_unverified',
       retained_records: [{ record_id: 'healed', alarm_active: false, gas_switching_inhibited: true, retention_status: 'orphan' }],
     }),
   });
   assert.notEqual(view.status, 'healthy');
   assert.equal(view.activeHazards, 0);
   assert.equal(view.gasSwitchingInhibited, true);
+  assert.equal(view.persistenceError, undefined);
 });
 
 test('detector labels use the source HA name and never promote raw IDs to operator names', () => {
@@ -64,6 +66,14 @@ test('detector labels use the source HA name and never promote raw IDs to operat
   assert.equal(named.status, 'unavailable');
   delete entities['binary_sensor.private_alarm'];
   assert.equal(getInternalEnvironmentMonitoring(entities).detectors[0].name, 'Czujnik bez nazwy');
+});
+
+test('an actual storage failure stays visible separately from historical uncertainty', () => {
+  const view = getInternalEnvironmentMonitoring({
+    'sensor.internal_environment_summary': entity('degraded', { history_unknown: true, persistence_error: 'write_OSError' }),
+  });
+  assert.equal(view.persistenceError, 'write_OSError');
+  assert.equal(view.historyUnknown, true);
 });
 
 test('keeps detector alarm and technical health as separate states', () => {

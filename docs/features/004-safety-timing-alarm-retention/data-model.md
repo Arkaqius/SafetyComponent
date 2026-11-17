@@ -118,6 +118,11 @@ of no prior owner state. Unknown history must not silently bootstrap healthy.
 Add bounded attributes to existing indoor/fault diagnostics, preserving technical
 identities. Include current monitoring enabled/available, active/retained status,
 evaluation quality, clear wait/reason, persistence status and gas inhibition.
+`history_unknown` and `gas_inhibition_unknown` describe historical uncertainty;
+they shall not themselves activate all hazard faults. `persistence_error` shall
+describe an actual storage/acknowledgement failure, not a successful write whose
+prior history is unverified. Retained alarm evidence and restriction-only records
+remain separate from current detector availability.
 Limit each diagnostic payload to 64 KiB and 64 detailed records; publish total and
 omitted counts and aggregate danger/inhibition over all records. Detail omission
 must never remove a fault contribution. A disabled monitor with retained danger

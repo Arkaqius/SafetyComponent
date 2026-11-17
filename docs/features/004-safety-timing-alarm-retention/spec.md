@@ -193,6 +193,10 @@ entity health, heating, indoor alarms and external hazards with delayed callback
 - **FR-011**: Bounded atomic state shall preserve unresolved orphan records and
   authoritative clear ordering; corrupt/missing state with active journal evidence
   shall expose unknown active danger and a distinct persistence diagnostic.
+  History uncertainty alone shall not create active smoke/gas/CO/leak incidents
+  or an unconfigured hazard channel. A successful current write shall be reported
+  independently of unverified historical continuity; gas restrictions remain
+  independent of current alarm activation.
 - **FR-012**: Positive recovery and gas-inhibition release shall require their own
   validated current evidence and necessary durable commit; acknowledgement or
   removal is not release permission.

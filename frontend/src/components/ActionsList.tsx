@@ -1,18 +1,19 @@
 import { useState } from 'react';
-import { recoveryNeedsAttention, type RecoveryView } from '../domain/safety';
+import { currentRecoveries, type FaultView, type RecoveryView } from '../domain/safety';
 import Icon from './Icon';
 import HelpTooltip from './HelpTooltip';
 import RecoveryActionCard from './RecoveryActionCard';
 
 interface ActionsListProps {
   recoveries: RecoveryView[];
+  faults?: FaultView[];
   onSelectEntity?: (entityId: string) => void;
 }
 
-export default function ActionsList({ recoveries, onSelectEntity }: ActionsListProps) {
+export default function ActionsList({ recoveries, faults = [], onSelectEntity }: ActionsListProps) {
   const [showAll, setShowAll] = useState(false);
-  const actionable = recoveries.filter(recovery => recovery.status === 'to_perform');
-  const requiringAttention = recoveries.filter(recoveryNeedsAttention);
+  const requiringAttention = currentRecoveries(recoveries, faults);
+  const actionable = requiringAttention.filter(recovery => recovery.status === 'to_perform');
   const visibleRecoveries = showAll ? recoveries : requiringAttention;
   const countLabel =
     requiringAttention.length === 0

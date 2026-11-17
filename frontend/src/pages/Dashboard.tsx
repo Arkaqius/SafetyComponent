@@ -80,7 +80,7 @@ function AdvancedDashboard() {
           recoveries={recoveries}
           onSelectEntity={setSelectedEntityId}
         />
-        <ActionsList onSelectEntity={setSelectedEntityId} recoveries={recoveries} />
+        <ActionsList faults={faults} onSelectEntity={setSelectedEntityId} recoveries={recoveries} />
       </div>
 
       <section className='entity-monitor-overview'>

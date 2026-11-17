@@ -456,7 +456,7 @@ class SafetyFunctions(hass.Hass):
         retained_indoor_faults = {record.fault_id for record in self.indoor_state_owner.records.values() if record.alarm_active and record.fault_id}
         retained_indoor_faults.update(fault_id for fault_id in INDOOR_FAULTS.values()
                                      if (self.fault_evidence.get(fault_id) or {}).get("active"))
-        if self.indoor_state_owner.history_unknown or any(item.alarm_active and item.hazard is None for item in self.indoor_state_owner.records.values()):
+        if any(item.alarm_active and item.hazard is None for item in self.indoor_state_owner.records.values()):
             retained_indoor_faults.update(INDOOR_FAULTS.values())
         inactive_fault_names.difference_update(retained_indoor_faults)
         for fault_name in inactive_fault_names:
@@ -1371,7 +1371,9 @@ class SafetyFunctions(hass.Hass):
     def _restore_indoor_assertions(self) -> None:
         """Merge trusted indoor retained evidence without replacing other owners."""
         owner = self.indoor_state_owner
-        uncertain = set(INDOOR_FAULTS.values()) if owner.history_unknown else set()
+        # Missing continuity is a history diagnostic, not evidence of four
+        # active incidents. Only actual retained/journal alarm evidence owns H.
+        uncertain: set[str] = set()
         for fault_id in INDOOR_FAULTS.values():
             journal = self.fault_evidence.get(fault_id)
             if journal and journal.get("active") and not any(item.fault_id == fault_id and item.alarm_active for item in owner.records.values()):

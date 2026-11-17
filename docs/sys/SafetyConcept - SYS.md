@@ -190,6 +190,16 @@ linked task shall remain visible locally. This policy shall not mask startup,
 unknown fault priority, unlinked task uncertainty or independent coverage and
 channel failures, and `no_faults` shall not assert complete safety coverage.
 
+Operator presentation shall name L1/L2 conditions hazards and L3/L4 conditions
+faults, preserving L4's informational, non-degrading behavior. An active hazard
+headline shall preserve the known highest urgency when diagnostic data are
+incomplete, without replacing it with a diagnostic-fault count. Event lists and
+current recommendations shall order hazard entries by L1 then L2 and place
+diagnostics after them. Recommendation ownership shall use stable fault identity;
+catalogue availability alone shall not imply a current action. Explicit executing,
+failed or actionable proposals with a missing owner shall remain visible without
+being attributed to an unrelated incident.
+
 > _Vectors are logical; specific entities/services are bound in configuration. “Sound alarm” may be a phone alert tone and/or local siren if configured for the event._
 
 ### 4.2 Deadlines & Retries

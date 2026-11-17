@@ -276,7 +276,7 @@ class IndoorStateOwner:
     @property
     def recovery_ready(self) -> bool:
         """Only a durable current-session marker can admit clear authorization."""
-        return self.marker_durable and not self.stopped and self.persistence_error in {None, "history_unverified"}
+        return self.marker_durable and not self.stopped and self.persistence_error is None
 
     def checkpoint(self, *, staged: bool = False, clean: bool = False) -> IndoorCheckpoint:
         """Build a complete bounded snapshot; never evict active records."""
@@ -465,7 +465,9 @@ class IndoorStateOwner:
             self.marker_durable = True
         if result.revision != self.revision:
             return []
-        self.persistence_error = None if not self.history_unknown else "history_unverified"
+        # A committed snapshot proves this write, independently of whether
+        # earlier safety history can be verified. Keep that in history_unknown.
+        self.persistence_error = None
         cleared = []
         for record_id, pending in list(self._pending_clears.items()):
             incident, candidate, eligible = pending

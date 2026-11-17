@@ -9,6 +9,7 @@ import {
   getAirQualityPresentation,
   getMonitoredTemperatures,
   getRecoveries,
+  currentRecoveries,
   getSafetyDoors,
   getSafetySummary,
   normalizeState,
@@ -447,7 +448,7 @@ test('maps level 1 as the most severe active fault', () => {
   const summary = getSafetySummary(entity('running'), entity('warning'), faults, []);
 
   assert.equal(summary.effectiveLevel, 1);
-  assert.equal(summary.label, 'Alarm krytyczny');
+  assert.equal(summary.label, 'Zagrożenie krytyczne');
   assert.equal(summary.tone, 'critical');
 });
 
@@ -756,4 +757,66 @@ test('does not trust an aggregate severity when an active fault has no level att
   assert.equal(summary.label, 'Aktywna usterka');
   assert.equal(summary.effectiveLevel, null);
   assert.equal(summary.tone, 'danger');
+});
+
+test('L1 headline preserves known danger ahead of incomplete diagnostic assessments', () => {
+  const faults = getFaults({
+    'sensor.fault_gas': entity('UNEVALUABLE', { fault_id: 'Gas', category: 'H', level: 1, active: true }),
+    'sensor.fault_storage': entity('unavailable', { category: 'D', level: 2 }),
+  });
+  const summary = getSafetySummary(entity('running'), entity('emergency'), faults, []);
+  assert.equal(summary.effectiveLevel, 1);
+  assert.equal(summary.tone, 'critical');
+  assert.match(summary.label, /Zagrożenie/);
+  assert.doesNotMatch(`${summary.label} ${summary.detail}`, /usterk/i);
+});
+
+test('unverified history remains a diagnostic without inventing an active hazard or complete safety', () => {
+  const summary = getSafetySummary(entity('running'), entity('no_faults'), [], [], 'connected', true);
+  assert.match(summary.label, /Historia/);
+  assert.notEqual(summary.tone, 'safe');
+  assert.equal(summary.activeFaultCount, 0);
+  assert.equal(summary.effectiveLevel, null);
+});
+
+test('a known diagnostic-only aggregate is not presented as a physical hazard', () => {
+  const faults = getFaults({
+    'sensor.fault_storage': entity('FAIL', { fault_id: 'Storage', category: 'D', level: 1, active: true }),
+  });
+  const summary = getSafetySummary(entity('running'), entity('emergency'), faults, []);
+  assert.equal(summary.label, 'Diagnostyka wymaga uwagi');
+  assert.equal(summary.effectiveLevel, 1);
+  assert.doesNotMatch(summary.label, /Zagrożenie|usterka/);
+});
+
+test('events use L1 then L2 before diagnostics even when their evaluation states differ', () => {
+  const faults = getFaults({
+    'sensor.fault_storage': entity('FAIL', { fault_id: 'Storage', category: 'D', level: 1, active: true }),
+    'sensor.fault_flood': entity('FAIL', { fault_id: 'Flood', category: 'H', level: 2, active: true }),
+    'sensor.fault_gas': entity('UNEVALUABLE', { fault_id: 'Gas', category: 'H', level: 1, active: true }),
+  });
+  assert.deepEqual(
+    faults.map(fault => fault.faultId),
+    ['Gas', 'Flood', 'Storage']
+  );
+});
+
+test('current recommendations follow incident severity and omit healed owners and missing catalogue entries', () => {
+  const faults = getFaults({
+    'sensor.fault_storage': entity('FAIL', { fault_id: 'Storage', category: 'D', level: 2, active: true }),
+    'sensor.fault_flood': entity('FAIL', { fault_id: 'Flood', category: 'H', level: 2, active: true }),
+    'sensor.fault_gas': entity('FAIL', { fault_id: 'Gas', category: 'H', level: 1, active: true }),
+    'sensor.fault_clear': entity('PASS', { fault_id: 'Cleared', category: 'H', level: 1, active: false }),
+  });
+  const recoveries = getRecoveries({
+    'sensor.recovery_storage': entity('FAILED', { proposals: [{ proposal_id: 'storage', fault_id: 'Storage', status: 'FAILED' }] }),
+    'sensor.recovery_flood': entity('TO_PERFORM', { proposals: [{ proposal_id: 'flood', fault_id: 'Flood', status: 'TO_PERFORM' }] }),
+    'sensor.recovery_gas': entity('TO_PERFORM', { proposals: [{ proposal_id: 'gas', fault_id: 'Gas', status: 'TO_PERFORM' }] }),
+    'sensor.recovery_clear': entity('TO_PERFORM', { proposals: [{ proposal_id: 'clear', fault_id: 'Cleared', status: 'TO_PERFORM' }] }),
+    'sensor.recovery_missing': entity('unavailable'),
+  });
+  assert.deepEqual(
+    currentRecoveries(recoveries, faults).map(recovery => recovery.proposalId),
+    ['gas', 'flood', 'storage']
+  );
 });

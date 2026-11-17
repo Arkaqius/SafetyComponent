@@ -130,7 +130,7 @@ export default function Topbar({ menuButtonRef, navigationOpen, onMenuClick, vie
               </StatusBadge>
               <HelpTooltip
                 label='Ocena bezpieczeństwa'
-                text={`${summary.detail} Ocena uwzględnia zgłoszony stan systemu, usterki oraz dostępność danych. Brak połączenia oznacza ostatni znany stan, a nie bieżące potwierdzenie bezpieczeństwa.`}
+                text={`${summary.detail} Ocena uwzględnia zgłoszony stan systemu i dostępność danych. Brak połączenia oznacza ostatni znany stan, a nie bieżące potwierdzenie bezpieczeństwa.`}
               />
             </div>
           </div>

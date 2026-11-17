@@ -156,7 +156,11 @@ export function getInternalEnvironmentMonitoring(entities: EntityMap): InternalE
     retainedRecords,
     retainedRecordsTotal: Math.max(numericAttribute(summary?.attributes.retained_records_total) ?? 0, retainedRecords.length),
     retainedRecordsOmitted: numericAttribute(summary?.attributes.retained_records_omitted) ?? 0,
-    persistenceError: optionalStringAttribute(summary?.attributes.persistence_error),
+    // Compatibility with runtimes that mixed history quality with write errors.
+    persistenceError:
+      summary?.attributes.persistence_error === 'history_unverified'
+        ? undefined
+        : optionalStringAttribute(summary?.attributes.persistence_error),
     lastUpdated: summary?.last_updated ?? latestDetectorUpdate(detectors),
   };
 }

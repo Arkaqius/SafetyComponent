@@ -45,6 +45,16 @@ The fast infrastructure drain skips AppDaemon's per-tick administrative state
 bookkeeping using the supported `__silent` timer option. Domain completion,
 explicit-success receipts and generation fencing remain unchanged.
 
+**Maintainer correction — 2026-11-17**: Unverified history is separated from
+current SQLite write acknowledgement and no longer activates all indoor hazard
+families. Concrete retained/journal alarms and independent gas restrictions stay
+in force. Operator headlines preserve L1/L2 hazard urgency, events and current
+recommendations use severity/category ordering, and inactive owners or missing
+catalogue availability alone do not create current actions. Explicit execution,
+failure and actionable proposals remain visible even without their owner.
+Regression cases are updated without
+executing local suites, as requested. Final acceptance gates remain open.
+
 **Input**: [spec.md](spec.md), [plan.md](plan.md), [research.md](research.md),
 [data-model.md](data-model.md), [contracts](contracts/) and [quickstart.md](quickstart.md).
 

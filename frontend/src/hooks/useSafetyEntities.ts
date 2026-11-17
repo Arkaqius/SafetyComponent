@@ -52,7 +52,8 @@ export function useSafetyEntities() {
       systemEntity,
       faults,
       recoveries,
-      cannotConnect || !ready ? 'disconnected' : 'connected'
+      cannotConnect || !ready ? 'disconnected' : 'connected',
+      internalEnvironment.historyUnknown
     );
     if (startup && summary.activeFaultCount === 0 && summary.tone !== 'critical' && summary.effectiveLevel === null) {
       summary.label = startup.label;

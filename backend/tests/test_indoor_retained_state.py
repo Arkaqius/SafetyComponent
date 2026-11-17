@@ -40,6 +40,17 @@ def test_missing_history_is_not_a_virgin_installation():
     assert not known.history_unknown and not known.gas_inhibited and known.recovery_ready
 
 
+def test_successful_write_does_not_mislabel_unverified_history_as_storage_failure():
+    executor = ControlledExecutor()
+    owner = IndoorStateOwner(InMemoryInternalEnvironmentStateStore(), writer=SnapshotWriter(executor))
+    owner.begin()
+    executor.finish(0)
+    owner.drain()
+    assert owner.history_unknown and owner.gas_inhibited
+    assert owner.marker_durable and owner.durable_revision == owner.revision
+    assert owner.persistence_error is None and owner.recovery_ready
+
+
 @pytest.mark.parametrize("field,value", [("generation", True), ("clean", "true"), ("version", 2.0), ("unexpected", 1)])
 def test_strict_envelope_rejects_coercion_and_extra_fields(field, value):
     raw = commissioned_checkpoint("receipt", AT)

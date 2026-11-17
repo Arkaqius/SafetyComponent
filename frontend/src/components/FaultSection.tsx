@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useHass } from '@hakit/core';
 import {
   LEVEL_PRESENTATION,
+  compareFaultPriority,
   faultNeedsAttention,
   formatRelativeTime,
   localizedEntityState,
@@ -61,21 +62,23 @@ export default function FaultSection({
 
   const filteredFaults = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase('pl');
-    return faults.filter(fault => {
-      // Battery readings without an active alarm belong in System Health.
-      if (fault.entityId.startsWith('sensor.fault_remotebatterylow') && fault.active !== true && fault.latched !== true) {
-        return false;
-      }
-      const matchesFilter =
-        filter === 'all' ||
-        (filter === 'active' && fault.active) ||
-        (filter === 'shadowed' && fault.shadowedBy.length > 0) ||
-        (filter === 'attention' && faultNeedsAttention(fault));
-      const matchesQuery =
-        normalizedQuery.length === 0 ||
-        [fault.name, fault.description, fault.entityId, ...fault.locations].join(' ').toLocaleLowerCase('pl').includes(normalizedQuery);
-      return matchesFilter && matchesQuery;
-    });
+    return faults
+      .filter(fault => {
+        // Battery readings without an active alarm belong in System Health.
+        if (fault.entityId.startsWith('sensor.fault_remotebatterylow') && fault.active !== true && fault.latched !== true) {
+          return false;
+        }
+        const matchesFilter =
+          filter === 'all' ||
+          (filter === 'active' && fault.active) ||
+          (filter === 'shadowed' && fault.shadowedBy.length > 0) ||
+          (filter === 'attention' && faultNeedsAttention(fault));
+        const matchesQuery =
+          normalizedQuery.length === 0 ||
+          [fault.name, fault.description, fault.entityId, ...fault.locations].join(' ').toLocaleLowerCase('pl').includes(normalizedQuery);
+        return matchesFilter && matchesQuery;
+      })
+      .sort(compareFaultPriority);
   }, [faults, filter, query]);
 
   const activeCount = faults.filter(fault => fault.active === true && fault.level !== 4).length;
@@ -88,8 +91,8 @@ export default function FaultSection({
           <h2 className='label-with-help'>
             Zdarzenia i stan oceny{' '}
             <HelpTooltip
-              label='Poziomy i stany usterek'
-              text='L1: alarm krytyczny, L2: zagrożenie, L3: ostrzeżenie, L4: informacja. Usterka przesłonięta ustępuje miejsca ważniejszemu zdarzeniu, lecz nie oznacza to jej ustąpienia. Potwierdzenie powiadomienia nie usuwa usterki.'
+              label='Poziomy i stany zdarzeń'
+              text='L1/L2 oznaczają zagrożenia, L3/L4 usterki. Najpierw pokazujemy zagrożenia według poziomu, a diagnostykę na końcu. Przesłonięcie lub potwierdzenie powiadomienia nie oznacza ustąpienia zdarzenia.'
             />
           </h2>
         </div>
@@ -147,7 +150,7 @@ export default function FaultSection({
             <div className='empty-state-icon'>
               <Icon name='shield' size={28} />
             </div>
-            <strong>{faults.length === 0 ? 'Brak encji usterek' : 'Brak usterek w tym widoku'}</strong>
+            <strong>{faults.length === 0 ? 'Brak danych o zdarzeniach' : 'Brak zdarzeń w tym widoku'}</strong>
             <p>
               {faults.length === 0
                 ? 'Brak danych o usterkach z Home Assistanta.'
@@ -179,17 +182,15 @@ function FaultCard({
       ? {
           label:
             fault.status === 'fail'
-              ? 'Informacja potwierdzona'
+              ? 'Usterka informacyjna potwierdzona'
               : statusPresentation[fault.status].label.replace('zagrożenia', 'informacji'),
           tone: 'info' as const,
         }
-      : fault.category === 'D' && fault.status === 'fail'
+      : (fault.level === 3 || fault.level === 4) && fault.status === 'fail'
         ? { label: 'Usterka potwierdzona', tone: 'warning' as const }
-        : fault.category === 'D' && fault.status === 'pending_failure'
+        : (fault.level === 3 || fault.level === 4) && fault.status === 'pending_failure'
           ? { label: 'Potwierdzanie usterki', tone: 'warning' as const }
-          : fault.level === 3 && fault.status === 'fail'
-            ? { label: 'Ostrzeżenie potwierdzone', tone: 'warning' as const }
-            : statusPresentation[fault.status];
+          : statusPresentation[fault.status];
   const cardTone = fault.active === true || fault.latched === true ? (level?.tone ?? 'danger') : status.tone;
   const connection = useHass(store => store.connection);
   const connected = useHass(store => store.connectionStatus === 'connected' && store.ready);

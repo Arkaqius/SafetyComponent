@@ -251,7 +251,7 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
             str(runtime.config["hazard"]) for runtime in self._detectors.values()
         }
         configured_hazards.update(item.hazard for item in self._owner.records.values() if item.alarm_active and item.hazard is not None)
-        if self._owner.history_unknown or any(item.alarm_active and item.hazard is None for item in self._owner.records.values()):
+        if any(item.alarm_active and item.hazard is None for item in self._owner.records.values()):
             return set()
         return {
             fault_name

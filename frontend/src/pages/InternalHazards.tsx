@@ -100,7 +100,14 @@ export default function InternalHazards() {
           <strong>
             {internalEnvironment.monitoringEnabled ? 'Historia bezpieczeństwa wymaga weryfikacji' : 'Monitorowanie wyłączone'}
           </strong>
-          <p>Wyłączenie monitorowania lub brak czujnika w konfiguracji nie kasuje wcześniejszych alarmów ani blokady wyjść.</p>
+          <p>
+            Nie można potwierdzić pełnej historii sprzed restartu. To osobna informacja od bieżących odczytów czujników i potwierdzenia
+            zapisu w bazie.
+          </p>
+          <p>
+            Niepewność historii nie oznacza wykrycia gazu, dymu ani zalania. Rzeczywiste zachowane alarmy i blokady pozostają widoczne
+            osobno.
+          </p>
           {internalEnvironment.gasInhibitionUnknown && (
             <p>Historia blokady po gazie jest niepotwierdzona. Wyjścia pozostają zablokowane; ten stan nie potwierdza obecności gazu.</p>
           )}

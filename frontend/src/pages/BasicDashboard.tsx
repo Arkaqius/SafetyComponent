@@ -96,7 +96,7 @@ export default function BasicDashboard({ onExpand }: { onExpand: () => void }) {
             <Icon name='close' />
           </button>
         </div>
-        <ActionsList recoveries={attentionRecoveries} />
+        <ActionsList faults={faults} recoveries={attentionRecoveries} />
       </ModalDialog>
     </div>
   );

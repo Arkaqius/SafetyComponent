@@ -117,10 +117,11 @@ def test_original_indoor_incident_and_gas_latch_precede_first_output_after_remov
 
 
 @pytest.mark.parametrize("history", ["missing", "corrupt"])
-def test_missing_or_corrupt_checkpoint_does_not_prove_absence_of_gas_history(tmp_path, history):
+@pytest.mark.parametrize("monitoring_enabled", [True, False])
+def test_missing_or_corrupt_checkpoint_does_not_invent_hazards_or_release_gas(tmp_path, history, monitoring_enabled):
     from components.core.sqlite_state_store import SqliteStateDatabase
     raw = _retention_configuration(tmp_path)
-    raw["user_config"]["components_enabled"]["InternalEnvironmentalHazardMonitorComponent"] = False
+    raw["user_config"]["components_enabled"]["InternalEnvironmentalHazardMonitorComponent"] = monitoring_enabled
     if history == "corrupt":
         path = raw["user_config"]["safety_components"]["InternalEnvironmentalHazardMonitorComponent"]["persistence"]["state_file"]
         SqliteStateDatabase(tmp_path / "safety_state.sqlite3").store("internal_environment_state", path).save({"version": 2, "invalid": True})
@@ -133,8 +134,33 @@ def test_missing_or_corrupt_checkpoint_does_not_prove_absence_of_gas_history(tmp
     app.initialize()
     drain_responses(app)
     assert app.indoor_state_owner.history_unknown and app.indoor_state_owner.gas_inhibited
-    assert app.fm.check_fault("InternalFlammableGasDetected") is FaultEvaluationStatus.UNEVALUABLE
+    if monitoring_enabled:
+        assert app.fm.check_fault("InternalFlammableGasDetected") is FaultEvaluationStatus.PASS
+        assert not app.fm.faults["InternalFlammableGasDetected"].evaluation.active
+    else:
+        assert "InternalFlammableGasDetected" not in app.fm.faults
+    assert "InternalSmokeDetected" not in app.fm.faults
+    assert not any(
+        contributor.startswith("RetainedUnknown")
+        for fault in app.fm.faults.values()
+        for contributor in fault.evaluation.active_contributors
+    )
     assert not any(call.args and call.args[0].startswith(("light/", "switch/")) for call in app.call_service.call_args_list)
+
+
+def test_unknown_history_keeps_actual_journal_danger_scoped_to_its_fault():
+    app = Mock()
+    app.indoor_state_owner.records = {}
+    app.indoor_state_owner.history_unknown = True
+    app.indoor_state_owner.persistence_error = None
+    app.indoor_state_owner.covers_older_journal_activation.return_value = False
+    app.fault_evidence.get.side_effect = lambda fault: (
+        {"active": True, "freeze_frame": {}} if fault == "InternalFlammableGasDetected" else None
+    )
+    SafetyFunctions._restore_indoor_assertions(app)
+    app.fm.restore_indoor_assertions.assert_called_once_with(
+        {}, uncertain_faults={"InternalFlammableGasDetected"}
+    )
 
 
 @pytest.mark.parametrize("checkpoint_loss", [False, True])
