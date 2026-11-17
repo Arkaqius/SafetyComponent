@@ -4,6 +4,15 @@
 
 **Delivery issue**: [#51](https://github.com/Arkaqius/SafetyComponent/issues/51).
 
+**Maintainer startup correction — 2026-11-17**: Initial data collection shall
+produce a neutral startup view, not diagnostic errors. Diagnostic operator
+results, unavailable/pending states and recommendations wait until the bounded
+grace expires; only the latest result is released. Internal degradation and
+recovery restrictions remain immediate, as do positive/retained H incidents.
+Frontend startup filtering covers the brief, event/actions lists, coverage and
+technical source views, without hiding real hazards or ongoing commands. Local
+suites remain unexecuted at the maintainer's instruction.
+
 **Maintainer steering — 2026-11-16**: Stop further test work and proceed with PR
 and deployment. No additional local test suites are run after that instruction.
 The final full backend run had 1807 passes / 3 failures at 92.08% coverage:

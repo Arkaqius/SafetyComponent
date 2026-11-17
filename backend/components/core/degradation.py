@@ -194,7 +194,7 @@ class DegradationRegistry:
         additional_info: Mapping[str, object] | None = None,
         **_: object,
     ) -> None:
-        """Apply a qualified symptom event before recovery consumers run."""
+        """Apply component-qualified evidence independently of operator startup grace."""
 
         if symptom_id not in self._evidence:
             raise ValueError(f"Unknown symptom {symptom_id}")

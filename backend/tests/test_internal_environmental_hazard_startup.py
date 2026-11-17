@@ -259,6 +259,11 @@ def test_restart_at_second_29_cannot_reuse_clear_or_old_ingress(restart):
 @pytest.mark.parametrize("unwritable_database", [False, True])
 def test_gas_alarm_reaches_l1_fault_without_co_consensus(tmp_path, monkeypatch, unwritable_database) -> None:
     from components.core.functional_safety_diagnostics import JsonFunctionalSafetyDiagnosticsStore
+    from components.core.startup_grace import StartupGrace
+
+    startup_clock = [0.0]
+    monkeypatch.setattr("SafetyFunctions.StartupGrace", lambda bus, ids, seconds: StartupGrace(
+        bus, ids, seconds, clock=lambda: startup_clock[0]))
 
     monkeypatch.setattr(
         "SafetyFunctions.JsonFunctionalSafetyDiagnosticsStore",
@@ -336,6 +341,10 @@ def test_gas_alarm_reaches_l1_fault_without_co_consensus(tmp_path, monkeypatch, 
 
     monitor = app.sm_modules["InternalEnvironmentalHazardMonitorComponent"]
     assert app.startup_grace.snapshot()["phase"] == "settling"
+    assert app.fm.check_fault("InternalFlammableGasDetected") is FaultEvaluationStatus.FAIL
+    assert app.fm.check_fault("SafetyAppHealth") is not FaultEvaluationStatus.FAIL
+    startup_clock[0] = 600
+    app._finish_startup_grace()
     health_symptom = next(
         symptom_id for symptom_id, (_, kind) in monitor._symptom_bindings.items()
         if kind == "health"

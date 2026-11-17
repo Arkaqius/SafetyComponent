@@ -680,17 +680,18 @@ class SafetyFunctions(hass.Hass):
             for symptom_id, symptom in self.symptoms.items()
             if (fault := self.fm.found_mapped_fault(symptom_id, symptom.sm_name)) is not None
             and fault.category.value == "D"
-            and fault.name != "SafetyAppHealth"
-            and symptom.parameters.get("detection_budget_seconds") is None
         }
         grace_seconds = int(
             self.runtime_config["app_config"]["calibration"]["entity_monitor"]["startup_grace_seconds"]
         )
         self.startup_grace = StartupGrace(self.event_bus, diagnostic_symptoms, grace_seconds)
-        self.event_bus.subscribe("qualified_symptom", self.degradation.observe, priority=-1)
+        self.fm.evaluation_reporting_deferred = self.startup_grace.defers
+        # Internal restrictions use current component-qualified evidence even
+        # while operator diagnostic activation waits for startup to settle.
+        self.event_bus.subscribe("symptom", self.degradation.observe, priority=-1)
         self.event_bus.subscribe("symptom_observed", self.degradation.observe_hazard)
         self.event_bus.subscribe(
-            "qualified_evaluation_unavailable", self.degradation.mark_unavailable, priority=-1
+            "evaluation_unavailable", self.degradation.mark_unavailable, priority=-1
         )
         self.event_bus.subscribe("qualified_symptom", self.fm.handle_symptom_event, priority=0)
         self.event_bus.subscribe("qualified_evaluation_pending", self.fm.mark_evaluation_pending, priority=0)

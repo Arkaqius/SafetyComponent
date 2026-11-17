@@ -26,7 +26,7 @@ function AdvancedDashboard() {
   const [averageDialogOpen, setAverageDialogOpen] = useState(false);
   const closeEntityDetails = useCallback(() => setSelectedEntityId(null), []);
   const closeAverageDetails = useCallback(() => setAverageDialogOpen(false), []);
-  const { connection, entities, entityMonitorSummary, faults, recoveries, safetyDoors, summary, systemEntity, temperatures } =
+  const { connection, entities, entityMonitorSummary, faults, recoveries, safetyDoors, summary, systemEntity, temperatures, startup } =
     useSafetyEntities();
   const values = temperatures.filter((temperature): temperature is TemperatureView & { state: number } => temperature.state !== null);
   const average = values.length > 0 ? values.reduce((sum, temperature) => sum + temperature.state, 0) / values.length : null;
@@ -76,19 +76,22 @@ function AdvancedDashboard() {
         <FaultSection
           acknowledgedTags={acknowledgedNotificationTags}
           compact
+          starting={startup?.available}
           faults={faults}
           recoveries={recoveries}
           onSelectEntity={setSelectedEntityId}
         />
-        <ActionsList faults={faults} onSelectEntity={setSelectedEntityId} recoveries={recoveries} />
+        <ActionsList faults={faults} starting={startup?.available} onSelectEntity={setSelectedEntityId} recoveries={recoveries} />
       </div>
 
       <section className='entity-monitor-overview'>
         <div>
           <small className='label-with-help'>
-            {entityMonitorSummary.total === 0
-              ? 'Pokrycie monitoringu nieznane'
-              : `${entityMonitorSummary.healthy}/${entityMonitorSummary.total} źródeł działa prawidłowo${connection.cannotConnect || !connection.ready ? ' · ostatnie znane dane' : ''}`}
+            {startup?.available
+              ? 'Rozruch — oczekiwanie na dane źródeł'
+              : entityMonitorSummary.total === 0
+                ? 'Pokrycie monitoringu nieznane'
+                : `${entityMonitorSummary.healthy}/${entityMonitorSummary.total} źródeł działa prawidłowo${connection.cannotConnect || !connection.ready ? ' · ostatnie znane dane' : ''}`}
             <HelpTooltip
               label='Pokrycie monitoringu'
               text='Licznik dotyczy źródeł objętych diagnostyką systemu. Nie jest liczbą wszystkich urządzeń w domu. Nieaktualne, niedostępne lub niepoprawne dane ograniczają ocenę; po utracie połączenia licznik jest ostatnim znanym wynikiem.'
@@ -97,26 +100,30 @@ function AdvancedDashboard() {
         </div>
         <StatusBadge
           tone={
-            connection.cannotConnect || !connection.ready
-              ? 'muted'
-              : entityMonitorSummary.unavailable > 0
-                ? 'danger'
-                : entityMonitorSummary.degraded + entityMonitorSummary.stale > 0
-                  ? 'warning'
-                  : entityMonitorSummary.total > 0
-                    ? 'safe'
-                    : 'muted'
+            startup?.available
+              ? 'info'
+              : connection.cannotConnect || !connection.ready
+                ? 'muted'
+                : entityMonitorSummary.unavailable > 0
+                  ? 'danger'
+                  : entityMonitorSummary.degraded + entityMonitorSummary.stale > 0
+                    ? 'warning'
+                    : entityMonitorSummary.total > 0
+                      ? 'safe'
+                      : 'muted'
           }
         >
-          {connection.cannotConnect || !connection.ready
-            ? 'Niezweryfikowane'
-            : entityMonitorSummary.unavailable > 0
-              ? `${entityMonitorSummary.unavailable} niedostępnych`
-              : entityMonitorSummary.degraded + entityMonitorSummary.stale > 0
-                ? `${entityMonitorSummary.degraded + entityMonitorSummary.stale} wymaga uwagi`
-                : entityMonitorSummary.total > 0
-                  ? 'Wszystkie sprawne'
-                  : 'Brak danych'}
+          {startup?.available
+            ? 'Rozruch'
+            : connection.cannotConnect || !connection.ready
+              ? 'Niezweryfikowane'
+              : entityMonitorSummary.unavailable > 0
+                ? `${entityMonitorSummary.unavailable} niedostępnych`
+                : entityMonitorSummary.degraded + entityMonitorSummary.stale > 0
+                  ? `${entityMonitorSummary.degraded + entityMonitorSummary.stale} wymaga uwagi`
+                  : entityMonitorSummary.total > 0
+                    ? 'Wszystkie sprawne'
+                    : 'Brak danych'}
         </StatusBadge>
         <Link className='text-link' to='/functional-safety'>
           Źródła danych <Icon name='chevron' size={15} />

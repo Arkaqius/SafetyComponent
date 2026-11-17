@@ -96,6 +96,7 @@ class FaultManager:
         self.mqtt_entities = mqtt_entities
         self.evidence_journal = evidence_journal
         self.restriction_provider = restriction_provider
+        self.evaluation_reporting_deferred: Callable[[str], bool] | None = None
         self._symptom_contexts: dict[str, dict[str, str]] = {}
         self._retained_external_records: dict[str, "AssertionRecord"] = {}
         self._retained_indoor_records: dict[str, Any] = {}
@@ -344,6 +345,8 @@ class FaultManager:
 
     def mark_evaluation_unavailable(self, symptom_id: str) -> None:
         """Record a failed or invalid evaluation without treating it as clear."""
+        if self.evaluation_reporting_deferred is not None and self.evaluation_reporting_deferred(symptom_id):
+            return
 
         symptom = self.symptoms[symptom_id]
         fault = self.found_mapped_fault(symptom_id, symptom.sm_name)

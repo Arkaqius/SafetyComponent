@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { getStartupView, PROGRESS_ENTITY_ID } from './startup.js';
-import { HEALTH_ENTITY_ID, type EntityMap } from './safety.js';
+import { getStartupView, startupOperatorView, PROGRESS_ENTITY_ID } from './startup.js';
+import { HEALTH_ENTITY_ID, getFaults, getRecoveries, getSafetySummary, type EntityMap } from './safety.js';
 
 const now = Date.parse('2026-10-09T08:00:00Z');
 function entities(remaining = 600): EntityMap {
@@ -49,6 +49,7 @@ test('offline, stale and invalid startup metadata never claim monitoring is read
 
 test('backend clock ahead does not extend countdown beyond configured grace', () => {
   assert.equal(getStartupView(entities(), now - 60_000)?.countdown, '10:00');
+  assert.equal(getStartupView(entities(), now - 60_001)?.available, false);
   assert.equal(getStartupView({}, now), null);
 });
 
@@ -65,4 +66,48 @@ test('completion requires current valid backend evidence while legacy reports re
   }
   delete complete[PROGRESS_ENTITY_ID].attributes.startup;
   assert.equal(getStartupView(complete, now), null);
+});
+
+test('startup emits no diagnostic incident or recommendation and does not claim a safe assessment', () => {
+  const faults = getFaults({
+    'sensor.fault_memory': { state: 'UNEVALUABLE', attributes: { fault_id: 'Memory', level: 3, category: 'D', active: false } },
+    'sensor.fault_io': { state: 'FAIL', attributes: { fault_id: 'IO', level: 2, category: 'D', active: true } },
+  });
+  const recoveries = getRecoveries({
+    'sensor.recovery_io': { state: 'TO_PERFORM', attributes: { proposals: [{ proposal_id: 'io', fault_id: 'IO', status: 'TO_PERFORM' }] } },
+  });
+  const summary = getSafetySummary({ state: 'running', attributes: {} }, { state: 'hazard', attributes: {} }, faults, recoveries);
+  const view = startupOperatorView(getStartupView(entities(), now), faults, recoveries, summary);
+  assert.equal(view.summary.label, 'Rozruch monitoringu');
+  assert.equal(view.summary.tone, 'info');
+  assert.equal(view.summary.activeFaultCount, 0);
+  assert.deepEqual(view.faults, []);
+  assert.deepEqual(view.recoveries, []);
+  assert.equal(startupOperatorView(null, faults, recoveries, summary).faults, faults);
+  assert.equal(startupOperatorView(getStartupView(entities(), now, false), faults, recoveries, summary).faults, faults);
+});
+
+test('startup keeps current or retained L1 danger and its recommendation immediate', () => {
+  const faults = getFaults({
+    'sensor.fault_gas': { state: 'UNEVALUABLE', attributes: { fault_id: 'Gas', level: 1, category: 'H', active: true } },
+    'sensor.fault_memory': { state: 'UNEVALUABLE', attributes: { level: 3, category: 'D', active: false } },
+  });
+  const recoveries = getRecoveries({
+    'sensor.recovery_gas': {
+      state: 'TO_PERFORM',
+      attributes: { proposals: [{ proposal_id: 'gas', fault_id: 'Gas', status: 'TO_PERFORM' }] },
+    },
+  });
+  const summary = getSafetySummary({ state: 'running', attributes: {} }, { state: 'emergency', attributes: {} }, faults, recoveries);
+  const view = startupOperatorView(getStartupView(entities(), now), faults, recoveries, summary);
+  assert.equal(view.summary.effectiveLevel, 1);
+  assert.equal(view.summary.tone, 'critical');
+  assert.deepEqual(
+    view.faults.map(fault => fault.faultId),
+    ['Gas']
+  );
+  assert.deepEqual(
+    view.recoveries.map(recovery => recovery.proposalId),
+    ['gas']
+  );
 });

@@ -11,6 +11,7 @@ from components.notification_manager.models import (
     DeliveryBatchResult, DeliveryDisposition, TargetDeliveryResult,
 )
 from components.core.startup_grace import StartupGrace
+from components.core.degradation import RestrictionEffect
 
 from .fixtures.hass_fixture import (
     drain_responses,
@@ -232,10 +233,10 @@ def test_entity_monitor_is_wired_into_application_startup(
     )
 
 
-def test_shared_startup_grace_keeps_h_and_app_health_live_while_d_is_unknown(
+def test_shared_startup_grace_keeps_h_live_and_internal_restrictions_while_d_reporting_waits(
     mocked_hass_app_with_temp_component, monkeypatch,
 ) -> None:
-    """Real application routing postpones diagnostics, including their recovery effects."""
+    """Diagnostic presentation waits; current safety restrictions do not."""
     app, mocked_hass, *_ = mocked_hass_app_with_temp_component
     app.args = deepcopy(app.args)
     app.args["app_config"]["calibration"] = {"entity_monitor": {"startup_grace_seconds": 600}}
@@ -248,17 +249,21 @@ def test_shared_startup_grace_keeps_h_and_app_health_live_while_d_is_unknown(
     app.initialize()
     diagnostic = "EntityHealthFailureStartupExtraAvailability"
     app.event_bus.publish("symptom", symptom_id=diagnostic, state=FaultState.SET)
-    assert app.fm.check_fault("EntityHealthStartupExtra") is FaultEvaluationStatus.UNEVALUABLE
+    # The direct exception fallback must not bypass diagnostic reporting grace.
+    app.fm.mark_evaluation_unavailable(diagnostic)
+    assert app.fm.check_fault("EntityHealthStartupExtra") is FaultEvaluationStatus.NOT_EVALUATED
     budgeted = "EntityHealthFailureTemperatureOfficeAvailability"
     app.event_bus.publish("symptom", symptom_id=budgeted, state=FaultState.SET)
-    assert app.fm.check_fault("InputMonitoringUnavailable") is FaultEvaluationStatus.FAIL
+    assert app.fm.check_fault("InputMonitoringUnavailable") is not FaultEvaluationStatus.FAIL
+    assert budgeted in app.degradation.causes_for("RiskyTemperatureOffice", RestrictionEffect.EVALUATION)
     app.event_bus.publish("symptom", symptom_id="RiskyTemperatureOffice", state=FaultState.SET)
     assert app.fm.check_fault("RiskyTemperature") is FaultEvaluationStatus.FAIL
     app.self_diagnostics.record_app_cause("publication", True)
-    assert app.fm.check_fault("SafetyAppHealth") is FaultEvaluationStatus.FAIL
+    assert app.fm.check_fault("SafetyAppHealth") is not FaultEvaluationStatus.FAIL
     app.event_bus.publish("symptom", symptom_id=diagnostic, state=FaultState.CLEARED)
     now[0] = 600
     app._finish_startup_grace()
+    assert app.fm.check_fault("SafetyAppHealth") is FaultEvaluationStatus.FAIL
     assert app.fm.check_symptom(diagnostic) is FaultState.CLEARED
     assert app.fm.check_fault("EntityHealthStartupExtra") is not FaultEvaluationStatus.FAIL
     progress = mqtt_json_payloads(mocked_hass, mqtt_topic_for("sensor.safety_evaluation_progress", "attributes"))[-1]

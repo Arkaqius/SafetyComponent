@@ -27,6 +27,7 @@ interface FaultSectionProps {
   recoveries?: RecoveryView[];
   acknowledgedTags?: ReadonlySet<string>;
   compact?: boolean;
+  starting?: boolean;
   onSelectEntity?: (entityId: string) => void;
 }
 
@@ -55,6 +56,7 @@ export default function FaultSection({
   faults,
   recoveries = [],
   compact = false,
+  starting = false,
   onSelectEntity,
 }: FaultSectionProps) {
   const [filter, setFilter] = useState<FaultFilter>('attention');
@@ -97,7 +99,7 @@ export default function FaultSection({
           </h2>
         </div>
         <span className={`count-badge${activeCount > 0 ? ' count-badge-alert' : ''}`}>
-          {activeCount === 1 ? '1 aktywne' : `${activeCount} aktywnych`}
+          {starting && activeCount === 0 ? 'Rozruch' : activeCount === 1 ? '1 aktywne' : `${activeCount} aktywnych`}
         </span>
         {informationCount > 0 && (
           <StatusBadge tone='info'>{informationCount === 1 ? '1 informacja' : `${informationCount} informacji`}</StatusBadge>
@@ -150,11 +152,15 @@ export default function FaultSection({
             <div className='empty-state-icon'>
               <Icon name='shield' size={28} />
             </div>
-            <strong>{faults.length === 0 ? 'Brak danych o zdarzeniach' : 'Brak zdarzeń w tym widoku'}</strong>
+            <strong>
+              {starting ? 'Rozruch monitoringu' : faults.length === 0 ? 'Brak danych o zdarzeniach' : 'Brak zdarzeń w tym widoku'}
+            </strong>
             <p>
-              {faults.length === 0
-                ? 'Brak danych o usterkach z Home Assistanta.'
-                : 'System nie raportuje zdarzeń spełniających wybrany filtr.'}
+              {starting
+                ? 'Oceny diagnostyczne pojawią się po zebraniu danych.'
+                : faults.length === 0
+                  ? 'Brak danych o usterkach z Home Assistanta.'
+                  : 'System nie raportuje zdarzeń spełniających wybrany filtr.'}
             </p>
           </div>
         )}

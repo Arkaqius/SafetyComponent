@@ -76,6 +76,16 @@ from the old runtime even if an external service remains outstanding.
 
 ## Acceptance and Traceability
 
+Diagnostic startup qualification shall be distinct from operational input loss.
+While the backend confirms startup is settling, diagnostic results shall be
+coalesced without publishing false unavailability or operator actions. Internal
+restriction evaluation shall still consume component-qualified evidence, and
+positive or retained H incidents shall bypass this reporting grace. At completion
+release the latest diagnostic state only; absent input remains unavailable after
+the startup interval, not a fabricated pass. The frontend shall not show inactive
+diagnostic cards or System Health platform/source failure panels during valid startup, and shall
+not continue suppressing them when the startup report becomes stale or invalid.
+
 FR-019..023; SC-009/010 -> SWR-SM-001..006 and existing fault/owner contracts.
 
 Run one parametrized lifecycle matrix against all six real component adapters:

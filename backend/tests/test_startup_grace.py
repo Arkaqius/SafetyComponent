@@ -6,12 +6,12 @@ from components.core.types_common import FaultState
 from components.safetycomponents.entity_monitor.schema import EntityMonitorCalibration
 
 
-def gate(seconds=600):
+def gate(seconds=600, extra_diagnostics=()):
     """Create a deterministic startup dispatcher and capture delivered evidence."""
     now = [0.0]
     bus = EventBus()
     grace = StartupGrace(
-        bus, {"input", "provider", "battery"}, seconds, clock=lambda: now[0]
+        bus, {"input", "provider", "battery", *extra_diagnostics}, seconds, clock=lambda: now[0]
     )
     delivered, unavailable = [], []
     bus.subscribe("qualified_symptom", lambda **data: delivered.append(data))
@@ -31,11 +31,12 @@ def test_pending_qualification_obeys_diagnostic_startup_boundary():
     pending = []
     bus.subscribe("qualified_evaluation_pending", lambda **data: pending.append(data))
     bus.publish("evaluation_pending", symptom_id="input", violation=True)
-    assert not pending and unavailable == [{"symptom_id": "input"}]
+    assert not pending and not unavailable and not delivered
     now[0] = 600
     grace.finish()
-    bus.publish("evaluation_pending", symptom_id="input", violation=True)
     assert pending == [{"symptom_id": "input", "violation": True}]
+    bus.publish("evaluation_pending", symptom_id="input", violation=True)
+    assert pending == [{"symptom_id": "input", "violation": True}] * 2
 
 
 def test_transient_failures_do_not_activate_or_replay_after_recovery():
@@ -44,7 +45,7 @@ def test_transient_failures_do_not_activate_or_replay_after_recovery():
     now[0] = 599
     bus.publish("symptom", symptom_id="input", state=FaultState.CLEARED)
     assert delivered == []
-    assert unavailable == [{"symptom_id": "input"}] * 2
+    assert unavailable == []
     assert not grace.finish()
     now[0] = 600
     assert grace.finish()
@@ -68,18 +69,20 @@ def test_still_failed_diagnostic_activates_at_deadline_and_future_events_are_imm
 
 
 def test_unavailable_or_unseen_evidence_never_becomes_positive_clear_at_expiry():
-    now, bus, grace, delivered, _ = gate()
+    now, bus, grace, delivered, unavailable = gate()
     bus.publish("symptom", symptom_id="provider", state=FaultState.CLEARED)
     bus.publish("evaluation_unavailable", symptom_id="provider")
     bus.publish("symptom", symptom_id="battery", state=FaultState.SET)
     bus.publish("evaluation_unavailable", symptom_id="battery")
+    assert unavailable == []
     now[0] = 600
     grace.finish()
     assert delivered == []
+    assert {row["symptom_id"] for row in unavailable} == {"provider", "battery", "input"}
 
 
-def test_hazard_and_application_failure_bypass_diagnostic_grace():
-    _, bus, grace, delivered, _ = gate()
+def test_hazards_bypass_diagnostic_grace_while_application_diagnostics_wait():
+    now, bus, grace, delivered, _ = gate(extra_diagnostics=("persistence", "publication"))
     for symptom in (
         "gas",
         "carbon_monoxide",
@@ -88,9 +91,12 @@ def test_hazard_and_application_failure_bypass_diagnostic_grace():
         "publication",
     ):
         bus.publish("symptom", symptom_id=symptom, state=FaultState.SET)
-    assert len(delivered) == 5
+    assert len(delivered) == 3
     assert all(row["state"] == FaultState.SET for row in delivered)
     assert grace.snapshot()["remaining_seconds"] == 600
+    now[0] = 600
+    grace.finish()
+    assert len(delivered) == 5
 
 
 def test_zero_grace_and_new_initialization_do_not_reuse_old_startup_phase():
