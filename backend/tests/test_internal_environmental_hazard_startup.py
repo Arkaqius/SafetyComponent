@@ -137,9 +137,10 @@ def test_missing_or_corrupt_checkpoint_does_not_invent_hazards_or_release_gas(tm
     if monitoring_enabled:
         assert app.fm.check_fault("InternalFlammableGasDetected") is FaultEvaluationStatus.PASS
         assert not app.fm.faults["InternalFlammableGasDetected"].evaluation.active
+        assert "InternalSmokeDetected" not in app.fm.faults
     else:
-        assert "InternalFlammableGasDetected" not in app.fm.faults
-    assert "InternalSmokeDetected" not in app.fm.faults
+        assert app.fm.check_fault("InternalFlammableGasDetected") is FaultEvaluationStatus.NOT_EVALUATED
+        assert not app.fm.faults["InternalFlammableGasDetected"].evaluation.active
     assert not any(
         contributor.startswith("RetainedUnknown")
         for fault in app.fm.faults.values()
@@ -212,7 +213,8 @@ def test_healed_gas_alarm_keeps_latch_and_lost_checkpoint_rejects_virgin_receipt
     assert restarted.indoor_state_owner.history_unknown is checkpoint_loss
     if checkpoint_loss:
         assert not restarted.indoor_state_owner.records
-        assert restarted.fm.check_fault("InternalFlammableGasDetected") is FaultEvaluationStatus.UNEVALUABLE
+        assert restarted.fm.check_fault("InternalFlammableGasDetected") is FaultEvaluationStatus.NOT_EVALUATED
+        assert not restarted.fm.faults["InternalFlammableGasDetected"].evaluation.active
     else:
         assert restarted.indoor_state_owner.records[original.record_id].incident_id == original.incident_id
         assert not restarted.indoor_state_owner.records[original.record_id].alarm_active
@@ -380,11 +382,9 @@ def test_gas_alarm_reaches_l1_fault_without_co_consensus(tmp_path, monkeypatch, 
     assert app.fm.check_fault("InternalFlammableGasDetected") is FaultEvaluationStatus.FAIL
     assert app.fm.check_fault("InternalCarbonMonoxideDetected") is not FaultEvaluationStatus.FAIL
     if unwritable_database:
-        assert app.fm.check_fault("InternalSmokeDetected") is FaultEvaluationStatus.UNEVALUABLE
         assert app.indoor_state_owner.history_unknown
-    else:
-        assert "InternalSmokeDetected" not in app.faults
-        assert "sensor.fault_internalsmokedetected" not in app.mqtt_entities.discovered_entities
+    assert "InternalSmokeDetected" not in app.faults
+    assert "sensor.fault_internalsmokedetected" not in app.mqtt_entities.discovered_entities
     assert app.faults["InternalFlammableGasDetected"].level == 1
     assert any(
         service == "notify/mobile_app_example_phone"
