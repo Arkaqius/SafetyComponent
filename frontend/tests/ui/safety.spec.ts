@@ -184,7 +184,7 @@ test('L4 stays informational while L3 warnings still change the overall state', 
     window.__safetyHomeMock.update({ entities });
   });
   await expect(hero).toHaveClass(/hero-warning/);
-  await expect(hero.getByRole('heading')).toHaveText('Ostrzeżenie');
+  await expect(hero.getByRole('heading')).toHaveText('Usterka');
   await expect(notice).toHaveClass(/fault-info/);
 });
 
