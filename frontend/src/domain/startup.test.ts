@@ -53,6 +53,29 @@ test('backend clock ahead does not extend countdown beyond configured grace', ()
   assert.equal(getStartupView({}, now), null);
 });
 
+test('before the first startup report, offline placeholders do not become operator events', () => {
+  const input: EntityMap = {
+    [HEALTH_ENTITY_ID]: { state: 'unavailable', attributes: {} },
+    [PROGRESS_ENTITY_ID]: { state: 'unavailable', attributes: {} },
+    'sensor.fault_placeholder': { state: 'unavailable', attributes: { friendly_name: 'Pamięć hosta' } },
+    'sensor.fault_gas': { state: 'FAIL', attributes: { active: true, category: 'H', level: 1 } },
+  };
+  const faults = getFaults(input);
+  const startup = getStartupView(input, now);
+  assert.equal(startup?.waitingForApp, true);
+  assert.equal(startup?.remainingSeconds, null);
+  const summary = getSafetySummary(input[HEALTH_ENTITY_ID], undefined, faults, []);
+  const view = startupOperatorView(startup, faults, [], summary);
+  assert.deepEqual(
+    view.faults.map(fault => fault.entityId),
+    ['sensor.fault_gas']
+  );
+  assert.equal(view.summary.effectiveLevel, 1);
+  assert.equal(getStartupView({ ...input, [HEALTH_ENTITY_ID]: { state: 'init', attributes: {} } }, now)?.label, 'Rozruch monitoringu');
+  assert.equal(getStartupView(input, now, false)?.waitingForApp, undefined);
+  assert.equal(getStartupView(entities(), now)?.available, true);
+});
+
 test('completion requires current valid backend evidence while legacy reports remain compatible', () => {
   const complete = entities(0);
   (complete[PROGRESS_ENTITY_ID].attributes.startup as Record<string, unknown>).phase = 'complete';

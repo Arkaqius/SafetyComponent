@@ -9,7 +9,7 @@ import RecoveryActionCard from '../components/RecoveryActionCard';
 import { useSafetyEntities } from '../hooks/useSafetyEntities';
 
 export default function BasicDashboard({ onExpand }: { onExpand: () => void }) {
-  const { summary, connection, entities, faults, recoveries, entityMonitorSummary, startup } = useSafetyEntities();
+  const { summary, connection, entities, faults, recoveries, entityMonitorSummary, starting } = useSafetyEntities();
   const { primaryFault, activeFaultCount, primaryRecovery, attentionRecoveries } = basicDashboardItems(faults, recoveries);
   const connected = connection.ready && !connection.cannotConnect;
   const coverage = getCoverageView(connected ? entities : {});
@@ -45,12 +45,12 @@ export default function BasicDashboard({ onExpand }: { onExpand: () => void }) {
             {!connected && <small>Ostatnie znane zdarzenie</small>}
           </div>
         )}
-        <div className={`basic-monitoring${monitoringLimited && !startup?.available ? ' basic-monitoring-limited' : ''}`}>
+        <div className={`basic-monitoring${monitoringLimited && !starting ? ' basic-monitoring-limited' : ''}`}>
           <Icon name={monitoringLimited ? 'alert' : 'shield'} size={18} />
           <span>
             {!connected
               ? 'Odczyty z pamięci'
-              : startup?.available
+              : starting
                 ? 'Trwa rozruch monitoringu'
                 : monitoringLimited
                   ? 'Monitoring ma ograniczenia'
@@ -81,7 +81,7 @@ export default function BasicDashboard({ onExpand }: { onExpand: () => void }) {
           <p>
             {!connected
               ? 'Aktualne zalecenia są niedostępne do czasu odzyskania połączenia.'
-              : startup?.available
+              : starting
                 ? 'Zalecenia diagnostyczne pojawią się po zebraniu danych.'
                 : summary.tone === 'safe'
                   ? 'Nie ma zgłoszonego działania do wykonania.'
@@ -104,7 +104,7 @@ export default function BasicDashboard({ onExpand }: { onExpand: () => void }) {
             <Icon name='close' />
           </button>
         </div>
-        <ActionsList faults={faults} starting={startup?.available} recoveries={attentionRecoveries} />
+        <ActionsList faults={faults} starting={starting} recoveries={attentionRecoveries} />
       </ModalDialog>
     </div>
   );

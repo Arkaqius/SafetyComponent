@@ -26,7 +26,7 @@ function AdvancedDashboard() {
   const [averageDialogOpen, setAverageDialogOpen] = useState(false);
   const closeEntityDetails = useCallback(() => setSelectedEntityId(null), []);
   const closeAverageDetails = useCallback(() => setAverageDialogOpen(false), []);
-  const { connection, entities, entityMonitorSummary, faults, recoveries, safetyDoors, summary, systemEntity, temperatures, startup } =
+  const { connection, entities, entityMonitorSummary, faults, recoveries, safetyDoors, summary, systemEntity, temperatures, starting } =
     useSafetyEntities();
   const values = temperatures.filter((temperature): temperature is TemperatureView & { state: number } => temperature.state !== null);
   const average = values.length > 0 ? values.reduce((sum, temperature) => sum + temperature.state, 0) / values.length : null;
@@ -76,18 +76,18 @@ function AdvancedDashboard() {
         <FaultSection
           acknowledgedTags={acknowledgedNotificationTags}
           compact
-          starting={startup?.available}
+          starting={starting}
           faults={faults}
           recoveries={recoveries}
           onSelectEntity={setSelectedEntityId}
         />
-        <ActionsList faults={faults} starting={startup?.available} onSelectEntity={setSelectedEntityId} recoveries={recoveries} />
+        <ActionsList faults={faults} starting={starting} onSelectEntity={setSelectedEntityId} recoveries={recoveries} />
       </div>
 
       <section className='entity-monitor-overview'>
         <div>
           <small className='label-with-help'>
-            {startup?.available
+            {starting
               ? 'Rozruch — oczekiwanie na dane źródeł'
               : entityMonitorSummary.total === 0
                 ? 'Pokrycie monitoringu nieznane'
@@ -100,7 +100,7 @@ function AdvancedDashboard() {
         </div>
         <StatusBadge
           tone={
-            startup?.available
+            starting
               ? 'info'
               : connection.cannotConnect || !connection.ready
                 ? 'muted'
@@ -113,7 +113,7 @@ function AdvancedDashboard() {
                       : 'muted'
           }
         >
-          {startup?.available
+          {starting
             ? 'Rozruch'
             : connection.cannotConnect || !connection.ready
               ? 'Niezweryfikowane'
