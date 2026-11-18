@@ -46,7 +46,9 @@ test('temperature sampling does not add a second global startup notice', async (
     api.update({ entities });
   });
   const banner = page.getByRole('complementary', { name: 'Gotowość prognozy temperatury' });
+  const oldNotice = page.getByText('Prognoza temperatury · oczekiwanie na próbki', { exact: true });
   await expect(banner).toHaveCount(0);
+  await expect(oldNotice).toHaveCount(0);
   await expect(startupBanner).toBeVisible();
   await page.evaluate(() => {
     window.location.hash = '#/temperature';
@@ -65,5 +67,6 @@ test('temperature sampling does not add a second global startup notice', async (
     api.update({ entities });
   });
   await expect(banner).toHaveCount(0);
+  await expect(oldNotice).toHaveCount(0);
   await expect(startupBanner).toHaveCount(0);
 });
