@@ -12,6 +12,10 @@ test('temperature sampling does not add a second global startup notice', async (
     entities['sensor.safety_app_health'] = { state: 'unavailable', attributes: {} };
     entities['sensor.safety_evaluation_progress'] = { state: 'unavailable', attributes: {} };
     entities['sensor.fault_startup_placeholder'] = { state: 'unavailable', attributes: { friendly_name: 'Testowy wpis rozruchu' } };
+    entities['sensor.fault_startup_cpu'] = {
+      state: 'UNEVALUABLE',
+      attributes: { friendly_name: 'Testowa diagnostyka CPU', category: 'D', level: 3, active: false },
+    };
     api.update({ entities });
     window.location.hash = '#/fault-management';
   });
@@ -19,6 +23,7 @@ test('temperature sampling does not add a second global startup notice', async (
   await expect(startupBanner).toContainText('Oczekiwanie na dane monitoringu');
   await expect(startupBanner.locator('.startup-countdown')).toHaveCount(0);
   await expect(page.getByText('Testowy wpis rozruchu', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Testowa diagnostyka CPU', { exact: true })).toHaveCount(0);
   await page.evaluate(() => {
     const api = (window as unknown as { __safetyHomeMock: { snapshot(): EntityMap; update(value: { entities: EntityMap }): void } })
       .__safetyHomeMock;

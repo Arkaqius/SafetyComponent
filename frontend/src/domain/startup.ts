@@ -26,25 +26,7 @@ export function isStartupInProgress(startup: StartupView | null): boolean {
 
 /** Hold startup diagnostics off the operator view without hiding real danger. */
 export function startupOperatorView(startup: StartupView | null, faults: FaultView[], recoveries: RecoveryView[], summary: SafetySummary) {
-  if (startup?.waitingForApp) {
-    // MQTT can mark the entire catalogue offline before the app publishes its
-    // startup phase. Rows without metadata do not identify an evaluated fault.
-    return {
-      faults: faults.filter(
-        fault =>
-          fault.category !== 'unknown' ||
-          fault.active === true ||
-          fault.latched === true ||
-          !['unavailable', 'unknown'].includes(fault.status)
-      ),
-      recoveries: recoveries.filter(recovery => !['unavailable', 'unknown'].includes(recovery.status)),
-      summary:
-        summary.activeFaultCount > 0 || summary.effectiveLevel !== null
-          ? summary
-          : { ...summary, label: startup.label, detail: startup.detail, tone: 'info' as const },
-    };
-  }
-  if (!startup?.available) return { faults, recoveries, summary };
+  if (!startup || !isStartupInProgress(startup)) return { faults, recoveries, summary };
   const visibleFaults = faults.filter(fault => fault.category !== 'D' && (fault.active === true || fault.latched === true));
   const visibleRecoveries = recoveries.filter(
     recovery => recovery.status === 'executing' || visibleFaults.some(fault => recoveriesForFault(fault, [recovery]).length > 0)

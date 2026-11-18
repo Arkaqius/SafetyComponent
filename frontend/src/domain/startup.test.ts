@@ -58,6 +58,7 @@ test('before the first startup report, offline placeholders do not become operat
     [HEALTH_ENTITY_ID]: { state: 'unavailable', attributes: {} },
     [PROGRESS_ENTITY_ID]: { state: 'unavailable', attributes: {} },
     'sensor.fault_placeholder': { state: 'unavailable', attributes: { friendly_name: 'Pamięć hosta' } },
+    'sensor.fault_cpu': { state: 'UNEVALUABLE', attributes: { category: 'D', level: 3, active: false } },
     'sensor.fault_gas': { state: 'FAIL', attributes: { active: true, category: 'H', level: 1 } },
   };
   const faults = getFaults(input);
@@ -71,6 +72,11 @@ test('before the first startup report, offline placeholders do not become operat
     ['sensor.fault_gas']
   );
   assert.equal(view.summary.effectiveLevel, 1);
+  const withoutDanger = faults.filter(fault => fault.active !== true);
+  const waitingSummary = getSafetySummary(input[HEALTH_ENTITY_ID], undefined, withoutDanger, []);
+  const waiting = startupOperatorView(startup, withoutDanger, [], waitingSummary);
+  assert.deepEqual(waiting.faults, []);
+  assert.equal(waiting.summary.label, 'Oczekiwanie na dane monitoringu');
   assert.equal(getStartupView({ ...input, [HEALTH_ENTITY_ID]: { state: 'init', attributes: {} } }, now)?.label, 'Rozruch monitoringu');
   assert.equal(getStartupView(input, now, false)?.waitingForApp, undefined);
   assert.equal(getStartupView(entities(), now)?.available, true);
