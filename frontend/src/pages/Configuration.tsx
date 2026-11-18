@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useConfig, useHass } from '@hakit/core';
-import { NavLink, useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import ConfigurationObjectEditor from '../components/ConfigurationObjectEditor';
 import ProviderParameterEditor from '../components/ProviderParameterEditor';
 import BatteryDiscovery from '../components/BatteryDiscovery';
@@ -35,6 +35,57 @@ import {
 } from '../domain/providerConfiguration';
 import { canRestartConfiguration, configurationRestartMessage } from '../domain/configurationRestart';
 
+const DEFAULT_NOTIFICATION_URL = '/local_safety_component_dev';
+
+const configurationPages = {
+  general: [['general', 'Ogólne']],
+  installation: [
+    ['rooms', 'Pomieszczenia'],
+    ['openings', 'Drzwi i okna'],
+    ['detectors', 'Detektory'],
+  ],
+  components: [
+    ['external-hazards', 'Zagrożenia zewnętrzne'],
+    ['temperature', 'Temperatura'],
+    ['doors', 'Drzwi i bramy'],
+    ['entity-monitor', 'Monitoring encji'],
+    ['indoor-hazards', 'Zagrożenia wewnętrzne'],
+    ['heating', 'Monitoring ogrzewania'],
+    ['system-health', 'Zdrowie systemu'],
+    ['safety_routines', 'Scenariusze bezpieczeństwa'],
+  ],
+} as const;
+
+const configurationTabs = [
+  ['general', 'Ogólne'],
+  ['installation', 'Instalacja HA'],
+  ['components', 'Ustawienia komponentów'],
+] as const;
+
+type ConfigurationTab = keyof typeof configurationPages;
+
+function configurationPath(tab: ConfigurationTab, page: string = configurationPages[tab][0][0]) {
+  return tab === 'general' ? '/configuration/general' : `/configuration/${tab}/${page}`;
+}
+
+function resolveConfigurationPage(pathname: string): { tab: ConfigurationTab; page: string } {
+  const [, , section, subsection] = pathname.split('/');
+  if (section === 'installation' || section === 'components') {
+    const pages = configurationPages[section];
+    return { tab: section, page: pages.find(([key]) => key === subsection)?.[0] ?? pages[0][0] };
+  }
+  if (configurationPages.installation.some(([key]) => key === section)) return { tab: 'installation', page: section };
+  if (section === 'health') return { tab: 'components', page: 'system-health' };
+  if (section === 'settings') return { tab: 'components', page: 'external-hazards' };
+  if (section === 'safety_routines') return { tab: 'components', page: 'safety_routines' };
+  return { tab: 'general', page: 'general' };
+}
+
+function newConfiguration(source: ConfigurationMap) {
+  const draft = normalizeMonitorConfiguration(source);
+  return updatePath(draft, ['notification', 'mobile', 'default_url'], DEFAULT_NOTIFICATION_URL);
+}
+
 const registrySections = [
   {
     key: 'safety_routines',
@@ -49,13 +100,7 @@ const registrySections = [
 type SaveState = 'idle' | 'saving' | 'saved';
 
 export default function Configuration() {
-  const location = useLocation();
-  const requestedPage = location.pathname.split('/')[2];
-  const page = ['general', 'notifications', 'site', 'health', 'settings', 'rooms', 'openings', 'detectors', 'safety_routines'].includes(
-    requestedPage
-  )
-    ? requestedPage
-    : 'general';
+  const { tab, page } = resolveConfigurationPage(useLocation().pathname);
   const [template, setTemplate] = useState<ConfigurationMap | null>(null);
   const haConfig = useConfig();
   const connection = useHass(store => store.connection);
@@ -79,8 +124,12 @@ export default function Configuration() {
     setError(null);
     try {
       const document = await loadUserConfiguration();
-      setDraft(normalizeMonitorConfiguration(document.user_config));
-      setTemplate(document.template_user_config ? normalizeMonitorConfiguration(document.template_user_config) : null);
+      setDraft(
+        document.setup_required && !document.validation_error
+          ? newConfiguration(document.user_config)
+          : normalizeMonitorConfiguration(document.user_config)
+      );
+      setTemplate(document.template_user_config ? newConfiguration(document.template_user_config) : null);
       setSystemDefaults(document.system_defaults ?? {});
       setRevision(document.revision);
       setSetupRequired(document.setup_required);
@@ -225,6 +274,13 @@ export default function Configuration() {
   }
 
   const components = asMap(draft.components_enabled);
+  const componentToggle = (name: string) => (
+    <ToggleField
+      checked={Boolean(components[name])}
+      label='Włącz komponent'
+      onChange={value => update(['components_enabled', name], value)}
+    />
+  );
   const localization = asMap(draft.localization);
   const notification = asMap(draft.notification);
   const mobile = asMap(notification.mobile);
@@ -281,31 +337,8 @@ export default function Configuration() {
 
   const pageContent = (
     <div className='page-stack configuration-page'>
-      <section className='page-introduction configuration-introduction'>
-        <div>
-          <span className='section-kicker'>Konfiguracja instalacji</span>
-          <h2 className='label-with-help'>
-            Ustawienia SafetyComponent
-            <HelpTooltip
-              label='Zapis i zastosowanie konfiguracji'
-              text='Formularz jest szkicem do czasu zapisu. Zapis obejmuje wszystkie podstrony. Uruchom ponownie aplikację, aby zastosować zapisane ustawienia.'
-            />
-          </h2>
-          <p>
-            Edytujesz wyłącznie prywatny <code>user_config.yml</code>. Polityka, kalibracja i parametry wykonawcze z{' '}
-            <code>system_config.yml</code> są dostarczane razem z aplikacją. Wybrane progi i czasy można nadpisać dla instalacji w sekcji
-            Ustawienia komponentów; puste pola zachowują wartości systemowe.
-          </p>
-        </div>
+      <section className='panel configuration-action-bar' aria-label='Akcje konfiguracji'>
         <div className='configuration-actions'>
-          <a
-            className='secondary-button configuration-help-link'
-            href='https://github.com/Arkaqius/SafetyComponent/blob/main/frontend/CONFIGURATION.md'
-            rel='noopener noreferrer'
-            target='_blank'
-          >
-            Pomoc: opis pól konfiguracji
-          </a>
           <input
             accept='.yml,.yaml'
             aria-label='Wybierz plik user_config YAML'
@@ -359,25 +392,46 @@ export default function Configuration() {
         </div>
       </section>
 
-      <nav className='configuration-subpages' aria-label='Podstrony konfiguracji'>
-        {(
-          [
-            ['general', 'Ogólne'],
-            ['notifications', 'Powiadomienia'],
-            ['site', 'Instalacja HA'],
-            ['health', 'Zdrowie systemu'],
-            ['settings', 'Ustawienia komponentów'],
-            ['rooms', 'Pomieszczenia'],
-            ['openings', 'Drzwi i okna'],
-            ['detectors', 'Detektory'],
-            ['safety_routines', 'Scenariusze bezpieczeństwa'],
-          ] as const
-        ).map(([key, label]) => (
-          <NavLink className={`secondary-button${page === key ? ' active' : ''}`} key={key} to={`/configuration/${key}`}>
-            {label}
-          </NavLink>
-        ))}
-      </nav>
+      <div className='configuration-navigation'>
+        <div className='configuration-navigation-header'>
+          <h2 className='label-with-help'>
+            Ustawienia SafetyComponent
+            <HelpTooltip
+              label='Zapis i zastosowanie konfiguracji'
+              text='Zapis obejmuje wszystkie podstrony. Uruchom ponownie aplikację, aby zastosować zapisane ustawienia.'
+            />
+          </h2>
+          <a
+            className='configuration-help-link'
+            href='https://github.com/Arkaqius/SafetyComponent/blob/main/frontend/CONFIGURATION.md'
+            rel='noopener noreferrer'
+            target='_blank'
+          >
+            Pomoc: opis pól konfiguracji
+          </a>
+        </div>
+        <nav className='configuration-subpages' aria-label='Kategorie konfiguracji'>
+          {configurationTabs.map(([key, label]) => (
+            <Link aria-current={tab === key ? 'true' : undefined} className='secondary-button' key={key} to={configurationPath(key)}>
+              {label}
+            </Link>
+          ))}
+        </nav>
+        {tab !== 'general' && (
+          <nav className='configuration-subpages configuration-subpages-secondary' aria-label='Podstrony konfiguracji'>
+            {configurationPages[tab].map(([key, label]) => (
+              <Link
+                aria-current={page === key ? 'page' : undefined}
+                className='secondary-button'
+                key={key}
+                to={configurationPath(tab, key)}
+              >
+                {label}
+              </Link>
+            ))}
+          </nav>
+        )}
+      </div>
 
       {setupRequired ? (
         <div className='configuration-message configuration-message-warning'>
@@ -408,477 +462,185 @@ export default function Configuration() {
       ) : null}
 
       <section className='panel configuration-section' hidden={page !== 'general'}>
-        <SectionHeader
-          title='Funkcje i integracje'
-          description='Włącz komponenty bezpieczeństwa oraz źródła danych używane w tej instalacji.'
-        />
-        <div className='configuration-columns'>
-          <fieldset className='configuration-fieldset'>
-            <legend>Komponenty</legend>
-            {Object.entries(components).map(([name, enabled]) => (
-              <ToggleField
-                checked={Boolean(enabled)}
-                key={name}
-                label={name === 'HeatingSystemMonitorComponent' ? 'Monitoring ogrzewania' : friendlyName(name, 'Component')}
-                onChange={value => update(['components_enabled', name], value)}
-              />
-            ))}
-          </fieldset>
-        </div>
-        <div className='provider-configuration'>
-          <h3>Źródła danych zewnętrznych</h3>
-          <p>
-            Wybierz źródło dla każdego rodzaju danych albo je wyłącz. Parametry dotyczą wybranego pluginu. Zapis wymaga osobnego restartu,
-            aby zmienić działające monitorowanie.
+        <SectionHeader title='Ogólne' description='Ustawienia aplikacji i dane wspólne dla instalacji.' />
+        <ConfigurationGroup title='Instalacja Home Assistant'>
+          <p className='configuration-ha-location'>
+            Współrzędne HA: {haConfig ? `${haConfig.latitude}, ${haConfig.longitude}` : 'oczekiwanie na Home Assistant'}
           </p>
-          {providerCatalogue.error ? (
-            <p className='configuration-message configuration-message-error' role='alert'>
-              {providerCatalogue.error}
+          <div className='configuration-grid'>
+            <SelectField
+              label='Strefa czasowa'
+              help='Strefa używana do interpretacji lokalnych alertów; współrzędne pochodzą z HA.'
+              value={stringValue(site.timezone)}
+              onChange={value => update(['installation', 'site', 'timezone'], value)}
+              options={timezones.map(zone => [zone, zone])}
+            />
+            <TextField
+              label='Kod kraju'
+              help='Dwuliterowy kod kraju dla reguł administracyjnych, np. PL.'
+              value={stringValue(site.country_code)}
+              onChange={value => update(['installation', 'site', 'country_code'], value.toUpperCase())}
+            />
+            <TextField
+              label='Encja temperatury zewnętrznej'
+              entityDomains={['sensor']}
+              help='Encja używana przez komponent temperatury, jeśli jest włączony.'
+              value={stringValue(commonEntities.outside_temp)}
+              onChange={value => update(['installation', 'common_entities', 'outside_temp'], value)}
+            />
+          </div>
+        </ConfigurationGroup>
+        <ConfigurationGroup title='Język'>
+          <div className='configuration-grid'>
+            <SelectField
+              label='Język'
+              help='Język komunikatów i nazw publikowanych przez SafetyComponent.'
+              value={stringValue(localization.language, 'pl')}
+              onChange={value => update(['localization', 'language'], value)}
+              options={[
+                ['pl', 'Polski'],
+                ['en', 'English'],
+                ['de', 'Deutsch'],
+              ]}
+            />
+          </div>
+        </ConfigurationGroup>
+        <ConfigurationGroup title='Powiadomienia'>
+          <div className='configuration-grid'>
+            <TextField
+              label='Domyślny adres po kliknięciu powiadomienia'
+              help='Ścieżka w Home Assistant otwierana po dotknięciu powiadomienia.'
+              defaultValue='/'
+              value={stringValue(mobile.default_url)}
+              onChange={value => update(['notification', 'mobile', 'default_url'], value)}
+            />
+            <TextAreaField
+              label='Usługi powiadomień (jedna w wierszu)'
+              help='Wpisz usługi notify/<nazwa>, dostępne w tej instalacji.'
+              value={stringList(mobile.services).join('\n')}
+              onChange={value => update(['notification', 'mobile', 'services'], splitLines(value))}
+            />
+            <TextField
+              label='Lokalna encja światła (opcjonalnie)'
+              entityDomains={['light']}
+              value={stringValue(localNotification.light_entity)}
+              onChange={value => update(['notification', 'local', 'light_entity'], value || undefined)}
+            />
+            <TextField
+              label='Lokalna encja alarmu (opcjonalnie)'
+              entityDomains={[]}
+              value={stringValue(localNotification.alarm_entity)}
+              onChange={value => update(['notification', 'local', 'alarm_entity'], value || undefined)}
+            />
+          </div>
+        </ConfigurationGroup>
+      </section>
+
+      <section className='panel configuration-section' hidden={page !== 'external-hazards'}>
+        <SectionHeader
+          title='Zagrożenia zewnętrzne'
+          description='Wybierz źródła pogody i jakości powietrza oraz dostosuj progi i czasy oceny.'
+        />
+        {componentToggle('ExternalHazardComponent')}
+        <ConfigurationGroup title='Źródła danych zewnętrznych'>
+          <div className='provider-configuration'>
+            <p>
+              Wybierz źródło dla każdego rodzaju danych albo je wyłącz. Parametry dotyczą wybranego pluginu. Zapis wymaga osobnego restartu,
+              aby zmienić działające monitorowanie.
             </p>
-          ) : null}
-          {providerChoices.map(row => {
-            const plugin = row.plugin;
-            const values = plugin ? readProviderParameters(draft, plugin) : null;
-            const categoryErrors = fieldErrors.filter(error => error.path[1] === 'external_sources' && error.path[2] === row.capability);
-            return (
-              <fieldset
-                className='configuration-fieldset'
-                key={row.capability}
-                data-capability={row.capability}
-                data-provider-id={plugin?.id}
-                style={{ minWidth: 0, marginBottom: '1rem' }}
-              >
-                <legend>{row.label}</legend>
-                <label className='configuration-field'>
-                  <span>Źródło: {row.label}</span>
-                  <select
-                    aria-label={`Źródło: ${row.label}`}
-                    disabled={restarting}
-                    value={row.selected === undefined ? '__unselected__' : (row.selected ?? '')}
-                    onChange={event => changeProviderDraft(setCategoryProvider(draft, row.capability, event.target.value || null))}
-                  >
-                    {row.selected === undefined ? (
-                      <option value='__unselected__' disabled>
-                        Wybierz źródło lub wyłącz
-                      </option>
-                    ) : null}
-                    <option value=''>Wyłączone</option>
-                    {typeof row.selected === 'string' && !row.options.some(option => option.id === row.selected) ? (
-                      <option value={row.selected}>{plugin?.displayName ?? row.selected} — nieprawidłowy wybór</option>
-                    ) : null}
-                    {row.options.map(option => (
-                      <option value={option.id} key={option.id}>
-                        {option.displayName}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                {row.error ? (
-                  <p className='configuration-message configuration-message-error' role='alert'>
-                    {row.error}
-                  </p>
-                ) : null}
-                {categoryErrors.map((error, index) => (
-                  <p key={index} className='configuration-message configuration-message-error' role='alert'>
-                    {error.message}
-                  </p>
-                ))}
-                {plugin && values ? (
-                  <>
-                    <p>{plugin.description}</p>
-                    {plugin.dataKind === 'synthetic' ? (
-                      <p className='configuration-message configuration-message-warning'>
-                        Źródło testowe — dane syntetyczne. Nie zapewnia rzeczywistego monitorowania ani sterowania.
+            {providerCatalogue.error ? (
+              <p className='configuration-message configuration-message-error' role='alert'>
+                {providerCatalogue.error}
+              </p>
+            ) : null}
+            {providerChoices.map(row => {
+              const plugin = row.plugin;
+              const values = plugin ? readProviderParameters(draft, plugin) : null;
+              const categoryErrors = fieldErrors.filter(error => error.path[1] === 'external_sources' && error.path[2] === row.capability);
+              return (
+                <details
+                  className='configuration-group'
+                  key={row.capability}
+                  data-capability={row.capability}
+                  data-provider-id={plugin?.id}
+                >
+                  <summary>{row.label}</summary>
+                  <div className='configuration-group-body'>
+                    <label className='configuration-field'>
+                      <span>Źródło: {row.label}</span>
+                      <select
+                        aria-label={`Źródło: ${row.label}`}
+                        disabled={restarting}
+                        value={row.selected === undefined ? '__unselected__' : (row.selected ?? '')}
+                        onChange={event => changeProviderDraft(setCategoryProvider(draft, row.capability, event.target.value || null))}
+                      >
+                        {row.selected === undefined ? (
+                          <option value='__unselected__' disabled>
+                            Wybierz źródło lub wyłącz
+                          </option>
+                        ) : null}
+                        <option value=''>Wyłączone</option>
+                        {typeof row.selected === 'string' && !row.options.some(option => option.id === row.selected) ? (
+                          <option value={row.selected}>{plugin?.displayName ?? row.selected} — nieprawidłowy wybór</option>
+                        ) : null}
+                        {row.options.map(option => (
+                          <option value={option.id} key={option.id}>
+                            {option.displayName}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    {row.error ? (
+                      <p className='configuration-message configuration-message-error' role='alert'>
+                        {row.error}
                       </p>
                     ) : null}
-                    <small>
-                      Zakres:{' '}
-                      {plugin.hazards
-                        .map(
-                          hazard =>
-                            ({
-                              frost: 'mróz',
-                              wind: 'wiatr',
-                              rain: 'deszcz',
-                              storm: 'burza',
-                              outdoor_air_pollution: 'zanieczyszczenie powietrza',
-                            })[hazard] ?? hazard
-                        )
-                        .join(', ')}
-                      .
-                    </small>
-                    <ProviderParameterEditor
-                      plugin={plugin}
-                      values={values}
-                      active={!row.error && components.ExternalHazardComponent !== false}
-                      disabled={restarting}
-                      errors={fieldErrors}
-                      onChange={(name, value) => changeProviderDraft(setProviderParameter(draft, plugin, name, value))}
-                    />
-                  </>
-                ) : null}
-              </fieldset>
-            );
-          })}
-        </div>
-      </section>
-
-      <section className='panel configuration-section' hidden={page !== 'general'}>
-        <SectionHeader title='Język' description='Nazwy encji są definiowane w plikach lokalizacji, poza konfiguracją użytkownika.' />
-        <div className='configuration-grid'>
-          <SelectField
-            label='Język'
-            help='Język komunikatów i nazw publikowanych przez SafetyComponent.'
-            value={stringValue(localization.language, 'pl')}
-            onChange={value => update(['localization', 'language'], value)}
-            options={[
-              ['pl', 'Polski'],
-              ['en', 'English'],
-              ['de', 'Deutsch'],
-            ]}
-          />
-        </div>
-      </section>
-
-      <section className='panel configuration-section' hidden={page !== 'notifications'}>
-        <SectionHeader title='Powiadomienia' description='Miejsca docelowe powiadomień Home Assistant.' />
-        <div className='configuration-grid'>
-          <TextField
-            label='Domyślny adres po kliknięciu powiadomienia'
-            help='Ścieżka w Home Assistant otwierana po dotknięciu powiadomienia.'
-            defaultValue='/'
-            value={stringValue(mobile.default_url)}
-            onChange={value => update(['notification', 'mobile', 'default_url'], value)}
-          />
-          <TextAreaField
-            label='Usługi powiadomień (jedna w wierszu)'
-            help='Wpisz usługi notify/<nazwa>, dostępne w tej instalacji.'
-            value={stringList(mobile.services).join('\n')}
-            onChange={value => update(['notification', 'mobile', 'services'], splitLines(value))}
-          />
-          <TextField
-            label='Encja łączności WAN (opcjonalnie)'
-            entityDomains={[]}
-            help='Wspólna dla powiadomień i diagnostyki WAN. Stany on/online/connected oznaczają połączenie; off/offline/disconnected — brak. Sam stan nie dowodzi, że każdy serwis w Internecie działa.'
-            value={stringValue(notification.wan_entity)}
-            onChange={value => update(['notification', 'wan_entity'], value || null)}
-          />
-          <TextField
-            label='Lokalna encja światła (opcjonalnie)'
-            entityDomains={['light']}
-            value={stringValue(localNotification.light_entity)}
-            onChange={value => update(['notification', 'local', 'light_entity'], value || undefined)}
-          />
-          <TextField
-            label='Lokalna encja alarmu (opcjonalnie)'
-            entityDomains={[]}
-            value={stringValue(localNotification.alarm_entity)}
-            onChange={value => update(['notification', 'local', 'alarm_entity'], value || undefined)}
-          />
-        </div>
-      </section>
-
-      <section className='panel configuration-section' hidden={page !== 'site'}>
-        <SectionHeader
-          title='Instalacja Home Assistant'
-          description='Dane administracyjne i wspólne encje. Współrzędne są pobierane z Home Assistant przy każdym uruchomieniu aplikacji.'
-        />
-        <p className='configuration-ha-location'>
-          Współrzędne HA: {haConfig ? `${haConfig.latitude}, ${haConfig.longitude}` : 'oczekiwanie na Home Assistant'}
-        </p>
-        <div className='configuration-grid'>
-          <SelectField
-            label='Strefa czasowa'
-            help='Strefa używana do interpretacji lokalnych alertów; współrzędne pochodzą z HA.'
-            value={stringValue(site.timezone)}
-            onChange={value => update(['installation', 'site', 'timezone'], value)}
-            options={timezones.map(zone => [zone, zone])}
-          />
-          <TextField
-            label='Kod kraju'
-            help='Dwuliterowy kod kraju dla reguł administracyjnych, np. PL.'
-            value={stringValue(site.country_code)}
-            onChange={value => update(['installation', 'site', 'country_code'], value.toUpperCase())}
-          />
-          <TextField
-            label='Encja temperatury zewnętrznej'
-            entityDomains={['sensor']}
-            help='Encja używana przez komponent temperatury, jeśli jest włączony.'
-            value={stringValue(commonEntities.outside_temp)}
-            onChange={value => update(['installation', 'common_entities', 'outside_temp'], value)}
-          />
-        </div>
-      </section>
-
-      <section className='panel configuration-section' hidden={page !== 'health'}>
-        <SectionHeader
-          title='Zdrowie systemu i konserwacja'
-          description='Opcjonalne źródła dla funkcjonalnego monitoringu bezpieczeństwa. Brak encji oznacza brak pokrycia, a nie stan prawidłowy.'
-        />
-        <p>
-          Encja WAN ustawiona w sekcji Powiadomienia służy również do diagnostyki łączności. Czujniki diagnostyczne hosta trzeba najpierw
-          włączyć w Home Assistant.
-        </p>
-        <div className='configuration-grid'>
-          <TextField
-            label='Pamięć dostępna hosta'
-            entityDomains={['sensor']}
-            help='Encja sensor.* podająca dostępną pamięć tego samego hosta co Home Assistant; wymagana razem z PSI.'
-            value={stringValue(hostMemory.available_entity)}
-            onChange={value => update(['installation', 'functional_safety', 'host_memory', 'available_entity'], value)}
-          />
-          <TextField
-            label='Presja pamięci hosta (PSI, %)'
-            entityDomains={['sensor']}
-            help='Encja sensor.* memory PSI some, np. średnia 60 s. Obie encje muszą dotyczyć tego samego hosta.'
-            value={stringValue(hostMemory.psi_entity)}
-            onChange={value => update(['installation', 'functional_safety', 'host_memory', 'psi_entity'], value)}
-          />
-        </div>
-        <p>
-          Progi instalacji: pamięć dostępna ≤ {String(functionalSafetySystem.memory_low_available_mib ?? '—')} MiB i PSI ≥{' '}
-          {String(functionalSafetySystem.memory_high_psi_percent ?? '—')}% przez{' '}
-          {String(functionalSafetySystem.memory_qualification_seconds ?? '—')} s. Po zmianie konfiguracji uruchom aplikację ponownie.
-        </p>
-        {functionalSafety.host_memory ? (
-          <button
-            className='secondary-button'
-            onClick={() => update(['installation', 'functional_safety', 'host_memory'], null)}
-            type='button'
-          >
-            Usuń obie encje pamięci
-          </button>
-        ) : null}
-        <div className='configuration-grid'>
-          <TextField
-            label='Obciążenie CPU hosta (%)'
-            entityDomains={['sensor']}
-            help='Opcjonalna encja sensor.* procesora hosta Home Assistant. Czas potwierdzenia można nadpisać w Ustawieniach komponentów.'
-            value={stringValue(functionalSafety.host_cpu_entity)}
-            onChange={value => update(['installation', 'functional_safety', 'host_cpu_entity'], value || null)}
-          />
-        </div>
-        <p>
-          Próg CPU instalacji: ≥ {String(functionalSafetySystem.cpu_high_percent ?? '—')}% przez{' '}
-          {String(functionalSafetySystem.cpu_qualification_seconds ?? '—')} s (L3).
-        </p>
-        <fieldset className='configuration-fieldset'>
-          <legend>Dysk, temperatura i kopie zapasowe</legend>
-          <div className='configuration-grid'>
-            <TextField
-              label='Wolne miejsce na dysku hosta'
-              entityDomains={['sensor']}
-              help='Opcjonalna encja sensor.* dla dysku Home Assistant, w MiB, GiB lub bajtach. Nie podawaj procentu zajętości.'
-              value={stringValue(functionalSafety.host_disk_free_entity)}
-              onChange={value => update(['installation', 'functional_safety', 'host_disk_free_entity'], value || null)}
-            />
-            <TextField
-              label='Temperatura hosta (°C)'
-              entityDomains={['sensor']}
-              help='Opcjonalna encja sensor.* temperatury procesora lub hosta Home Assistant; nie temperatura pomieszczenia.'
-              value={stringValue(functionalSafety.host_temperature_entity)}
-              onChange={value => update(['installation', 'functional_safety', 'host_temperature_entity'], value || null)}
-            />
-            <TextField
-              label='Ostatnia udana kopia zapasowa'
-              entityDomains={['sensor']}
-              help='Encja sensor.* z datą i czasem ostatniej udanej kopii (nie ostatniej próby). Wypełnienie włącza monitoring backupu.'
-              value={stringValue(backup.last_success_entity)}
-              onChange={value =>
-                update(['installation', 'functional_safety', 'backup'], value ? { ...backup, last_success_entity: value } : null)
-              }
-            />
-            <TextField
-              label='Błąd kopii zapasowej (opcjonalnie)'
-              entityDomains={['binary_sensor']}
-              help='Encja binary_sensor.*: on oznacza błąd. Najpierw podaj encję ostatniej udanej kopii.'
-              value={stringValue(backup.failure_entity)}
-              disabled={!backup.last_success_entity}
-              onChange={value => update(['installation', 'functional_safety', 'backup', 'failure_entity'], value || null)}
-            />
+                    {categoryErrors.map((error, index) => (
+                      <p key={index} className='configuration-message configuration-message-error' role='alert'>
+                        {error.message}
+                      </p>
+                    ))}
+                    {plugin && values ? (
+                      <>
+                        <p>{plugin.description}</p>
+                        {plugin.dataKind === 'synthetic' ? (
+                          <p className='configuration-message configuration-message-warning'>
+                            Źródło testowe — dane syntetyczne. Nie zapewnia rzeczywistego monitorowania ani sterowania.
+                          </p>
+                        ) : null}
+                        <small>
+                          Zakres:{' '}
+                          {plugin.hazards
+                            .map(
+                              hazard =>
+                                ({
+                                  frost: 'mróz',
+                                  wind: 'wiatr',
+                                  rain: 'deszcz',
+                                  storm: 'burza',
+                                  outdoor_air_pollution: 'zanieczyszczenie powietrza',
+                                })[hazard] ?? hazard
+                            )
+                            .join(', ')}
+                          .
+                        </small>
+                        <ProviderParameterEditor
+                          plugin={plugin}
+                          values={values}
+                          active={!row.error && components.ExternalHazardComponent !== false}
+                          disabled={restarting}
+                          errors={fieldErrors}
+                          onChange={(name, value) => changeProviderDraft(setProviderParameter(draft, plugin, name, value))}
+                        />
+                      </>
+                    ) : null}
+                  </div>
+                </details>
+              );
+            })}
           </div>
-          <p>
-            Progi instalacji: dysk ≤ {String(functionalSafetySystem.disk_low_free_mib ?? 1024)} MiB, powrót ≥{' '}
-            {String(functionalSafetySystem.disk_recovery_free_mib ?? 2048)} MiB; temperatura ≥{' '}
-            {String(functionalSafetySystem.host_temperature_high_c ?? 80)}°C, powrót ≤{' '}
-            {String(functionalSafetySystem.host_temperature_recovery_c ?? 70)}°C; maksymalny wiek kopii{' '}
-            {String(functionalSafetySystem.backup_max_age_hours ?? 48)} h. Nadpisania znajdziesz w Ustawieniach komponentów.
-          </p>
-          {functionalSafety.backup ? (
-            <button
-              className='secondary-button'
-              type='button'
-              onClick={() => update(['installation', 'functional_safety', 'backup'], null)}
-            >
-              Wyłącz monitoring kopii zapasowych
-            </button>
-          ) : null}
-        </fieldset>
-        <fieldset className='configuration-fieldset'>
-          <legend>Testy okresowe potwierdzane przez operatora</legend>
-          <ToggleField
-            label='Przypominaj o sprawdzeniu dostarczenia powiadomień'
-            checked={periodicTests.notification_delivery !== false}
-            onChange={value => update(['installation', 'functional_safety', 'periodic_tests', 'notification_delivery'], value)}
-          />
-          <ToggleField
-            label='Przypominaj o odtworzeniu backupu na osobnym systemie testowym'
-            checked={periodicTests.backup_restore === true}
-            onChange={value => update(['installation', 'functional_safety', 'periodic_tests', 'backup_restore'], value)}
-          />
-          <p>
-            Interwały instalacji: powiadomienia {String(functionalSafetySystem.notification_test_interval_days ?? 30)} dni, odtworzenie
-            kopii {String(functionalSafetySystem.backup_restore_test_interval_days ?? 180)} dni. Wynik rzeczywiście wykonanego testu
-            zapiszesz w widoku Zdrowie funkcji. Te ustawienia nie wysyłają wiadomości, nie uruchamiają syren i nie odtwarzają backupu.
-          </p>
-        </fieldset>
-        <fieldset className='configuration-fieldset'>
-          <legend>Aktualizacje</legend>
-          <div className='configuration-grid'>
-            {(
-              [
-                ['home_assistant_core', 'Home Assistant Core'],
-                ['home_assistant_os', 'Home Assistant OS'],
-                ['home_assistant_supervisor', 'Home Assistant Supervisor'],
-                ['safety_component', 'SafetyComponent App'],
-              ] as const
-            ).map(([key, label]) => (
-              <TextField
-                key={key}
-                label={`Encja aktualizacji: ${label}`}
-                entityDomains={['update']}
-                help='Opcjonalna encja update.*; dostępna aktualizacja ma poziom ostrzeżenia L3.'
-                value={stringValue(updates[key])}
-                onChange={value => update(['installation', 'functional_safety', 'updates', key], value || null)}
-              />
-            ))}
-          </div>
-        </fieldset>
-        <BatteryDiscovery
-          enabled={batteryMonitoring.enabled !== false}
-          excluded={stringList(batteryMonitoring.excluded_devices)}
-          staleAfterSeconds={Number(functionalSafetySystem.battery_stale_after_seconds ?? 86400)}
-          onEnabledChange={value => update(['installation', 'functional_safety', 'battery_monitoring', 'enabled'], value)}
-          onExcludedChange={value => update(['installation', 'functional_safety', 'battery_monitoring', 'excluded_devices'], value)}
-        />
-        <details>
-          <summary>Zaawansowane: ręczne źródła baterii</summary>
-          <ConfigurationObjectEditor
-            label='Ręczne źródła baterii'
-            description='Jedno urządzenie w jednym wpisie; możesz podać czujnik procentowy, binarny lub oba. Urządzenia wyłączone pomiń albo ustaw Monitoruj urządzenie na nie.'
-            value={asMap(functionalSafety.remote_batteries)}
-            onChange={value => update(['installation', 'functional_safety', 'remote_batteries'], value)}
-            schema={registrySchemas.remote_batteries}
-          />
-        </details>
-        <p>
-          Próg niskiej baterii instalacji: {String(functionalSafetySystem.battery_low_percent ?? '—')}%. Testy detektorów są wymagane co{' '}
-          {String(functionalSafetySystem.detector_test_interval_days ?? '—')} dni.
-        </p>
-      </section>
-
-      <section className='panel configuration-section' hidden={page !== 'settings'}>
-        <SectionHeader
-          title='Ustawienia komponentów'
-          description='Ustawienia specyficzne dla instalacji. Puste pola używają pokazanej wartości systemowej; ustawienia pojedynczego zasobu mają wyższy priorytet.'
-        />
-        <details>
-          <summary>Functional Safety — progi i harmonogramy</summary>
-          <p>
-            Wpisana wartość zastępuje systemowy default. Wyczyść pole, aby do niego wrócić. Progi powrotu muszą zachowywać margines: pamięć
-            i dysk powyżej progu alarmu; PSI, CPU i temperatura poniżej. Zmiany wymagają zapisu i restartu. Interwały testów przeliczają
-            termin od ostatniego wyniku — nie oznaczają wykonania nowego testu.
-          </p>
-          {functionalSafetySettings.map(([title, fields]) => (
-            <fieldset className='configuration-fieldset' key={title}>
-              <legend>{title}</legend>
-              <div className='configuration-grid'>
-                {fields.map(([key, label]) => (
-                  <NumberField
-                    key={key}
-                    label={label}
-                    optional
-                    defaultValue={String(functionalSafetyPackaged[key] ?? '')}
-                    help='Puste pole używa wartości systemowej. Poziom alarmu i kontrola jakości źródła pozostają bez zmian.'
-                    value={numberValue(functionalSafetyOverrides[key])}
-                    onChange={value => update(['installation', 'component_settings', 'functional_safety', key], value)}
-                  />
-                ))}
-              </div>
-            </fieldset>
-          ))}
-          <button
-            className='secondary-button'
-            type='button'
-            onClick={() => update(['installation', 'component_settings', 'functional_safety'], {})}
-          >
-            Przywróć domyślne ustawienia Functional Safety
-          </button>
-        </details>
-        <fieldset className='configuration-fieldset'>
-          <legend>Temperatura</legend>
-          <div className='configuration-grid'>
-            <NumberField
-              label='Minimalna temperatura (°C)'
-              optional
-              defaultValue={String(temperatureSystem.default_low_temperature_c ?? '')}
-              help='Próg dla wszystkich pomieszczeń bez własnego progu.'
-              value={numberValue(temperatureDefaults.low_temperature_c)}
-              onChange={value => update(['installation', 'component_settings', 'temperature', 'low_temperature_c'], value)}
-            />
-            <NumberField
-              label='Maksymalna temperatura (°C)'
-              optional
-              defaultValue={String(temperatureSystem.default_high_temperature_c ?? '')}
-              help='Próg dla wszystkich pomieszczeń bez własnego progu.'
-              value={numberValue(temperatureDefaults.high_temperature_c)}
-              onChange={value => update(['installation', 'component_settings', 'temperature', 'high_temperature_c'], value)}
-            />
-          </div>
-        </fieldset>
-        <fieldset className='configuration-fieldset'>
-          <legend>Drzwi i bramy</legend>
-          <NumberField
-            label='Timeout drzwi i bram (s)'
-            optional
-            defaultValue={String(safetyDoorSystem.default_timeout_seconds ?? '')}
-            help='Czas, po którym otwarty otwór zgłasza stan alarmowy.'
-            value={numberValue(safetyDoorDefaults.timeout_seconds)}
-            onChange={value => update(['installation', 'component_settings', 'safety_door', 'timeout_seconds'], value)}
-          />
-        </fieldset>
-        <fieldset className='configuration-fieldset'>
-          <legend>Monitoring encji</legend>
-          <div className='configuration-grid'>
-            <NumberField
-              label='Czas ochronny po starcie (s)'
-              optional
-              defaultValue={String(entityMonitorSystem.default_startup_grace_seconds ?? '')}
-              help='Domyślnie 10 minut na rozruch diagnostyki encji, dostawców i utrzymania. Wykrywanie zagrożeń oraz błędów aplikacji działa od razu.'
-              value={numberValue(entityMonitorDefaults.startup_grace_seconds)}
-              onChange={value => update(['installation', 'component_settings', 'entity_monitor', 'startup_grace_seconds'], value)}
-            />
-            <p className='configuration-field-help'>
-              Częstotliwość kontroli jest dobierana automatycznie do maksymalnego wieku raportu i czasu potwierdzenia awarii.
-            </p>
-          </div>
-          <ConfigurationObjectEditor
-            description='Wyjątki dla zależności należących do komponentów. Monitorowane encje dodatkowe są poniżej.'
-            label='Wyjątki monitoringu encji'
-            value={componentOverrides}
-            schema={registrySchemas.component_overrides}
-            onChange={value => update(['installation', 'component_settings', 'entity_monitor', 'component_overrides'], value)}
-          />
-          <ConfigurationObjectEditor
-            label='Dodatkowe monitorowane encje'
-            description='Encje używane przez logikę innych komponentów są monitorowane automatycznie. Dodawaj tu tylko pozostałe.'
-            value={asMap(installation.monitored_entities)}
-            schema={registrySchemas.monitored_entities}
-            onChange={value => update(['installation', 'monitored_entities'], value)}
-          />
-        </fieldset>
-        <fieldset className='configuration-fieldset'>
-          <legend>Zagrożenia zewnętrzne</legend>
+        </ConfigurationGroup>
+        <ConfigurationGroup title='Progi i czasy oceny'>
           <p className='configuration-field-help'>
             Pogoda jest potwierdzana domyślnie przez 75 s. Kwalifikacja otwartych drzwi i bram przez 60 s biegnie równolegle. Limit 120 s
             obejmuje cały przepływ do przyjęcia powiadomienia przez HA lub zgłoszenia błędu. Jakość powietrza ma osobne 300 s, a wycofanie
@@ -929,7 +691,306 @@ export default function Configuration() {
               }
             />
           </div>
-        </fieldset>
+        </ConfigurationGroup>
+      </section>
+
+      <section className='panel configuration-section' hidden={page !== 'temperature'}>
+        <SectionHeader
+          title='Temperatura'
+          description='Ustaw domyślne progi dla pomieszczeń. Wartości przypisane do pomieszczenia mają pierwszeństwo.'
+        />
+        {componentToggle('TemperatureComponent')}
+        <ConfigurationGroup title='Progi temperatury'>
+          <div className='configuration-grid'>
+            <NumberField
+              label='Minimalna temperatura (°C)'
+              optional
+              defaultValue={String(temperatureSystem.default_low_temperature_c ?? '')}
+              help='Próg dla wszystkich pomieszczeń bez własnego progu.'
+              value={numberValue(temperatureDefaults.low_temperature_c)}
+              onChange={value => update(['installation', 'component_settings', 'temperature', 'low_temperature_c'], value)}
+            />
+            <NumberField
+              label='Maksymalna temperatura (°C)'
+              optional
+              defaultValue={String(temperatureSystem.default_high_temperature_c ?? '')}
+              help='Próg dla wszystkich pomieszczeń bez własnego progu.'
+              value={numberValue(temperatureDefaults.high_temperature_c)}
+              onChange={value => update(['installation', 'component_settings', 'temperature', 'high_temperature_c'], value)}
+            />
+          </div>
+        </ConfigurationGroup>
+      </section>
+
+      <section className='panel configuration-section' hidden={page !== 'doors'}>
+        <SectionHeader title='Drzwi i bramy' description='Ustaw domyślny czas, po którym aplikacja zgłosi otwarte drzwi lub bramę.' />
+        {componentToggle('SafetyDoorsComponent')}
+        <ConfigurationGroup title='Czas otwarcia'>
+          <NumberField
+            label='Timeout drzwi i bram (s)'
+            optional
+            defaultValue={String(safetyDoorSystem.default_timeout_seconds ?? '')}
+            help='Czas, po którym otwarty otwór zgłasza stan alarmowy.'
+            value={numberValue(safetyDoorDefaults.timeout_seconds)}
+            onChange={value => update(['installation', 'component_settings', 'safety_door', 'timeout_seconds'], value)}
+          />
+        </ConfigurationGroup>
+      </section>
+
+      <section className='panel configuration-section' hidden={page !== 'entity-monitor'}>
+        <SectionHeader title='Monitoring encji' description='Ustaw czas rozruchu, dodatkowe encje i wyjątki monitoringu.' />
+        {componentToggle('EntityMonitorComponent')}
+        <ConfigurationGroup title='Rozruch i monitorowane encje'>
+          <div className='configuration-grid'>
+            <NumberField
+              label='Czas ochronny po starcie (s)'
+              optional
+              defaultValue={String(entityMonitorSystem.default_startup_grace_seconds ?? '')}
+              help='Domyślnie 10 minut na rozruch diagnostyki. Wykrywanie zagrożeń działa od razu.'
+              value={numberValue(entityMonitorDefaults.startup_grace_seconds)}
+              onChange={value => update(['installation', 'component_settings', 'entity_monitor', 'startup_grace_seconds'], value)}
+            />
+            <p className='configuration-field-help'>
+              Częstotliwość kontroli jest dobierana automatycznie do maksymalnego wieku raportu i czasu potwierdzenia awarii.
+            </p>
+          </div>
+          <ConfigurationObjectEditor
+            description='Wyjątki dla zależności należących do komponentów. Monitorowane encje dodatkowe są poniżej.'
+            label='Wyjątki monitoringu encji'
+            value={componentOverrides}
+            schema={registrySchemas.component_overrides}
+            onChange={value => update(['installation', 'component_settings', 'entity_monitor', 'component_overrides'], value)}
+          />
+          <ConfigurationObjectEditor
+            label='Dodatkowe monitorowane encje'
+            description='Encje używane przez logikę innych komponentów są monitorowane automatycznie. Dodawaj tu tylko pozostałe.'
+            value={asMap(installation.monitored_entities)}
+            schema={registrySchemas.monitored_entities}
+            onChange={value => update(['installation', 'monitored_entities'], value)}
+          />
+        </ConfigurationGroup>
+      </section>
+
+      <section className='panel configuration-section' hidden={page !== 'indoor-hazards'}>
+        <SectionHeader title='Zagrożenia wewnętrzne' description='Monitorowanie detektorów dymu, gazu, tlenku węgla i zalania.' />
+        {componentToggle('InternalEnvironmentalHazardMonitorComponent')}
+        <Link to='/configuration/installation/detectors'>Skonfiguruj detektory</Link>
+      </section>
+
+      <section className='panel configuration-section' hidden={page !== 'heating'}>
+        <SectionHeader title='Monitoring ogrzewania' description='Włącz monitorowanie ogrzewania dla tej instalacji.' />
+        {componentToggle('HeatingSystemMonitorComponent')}
+      </section>
+
+      <section className='panel configuration-section' hidden={page !== 'system-health'}>
+        <SectionHeader
+          title='Zdrowie systemu i konserwacja'
+          description='Skonfiguruj encje diagnostyczne hosta, stan łączności i przypomnienia o konserwacji.'
+        />
+        <ConfigurationGroup title='Łączność WAN'>
+          <div className='configuration-grid'>
+            <TextField
+              label='Encja łączności WAN (opcjonalnie)'
+              entityDomains={[]}
+              help='Wspólna dla powiadomień i diagnostyki WAN. Stany on/online/connected oznaczają połączenie; off/offline/disconnected — brak. Sam stan nie dowodzi, że każdy serwis w Internecie działa.'
+              value={stringValue(notification.wan_entity)}
+              onChange={value => update(['notification', 'wan_entity'], value || null)}
+            />
+          </div>
+        </ConfigurationGroup>
+        <ConfigurationGroup title='Pamięć hosta'>
+          <div className='configuration-grid'>
+            <TextField
+              label='Pamięć dostępna hosta'
+              entityDomains={['sensor']}
+              help='Encja sensor.* podająca dostępną pamięć tego samego hosta co Home Assistant; wymagana razem z PSI.'
+              value={stringValue(hostMemory.available_entity)}
+              onChange={value => update(['installation', 'functional_safety', 'host_memory', 'available_entity'], value)}
+            />
+            <TextField
+              label='Presja pamięci hosta (PSI, %)'
+              entityDomains={['sensor']}
+              help='Encja sensor.* memory PSI some, np. średnia 60 s. Obie encje muszą dotyczyć tego samego hosta.'
+              value={stringValue(hostMemory.psi_entity)}
+              onChange={value => update(['installation', 'functional_safety', 'host_memory', 'psi_entity'], value)}
+            />
+          </div>
+          <p>
+            Progi instalacji: pamięć dostępna ≤ {String(functionalSafetySystem.memory_low_available_mib ?? '—')} MiB i PSI ≥{' '}
+            {String(functionalSafetySystem.memory_high_psi_percent ?? '—')}% przez{' '}
+            {String(functionalSafetySystem.memory_qualification_seconds ?? '—')} s. Po zmianie konfiguracji uruchom aplikację ponownie.
+          </p>
+          {functionalSafety.host_memory ? (
+            <button
+              className='secondary-button'
+              onClick={() => update(['installation', 'functional_safety', 'host_memory'], null)}
+              type='button'
+            >
+              Usuń obie encje pamięci
+            </button>
+          ) : null}
+        </ConfigurationGroup>
+        <ConfigurationGroup title='Obciążenie procesora'>
+          <div className='configuration-grid'>
+            <TextField
+              label='Obciążenie CPU hosta (%)'
+              entityDomains={['sensor']}
+              help='Opcjonalna encja sensor.* procesora hosta Home Assistant. Czas potwierdzenia można nadpisać w sekcji Progi i harmonogramy.'
+              value={stringValue(functionalSafety.host_cpu_entity)}
+              onChange={value => update(['installation', 'functional_safety', 'host_cpu_entity'], value || null)}
+            />
+          </div>
+          <p>
+            Próg CPU instalacji: ≥ {String(functionalSafetySystem.cpu_high_percent ?? '—')}% przez{' '}
+            {String(functionalSafetySystem.cpu_qualification_seconds ?? '—')} s (L3).
+          </p>
+        </ConfigurationGroup>
+        <ConfigurationGroup title='Dysk hosta'>
+          <div className='configuration-grid'>
+            <TextField
+              label='Wolne miejsce na dysku hosta'
+              entityDomains={['sensor']}
+              help='Opcjonalna encja sensor.* dla dysku Home Assistant, w MiB, GiB lub bajtach. Nie podawaj procentu zajętości.'
+              value={stringValue(functionalSafety.host_disk_free_entity)}
+              onChange={value => update(['installation', 'functional_safety', 'host_disk_free_entity'], value || null)}
+            />
+          </div>
+          <p>
+            Próg alarmu ≤ {String(functionalSafetySystem.disk_low_free_mib ?? 1024)} MiB, powrót ≥{' '}
+            {String(functionalSafetySystem.disk_recovery_free_mib ?? 2048)} MiB.
+          </p>
+        </ConfigurationGroup>
+        <ConfigurationGroup title='Temperatura hosta'>
+          <div className='configuration-grid'>
+            <TextField
+              label='Temperatura hosta (°C)'
+              entityDomains={['sensor']}
+              help='Opcjonalna encja sensor.* temperatury procesora lub hosta Home Assistant; nie temperatura pomieszczenia.'
+              value={stringValue(functionalSafety.host_temperature_entity)}
+              onChange={value => update(['installation', 'functional_safety', 'host_temperature_entity'], value || null)}
+            />
+          </div>
+          <p>
+            Próg alarmu ≥ {String(functionalSafetySystem.host_temperature_high_c ?? 80)}°C, powrót ≤{' '}
+            {String(functionalSafetySystem.host_temperature_recovery_c ?? 70)}°C.
+          </p>
+        </ConfigurationGroup>
+        <ConfigurationGroup title='Kopie zapasowe'>
+          <div className='configuration-grid'>
+            <TextField
+              label='Ostatnia udana kopia zapasowa'
+              entityDomains={['sensor']}
+              help='Encja sensor.* z datą i czasem ostatniej udanej kopii (nie ostatniej próby). Wypełnienie włącza monitoring backupu.'
+              value={stringValue(backup.last_success_entity)}
+              onChange={value =>
+                update(['installation', 'functional_safety', 'backup'], value ? { ...backup, last_success_entity: value } : null)
+              }
+            />
+            <TextField
+              label='Błąd kopii zapasowej (opcjonalnie)'
+              entityDomains={['binary_sensor']}
+              help='Encja binary_sensor.*: on oznacza błąd. Najpierw podaj encję ostatniej udanej kopii.'
+              value={stringValue(backup.failure_entity)}
+              disabled={!backup.last_success_entity}
+              onChange={value => update(['installation', 'functional_safety', 'backup', 'failure_entity'], value || null)}
+            />
+          </div>
+          <p>Maksymalny wiek kopii wynosi {String(functionalSafetySystem.backup_max_age_hours ?? 48)} h.</p>
+          {functionalSafety.backup ? (
+            <button
+              className='secondary-button'
+              type='button'
+              onClick={() => update(['installation', 'functional_safety', 'backup'], null)}
+            >
+              Wyłącz monitoring kopii zapasowych
+            </button>
+          ) : null}
+        </ConfigurationGroup>
+        <ConfigurationGroup title='Testy okresowe'>
+          <ToggleField
+            label='Przypominaj o sprawdzeniu dostarczenia powiadomień'
+            checked={periodicTests.notification_delivery !== false}
+            onChange={value => update(['installation', 'functional_safety', 'periodic_tests', 'notification_delivery'], value)}
+          />
+          <ToggleField
+            label='Przypominaj o odtworzeniu backupu na osobnym systemie testowym'
+            checked={periodicTests.backup_restore === true}
+            onChange={value => update(['installation', 'functional_safety', 'periodic_tests', 'backup_restore'], value)}
+          />
+          <p>
+            Interwały instalacji: powiadomienia {String(functionalSafetySystem.notification_test_interval_days ?? 30)} dni, odtworzenie
+            kopii {String(functionalSafetySystem.backup_restore_test_interval_days ?? 180)} dni. Wynik rzeczywiście wykonanego testu
+            zapiszesz w widoku Zdrowie funkcji. Te ustawienia nie wysyłają wiadomości, nie uruchamiają syren i nie odtwarzają backupu.
+          </p>
+        </ConfigurationGroup>
+        <ConfigurationGroup title='Aktualizacje'>
+          <div className='configuration-grid'>
+            {(
+              [
+                ['home_assistant_core', 'Home Assistant Core'],
+                ['home_assistant_os', 'Home Assistant OS'],
+                ['home_assistant_supervisor', 'Home Assistant Supervisor'],
+                ['safety_component', 'SafetyComponent App'],
+              ] as const
+            ).map(([key, label]) => (
+              <TextField
+                key={key}
+                label={`Encja aktualizacji: ${label}`}
+                entityDomains={['update']}
+                help='Opcjonalna encja update.*; dostępna aktualizacja ma poziom ostrzeżenia L3.'
+                value={stringValue(updates[key])}
+                onChange={value => update(['installation', 'functional_safety', 'updates', key], value || null)}
+              />
+            ))}
+          </div>
+        </ConfigurationGroup>
+        <BatteryDiscovery
+          enabled={batteryMonitoring.enabled !== false}
+          excluded={stringList(batteryMonitoring.excluded_devices)}
+          staleAfterSeconds={Number(functionalSafetySystem.battery_stale_after_seconds ?? 86400)}
+          onEnabledChange={value => update(['installation', 'functional_safety', 'battery_monitoring', 'enabled'], value)}
+          onExcludedChange={value => update(['installation', 'functional_safety', 'battery_monitoring', 'excluded_devices'], value)}
+        />
+        <ConfigurationGroup title='Ręczne źródła baterii'>
+          <ConfigurationObjectEditor
+            label='Ręczne źródła baterii'
+            description='Jedno urządzenie w jednym wpisie; możesz podać czujnik procentowy, binarny lub oba. Urządzenia wyłączone pomiń albo ustaw Monitoruj urządzenie na nie.'
+            value={asMap(functionalSafety.remote_batteries)}
+            onChange={value => update(['installation', 'functional_safety', 'remote_batteries'], value)}
+            schema={registrySchemas.remote_batteries}
+          />
+        </ConfigurationGroup>
+        <ConfigurationGroup title='Progi i harmonogramy'>
+          <p>
+            Wpisana wartość zastępuje systemowy default. Wyczyść pole, aby do niego wrócić. Progi powrotu muszą zachowywać margines: pamięć
+            i dysk powyżej progu alarmu; PSI, CPU i temperatura poniżej. Zmiany wymagają zapisu i restartu. Interwały testów przeliczają
+            termin od ostatniego wyniku — nie oznaczają wykonania nowego testu.
+          </p>
+          {functionalSafetySettings.map(([title, fields]) => (
+            <ConfigurationGroup key={title} title={title}>
+              <div className='configuration-grid'>
+                {fields.map(([key, label]) => (
+                  <NumberField
+                    key={key}
+                    label={label}
+                    optional
+                    defaultValue={String(functionalSafetyPackaged[key] ?? '')}
+                    help='Puste pole używa wartości systemowej. Poziom alarmu i kontrola jakości źródła pozostają bez zmian.'
+                    value={numberValue(functionalSafetyOverrides[key])}
+                    onChange={value => update(['installation', 'component_settings', 'functional_safety', key], value)}
+                  />
+                ))}
+              </div>
+            </ConfigurationGroup>
+          ))}
+          <button
+            className='secondary-button'
+            type='button'
+            onClick={() => update(['installation', 'component_settings', 'functional_safety'], {})}
+          >
+            Przywróć domyślne ustawienia Functional Safety
+          </button>
+        </ConfigurationGroup>
       </section>
 
       {registrySections.map(section => (
@@ -947,6 +1008,15 @@ export default function Configuration() {
     </div>
   );
   return <ConfigurationEntityContext.Provider value={entityOptions}>{pageContent}</ConfigurationEntityContext.Provider>;
+}
+
+function ConfigurationGroup({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <details className='configuration-group'>
+      <summary>{title}</summary>
+      <div className='configuration-group-body'>{children}</div>
+    </details>
+  );
 }
 
 function SectionHeader({ title, description }: { title: string; description: string }) {
@@ -1143,10 +1213,6 @@ function updatePath(source: ConfigurationMap, path: string[], value: unknown): C
   }
   copy[head] = updatePath(asMap(copy[head]), tail, value);
   return copy;
-}
-
-function friendlyName(name: string, suffix: string): string {
-  return name.replace(new RegExp(`${suffix}$`), '').replace(/([a-z])([A-Z])/g, '$1 $2');
 }
 
 function supportedTimezones(current: string): string[] {

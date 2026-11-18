@@ -40,73 +40,81 @@ export default function BatteryDiscovery({ enabled, excluded, staleAfterSeconds,
       <summary>
         Baterie urządzeń — {status === 'ready' ? `${devices.length} wykrytych` : status === 'error' ? 'lista niedostępna' : 'pobieranie…'}
       </summary>
-      <p>
-        Lista jest pobierana z Home Assistant i grupowana po urządzeniu. Domyślnie monitorujemy wszystkie wykryte urządzenia (L4).
-        Wyłączenie zapisuje tylko identyfikator urządzenia na liście wykluczeń.
-      </p>
-      <label className='configuration-toggle'>
-        <input type='checkbox' checked={enabled} onChange={event => onEnabledChange(event.target.checked)} />
-        Automatycznie monitoruj baterie
-      </label>
-      <p>
-        Zapisz konfigurację i uruchom aplikację ponownie, aby zastosować wyjątki i wykryć nowe urządzenia. Usunięcie urządzenia z HA i
-        dodanie go ponownie może zmienić jego identyfikator.
-      </p>
-      <button className='secondary-button' type='button' disabled={status === 'loading'} onClick={() => void load()}>
-        Pobierz urządzenia bateryjne
-      </button>
-      {status === 'error' ? (
-        <p role='alert'>Nie udało się pobrać listy. To brak danych, nie potwierdzenie braku urządzeń bateryjnych. Spróbuj ponownie.</p>
-      ) : null}
-      {status === 'ready' && !devices.length ? (
-        <p>Nie wykryto włączonych encji baterii przypisanych do urządzeń. Sprawdź encje diagnostyczne w Home Assistant.</p>
-      ) : null}
-      {devices.length ? (
-        <label className='configuration-field'>
-          Filtruj urządzenia
-          <input type='search' value={search} onChange={event => setSearch(event.target.value)} />
+      <div className='configuration-group-body'>
+        <p>
+          Lista jest pobierana z Home Assistant i grupowana po urządzeniu. Domyślnie monitorujemy wszystkie wykryte urządzenia (L4).
+          Wyłączenie zapisuje tylko identyfikator urządzenia na liście wykluczeń.
+        </p>
+        <label className='configuration-toggle'>
+          <input type='checkbox' checked={enabled} onChange={event => onEnabledChange(event.target.checked)} />
+          Automatycznie monitoruj baterie
         </label>
-      ) : null}
-      {visible.map(device => (
-        <details key={device.device_id} className='battery-discovery'>
-          <summary>
-            {device.friendly_name} —{' '}
-            {excluded.includes(device.device_id) ? 'Wykluczone' : enabled ? 'Monitorowane' : 'Monitoring wyłączony'}
-          </summary>
-          <label
-            className='configuration-toggle'
-            title='Domyślnie: monitoruj. Zmiana zacznie obowiązywać po zapisaniu i restarcie aplikacji.'
-          >
-            <input
-              type='checkbox'
-              aria-label={`Monitoruj ${device.friendly_name}`}
-              checked={!excluded.includes(device.device_id)}
-              onChange={event => onExcludedChange(setBatteryMonitored(excluded, device.device_id, event.target.checked))}
-            />
-            Monitoruj urządzenie
+        <p>
+          Zapisz konfigurację i uruchom aplikację ponownie, aby zastosować wyjątki i wykryć nowe urządzenia. Usunięcie urządzenia z HA i
+          dodanie go ponownie może zmienić jego identyfikator.
+        </p>
+        <button className='secondary-button' type='button' disabled={status === 'loading'} onClick={() => void load()}>
+          Pobierz urządzenia bateryjne
+        </button>
+        {status === 'error' ? (
+          <p role='alert'>Nie udało się pobrać listy. To brak danych, nie potwierdzenie braku urządzeń bateryjnych. Spróbuj ponownie.</p>
+        ) : null}
+        {status === 'ready' && !devices.length ? (
+          <p>Nie wykryto włączonych encji baterii przypisanych do urządzeń. Sprawdź encje diagnostyczne w Home Assistant.</p>
+        ) : null}
+        {devices.length ? (
+          <label className='configuration-field'>
+            Filtruj urządzenia
+            <input type='search' value={search} onChange={event => setSearch(event.target.value)} />
           </label>
-          <ul>
-            {device.sources.map(source => (
-              <li key={source.entity_id}>
-                {batterySourceLabel(source, staleAfterSeconds)} · <code>{source.entity_id}</code>
-              </li>
+        ) : null}
+        {visible.map(device => (
+          <details key={device.device_id} className='battery-discovery'>
+            <summary>
+              {device.friendly_name} —{' '}
+              {excluded.includes(device.device_id) ? 'Wykluczone' : enabled ? 'Monitorowane' : 'Monitoring wyłączony'}
+            </summary>
+            <div className='configuration-group-body'>
+              <label
+                className='configuration-toggle'
+                title='Domyślnie: monitoruj. Zmiana zacznie obowiązywać po zapisaniu i restarcie aplikacji.'
+              >
+                <input
+                  type='checkbox'
+                  aria-label={`Monitoruj ${device.friendly_name}`}
+                  checked={!excluded.includes(device.device_id)}
+                  onChange={event => onExcludedChange(setBatteryMonitored(excluded, device.device_id, event.target.checked))}
+                />
+                Monitoruj urządzenie
+              </label>
+              <ul>
+                {device.sources.map(source => (
+                  <li key={source.entity_id}>
+                    {batterySourceLabel(source, staleAfterSeconds)} · <code>{source.entity_id}</code>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </details>
+        ))}
+        {missingExclusions.length ? (
+          <details>
+            <summary>Wykluczenia urządzeń spoza aktualnej listy ({missingExclusions.length})</summary>
+            {missingExclusions.map(id => (
+              <p key={id}>
+                <code>{id}</code>{' '}
+                <button
+                  className='secondary-button'
+                  type='button'
+                  onClick={() => onExcludedChange(setBatteryMonitored(excluded, id, true))}
+                >
+                  Usuń wykluczenie
+                </button>
+              </p>
             ))}
-          </ul>
-        </details>
-      ))}
-      {missingExclusions.length ? (
-        <details>
-          <summary>Wykluczenia urządzeń spoza aktualnej listy ({missingExclusions.length})</summary>
-          {missingExclusions.map(id => (
-            <p key={id}>
-              <code>{id}</code>{' '}
-              <button className='secondary-button' type='button' onClick={() => onExcludedChange(setBatteryMonitored(excluded, id, true))}>
-                Usuń wykluczenie
-              </button>
-            </p>
-          ))}
-        </details>
-      ) : null}
+          </details>
+        ) : null}
+      </div>
     </details>
   );
 }
