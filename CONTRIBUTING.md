@@ -63,6 +63,104 @@ keys, or deployment secrets.
 - Do not deploy to Home Assistant, call household actuators, or manually trigger
   household routines as part of local verification without explicit approval.
 
+## Working with Codex subagents
+
+Codex loads the project roles from [.codex/agents](.codex/agents) in a
+trusted workspace. The primary agent assigns work to the roles the task needs.
+See [Codex subagent configuration](https://learn.chatgpt.com/docs/agent-configuration/subagents#custom-agents).
+
+| Name | Codex role | Responsibility |
+| --- | --- | --- |
+| Irena | [`project_leader`](.codex/agents/project-leader.toml) | Coordinates dependencies, owners, and readiness across workstreams |
+| Bożena | [`requirements_writer`](.codex/agents/requirements-writer.toml) | Traces requirements and makes acceptance criteria observable |
+| Antek | [`system_architect`](.codex/agents/system-architect.toml) | Allocates safety responsibilities across components and dependencies |
+| Ewa | [`software_architect`](.codex/agents/software-architect.toml) | Designs interfaces, data flows, and compatibility boundaries |
+| Wiesiek | [`backend_engineer`](.codex/agents/backend-engineer.toml) | AppDaemon behavior, configuration, and backend tests |
+| Miro | [`frontend_engineer`](.codex/agents/frontend-engineer.toml) | React UI, operator workflows, and frontend tests |
+| Ola | [`ui_designer`](.codex/agents/ui-designer.toml) | Designs visual hierarchy, components, and accessible interaction states |
+| Magda | [`ux_manager`](.codex/agents/ux-manager.toml) | Defines operator journeys and prioritizes usability findings |
+| Kazek | [`safety_reviewer`](.codex/agents/safety-reviewer.toml) | Independently reviews safety behavior and test evidence |
+| Zdzisława | [`safety_manager`](.codex/agents/safety-manager.toml) | Evaluates safety evidence and recommends readiness |
+| Jurek | [`target_integration_tester`](.codex/agents/target-integration-tester.toml) | Checks end-to-end integration on an authorized deployment target |
+| Basia | [`target_recovery_tester`](.codex/agents/target-recovery-tester.toml) | Checks degradation and recovery on an authorized deployment target |
+| Hania | [`end_user_validator`](.codex/agents/end-user-validator.toml) | Walks through the finished product as a household operator |
+
+1. The primary agent assigns each subagent an outcome, files it may edit, and
+   the checks or evidence expected. Give each file one writer at a time.
+   Run independent tasks in parallel and sequence tasks that depend on a
+   shared contract or another agent's changes.
+2. Subagents send decisions, contract dependencies, and blockers to the
+   primary agent as they arise. The primary agent forwards each update to the
+   affected roles and resolves conflicting assumptions before dependent edits
+   continue. For example, the backend engineer supplies the confirmed payload
+   shape and state codes before the frontend engineer integrates them.
+3. Each subagent returns changed paths or findings, relevant requirement IDs,
+   verification results, and open questions. For changes affecting a safety
+   contract, commission a safety review of the combined diff. The primary
+   agent routes findings back to the responsible role, verifies the combined
+   result, and reports remaining gaps.
+
+### Using subagents with Spec Kit
+
+The [Spec Kit workflow](.specify/workflows/speckit/workflow.yml) runs
+`specify → plan → tasks → implement`, with approval gates after `specify` and
+`plan`. The primary agent delegates work within each stage and uses each
+stage's artifact as the handoff to the next.
+
+- **Specify.** Ask `requirements_writer` to trace affected requirements and
+  surface ambiguities. Involve `ux_manager` for operator-facing acceptance
+  criteria and `safety_manager` for safety evidence needs.
+- **Plan.** Ask the architects and relevant engineering roles to check
+  component responsibilities, interfaces, compatibility, and test coverage.
+  Involve `ui_designer` for visual interaction changes and the target testers
+  for required deployment verification. Record decisions before plan review.
+- **Tasks.** Use `project_leader` for cross-role dependencies and ownership
+  when needed. Capture them in `tasks.md`. Mark tasks `[P]` only when they
+  touch different files and have no dependencies on unfinished work.
+- **Implement.** Assign tasks to the owning roles and run eligible `[P]`
+  tasks together. The primary agent updates completion checkboxes in
+  `tasks.md` after verifying each result. Have `safety_reviewer` independently
+  review the combined diff for safety contract changes and report the outcome
+  with verification results. Collect applicable target and operator evidence
+  from the assigned testers and `end_user_validator`. Ask `safety_manager`
+  for a readiness recommendation when the change affects a safety contract.
+
+[GitHub Actions](.github/workflows/safety-component-app.yml) runs the
+repository's CI checks. The Codex session coordinates subagents and resolves
+their findings during the feature workflow.
+
+### Sharing decisions and evidence
+
+Send handoffs through the primary agent with the task or requirement ID,
+decision or blocker, evidence reference, affected roles, and next action.
+The receiving role checks the linked artifact before acting. The primary agent
+or assigned artifact owner records decisions needed in later sessions in the
+current feature's Spec Kit artifacts:
+
+| Information | Where to record it |
+| --- | --- |
+| Operator scenarios and acceptance criteria | `spec.md` |
+| Design decisions, rationale, and interfaces | `plan.md`, `research.md`, or `contracts/` |
+| Task dependencies, assigned roles, and progress | `tasks.md` |
+| Reproducible verification scenarios | `quickstart.md` |
+| Run evidence, open blockers, and readiness summary | Final report or the associated issue or PR when authorized |
+
+### Target verification and acceptance
+
+Use the [Home Assistant App verification runbook](safety_component/DOCS.md#verification)
+for target smoke checks and its [backup and recovery procedure](safety_component/DOCS.md#backup-and-recovery)
+for recovery scenarios. Follow the [approval rules](AGENTS.md#ask-first).
+Prepare scenarios before target access and confirm the exact build, target, and
+allowed actions before running approved checks. Use an isolated test target for
+fault injection or restart exercises. Record the target alias, build, scenario
+or requirement ID, expected and observed outcomes, and redacted evidence.
+Report checks as pass, fail, or blocked and identify the environment used.
+
+Hania validates the finished workflow in an approved preview or test environment
+and reports simulated operator acceptance separately from human acceptance.
+Zdzisława assesses the collected safety evidence. Human approval governs Spec
+Kit review gates, live actions, and release decisions.
+
 ## Documentation changes
 
 Normative documents state what the system shall do. Keep implementation status,

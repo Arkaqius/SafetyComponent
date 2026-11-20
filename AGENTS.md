@@ -59,6 +59,26 @@ BMAD is not part of this repository. Do not recreate BMAD directories, packages,
 generated documents, workflows, or agent definitions unless the user explicitly
 requests a new BMAD installation.
 
+## Codex subagents
+
+When the session supports subagents, the primary agent delegates independent
+subtasks to relevant roles from [.codex/agents](.codex/agents) and coordinates
+scope, integration, and delivery. Use the role IDs from the
+[team roster](CONTRIBUTING.md#working-with-codex-subagents) when delegating
+and use the names in handoffs and reports. Involve Irena (`project_leader`)
+when coordination spans several roles or dependent workstreams.
+
+When asked to review current changes, use the relevant project subagents in
+read-only mode. Relay findings and dependencies between roles and present one
+consolidated report. Include `safety_reviewer` for changes affecting a safety
+contract.
+
+For Spec Kit work, delegate within the active stage and preserve the workflow's
+approval gates and task dependencies. Record durable handoffs in the
+[Spec Kit artifacts](CONTRIBUTING.md#sharing-decisions-and-evidence). Follow the
+[target verification and acceptance rules](CONTRIBUTING.md#target-verification-and-acceptance)
+for work involving a deployed system or operator validation.
+
 ## Always
 
 - Inspect `git status` and the relevant source, configuration, and tests before

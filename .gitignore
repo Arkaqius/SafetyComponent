@@ -173,3 +173,10 @@ cython_debug/
 #.idea/
 
 .coveragerc
+
+# Share Codex agent definitions and keep local artifacts ignored.
+!/.codex/
+/.codex/*
+!/.codex/agents/
+/.codex/agents/*
+!/.codex/agents/*.toml
