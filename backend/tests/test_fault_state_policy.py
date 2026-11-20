@@ -165,6 +165,7 @@ def test_disabling_active_contributor_publishes_unevaluable_without_clearing() -
             "level": "level_2", "category": "H",
             "fault_id": "Hazard",
             "contributors": ["room"], "active_contributors": ["room"],
+            "contributors_total": 1, "active_contributors_total": 1,
         },
     )
 
@@ -196,6 +197,7 @@ def test_shadowing_with_two_owners_withdraws_and_restores_correct_fault() -> Non
             "fault_id": "Forecast",
             "level": "level_3", "category": "H",
             "contributors": ["forecast"], "active_contributors": ["forecast"],
+            "contributors_total": 1, "active_contributors_total": 1,
         },
     )
     shadow_event = events[-1]
@@ -211,6 +213,7 @@ def test_shadowing_with_two_owners_withdraws_and_restores_correct_fault() -> Non
             "fault_id": "Forecast",
             "level": "level_3", "category": "H",
             "contributors": ["forecast"], "active_contributors": ["forecast"],
+            "contributors_total": 1, "active_contributors_total": 1,
         },
     )
     manager.clear_symptom("direct", {})

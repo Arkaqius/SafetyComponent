@@ -123,13 +123,16 @@ def test_unrelated_diagnostic_families_share_source_but_retain_fault_ownership(m
         "InputMonitoringUnavailable", "ExternalRecoveryUnavailable",
     }
     assert set(component._entities) == {"TemperatureOffice", "ExternalRecoveryOffice"}
+    app.cancel_listen_state = Mock()
     component.state_reader.register.assert_called_once_with(
         "EntityMonitorComponent:5", {"sensor.office_temperature"}, 5,
     )
     for symptom in symptoms.values():
         component.init_safety_mechanism(symptom.sm_name, symptom.name, symptom.parameters)
-    app.listen_state.assert_called_once_with(component._entity_changed, "sensor.office_temperature")
-    app.cancel_listen_state = Mock()
+    from inspect import unwrap
+
+    app.listen_state.assert_called_once_with(app.listen_state.call_args.args[0], "sensor.office_temperature")
+    assert unwrap(app.listen_state.call_args.args[0]) == unwrap(component._entity_changed)
     component.stop()
     app.cancel_listen_state.assert_called_once()
 

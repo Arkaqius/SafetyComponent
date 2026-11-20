@@ -110,7 +110,9 @@ user_config:
     component_settings:
       temperature: {}
       safety_door: {}
-      external_hazard: {}
+      external_hazard:
+        weather: {}
+        outdoor_air_quality: {}
       entity_monitor: {}
       # Optional thresholds/timings; omitted or null fields inherit system defaults.
       functional_safety: {}

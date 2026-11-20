@@ -175,10 +175,10 @@ export interface SafetySummary {
 }
 
 export const LEVEL_PRESENTATION: Record<number, { label: string; shortLabel: string; tone: StatusTone }> = {
-  1: { label: 'Alarm krytyczny', shortLabel: 'L1', tone: 'critical' },
+  1: { label: 'Zagrożenie krytyczne', shortLabel: 'L1', tone: 'critical' },
   2: { label: 'Zagrożenie', shortLabel: 'L2', tone: 'danger' },
-  3: { label: 'Ostrzeżenie', shortLabel: 'L3', tone: 'warning' },
-  4: { label: 'Informacja', shortLabel: 'L4', tone: 'info' },
+  3: { label: 'Usterka', shortLabel: 'L3', tone: 'warning' },
+  4: { label: 'Usterka informacyjna', shortLabel: 'L4', tone: 'info' },
 };
 
 const SYSTEM_LEVEL_BY_STATE: Record<string, number> = {
@@ -432,11 +432,19 @@ export function getFaults(entities: EntityMap): FaultView[] {
     }))
     .sort(
       (left, right) =>
-        Number(right.active === true) - Number(left.active === true) ||
+        compareFaultPriority(left, right) ||
         statusPriority[left.status] - statusPriority[right.status] ||
-        (left.level ?? 99) - (right.level ?? 99) ||
         left.name.localeCompare(right.name, 'pl')
     );
+}
+
+/** Keep hazard severity ahead of diagnostic category, activity and wording. */
+export function compareFaultPriority(left: FaultView, right: FaultView): number {
+  return (
+    Number(left.category === 'D') - Number(right.category === 'D') ||
+    (left.level ?? 99) - (right.level ?? 99) ||
+    Number(right.active === true || right.latched === true) - Number(left.active === true || left.latched === true)
+  );
 }
 
 export function faultNeedsVerification(fault: FaultView): boolean {
@@ -567,6 +575,27 @@ export function recoveriesForFault(fault: FaultView, recoveries: RecoveryView[])
 /** Returns true when a recovery sensor needs an action or diagnostic attention. */
 export function recoveryNeedsAttention(recovery: RecoveryView): boolean {
   return Boolean(recovery.blockedReason) || !['do_not_perform', 'confirmed'].includes(recovery.status);
+}
+
+/** Show current recommendations in their incident's order, with diagnostics last. */
+export function currentRecoveries(recoveries: RecoveryView[], faults: FaultView[]): RecoveryView[] {
+  const byFault = new Map(faults.map(fault => [fault.faultId || fault.entityId.slice(FAULT_PREFIX.length), fault]));
+  const owner = (recovery: RecoveryView): FaultView | undefined => (recovery.faultId ? byFault.get(recovery.faultId) : undefined);
+  return recoveries
+    .filter(recovery => {
+      if (!recoveryNeedsAttention(recovery)) return false;
+      if (recovery.status === 'executing') return true;
+      const fault = owner(recovery);
+      if (fault) return faultNeedsAttention(fault) || fault.latched === true;
+      // Missing legacy/catalogue sensors do not establish a current action.
+      return !['unknown', 'unavailable'].includes(recovery.status);
+    })
+    .sort((left, right) => {
+      const leftOwner = owner(left),
+        rightOwner = owner(right);
+      if (leftOwner && rightOwner) return compareFaultPriority(leftOwner, rightOwner);
+      return Number(Boolean(rightOwner)) - Number(Boolean(leftOwner));
+    });
 }
 
 export function getMonitoredTemperatures(entities: EntityMap): TemperatureView[] {
@@ -1197,7 +1226,8 @@ export function getSafetySummary(
   systemEntity: EntitySnapshot | undefined,
   faults: FaultView[],
   recoveries: RecoveryView[],
-  availability: SafetyDataAvailability = 'connected'
+  availability: SafetyDataAvailability = 'connected',
+  historyUnknown = false
 ): SafetySummary {
   const activeFaults = faults.filter(fault => fault.active === true && fault.level !== 4);
   const informationalFaults = faults.filter(fault => fault.active === true && fault.level === 4);
@@ -1215,6 +1245,46 @@ export function getSafetySummary(
     shadowedFaultCount: shadowedFaults.length,
     actionableRecoveryCount: actionableRecoveries.length,
   };
+
+  const reportedHazardLevel = parseSystemLevel(systemEntity?.state);
+  const hazards = faults.filter(
+    fault => (fault.active === true || fault.latched === true) && fault.category !== 'D' && fault.level !== null && fault.level <= 2
+  );
+  const hazardLevels = hazards.map(fault => fault.level as number);
+  const diagnosticExplainsAggregate = activeFaults.some(fault => fault.category === 'D' && fault.level === reportedHazardLevel);
+  if (reportedHazardLevel !== null && reportedHazardLevel > 0 && reportedHazardLevel <= 2 && !diagnosticExplainsAggregate) {
+    hazardLevels.push(reportedHazardLevel);
+  }
+  if (hazardLevels.length > 0) {
+    const level = Math.min(...hazardLevels);
+    const presentation = LEVEL_PRESENTATION[level];
+    const limited =
+      availability !== 'connected' || isUnavailable(healthEntity) || isUnavailable(systemEntity) || hazards.some(faultNeedsVerification);
+    const detail =
+      hazards.length > 0
+        ? `${hazards.length} ${polishCount(hazards.length, 'aktywne zagrożenie', 'aktywne zagrożenia', 'aktywnych zagrożeń')}`
+        : `Raportowane zagrożenie L${level}`;
+    return {
+      ...base,
+      label: `${presentation.label}${availability === 'disconnected' ? ' · brak połączenia' : availability === 'stale' ? ' · dane nieaktualne' : limited ? ' · dane niepełne' : ''}`,
+      detail: `${availability !== 'connected' ? 'Ostatni znany stan: ' : ''}${detail}${limited ? ' · bieżąca ocena zagrożenia wymaga weryfikacji' : ''}`,
+      tone: presentation.tone,
+      effectiveLevel: level,
+    };
+  }
+
+  if (diagnosticExplainsAggregate && reportedHazardLevel !== null && reportedHazardLevel <= 2) {
+    return {
+      ...base,
+      label: 'Diagnostyka wymaga uwagi',
+      detail:
+        availability === 'connected'
+          ? 'System zgłasza ograniczenie monitorowania. Sprawdź diagnostykę i bieżące zalecenia.'
+          : 'Ostatni znany stan wskazywał ograniczenie monitorowania. Bieżąca ocena jest niedostępna.',
+      tone: LEVEL_PRESENTATION[reportedHazardLevel].tone,
+      effectiveLevel: reportedHazardLevel,
+    };
+  }
 
   if (availability !== 'connected') {
     const reportedLevel = parseSystemLevel(systemEntity?.state);
@@ -1331,6 +1401,16 @@ export function getSafetySummary(
           : `Raportowany poziom systemu: ${reportedLevel}`,
       tone: presentation?.tone ?? 'danger',
       effectiveLevel,
+    };
+  }
+
+  if (historyUnknown) {
+    return {
+      ...base,
+      label: 'Historia bezpieczeństwa wymaga weryfikacji',
+      detail: 'Historia sprzed restartu jest niepotwierdzona. Bieżące odczyty i zachowane blokady są pokazywane osobno.',
+      tone: 'warning',
+      effectiveLevel: null,
     };
   }
 

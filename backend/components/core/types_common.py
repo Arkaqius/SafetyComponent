@@ -19,7 +19,9 @@ fault management and safety mechanism state tracking. This centralizes state def
 facilitating easier maintenance and updates.
 """
 
+from dataclasses import dataclass
 from enum import Enum
+import json
 from typing import TYPE_CHECKING, Any, NamedTuple, Dict, List
 
 from components.core.fault_state_policy import (
@@ -31,6 +33,71 @@ from components.core.fault_state_policy import (
 
 if TYPE_CHECKING:
     from components.safetycomponents.core.safety_component import SafetyComponent
+
+
+class OutcomeKind(str, Enum):
+    """Internal evidence quality, independent of published raw state codes."""
+
+    ELIGIBLE_POSITIVE = "eligible-positive"
+    ELIGIBLE_NEGATIVE = "eligible-negative"
+    UNEVALUABLE = "unevaluable"
+    INHIBITED = "inhibited"
+    DISABLED = "disabled"
+
+
+@dataclass(frozen=True)
+class ExecutionOutcome:
+    """Immutable observation identity and quality checked before live application."""
+
+    mechanism_id: str
+    generation: int
+    observed_at: float
+    kind: OutcomeKind
+    reason: str = ""
+    runtime_id: str = ""
+    evidence_json: str = "{}"
+
+    @property
+    def is_evaluable(self) -> bool:
+        """Only eligible positive/negative evidence supports a safety decision."""
+        return self.kind in {OutcomeKind.ELIGIBLE_POSITIVE, OutcomeKind.ELIGIBLE_NEGATIVE}
+
+    @property
+    def result(self) -> bool | None:
+        """Keep missing, inhibited and disabled evidence distinct from negative."""
+        if not self.is_evaluable:
+            return None
+        return self.kind == OutcomeKind.ELIGIBLE_POSITIVE
+
+    @classmethod
+    def from_result(
+        cls, mechanism_id: str, generation: int, observed_at: float,
+        result: bool, *, evaluable: bool = True, reason: str = "",
+        runtime_id: str = "", evidence: dict[str, Any] | None = None,
+        kind: OutcomeKind | None = None,
+    ) -> "ExecutionOutcome":
+        """Normalize a legacy predicate without interpreting failure as clear."""
+        if not isinstance(result, bool):
+            raise TypeError("Safety mechanism result must be bool")
+        if kind is not None and not isinstance(kind, OutcomeKind):
+            raise TypeError("Safety mechanism quality must be an OutcomeKind")
+        if not evaluable and kind in {OutcomeKind.ELIGIBLE_POSITIVE, OutcomeKind.ELIGIBLE_NEGATIVE}:
+            kind = OutcomeKind.UNEVALUABLE
+        if (kind == OutcomeKind.ELIGIBLE_POSITIVE and not result) or (
+            kind == OutcomeKind.ELIGIBLE_NEGATIVE and result
+        ):
+            raise ValueError("Contradictory safety mechanism evidence")
+        normalized = kind or ((
+            OutcomeKind.ELIGIBLE_POSITIVE if result else OutcomeKind.ELIGIBLE_NEGATIVE
+        ) if evaluable else OutcomeKind.UNEVALUABLE)
+        try:
+            serialized = json.dumps(evidence or {}, ensure_ascii=False, allow_nan=False)
+            if len(serialized.encode("utf-8")) > 4096:
+                serialized = '{"detail_omitted":true}'
+        except (ValueError, TypeError, RecursionError):
+            serialized = '{"detail_omitted":true}'
+        return cls(mechanism_id, generation, observed_at, normalized, reason[:256],
+                   runtime_id, serialized)
 
 
 class FaultState(Enum):
@@ -136,7 +203,7 @@ class Symptom:
         self,
         name: str,
         sm_name: str,
-        module: "SafetyComponent",  # type: ignore
+        module: "SafetyComponent",
         parameters: dict,
     ) -> None:
         self.name: str = name

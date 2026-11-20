@@ -102,13 +102,14 @@ class ExternalHazardDefaults(SourceModel):
 
 class WeatherOverrides(SourceModel):
     """Installation overrides for weather decision defaults."""
+    model_config = ConfigDict(allow_inf_nan=False)
 
     frost_watch_c: float | None = None
     frost_warning_c: float | None = None
     gust_watch_m_s: float | None = Field(default=None, gt=0)
     gust_warning_m_s: float | None = Field(default=None, gt=0)
     precipitation_warning_mm_h: float | None = Field(default=None, gt=0)
-    persistence_seconds: int | None = Field(default=None, ge=0)
+    persistence_seconds: int | None = Field(default=None, ge=1, le=75, strict=True)
     hysteresis: dict[str, float] | None = None
 
     @model_validator(mode="after")
@@ -130,9 +131,11 @@ class WeatherOverrides(SourceModel):
 
 class AirQualityOverrides(SourceModel):
     """Installation overrides for outdoor-air-quality decision defaults."""
+    model_config = ConfigDict(allow_inf_nan=False)
 
     standard: Literal["european_aqi"] | None = None
     warning_at: float | None = Field(default=None, gt=0)
+    persistence_seconds: int | None = Field(default=None, ge=1, strict=True)
 
 
 class EntityMonitorDefaults(SourceModel):

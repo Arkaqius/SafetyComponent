@@ -15,6 +15,7 @@ from typing import Any, Dict, Optional
 from appdaemon.plugins.hass.hassapi import Hass  # type: ignore
 
 from components.core.mqtt_entity_manager import MqttEntityManager
+from components.core.lifecycle import CancellationKind, LifecyclePhase, LifecycleScope
 
 
 class DerivativeMonitor:
@@ -48,6 +49,8 @@ class DerivativeMonitor:
                 4  # Default window size for moving average filtering
             )
             self._sampling_handles: Dict[str, Any] = {}
+            self._scope = LifecycleScope("DerivativeMonitor", enabled=True)
+            self._scope.start()
             self.initialized = True
             self.hass_app.log("DerivativeMonitor initialized.", level="DEBUG")
         elif self.hass_app is not hass_app:
@@ -72,6 +75,8 @@ class DerivativeMonitor:
         self.entities = {}
         self.derivative_data = {}
         self._sampling_handles = {}
+        self._scope = LifecycleScope("DerivativeMonitor", enabled=True)
+        self._scope.start()
         self.filter_window_size = 4
         self.hass_app.log(
             "DerivativeMonitor reset for new app instance.", level="DEBUG"
@@ -79,14 +84,25 @@ class DerivativeMonitor:
 
     def _cancel_sampling_handles(self, hass_app: Hass) -> None:
         """Cancel scheduled sampling timers from the previous app instance."""
-        for handle in self._sampling_handles.values():
-            try:
-                hass_app.cancel_timer(handle)
-            except Exception as exc:
-                hass_app.log(
-                    f"Failed to cancel derivative sampling timer: {exc}",
-                    level="WARNING",
-                )
+        self._scope.stop()
+
+    def start(self) -> None:
+        """Restart shared sampling without admitting old callback generations."""
+        if self._scope.phase == LifecyclePhase.STOPPED:
+            for entity_id, config in self.entities.items():
+                config["prev_value"] = None
+                config["first_derivative"] = config["second_derivative"] = None
+                config["first_derivative_history"].clear()
+                config["second_derivative_history"].clear()
+                config["first_derivative_history"].append(0.0)
+                config["second_derivative_history"].append(0.0)
+                self._calculate_diff(entity_id=entity_id, sample_time=config["sample_time"])
+        self._scope.start()
+        self._scope.set_enabled(True)
+
+    def stop(self) -> None:
+        """Stop sampling without publishing a fabricated derivative or healthy value."""
+        self._scope.stop()
 
     def register_entity(
         self,
@@ -172,13 +188,15 @@ class DerivativeMonitor:
             f"Scheduling sampling for {entity_id} every {sample_time} seconds.",
             level="DEBUG",
         )
-        return self.hass_app.run_every(
-            self._calculate_diff,
-            "now",
-            sample_time,
-            entity_id=entity_id,
-            sample_time=sample_time,
+        key = f"sample:{entity_id}"
+        self._scope.declare(
+            key, CancellationKind.TIMER,
+            lambda callback: self.hass_app.run_every(
+                callback, "now", sample_time, entity_id=entity_id, sample_time=sample_time,
+            ),
+            self._calculate_diff, self.hass_app.cancel_timer,
         )
+        return self._scope.handle(key)
 
     def _calculate_diff(self, **kwargs: Any) -> None:
         """

@@ -9,7 +9,7 @@ import RecoveryActionCard from '../components/RecoveryActionCard';
 import { useSafetyEntities } from '../hooks/useSafetyEntities';
 
 export default function BasicDashboard({ onExpand }: { onExpand: () => void }) {
-  const { summary, connection, entities, faults, recoveries, entityMonitorSummary } = useSafetyEntities();
+  const { summary, connection, entities, faults, recoveries, entityMonitorSummary, starting } = useSafetyEntities();
   const { primaryFault, activeFaultCount, primaryRecovery, attentionRecoveries } = basicDashboardItems(faults, recoveries);
   const connected = connection.ready && !connection.cannotConnect;
   const coverage = getCoverageView(connected ? entities : {});
@@ -45,10 +45,16 @@ export default function BasicDashboard({ onExpand }: { onExpand: () => void }) {
             {!connected && <small>Ostatnie znane zdarzenie</small>}
           </div>
         )}
-        <div className={`basic-monitoring${monitoringLimited ? ' basic-monitoring-limited' : ''}`}>
+        <div className={`basic-monitoring${monitoringLimited && !starting ? ' basic-monitoring-limited' : ''}`}>
           <Icon name={monitoringLimited ? 'alert' : 'shield'} size={18} />
           <span>
-            {!connected ? 'Odczyty z pamięci' : monitoringLimited ? 'Monitoring ma ograniczenia' : 'Monitorowane źródła dostępne'}
+            {!connected
+              ? 'Odczyty z pamięci'
+              : starting
+                ? 'Trwa rozruch monitoringu'
+                : monitoringLimited
+                  ? 'Monitoring ma ograniczenia'
+                  : 'Monitorowane źródła dostępne'}
           </span>
           <HelpTooltip
             label='Pokrycie monitoringu'
@@ -75,9 +81,11 @@ export default function BasicDashboard({ onExpand }: { onExpand: () => void }) {
           <p>
             {!connected
               ? 'Aktualne zalecenia są niedostępne do czasu odzyskania połączenia.'
-              : summary.tone === 'safe'
-                ? 'Nie ma zgłoszonego działania do wykonania.'
-                : 'Brak bieżącego zalecenia. Sprawdź szczegóły zdarzenia w widoku rozszerzonym.'}
+              : starting
+                ? 'Zalecenia diagnostyczne pojawią się po zebraniu danych.'
+                : summary.tone === 'safe'
+                  ? 'Nie ma zgłoszonego działania do wykonania.'
+                  : 'Brak bieżącego zalecenia. Sprawdź szczegóły zdarzenia w widoku rozszerzonym.'}
           </p>
         )}
       </section>
@@ -96,7 +104,7 @@ export default function BasicDashboard({ onExpand }: { onExpand: () => void }) {
             <Icon name='close' />
           </button>
         </div>
-        <ActionsList recoveries={attentionRecoveries} />
+        <ActionsList faults={faults} starting={starting} recoveries={attentionRecoveries} />
       </ModalDialog>
     </div>
   );

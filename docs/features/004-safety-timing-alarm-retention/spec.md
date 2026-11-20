@@ -1,6 +1,6 @@
 # Feature Specification: Safety Timing and Indoor Alarm Retention
 
-**Feature Branch**: `codex/003-heating-monitoring`
+**Feature Branch**: `codex/004-safety-timing-alarm-retention`
 
 **Created**: 2026-11-14
 
@@ -22,6 +22,12 @@ and diagnostic publication.
 - Q: Does 120 seconds mean total warning response or confirmation alone?
   A: Total to warning, preserving SYS. Confirmation must leave room for dispatch,
   scheduling, decision and notification.
+
+### Session 2026-11-16
+
+- Q: What establishes Home Assistant service acceptance?
+  A: Only a completed envelope with Boolean `success: true`. Bare `None` is
+  uncertain; an accepted envelope may contain `result: null`.
 
 ## User Scenarios & Testing
 
@@ -187,6 +193,10 @@ entity health, heating, indoor alarms and external hazards with delayed callback
 - **FR-011**: Bounded atomic state shall preserve unresolved orphan records and
   authoritative clear ordering; corrupt/missing state with active journal evidence
   shall expose unknown active danger and a distinct persistence diagnostic.
+  History uncertainty alone shall not create active smoke/gas/CO/leak incidents
+  or an unconfigured hazard channel. A successful current write shall be reported
+  independently of unverified historical continuity; gas restrictions remain
+  independent of current alarm activation.
 - **FR-012**: Positive recovery and gas-inhibition release shall require their own
   validated current evidence and necessary durable commit; acknowledgement or
   removal is not release permission.
@@ -269,8 +279,9 @@ entity health, heating, indoor alarms and external hazards with delayed callback
 - Shared lifecycle corrections include heating infrastructure integration but do
   not expand the thermal functionality of feature 003. Domain evaluation may use
   distinct scheduling strategies under the same lifecycle and outcome contract.
-- Current recovery permissions, service allowlists, confirmation semantics and
-  notification acceptance meanings remain unchanged. Independent processing is
-  not permission to ignore output restrictions or execute a recovery command.
+- Current recovery permissions, service allowlists and confirmation semantics
+  remain unchanged. Notification acceptance requires an explicit successful
+  completion envelope. Independent processing does not grant permission to
+  ignore output restrictions or execute a recovery command.
 - This specification/plan does not authorize implementation, live detector tests,
   private configuration application or deployment.

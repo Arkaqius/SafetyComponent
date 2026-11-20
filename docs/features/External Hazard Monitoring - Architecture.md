@@ -432,6 +432,20 @@ poll. A below-threshold reading, unusable snapshot, or gap in freshness shall
 restart pending qualification. Official warning qualification shall require current
 authoritative validity and fresh healthy provider evidence throughout the interval.
 
+Receiver timing shall start before internal dispatch and shall retain the
+original usable-input onset through repeated qualifying observations. The final
+warning deadline shall include queueing; previously accepted content shall not
+authorize a fresh deadline for changed warning content. A callback accepted
+after the deadline may be retained as historical HA acceptance while the missed
+deadline remains explicit.
+
+The result queue shall retain at most 64 snapshots and shall drain bounded work
+on its owner. A dropped snapshot shall invalidate the affected provider's
+pending continuity before a qualification timer can use the old cache. An
+ordinary queued snapshot shall defer qualification until ordered review without
+discarding proven continuous onset. Existing active danger shall survive either
+condition until current authoritative clear evidence satisfies its own interval.
+
 Provider diagnostics and advice inhibition shall use current evidence
 independently of model and opening qualification.
 

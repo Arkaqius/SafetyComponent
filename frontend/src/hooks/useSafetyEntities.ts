@@ -16,7 +16,7 @@ import {
 } from '../domain/safety';
 import { getEntityMonitorSummary, getMonitoredEntities } from '../domain/entityHealth';
 import { getInternalEnvironmentMonitoring } from '../domain/internalHazards';
-import { getStartupView } from '../domain/startup';
+import { getStartupView, isStartupInProgress, startupOperatorView } from '../domain/startup';
 
 export function useSafetyEntities() {
   const [clock, setClock] = useState(Date.now);
@@ -47,18 +47,19 @@ export function useSafetyEntities() {
     const healthEntity = entities[HEALTH_ENTITY_ID];
     const systemEntity = entities[SYSTEM_STATE_ENTITY_ID];
     const startup = getStartupView(entities, clock, !cannotConnect && ready);
+    const starting = isStartupInProgress(startup);
     const summary = getSafetySummary(
       healthEntity,
       systemEntity,
       faults,
       recoveries,
-      cannotConnect || !ready ? 'disconnected' : 'connected'
+      cannotConnect || !ready ? 'disconnected' : 'connected',
+      internalEnvironment.historyUnknown
     );
-    if (startup && summary.activeFaultCount === 0 && summary.tone !== 'critical' && summary.effectiveLevel === null) {
+    const operator = startupOperatorView(startup, faults, recoveries, summary);
+    if (startup && !starting && summary.activeFaultCount === 0 && summary.tone !== 'critical' && summary.effectiveLevel === null) {
       summary.label = startup.label;
-      summary.detail = startup.available
-        ? 'Diagnostyka stabilizuje się po restarcie. Pełna ocena dostępności źródeł nie jest jeszcze gotowa.'
-        : startup.detail;
+      summary.detail = startup.detail;
       summary.tone = 'warning';
     }
 
@@ -66,8 +67,8 @@ export function useSafetyEntities() {
       entities,
       healthEntity,
       systemEntity,
-      faults,
-      recoveries,
+      faults: operator.faults,
+      recoveries: operator.recoveries,
       temperatures,
       safetyDoors,
       externalHazards,
@@ -75,8 +76,16 @@ export function useSafetyEntities() {
       internalEnvironment,
       monitoredEntities,
       entityMonitorSummary: getEntityMonitorSummary(entities, monitoredEntities),
-      recentActivity: getRecentActivity(entities),
-      summary,
+      recentActivity: getRecentActivity(entities).filter(
+        item =>
+          !starting ||
+          item.category === 'system' ||
+          operator.faults.some(fault => fault.entityId === item.entityId) ||
+          operator.recoveries.some(recovery => recovery.entityId === item.entityId)
+      ),
+      summary: operator.summary,
+      startup,
+      starting,
       connection: {
         cannotConnect,
         status: connectionStatus,

@@ -387,6 +387,10 @@ class TemperatureComponent(SafetyComponent):
         )
         return self._init_sm(name, parameters, sm_method, required_keys)
 
+    def _interrupt_qualification(self, name: str) -> None:
+        """Discard pending debounce while preserving the authoritative symptom."""
+        self.debounce_states[name] = DebounceState(0, False)
+
     def enable_safety_mechanism(self, name: str, state: SMState) -> bool:
         """
         Enables or disables a safety mechanism based on the provided state.
@@ -403,10 +407,13 @@ class TemperatureComponent(SafetyComponent):
             return False
 
         if state == SMState.ENABLED:
+            self.start()
+            self.safety_mechanisms[name].start()
             self.safety_mechanisms[name].isEnabled = True
             return True
         elif state == SMState.DISABLED:
             self.safety_mechanisms[name].isEnabled = False
+            self.debounce_states[name] = DebounceState(0, False)
             return True
         else:
             self.hass_app.log(
@@ -416,6 +423,18 @@ class TemperatureComponent(SafetyComponent):
 
     # endregion
     # region Safety mechanisms
+    def start(self) -> None:
+        """Start source sampling and mechanism registrations once."""
+        super().start()
+        self.derivative_monitor.start()
+
+    def stop(self) -> None:
+        """Stop forecast sampling and invalidate pending debounce evaluations."""
+        super().stop()
+        self.derivative_monitor.stop()
+        for name in self.debounce_states:
+            self.debounce_states[name] = DebounceState(0, False)
+
     @safety_mechanism_decorator
     def sm_tc_1(
         self, sm: SafetyMechanism, entities_changes: dict[str, str] | None = None
@@ -964,6 +983,8 @@ class TemperatureComponent(SafetyComponent):
             name, sm_method, extracted_params
         )
         self.safety_mechanisms[name] = sm_instance
+        sm_instance.on_invalidate = lambda: self._interrupt_qualification(name)
+        sm_instance.start()
 
         # Initialize the debounce state for this mechanism
         self.debounce_states[name] = DebounceState(
@@ -1034,6 +1055,8 @@ class TemperatureComponent(SafetyComponent):
             "callback": sm_method,
             "name": name,
             "isEnabled": False,
+            "scope": self.scope.child(name),
+            "monitored_entities": [params["temperature_sensor"]],
             "temperature_sensor": params["temperature_sensor"],
             "location": params["location"],
             "actuator": params["actuator"],
@@ -1047,6 +1070,7 @@ class TemperatureComponent(SafetyComponent):
             sm_args["hot_thr"] = params["CAL_HIGH_TEMP_THRESHOLD"]
 
         if sm_method in (self.sm_tc_2, self.sm_tc_4):
+            sm_args["monitored_entities"].append(f"{params['temperature_sensor']}_rate")
             sm_args.update(
                 {
                     "temperature_rate_sensor": f"{params['temperature_sensor']}_rate",

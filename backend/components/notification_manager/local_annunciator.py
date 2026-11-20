@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-import appdaemon.plugins.hass.hassapi as hass  # type: ignore
+import appdaemon.plugins.hass.hassapi as hass
+
+from components.core.service_dispatcher import (
+    Admission, CompletionStatus, ServiceCompletion, ServiceDispatcher, ServiceIntent,
+)
 
 
 class LocalAnnunciator:
@@ -13,6 +17,8 @@ class LocalAnnunciator:
     def __init__(
         self, hass_app: hass.Hass, config: dict[str, Any],
         diagnostics_observer: Callable[..., None] | None = None,
+        *, dispatcher: ServiceDispatcher | None = None,
+        restriction_provider: Callable[[], bool] | None = None,
     ) -> None:
         self.hass_app = hass_app
         self.light_entity = config.get("light_entity")
@@ -22,9 +28,27 @@ class LocalAnnunciator:
         self._switching_inhibited = False
         self._inhibition_reason: str | None = None
         self._diagnostics_observer = diagnostics_observer
+        self.dispatcher = dispatcher
+        self.restriction_provider = restriction_provider
+        self._enabled = True
+        self._generation = 0
+        self._output_results: dict[str, dict[str, Any]] = {}
+
+    def start(self) -> None:
+        """Enable new output admission without replaying physical commands."""
+        self._enabled = True
+
+    def stop(self) -> None:
+        """Fence unsent output and late results without issuing an off/reset."""
+        self._enabled = False
+        self._generation += 1
 
     def _call_service(self, service: str, **kwargs: Any) -> None:
         """Report only an attempted output command, never intentional inhibition."""
+
+        if self.dispatcher is not None:
+            self._enqueue(service, kwargs)
+            return
 
         try:
             response = self.hass_app.call_service(service, **kwargs)
@@ -36,6 +60,54 @@ class LocalAnnunciator:
             raise
         if self._diagnostics_observer is not None:
             self._diagnostics_observer("local_output", False, detail=service)
+
+    def _enqueue(self, service: str, payload: dict[str, Any]) -> None:
+        """Serialize one physical resource and check current restrictions at handoff."""
+        dispatcher = self.dispatcher
+        if dispatcher is None or not self._enabled:
+            return
+        resource = str(payload["entity_id"])
+        generation = self._generation
+        request = dispatcher.make_intent(
+            resource=resource, service=service, payload=payload, tag="local-output",
+            revision=dispatcher.next_revision(resource, "local-output"),
+            deadline_at=dispatcher.clock() + 30,
+        )
+
+        def eligible(_: ServiceIntent) -> bool:
+            if not self._enabled or self._generation != generation or self._switching_inhibited:
+                return False
+            if self.restriction_provider is not None:
+                try:
+                    restricted = self.restriction_provider()
+                except Exception:
+                    return False
+                if restricted or not self._enabled or self._generation != generation:
+                    return False
+            if service == "alarm_control_panel/alarm_trigger":
+                return any(level == 1 for level in self._active_levels.values())
+            return True
+
+        def completed(result: ServiceCompletion) -> None:
+            if not self._enabled or self._generation != generation:
+                return
+            self._output_results[resource] = {
+                "revision": result.revision, "status": result.status.value,
+                "deadline_missed": result.deadline_missed, "error": result.error or "",
+            }
+            if self._diagnostics_observer is not None and result.status != CompletionStatus.CANCELLED:
+                self._diagnostics_observer(
+                    "local_output", result.status != CompletionStatus.ACCEPTED, detail=service,
+                )
+
+        admission = dispatcher.enqueue(request, before_dispatch=eligible, on_complete=completed, on_deadline=completed)
+        self._output_results[resource] = {
+            "revision": request.revision, "status": admission.value,
+            "deadline_missed": False, "error": "",
+        }
+        if admission not in {Admission.QUEUED, Admission.COALESCED}:
+            if self._diagnostics_observer is not None:
+                self._diagnostics_observer("local_output", True, detail=service)
 
     def inhibit_switching(self, reason: str) -> None:
         """Persistently block local electrical switching until approved clearance."""
@@ -132,6 +204,7 @@ class LocalAnnunciator:
             "previous_light_state": self._previous_light_state,
             "switching_inhibited": self._switching_inhibited,
             "inhibition_reason": self._inhibition_reason,
+            "outputs": {key: dict(value) for key, value in self._output_results.items()},
         }
 
     def restore(self, snapshot: dict[str, Any]) -> None:

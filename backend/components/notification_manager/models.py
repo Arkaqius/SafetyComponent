@@ -23,6 +23,11 @@ class TargetDeliveryResult:
     service: str
     disposition: DeliveryDisposition
     error: str | None = None
+    operation_id: str = ""
+    revision: int = 0
+    deadline_missed: bool = False
+    handed_off: bool = False
+    completed_at_monotonic: float | None = None
 
 
 @dataclass(frozen=True)
@@ -87,6 +92,7 @@ class PendingDelivery:
     attempts: int = 0
     target_services: tuple[str, ...] = ()
     deadline_missed: bool = False
+    incident_id: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-safe representation."""
@@ -112,4 +118,5 @@ class PendingDelivery:
                 str(item) for item in value.get("target_services", ())
             ),
             deadline_missed=bool(value.get("deadline_missed", False)),
+            incident_id=str(value.get("incident_id", "")),
         )

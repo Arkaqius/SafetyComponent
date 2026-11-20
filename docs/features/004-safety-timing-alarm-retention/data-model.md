@@ -53,6 +53,22 @@ fault name from arbitrary checkpoint content: reconcile against an allowlisted
 indoor hazard catalog. Preserve original incident identity across restarts and
 configuration removal. Cleared alarm and active gas inhibition are valid together.
 
+The version-2 record has a discriminated `known` / `legacy_unattributed` kind.
+A known record requires complete original technical identity. Legacy version 1
+stores only detector key, Boolean alarm/health/gas flags and historical clear
+time; conversion shall preserve those values with missing hazard, source,
+profile, fingerprint and original incident explicitly absent. The migration's
+record key shall not masquerade as an original incident. Such a record cannot
+inherit a current detector's clear authority from a reused key or friendly name.
+Unallocated active legacy danger contributes trusted-catalog uncertainty.
+
+Durable CLEAR retains the exact candidate, incident, binding, receiver session,
+HA context and ordered HA timestamps plus snapshot generation. These are
+historical audit evidence; restoration shall never recreate elapsed monotonic
+qualification. An older active journal entry is covered only by a matching
+incident/source identity and later durable clear generation. Otherwise it
+contributes uncertainty.
+
 ## Owner Checkpoint
 
 Existing namespace `internal_environment_state`, strict envelope schema version 2,
@@ -82,6 +98,15 @@ ineligible, without suppressing immediate positive alarms. Exact cause/identity
 of a never-durable observation cannot be reconstructed; expose this limitation
 as uncertainty rather than inventing evidence.
 
+A prior clean checkpoint alone shall not prove that no intervening owner failed
+to establish its dirty marker. Continuity requires an independent launch witness.
+A bounded surviving-process witness may identify the exact preceding owner and
+storage; a fresh process without that witness shall restore unknown history and
+fail-closed gas restriction even when the saved checkpoint is clean. Persisted
+commissioning metadata shall not substitute for current-launch admission proof.
+Explicit reviewed virgin-installation proof shall not override retained state or
+conflicting journal evidence, including an inactive gas alarm journal.
+
 Checkpoint loss/corruption after prior ownership also leaves gas inhibition
 unknown and fail-closed even if the alarm journal says CLEARED. Journal HEAL
 does not prove release of the independent latch. File absence alone cannot prove
@@ -93,6 +118,11 @@ of no prior owner state. Unknown history must not silently bootstrap healthy.
 Add bounded attributes to existing indoor/fault diagnostics, preserving technical
 identities. Include current monitoring enabled/available, active/retained status,
 evaluation quality, clear wait/reason, persistence status and gas inhibition.
+`history_unknown` and `gas_inhibition_unknown` describe historical uncertainty;
+they shall not themselves activate all hazard faults. `persistence_error` shall
+describe an actual storage/acknowledgement failure, not a successful write whose
+prior history is unverified. Retained alarm evidence and restriction-only records
+remain separate from current detector availability.
 Limit each diagnostic payload to 64 KiB and 64 detailed records; publish total and
 omitted counts and aggregate danger/inhibition over all records. Detail omission
 must never remove a fault contribution. A disabled monitor with retained danger

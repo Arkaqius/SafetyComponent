@@ -1,10 +1,29 @@
 import { expect, test } from '@playwright/test';
 import type { EntityMap } from '../../src/domain/safety';
 
-test('temperature sample notice persists across pages after startup, then ends on rate data', async ({ page }, testInfo) => {
+test('temperature sampling does not add a second global startup notice', async ({ page }) => {
   await page.route('**/*', route => (new URL(route.request().url()).hostname === '127.0.0.1' ? route.continue() : route.abort()));
   await page.goto('/');
   await expect(page.locator('.topbar')).toBeVisible();
+  await page.evaluate(() => {
+    const api = (window as unknown as { __safetyHomeMock: { snapshot(): EntityMap; update(value: { entities: EntityMap }): void } })
+      .__safetyHomeMock;
+    const entities = api.snapshot();
+    entities['sensor.safety_app_health'] = { state: 'unavailable', attributes: {} };
+    entities['sensor.safety_evaluation_progress'] = { state: 'unavailable', attributes: {} };
+    entities['sensor.fault_startup_placeholder'] = { state: 'unavailable', attributes: { friendly_name: 'Testowy wpis rozruchu' } };
+    entities['sensor.fault_startup_cpu'] = {
+      state: 'UNEVALUABLE',
+      attributes: { friendly_name: 'Testowa diagnostyka CPU', category: 'D', level: 3, active: false },
+    };
+    api.update({ entities });
+    window.location.hash = '#/fault-management';
+  });
+  const startupBanner = page.getByRole('complementary', { name: 'Rozruch monitoringu' });
+  await expect(startupBanner).toContainText('Oczekiwanie na dane monitoringu');
+  await expect(startupBanner.locator('.startup-countdown')).toHaveCount(0);
+  await expect(page.getByText('Testowy wpis rozruchu', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Testowa diagnostyka CPU', { exact: true })).toHaveCount(0);
   await page.evaluate(() => {
     const api = (window as unknown as { __safetyHomeMock: { snapshot(): EntityMap; update(value: { entities: EntityMap }): void } })
       .__safetyHomeMock;
@@ -13,7 +32,7 @@ test('temperature sample notice persists across pages after startup, then ends o
     entities['sensor.safety_app_health'] = { state: 'running', attributes: {} };
     entities['sensor.safety_evaluation_progress'] = {
       state: 'observed',
-      attributes: { startup: { phase: 'complete', duration_seconds: 600, remaining_seconds: 0, reported_at: now } },
+      attributes: { startup: { phase: 'settling', duration_seconds: 600, remaining_seconds: 600, reported_at: now } },
     };
     entities['sensor.sampling_diagnostic'] = {
       state: 'unavailable',
@@ -27,21 +46,27 @@ test('temperature sample notice persists across pages after startup, then ends o
     api.update({ entities });
   });
   const banner = page.getByRole('complementary', { name: 'Gotowość prognozy temperatury' });
-  await expect(banner).toContainText('oczekiwanie na próbki');
-  await expect(banner).toContainText('15 min');
-  await expect(page.getByRole('complementary', { name: 'Rozruch monitoringu' })).toHaveCount(0);
+  const oldNotice = page.getByText('Prognoza temperatury · oczekiwanie na próbki', { exact: true });
+  await expect(banner).toHaveCount(0);
+  await expect(oldNotice).toHaveCount(0);
+  await expect(startupBanner).toBeVisible();
   await page.evaluate(() => {
     window.location.hash = '#/temperature';
   });
-  await expect(banner).toBeVisible();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  await page.screenshot({ path: testInfo.outputPath('temperature-sampling.png'), fullPage: true });
+  await expect(startupBanner).toBeVisible();
   await page.evaluate(() => {
     const api = (window as unknown as { __safetyHomeMock: { snapshot(): EntityMap; update(value: { entities: EntityMap }): void } })
       .__safetyHomeMock;
     const entities = api.snapshot();
-    entities['sensor.sampling_temperature_rate'] = { state: '0', attributes: { sampling_status: 'ready' } };
+    entities['sensor.safety_evaluation_progress'].attributes.startup = {
+      phase: 'complete',
+      duration_seconds: 600,
+      remaining_seconds: 0,
+      reported_at: new Date().toISOString(),
+    };
     api.update({ entities });
   });
   await expect(banner).toHaveCount(0);
+  await expect(oldNotice).toHaveCount(0);
+  await expect(startupBanner).toHaveCount(0);
 });

@@ -1,0 +1,155 @@
+{
+  "events": [
+    {
+      "data": {
+        "entity_id": "binary_sensor.fixture_indoor_alarm",
+        "metadata": {
+          "context": {
+            "id": "fictional-context-0"
+          },
+          "origin": "LOCAL",
+          "time_fired": "2026-11-16T00:00:10+00:00"
+        },
+        "new_state": {
+          "attributes": {},
+          "entity_id": "binary_sensor.fixture_indoor_alarm",
+          "last_changed": "2026-11-16T00:00:00+00:00",
+          "last_updated": "2026-11-16T00:00:00+00:00",
+          "state": "on"
+        },
+        "old_state": {
+          "attributes": {},
+          "entity_id": "binary_sensor.fixture_indoor_alarm",
+          "last_changed": "2026-11-15T00:00:00+00:00",
+          "last_updated": "2026-11-15T00:00:00+00:00",
+          "state": "off"
+        }
+      },
+      "event": "state_changed"
+    },
+    {
+      "data": {
+        "entity_id": "binary_sensor.fixture_indoor_alarm",
+        "metadata": {
+          "context": {
+            "id": "fictional-context-1"
+          },
+          "origin": "LOCAL",
+          "time_fired": "2026-11-16T00:00:11+00:00"
+        },
+        "new_state": {
+          "attributes": {},
+          "entity_id": "binary_sensor.fixture_indoor_alarm",
+          "last_changed": "2026-11-16T00:00:01+00:00",
+          "last_updated": "2026-11-16T00:00:01+00:00",
+          "state": "off"
+        },
+        "old_state": {
+          "attributes": {},
+          "entity_id": "binary_sensor.fixture_indoor_alarm",
+          "last_changed": "2026-11-16T00:00:00+00:00",
+          "last_updated": "2026-11-16T00:00:00+00:00",
+          "state": "on"
+        }
+      },
+      "event": "state_changed"
+    },
+    {
+      "data": {
+        "entity_id": "binary_sensor.fixture_indoor_alarm",
+        "metadata": {
+          "context": {
+            "id": "fictional-context-2"
+          },
+          "origin": "LOCAL",
+          "time_fired": "2026-11-16T00:00:12+00:00"
+        },
+        "new_state": {
+          "attributes": {},
+          "entity_id": "binary_sensor.fixture_indoor_alarm",
+          "last_changed": "2026-11-16T00:00:01+00:00",
+          "last_updated": "2026-11-16T00:00:01+00:00",
+          "state": "off"
+        },
+        "old_state": {
+          "attributes": {},
+          "entity_id": "binary_sensor.fixture_indoor_alarm",
+          "last_changed": "2026-11-16T00:00:01+00:00",
+          "last_updated": "2026-11-16T00:00:01+00:00",
+          "state": "off"
+        }
+      },
+      "event": "state_changed"
+    },
+    {
+      "data": {
+        "entity_id": "binary_sensor.fixture_indoor_alarm",
+        "metadata": {
+          "context": {
+            "id": "fictional-context-3"
+          },
+          "origin": "LOCAL",
+          "time_fired": "2026-11-16T00:00:13+00:00"
+        },
+        "new_state": {
+          "attributes": {},
+          "entity_id": "binary_sensor.fixture_indoor_alarm",
+          "last_changed": "2026-11-16T00:00:02+00:00",
+          "last_updated": "2026-11-16T00:00:02+00:00",
+          "state": "unknown"
+        },
+        "old_state": {
+          "attributes": {},
+          "entity_id": "binary_sensor.fixture_indoor_alarm",
+          "last_changed": "2026-11-16T00:00:01+00:00",
+          "last_updated": "2026-11-16T00:00:01+00:00",
+          "state": "off"
+        }
+      },
+      "event": "state_changed"
+    },
+    {
+      "data": {
+        "entity_id": "binary_sensor.fixture_indoor_alarm",
+        "metadata": {
+          "context": {
+            "id": "fictional-context-4"
+          },
+          "origin": "LOCAL",
+          "time_fired": "2026-11-16T00:00:14+00:00"
+        },
+        "new_state": {
+          "attributes": {},
+          "entity_id": "binary_sensor.fixture_indoor_alarm",
+          "last_changed": "2026-11-16T00:00:03+00:00",
+          "last_updated": "2026-11-16T00:00:03+00:00",
+          "state": "off"
+        },
+        "old_state": {
+          "attributes": {},
+          "entity_id": "binary_sensor.fixture_indoor_alarm",
+          "last_changed": "2026-11-16T00:00:02+00:00",
+          "last_updated": "2026-11-16T00:00:02+00:00",
+          "state": "unknown"
+        }
+      },
+      "event": "state_changed"
+    },
+    {
+      "data": {
+        "name": "fixture-hass"
+      },
+      "event": "plugin_stopped"
+    },
+    {
+      "data": {
+        "name": "fixture-hass"
+      },
+      "event": "plugin_started"
+    }
+  ],
+  "initial_sync_event_count": 0,
+  "network": "fictional offline input",
+  "runtime": "AppDaemon",
+  "version": "4.5.13"
+}

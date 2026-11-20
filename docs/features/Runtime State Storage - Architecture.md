@@ -28,6 +28,8 @@ The database separates these store namespaces:
 | `recovery_state` | RecoveryManager shall retain operator-visible proposals, lifecycle state, manual-work reports and bounded recent action outcomes under the recovery contract. |
 | `fault_evidence_state` | Bounded unified Freeze frame records and lifecycle metadata. |
 | `internal_environment_state` | Detector incident/symptom state and safety restrictions. |
+| `heating_monitor_state` | Heating assertion owner, retained incidents and conservative restart continuity. |
+| `external_hazard_assertions` | Retained external-exposure assertions independent of current provider bindings. |
 | `periodic_test_state` | Operator attestations for notification receipt and backup restoration. |
 | `detector_test_state` | Operator-reported detector test results. |
 | `battery_fault_catalog` | Active/retired battery-fault identities for MQTT discovery cleanup. |
@@ -79,6 +81,15 @@ initialization marker in one
 transaction. Missing legacy files initialize an empty namespace. A parsing or
 transaction failure does not mark the namespace initialized, so the corrected
 source can be retried.
+
+An empty storage namespace does not prove a first indoor installation or release
+an independent gas restriction. The indoor owner shall require reviewed cold-start
+evidence and otherwise preserve uncertainty under the
+[indoor retention contract](004-safety-timing-alarm-retention/contracts/indoor-recovery-retention.md).
+A clean indoor checkpoint likewise requires independent preceding-owner
+continuity evidence. A full process restart loses the bounded process witness;
+the owner shall then retain unknown history and fail-closed gas restriction.
+Persisted commissioning metadata shall not be reused as current-launch proof.
 
 After successful initialization, SQLite is authoritative for that namespace.
 Later changes to a legacy file do not replace database state. Legacy JSON files

@@ -46,6 +46,8 @@ CONTEXT_FIELDS = frozenset(
         "gas_identity",
         "switching_inhibited",
         "health_reason",
+        "indoor_owner_generation",
+        "indoor_incident_id",
         "cause",
         "store",
         "provider",

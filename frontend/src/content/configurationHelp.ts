@@ -139,7 +139,7 @@ export const configurationHelp: Array<{
       },
       {
         title: 'Pogoda i jakość powietrza',
-        text: 'Dostosuj progi mrozu, porywów, opadów i wskaźnika AQI. Trwałość warunku pogodowego określa wymaganą długość warunku. Czas otwarcia drzwi i bram jest odrębną kwalifikacją, a lista domyślnych zagrożeń i horyzont prognozy pochodzą z konfiguracji systemowej.',
+        text: 'Potwierdzenie pogody trwa domyślnie 75 s, a kwalifikacja otwartych drzwi i bram przez 60 s biegnie równolegle. Limit 120 s obejmuje też kolejkę, decyzję i przyjęcie powiadomienia przez HA lub zgłoszenie błędu. AQI ma niezależne 300 s potwierdzenia. Wycofanie alarmu wymaga osobnych 120 s wiarygodnego ustąpienia warunku. Lista zagrożeń i horyzont prognozy pochodzą z konfiguracji systemowej.',
       },
     ],
   },

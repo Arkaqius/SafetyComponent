@@ -133,6 +133,18 @@ Elements **outside** the boundary that we rely on and for which we define assump
 
 > _Not a mode:_ “Alarm latched” is an overlay state that can exist in any mode for life‑safety hazards.
 
+During bounded diagnostic startup qualification, ordinary missing first reports,
+pending evaluations and transient diagnostic failures shall remain silent to the
+operator: no diagnostic incident list, recommendation or notification shall be
+created solely from initial data collection. Show one neutral startup indication.
+This applies to diagnostic faults, including application-health diagnostics;
+internal evidence, output restrictions and recovery eligibility shall still react
+immediately to current component-qualified input. Current positive hazards and
+retained unresolved hazard alarms shall remain immediately visible and reportable.
+At startup completion release only each diagnostic's latest result; a resolved
+startup failure shall not be replayed. Missing data after qualification shall be
+reported as unavailable evaluation, never converted into a healthy result.
+
 ### 3.2 Mode Policies (what each mode controls)
 
 | Mode                     | Actuation Policy                                                                                      | Notifications                                  | Privacy                                   | Config Changes                        | Notes                                                           |
@@ -189,6 +201,16 @@ as non-degrading. Uncertainty confined to a known L4 condition or its explicitly
 linked task shall remain visible locally. This policy shall not mask startup,
 unknown fault priority, unlinked task uncertainty or independent coverage and
 channel failures, and `no_faults` shall not assert complete safety coverage.
+
+Operator presentation shall name L1/L2 conditions hazards and L3/L4 conditions
+faults, preserving L4's informational, non-degrading behavior. An active hazard
+headline shall preserve the known highest urgency when diagnostic data are
+incomplete, without replacing it with a diagnostic-fault count. Event lists and
+current recommendations shall order hazard entries by L1 then L2 and place
+diagnostics after them. Recommendation ownership shall use stable fault identity;
+catalogue availability alone shall not imply a current action. Explicit executing,
+failed or actionable proposals with a missing owner shall remain visible without
+being attributed to an unrelated incident.
 
 > _Vectors are logical; specific entities/services are bound in configuration. “Sound alarm” may be a phone alert tone and/or local siren if configured for the event._
 
@@ -637,22 +659,21 @@ _We model the system as **decoupled Safety Components**, each implementing one o
   redundant responses without clearing evidence. The existing external raw
   states and notification-history codes shall remain stable during migration.
 - **Diagnostic startup qualification:** Every SafetyFunctions initialization
-  shall start a shared qualification interval for eligible D contributions, with a
+  shall start a shared operator-reporting interval for all D contributions, with a
   600-second system default and the existing `startup_grace_seconds` override
   (`0` disables it). Acquisition and check evaluation shall start immediately.
-  `SafetyAppHealth` and contributions with allocated `detection_budget_seconds`
-  shall bypass it. Entity Monitor dependencies shall carry their existing
-  allocation; indoor detector-health contributions shall carry SG-003's 60-second
-  allocation. Detection, degradation and notification timing on these paths
-  shall include startup without enlarging the allocated budget. Deferred D
-  contributions shall remain unevaluable; the latest qualified
-  observation per symptom shall replace earlier evidence, and invalid or lost
-  evidence shall cancel it. At expiry only current eligible evidence shall be
-  routed; unseen contributors shall remain unknown. H detection, including
-  gas/CO/water-leak event paths and five-second reconciliation, and
-  `SafetyAppHealth` failures shall remain immediately actionable. The interval
-  shall not extend an applicable FTTI, clear restored activation or imply full
-  coverage. Independent eligible contributions shall retain normal fault aggregation.
+  Diagnostic acquisition, component qualification and internal degradation/output
+  restrictions shall start immediately, including `SafetyAppHealth` and sources
+  with allocated `detection_budget_seconds`. Entity Monitor dependencies and
+  indoor detector-health supervision shall retain their internal detection/FTTI
+  allocations. Operator D activation, recommendations and notification shall wait
+  for the startup reporting interval; initial waiting shall not be published as
+  `UNEVALUABLE` or a technical failure. Keep only the latest diagnostic result,
+  pending qualification or unavailability per symptom. At expiry release that
+  current state, with unseen sources unavailable rather than fabricated healthy.
+  H detection, gas/CO/water-leak event paths, five-second reconciliation and
+  notification shall remain immediate. Reporting grace shall not clear retained
+  activation, authorize recovery or imply full coverage.
 - **Fault diagnostic evidence:** On the first active transition, C-FLT shall
   retain one bounded, allowlisted freeze frame per fault independently of
   notification delivery. A later source update or quiet response refresh shall
@@ -882,8 +903,9 @@ and [ADR-0001](../adr/0001-external-provider-plugins.md).
 - Weather policy: frost watch/warning temperature, wind/gust thresholds,
   rain/precipitation policy, forecast horizon, hysteresis, persistence, and
   clear delay.
-- Outdoor AQ policy: European AQI standard and warning threshold. Modeled
-  outdoor AQ and weather share the configured persistence interval.
+- Outdoor AQ policy: European AQI standard, warning threshold and independent
+  persistence interval (default 300 seconds). Weather confirmation has its own
+  default of 75 seconds within the total 120-second response allocation.
 - Per-provider base URL where applicable, poll interval, request timeout, retry
   count and stale timeout belong to application policy. Explicit provider-or-null
   selection, location and station selection belong to installation configuration. Each

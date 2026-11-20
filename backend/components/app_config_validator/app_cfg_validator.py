@@ -16,6 +16,7 @@ from components.external_apis.core.configuration import resolve_provider_binding
 from components.safetycomponents.external_hazard.schema import (
     COMPONENT_NAME as EXTERNAL_HAZARD_COMPONENT_NAME,
     validate_external_hazard_config,
+    validate_weather_response_budget,
 )
 from components.safetycomponents.entity_monitor.schema import (
     COMPONENT_NAME as ENTITY_MONITOR_COMPONENT_NAME,
@@ -24,6 +25,7 @@ from components.safetycomponents.entity_monitor.schema import (
 from components.safetycomponents.internal_environmental_hazard.schema import (
     COMPONENT_NAME as INTERNAL_ENVIRONMENTAL_HAZARD_COMPONENT_NAME,
     validate_internal_environmental_hazard_config,
+    InternalEnvironmentPersistence,
 )
 from components.safetycomponents.safety_doors.schema import (
     COMPONENT_NAME as SAFETY_DOORS_COMPONENT_NAME,
@@ -367,6 +369,9 @@ def _to_runtime(
 ) -> Dict[str, Any]:
     runtime = cfg.model_dump(by_alias=True)
     runtime_user_cfg = runtime.get("user_config", {})
+    indoor_source = cfg.user_config.safety_components.get(INTERNAL_ENVIRONMENTAL_HAZARD_COMPONENT_NAME, {})
+    runtime["app_config"]["indoor_state_policy"] = InternalEnvironmentPersistence.model_validate(
+        indoor_source.get("persistence", {})).model_dump()
 
     enabled_components = cfg.user_config.enabled_components()
     external_enabled = EXTERNAL_HAZARD_COMPONENT_NAME in enabled_components
@@ -438,6 +443,11 @@ def _to_runtime(
         strict_validation=strict_validation,
         log=log,
     )
+    if cfg.app_config.external_hazard_policy is not None:
+        validate_weather_response_budget(
+            cfg.app_config.external_hazard_policy.weather.persistence_seconds,
+            runtime_user_cfg["notification"]["retry"]["deadlines_seconds"][2],
+        )
 
     runtime["user_config"] = runtime_user_cfg
     runtime["app_config"]["faults"] = validate_faults_config(

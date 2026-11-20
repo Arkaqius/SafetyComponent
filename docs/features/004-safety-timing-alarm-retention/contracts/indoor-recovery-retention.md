@@ -59,6 +59,28 @@ draining all writes/acknowledgements; any failed step leaves the session dirty.
 Test CLEAR commit -> newer SET -> crash
 before SET acknowledgement, including both storage and journal orderings.
 
+This includes failure before the marker itself becomes durable: an unchanged
+older clean checkpoint cannot exclude an intervening failed launch. Require an
+independent exact preceding-owner/storage witness to establish continuity.
+Without that witness, including a full process restart, retain unknown history
+and gas restriction. A saved commissioning identifier is historical metadata,
+not a current-launch witness. A reviewed virgin-installation receipt cannot
+override any retained owner state or conflicting indoor journal history.
+
+Unknown history alone shall not synthesize an active incident for every hazard.
+Only concrete active checkpoint records or active journal evidence shall restore
+hazard activation; an alarm with missing identity remains visibly unresolved.
+An unattributed gas restriction without an active alarm shall remain a restriction,
+not become smoke, CO, leak or gas alarm evidence. Current detector quality,
+historical continuity and actual storage failure shall be separate attributes.
+A successful durable acknowledgement shall clear the current write error without
+clearing unknown history or releasing the independent gas restriction.
+
+Version-1 migration shall retain every true alarm/health/gas flag without
+inventing missing original hazard/entity/profile/incident identities. Preserve
+these as `legacy_unattributed` records and trusted-catalog uncertainty. A reused
+detector key cannot grant them current-equipment recovery authority.
+
 Missing/corrupt prior checkpoint after alarm HEAL still leaves the independent
 gas latch unknown and fail-closed; an inactive journal is not release evidence.
 Proven first installation is a separate reviewed admission case: absence of a file
@@ -77,6 +99,14 @@ retained danger independently of disabled/unavailable current monitoring; do not
 replace it with a green zero-detection count. Explain unresolved source proof,
 pending recovery and independently retained gas restriction. UI is Polish and
 runtime labels have equivalent EN/PL/DE meaning. HEAL never authorizes safe re-entry.
+Operator headlines shall call L1/L2 conditions hazards and L3/L4 conditions faults.
+A known active L1/L2 hazard shall retain its urgency when diagnostics are incomplete;
+diagnostic faults shall not displace or be counted in the hazard headline.
+Event lists and current recommendations shall order hazards by L1 then L2,
+with diagnostics after hazard entries. Recommendation ownership shall match stable
+fault identity. Missing catalogue availability alone shall not imply an action;
+explicit executing, failed or actionable proposals shall remain visible when
+their owner is absent, without attributing them to an unrelated hazard.
 
 ## Acceptance and Traceability
 

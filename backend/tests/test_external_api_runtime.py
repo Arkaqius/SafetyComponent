@@ -15,6 +15,37 @@ import pytest
 from components.core.event_bus import EventBus
 from components.external_apis.core.api_runtime import ExternalApiRuntime
 from components.external_apis.core.models import ApiResult, ProviderHealth, ProviderHealthState
+from safety_lifecycle_support import FakeMonotonicClock
+
+
+@pytest.mark.parametrize("delay,overdue", [(4.999, False), (5, False), (5.001, True)])
+def test_usable_input_timing_begins_before_internal_queue_dispatch(delay, overdue) -> None:
+    clock = FakeMonotonicClock(10)
+    bus, provider = EventBus(), StubProvider("Fixture")
+    results = []
+    bus.subscribe("external_api_result", lambda *, result: results.append(result))
+    runtime = ExternalApiRuntime(RuntimeHass(), bus, {provider.name: provider}, clock=clock)
+    try:
+        future = Future()
+        future.set_result(provider.poll())
+        runtime._poll_completed(provider.name, future)
+        assert not results
+        clock.advance(delay)
+        runtime.drain_results()
+        timing = results[0].dispatch_timing
+        assert timing.received_monotonic == 10
+        assert timing.dispatched_monotonic == 10 + delay
+        assert timing.delay_seconds == pytest.approx(delay)
+        assert timing.overdue is overdue
+        assert runtime.dispatch_overruns == int(overdue)
+    finally:
+        runtime.stop()
+
+
+@pytest.mark.parametrize("size", [0, -1, True, 65])
+def test_result_queue_cannot_be_configured_unbounded(size) -> None:
+    with pytest.raises(ValueError, match="slots"):
+        ExternalApiRuntime(RuntimeHass(), EventBus(), {}, max_queue_size=size)
 
 
 class RuntimeHass:

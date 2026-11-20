@@ -87,8 +87,10 @@ and available location only after an authoritative clear.
   `return_result`, `timeout`, or `hass_timeout`, using supported background
   completion callbacks; immediate scheduling return is not delivery acceptance.
   An explicit completed failure is retryable only when no unresolved resource
-  lease would overlap the retry. A completed call returning no result retains
-  the reviewed acceptance meaning, never confirmed device delivery.
+  lease would overlap the retry. Only a completed envelope with Boolean
+  `success: true` establishes Home Assistant acceptance; `result: null` inside
+  that envelope is valid. Bare `None` or an absent/ambiguous completion shall
+  remain uncertain, never accepted or confirmed device delivery.
 
 The provider shall never fall back to `notify.notify`. Installation routing
 shall use an explicit group such as `notify/safety_recipients` or an explicit
@@ -269,11 +271,14 @@ Android `alert_once`/normal priority and iOS `passive` interruption.
 
 1. Filter additional details.
 2. Build localized content and acknowledgement action.
-3. Persist the active record before attempting an external call.
-4. Run optional local annunciators once, before any blocking remote submission.
-5. If WAN is explicitly offline, queue the attempt.
-6. Otherwise submit to every configured mobile service.
-7. Record acceptance/failure and deadline telemetry.
+3. Admit the active lifecycle record without waiting for external completion.
+4. Independently enqueue the immutable persistence snapshot and eligible local
+   annunciator intents. Snapshot enqueue does not establish durable storage.
+5. If WAN is explicitly offline, queue the mobile attempt.
+6. Otherwise admit an independent bounded intent for every configured mobile
+   service. Recheck current output restrictions at actual local-output handoff.
+7. Apply owner-validated completion and record acceptance/failure and deadline
+   telemetry. Scheduling return does not establish HA acceptance or phone receipt.
 8. Schedule bounded L1 repeats when applicable.
 
 ### 4.2 Active content refresh

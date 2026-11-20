@@ -165,6 +165,14 @@ weather forecast horizon has no user override.
 | `outdoor_air_quality.default_standard` | `european_aqi` | `outdoor_air_quality.standard` |
 | `outdoor_air_quality.default_warning_at` | index `60` | `outdoor_air_quality.warning_at` |
 
+Weather confirmation requires an integer from 1 through 75 seconds. AQ
+confirmation requires a separate positive integer; an absent AQ override uses
+300 seconds. The combined weather allocation is 5 seconds dispatch plus the
+maximum of weather confirmation and 60-second aperture qualification, plus
+9 seconds reconciliation, 1 second decision and the configured L2 notification
+deadline. Values exceeding 120 seconds are rejected. The 120-second positive
+clear interval remains independent of assertion timing.
+
 The former `decision_timeout_seconds` field was removed because no runtime code
 consumed it. User-confirmed actuator proposals retain their separate,
 per-opening `confirmation_timeout_seconds` contract.
@@ -175,6 +183,24 @@ per-opening `confirmation_timeout_seconds` contract.
 clear state semantics, health debounce, persistent-state policy, and the
 maximum detector count. The private configuration selects a profile and binds
 it to a detector; it cannot redefine the profile semantics.
+`clear_event_contract` admits `unverified` (schema default) or
+`ha_state_changed_v1` (packaged binary profile). Recovery requires both
+`authoritative_clear: true` and the reviewed contract. The HA contract requires a
+delivered LOCAL alarm-to-clear transition with actual context, ordered HA
+transition/update/event times, no future timestamps, the accepted current-session
+alarm watermark and 30 newly observed monotonic seconds by default. Cached or
+initial off and attribute-only off cannot start recovery. HA transport evidence
+does not establish a physical detector heartbeat or original producer time.
+
+The `internal_environment_state` owner uses a strict version-2 checkpoint, up to
+4096 retained records / 1 MiB, independently of current detector admission
+(default 64, maximum 256). Detector/source/profile identities and display values
+have bounded lengths. Removal, rebinding or disabling cannot erase retained
+danger or the independent gas latch. Disabled persistence supplies no restart
+durability proof; missing history remains explicit and switching is inhibited.
+A clean checkpoint alone cannot prove launch continuity: a full process restart
+without an independent surviving witness restores unverified history and gas
+restriction. See the [validation and admission guide](../features/004-safety-timing-alarm-retention/quickstart.md).
 The same system-owned binary profile can describe a water-leak sensor when its
 Home Assistant wet/dry states match the profile. `WaterLeakDetected` is an L2
 C-LEAK fault; merely binding the sensor never enables valve actuation.

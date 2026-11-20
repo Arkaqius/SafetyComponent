@@ -152,8 +152,13 @@ also makes callback/thread ownership explicit. Completion callbacks enqueue boun
 immutable results; only the application-owned drain mutates domain state.
 Keep SWR-NOT-009's prohibition on unsupported `return_result`, `timeout` and
 `hass_timeout` arguments. A submission's immediate scheduling return is not its
-completion result. Completion `None` retains the existing documented acceptance
-meaning; it is not phone delivery proof.
+completion result. HA acceptance requires a completed envelope with Boolean
+`success: true`; an empty response body (`result: null`) within that envelope is
+valid, while bare `None` is uncertain and is not acceptance or phone delivery proof.
+
+**Maintainer decision, 2026-11-16**: Explicit success is required. The packaged
+4.5.13 offline probe demonstrates bare `None` for disconnected and failed transport
+paths; the accepted successful empty response instead has a successful envelope.
 
 **Rationale**: The current provider loops through synchronous target calls inside
 NotificationManager's fault handler. A single stalled target delays recovery and

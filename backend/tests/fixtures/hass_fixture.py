@@ -7,6 +7,11 @@ import pytest
 
 from SafetyFunctions import SafetyFunctions
 from components.core.mqtt_entity_manager import MqttEntityManager
+from components.core.service_dispatcher import ProcessLeaseRegistry
+from components.core.snapshot_writer import SnapshotWriter
+from safety_lifecycle_support import ControlledExecutor, InlineStorageExecutor
+from components.safetycomponents.internal_environmental_hazard.state_store import commissioned_checkpoint, InMemoryInternalEnvironmentStateStore, current_launch_id
+from datetime import datetime, timezone
 
 
 @pytest.fixture
@@ -18,6 +23,16 @@ def mocked_hass() -> Generator[Any, Any, None]:
         mock_hass.get_state = MagicMock(return_value="on")
         mock_hass.set_state = MagicMock()
         mock_hass.call_service = MagicMock()
+        mock_hass.call_service.return_value = {"success": True, "result": None}
+
+        def complete_service(_service, **payload):
+            response = mock_hass.call_service.return_value
+            callback = payload.get("callback")
+            if callback is not None:
+                callback(response)
+            return response
+
+        mock_hass.call_service.side_effect = complete_service
         mock_hass.run_in = MagicMock()
         mock_hass.run_every = MagicMock()
         mock_hass.listen_state = MagicMock()
@@ -58,6 +73,7 @@ def mocked_hass_app_basic(mocked_hass, app_config_valid):
         app_instance.run_in = mocked_hass.run_in
         app_instance.run_every = mocked_hass.run_every
         app_instance.listen_state = mocked_hass.listen_state
+        install_response_fakes(app_instance, mocked_hass)
         yield app_instance, mocked_hass, mock_log_method
 
 
@@ -92,8 +108,77 @@ def mocked_hass_app_with_temp_component(mocked_hass, app_config_valid):
         app_instance.run_in = mocked_hass.run_in
         app_instance.run_every = mocked_hass.run_every
         app_instance.listen_state = mocked_hass.listen_state
+        install_response_fakes(app_instance, mocked_hass)
 
         yield app_instance, mocked_hass, mock_log_method, MockTemperatureComponent, mock_behaviors
+
+
+def install_response_fakes(app_instance: Any, mocked_hass: Any, *, capture_only: bool = False) -> None:
+    """Isolate process transport/storage while retaining production queue semantics."""
+    if capture_only:
+        capture = app_instance.call_service
+
+        def successful_fixture_service(service: str, *, callback=None, **payload: Any) -> dict[str, Any]:
+            capture(service, **payload)
+            response = {"success": True, "result": None}
+            if callback is not None:
+                callback(response)
+            return response
+
+        app_instance.call_service = successful_fixture_service
+    app_instance._service_registry = ProcessLeaseRegistry()
+    app_instance._snapshot_executors = {
+        namespace: ControlledExecutor() for namespace in ("notification_state", "recovery_state")
+    }
+    app_instance._snapshot_writers = {
+        namespace: SnapshotWriter(executor) for namespace, executor in app_instance._snapshot_executors.items()
+    }
+    app_instance._snapshot_writers["internal_environment_state"] = SnapshotWriter(InlineStorageExecutor())
+    mocked_hass._response_app = app_instance
+    app_instance._response_transport = app_instance.call_service
+    if "_indoor_initial_checkpoint" not in app_instance.__dict__:
+        app_instance._indoor_initial_checkpoint = commissioned_checkpoint("reviewed-fictional-installation", datetime(2026, 11, 16, tzinfo=timezone.utc))
+    if "InternalEnvironmentalHazardMonitorComponent" not in app_instance.args.get("user_config", {}).get("safety_components", {}):
+        app_instance._indoor_state_store = InMemoryInternalEnvironmentStateStore(app_instance._indoor_initial_checkpoint)
+        app_instance._indoor_launch_receipt = current_launch_id() if app_instance._indoor_initial_checkpoint else None
+
+
+def drain_responses(hass_app: Any, limit: int = 2000) -> None:
+    """Drive only response owners and fictional completions to an idle boundary.
+
+    Tests call this before inspecting eventual transport evidence. This never
+    advances evaluation timers, retries, wall time or physical postconditions.
+    """
+    app = hass_app.__dict__.get("_response_app", hass_app)
+    broker = app.__dict__.get("service_dispatcher")
+    if broker is None:
+        return
+    for _ in range(limit):
+        progressed = False
+        for executor in app.__dict__.get("_snapshot_executors", {}).values():
+            for index, (future, _function, _arguments) in enumerate(tuple(executor.jobs)):
+                if not future.done():
+                    executor.finish(index)
+                    progressed = True
+        notification = app.__dict__.get("notify_man")
+        if notification is not None and notification.scope.eligible:
+            notification._drain_persistence()
+        recovery = app.__dict__.get("reco_man")
+        if recovery is not None and recovery.scope.eligible:
+            recovery._drain_writes()
+        if "indoor_state_owner" in app.__dict__:
+            app._drain_indoor_owner()
+        mqtt = app.__dict__.get("mqtt_entities")
+        projection = mqtt.projections if mqtt is not None else None
+        if projection is not None:
+            projection.tick()
+        transport = app.__dict__.get("_response_transport", app.call_service)
+        before = len(getattr(transport, "call_args_list", ()))
+        broker.tick()
+        progressed = progressed or len(getattr(transport, "call_args_list", ())) != before
+        if (not progressed and broker.registry.completion_count == 0 and broker.pending_count == 0
+                and (projection is None or not projection.pending and projection.active is None)):
+            return
 
 
 def default_mock_behaviors():
@@ -164,6 +249,7 @@ def mqtt_topic_for(entity_id: str, topic_kind: str = "state") -> str:
 
 def mqtt_publish_calls(hass_app: Any, topic: str | None = None) -> list[Any]:
     """Return mqtt.publish service calls, optionally filtered by topic."""
+    drain_responses(hass_app)
     calls = [
         call
         for call in hass_app.call_service.call_args_list

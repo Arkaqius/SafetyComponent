@@ -80,6 +80,58 @@ def test_fault_manager_initialization(fault_manager, fault, symptom):
     assert fault_manager.symptoms["RiskyTemperatureOffice"] == symptom
 
 
+def test_failed_mqtt_projection_cannot_suppress_committed_alarm_response(fault_manager):
+    fault_manager.mqtt_entities.publish_sensor_state.side_effect = RuntimeError("MQTT unavailable")
+    fault_manager.set_symptom("RiskyTemperatureOffice", {"location": "Fixture"})
+    assert fault_manager.faults["RiskyTemperature"].evaluation.active
+    fault_manager.notify_spy.assert_called_once()
+    fault_manager.recovery_spy.assert_called_once()
+    assert fault_manager.projection_failures > 0
+
+
+def test_projection_error_formatting_cannot_suppress_alarm_response(fault_manager):
+    class BrokenError(Exception):
+        def __str__(self):
+            raise RuntimeError("formatting also failed")
+
+    fault_manager.mqtt_entities.publish_sensor_state.side_effect = BrokenError()
+    fault_manager.set_symptom("RiskyTemperatureOffice", {"location": "Fixture"})
+    fault_manager.notify_spy.assert_called_once()
+    fault_manager.recovery_spy.assert_called_once()
+
+
+def test_immutable_response_replay_is_deduplicated_per_consumer(fault_manager):
+    events = []
+    fault_manager.event_bus.subscribe_response(events.append)
+    fault_manager.set_symptom("RiskyTemperatureOffice", {"location": "Fixture"})
+    first = events[0]
+    fault_manager.event_bus.publish_response(first)
+    assert events == [first]
+    fault_manager.clear_symptom("RiskyTemperatureOffice", {})
+    assert events[-1].incident_id == first.incident_id
+    assert events[-1].revision == first.revision + 1
+    assert first.state == FaultState.SET
+    assert events[-1].state == FaultState.CLEARED
+
+
+def test_immutable_event_bounds_omit_detail_without_losing_alarm():
+    from dataclasses import FrozenInstanceError
+    from components.core.response_events import FaultResponseEvent
+
+    context = {"location": "x" * 20000, "token": "must never enter event"}
+    event = FaultResponseEvent.create(
+        runtime_id="runtime", incident_id="incident", revision=1,
+        fault_id="Fixture", symptom_id="FixtureSymptom", state=FaultState.SET,
+        level=1, context=context,
+    )
+    assert len(event.context_json.encode("utf-8")) <= 16 * 1024
+    assert len(event.to_json().encode("utf-8")) <= 32 * 1024
+    assert event.detail_omitted
+    assert "token" not in event.context
+    with pytest.raises(FrozenInstanceError):
+        event.level = 2
+
+
 def test_restore_external_assertions_is_active_unevaluable_without_replay(fault_manager):
     """Removed contributors retain danger without creating notification events."""
     from datetime import datetime, timezone
@@ -274,6 +326,8 @@ def test_set_fault(fault_manager, mocked_hass_app, fault):
             "category": "H",
             "contributors": ["RiskyTemperatureOffice"],
             "active_contributors": ["RiskyTemperatureOffice"],
+            "contributors_total": 1,
+            "active_contributors_total": 1,
             "active": True,
             "shadowed_by": [],
             "latched": False,
@@ -315,6 +369,7 @@ def test_clear_fault(fault_manager, mocked_hass_app, fault):
             "fault_id": "RiskyTemperature",
             "level": "level_2", "category": "H",
             "contributors": ["RiskyTemperatureOffice"], "active_contributors": [],
+            "contributors_total": 1, "active_contributors_total": 0,
         }
     )
     fault_manager.notify_spy.assert_any_call(
@@ -399,6 +454,8 @@ def test_fault_manager_multiple_symptoms(fault_manager, mocked_hass_app, fault):
             "category": "H",
             "contributors": ["RiskyTemperatureKitchen", "RiskyTemperatureOffice"],
             "active_contributors": ["RiskyTemperatureOffice"],
+            "contributors_total": 2,
+            "active_contributors_total": 1,
             "active": True,
             "shadowed_by": [],
             "latched": False,
@@ -432,6 +489,8 @@ def test_fault_manager_multiple_symptoms(fault_manager, mocked_hass_app, fault):
             "category": "H",
             "contributors": ["RiskyTemperatureKitchen", "RiskyTemperatureOffice"],
             "active_contributors": ["RiskyTemperatureKitchen", "RiskyTemperatureOffice"],
+            "contributors_total": 2,
+            "active_contributors_total": 2,
             "active": True,
             "shadowed_by": [],
             "latched": False,
@@ -468,6 +527,8 @@ def test_fault_manager_multiple_symptoms(fault_manager, mocked_hass_app, fault):
             "contributors": ["RiskyTemperatureKitchen", "RiskyTemperatureOffice"],
             "fault_id": "RiskyTemperature",
             "active_contributors": [],
+            "contributors_total": 2,
+            "active_contributors_total": 0,
         },
     )
     fault_manager.notify_spy.assert_any_call(

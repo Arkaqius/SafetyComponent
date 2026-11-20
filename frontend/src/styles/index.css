@@ -2285,9 +2285,25 @@ details summary:focus-visible {
   margin-top: 7px;
 }
 
-.configuration-introduction {
-  align-items: flex-end;
+.configuration-action-bar {
+  padding: 12px;
+}
+
+.configuration-navigation {
+  display: grid;
+  gap: 10px;
+}
+
+.configuration-navigation-header {
+  align-items: baseline;
+  display: flex;
   flex-wrap: wrap;
+  gap: 8px 16px;
+  justify-content: space-between;
+}
+
+.configuration-navigation-header h2 {
+  margin: 0;
 }
 
 .configuration-actions {
@@ -2299,9 +2315,7 @@ details summary:focus-visible {
 }
 
 .configuration-help-link {
-  align-items: center;
-  display: inline-flex;
-  text-decoration: none;
+  font-size: 0.8125rem;
 }
 
 .primary-button,
@@ -2391,22 +2405,51 @@ details summary:focus-visible {
   max-width: 760px;
 }
 
-.configuration-columns,
 .configuration-grid {
   display: grid;
   gap: 16px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.configuration-group,
 .battery-discovery {
-  margin: 0.75rem 0;
-  padding: 1rem;
-  border: 1px solid var(--border-color, #475569);
-  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--surface) 96%, var(--text));
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin: 8px 0;
+  min-width: 0;
 }
 
+.configuration-group > summary,
 .battery-discovery > summary {
   cursor: pointer;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  padding: 12px 14px;
+}
+
+.configuration-group > summary:focus-visible,
+.battery-discovery > summary:focus-visible {
+  outline: 2px solid var(--color-primary, #41bdb0);
+  outline-offset: -2px;
+  border-radius: inherit;
+}
+
+.configuration-group[open] > summary,
+.battery-discovery[open] > summary {
+  border-bottom: 1px solid var(--border);
+}
+
+.configuration-group-body {
+  padding: 12px 14px;
+}
+
+.configuration-group-body > :first-child {
+  margin-top: 0;
+}
+
+.configuration-group-body > :last-child {
+  margin-bottom: 0;
 }
 
 .configuration-fieldset {
@@ -3968,12 +4011,7 @@ details summary:focus-visible {
     width: 100%;
   }
 
-  .configuration-introduction {
-    align-items: stretch;
-  }
-
   .configuration-actions,
-  .configuration-columns,
   .configuration-grid {
     grid-template-columns: 1fr;
   }
@@ -4266,8 +4304,13 @@ details summary:focus-visible {
   gap: 8px;
 }
 
-.configuration-subpages .active {
-  outline: 2px solid var(--color-primary, #41bdb0);
+.configuration-subpages [aria-current] {
+  border-color: var(--color-primary, #41bdb0);
+}
+
+.configuration-subpages-secondary {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
 }
 
 .configuration-section[hidden] {
@@ -4863,7 +4906,7 @@ dialog.entity-dialog-backdrop::backdrop { background: rgba(0, 0, 0, 0.65); }
 @media (max-width: 700px) {
   .topbar-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .topbar-overview a { font-size: 0.72rem; }
-  .configuration-page :is(.configuration-columns, .configuration-grid) { grid-template-columns: minmax(0, 1fr); }
+  .configuration-page .configuration-grid { grid-template-columns: minmax(0, 1fr); }
   .configuration-page :is(.configuration-object-entry, .configuration-fieldset) { padding: 10px; }
   .configuration-page :is(.configuration-actions, .configuration-subpages) { min-width: 0; }
   .configuration-page .configuration-object-add > input { min-width: 0; width: 100%; }

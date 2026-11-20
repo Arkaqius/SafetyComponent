@@ -1,19 +1,80 @@
-import { HEALTH_ENTITY_ID, type EntityMap } from './safety.js';
+import {
+  HEALTH_ENTITY_ID,
+  SYSTEM_STATE_ENTITY_ID,
+  normalizeState,
+  recoveriesForFault,
+  type EntityMap,
+  type FaultView,
+  type RecoveryView,
+  type SafetySummary,
+} from './safety.js';
 
 export const PROGRESS_ENTITY_ID = 'sensor.safety_evaluation_progress';
 
 export interface StartupView {
   available: boolean;
+  waitingForApp?: true;
   remainingSeconds: number | null;
   countdown: string;
   label: string;
   detail: string;
 }
 
+export function isStartupInProgress(startup: StartupView | null): boolean {
+  return startup?.available === true || startup?.waitingForApp === true;
+}
+
+/** Hold startup diagnostics off the operator view without hiding real danger. */
+export function startupOperatorView(startup: StartupView | null, faults: FaultView[], recoveries: RecoveryView[], summary: SafetySummary) {
+  if (!startup || !isStartupInProgress(startup)) return { faults, recoveries, summary };
+  const visibleFaults = faults.filter(fault => fault.category !== 'D' && (fault.active === true || fault.latched === true));
+  const visibleRecoveries = recoveries.filter(
+    recovery => recovery.status === 'executing' || visibleFaults.some(fault => recoveriesForFault(fault, [recovery]).length > 0)
+  );
+  const diagnosticAggregate = faults.some(
+    fault => fault.category === 'D' && fault.active === true && fault.level === summary.effectiveLevel
+  );
+  const reportedDanger =
+    summary.effectiveLevel !== null && summary.effectiveLevel > 0 && summary.effectiveLevel <= 2 && !diagnosticAggregate;
+  const hasDanger = visibleFaults.length > 0 || reportedDanger;
+  return {
+    faults: visibleFaults,
+    recoveries: visibleRecoveries,
+    summary: {
+      ...summary,
+      ...(!hasDanger ? { label: startup.label, detail: startup.detail, tone: 'info' as const, effectiveLevel: null } : {}),
+      activeFaultCount: visibleFaults.filter(fault => fault.level !== 4).length,
+      informationalFaultCount: visibleFaults.filter(fault => fault.level === 4).length,
+      shadowedFaultCount: visibleFaults.filter(fault => fault.shadowedBy.length > 0).length,
+      actionableRecoveryCount: visibleRecoveries.filter(recovery => recovery.status === 'to_perform').length,
+    },
+  };
+}
+
 /** Keep startup visible until the backend confirms its monotonic deadline. */
 export function getStartupView(entities: EntityMap, now = Date.now(), connected = true): StartupView | null {
   const progress = entities[PROGRESS_ENTITY_ID];
   const value = progress?.attributes.startup;
+  const health = normalizeState(entities[HEALTH_ENTITY_ID]?.state);
+  const system = normalizeState(entities[SYSTEM_STATE_ENTITY_ID]?.state);
+  const progressState = normalizeState(progress?.state);
+  const unavailable = (state: string) => ['', 'unknown', 'unavailable'].includes(state);
+  if (
+    connected &&
+    (health === 'init' ||
+      (unavailable(health) && Boolean(entities[HEALTH_ENTITY_ID] || entities[SYSTEM_STATE_ENTITY_ID] || progress)) ||
+      (health === 'running' &&
+        (progressState === 'unavailable' || (value === undefined && unavailable(progressState) && unavailable(system)))))
+  ) {
+    return {
+      available: false,
+      waitingForApp: true,
+      remainingSeconds: null,
+      countdown: '—',
+      label: health === 'init' ? 'Rozruch monitoringu' : 'Oczekiwanie na dane monitoringu',
+      detail: 'Czekamy na aktualny stan aplikacji i rozpoczęcie oceny.',
+    };
+  }
   // Older backend versions do not publish startup metadata.
   if (value === undefined) return null;
   const startup = value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
@@ -36,6 +97,7 @@ export function getStartupView(entities: EntityMap, now = Date.now(), connected 
     entities[HEALTH_ENTITY_ID]?.state === 'running' &&
     ['observed', 'unknown', 'attention'].includes(progress.state) &&
     valid &&
+    now - reported >= -60_000 &&
     now - reported < 180_000;
   if (!available) {
     return {
@@ -55,7 +117,7 @@ export function getStartupView(entities: EntityMap, now = Date.now(), connected 
     label: 'Rozruch monitoringu',
     detail:
       seconds > 0
-        ? 'Trwa stabilizacja źródeł. Zgłaszanie usterek diagnostycznych jest opóźnione. Wykrywanie zagrożeń działa od razu.'
+        ? 'Trwa zbieranie danych. Oceny i zalecenia diagnostyczne pojawią się po zakończeniu rozruchu. Wykrywanie zagrożeń działa od razu.'
         : 'Oczekiwanie na potwierdzenie uruchomienia diagnostyki przez system. Wykrywanie zagrożeń nadal działa.',
   };
 }

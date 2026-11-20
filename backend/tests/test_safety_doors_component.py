@@ -170,11 +170,13 @@ def test_open_door_stays_inactive_and_schedules_remaining_timeout() -> None:
     assert component.symptom_states[mechanism.name] == FaultState.CLEARED
     assert _published_states(hass_app)[-1] == "inactive"
     hass_app.run_in.assert_called_once_with(
-        component._timeout_reached,
+        hass_app.run_in.call_args.args[0],
         40,
         sm_name=mechanism.name,
     )
     assert events[-1]["state"] == FaultState.CLEARED
+    from inspect import unwrap
+    assert unwrap(hass_app.run_in.call_args.args[0]) == component._timeout_reached
 
 
 def test_closing_active_door_clears_condition_and_timer() -> None:
@@ -307,13 +309,15 @@ def test_pass_condition_starts_timeout_when_condition_became_pass() -> None:
 
     assert component.sm_safety_door_open_timeout(mechanism) is False
     hass_app.run_in.assert_called_once_with(
-        component._timeout_reached,
+        hass_app.run_in.call_args.args[0],
         40,
         sm_name=mechanism.name,
     )
     attributes = _published_attributes(hass_app)[-1]
     assert attributes["condition_result"] == "pass"
     assert attributes["open_duration_seconds"] == 20
+    from inspect import unwrap
+    assert unwrap(hass_app.run_in.call_args.args[0]) == component._timeout_reached
 
 
 def test_condition_entity_is_monitored_for_state_changes() -> None:
@@ -404,12 +408,52 @@ def test_disabled_mechanism_does_not_evaluate_and_cancels_timer() -> None:
     )
     name = "SafetyDoorOpenTimeoutGarageGate"
     mechanism = component.safety_mechanisms[name]
-    component._door_runtime[name].timer_handle = "pending-timer"
+    component._schedule_timeout(mechanism, 30)
+    pending_handle = component._door_runtime[name].timer_handle
 
     assert component.enable_safety_mechanism(name, SMState.DISABLED) is True
     assert component.sm_safety_door_open_timeout(mechanism) is False
-    hass_app.cancel_timer.assert_called_once_with("pending-timer")
+    hass_app.cancel_timer.assert_called_once_with(pending_handle)
     assert events == []
+
+
+@pytest.mark.parametrize("transition", ["disable", "stop", "child_stop", "legacy_disable"])
+def test_door_qualification_receives_no_credit_for_disabled_interval(transition) -> None:
+    now = datetime(2026, 7, 29, 12, 0, tzinfo=timezone.utc)
+    component, _, _ = _build_component({"state": "open", "last_changed": now.isoformat()}, now=now)
+    clock = [now]
+    component._now = lambda: clock[0]
+    mechanism = component.safety_mechanisms["SafetyDoorOpenTimeoutGarageGate"]
+    assert component.sm_safety_door_open_timeout(mechanism) is False
+    clock[0] += timedelta(seconds=20)
+    if transition == "disable":
+        component.enable_safety_mechanism(mechanism.name, SMState.DISABLED)
+    elif transition == "child_stop":
+        mechanism.stop()
+    elif transition == "legacy_disable":
+        mechanism.isEnabled = False
+    else:
+        component.stop()
+    clock[0] += timedelta(seconds=100)
+    component.enable_safety_mechanism(mechanism.name, SMState.ENABLED)
+    assert component.sm_safety_door_open_timeout(mechanism) is False
+    clock[0] += timedelta(seconds=59)
+    assert component.sm_safety_door_open_timeout(mechanism) is False
+    clock[0] += timedelta(seconds=1)
+    assert component.sm_safety_door_open_timeout(mechanism) is True
+
+
+def test_restart_of_still_open_active_door_does_not_clear_retained_assertion():
+    now = datetime(2026, 7, 29, 12, 0, tzinfo=timezone.utc)
+    component, _, _ = _build_component(
+        {"state": "open", "last_changed": (now - timedelta(seconds=61)).isoformat()}, now=now,
+    )
+    mechanism = component.safety_mechanisms["SafetyDoorOpenTimeoutGarageGate"]
+    assert component.sm_safety_door_open_timeout(mechanism) is True
+    component.stop()
+    component.enable_safety_mechanism(mechanism.name, SMState.ENABLED)
+    assert component.sm_safety_door_open_timeout(mechanism) is True
+    assert component.symptom_states[mechanism.name] == FaultState.SET
 
 
 def test_timeout_callback_ignores_removed_mechanism_and_rechecks_known_one() -> None:
@@ -438,16 +482,15 @@ def test_timer_cancellation_failure_is_logged_and_runtime_is_cleared() -> None:
         now=now,
     )
     name = "SafetyDoorOpenTimeoutGarageGate"
-    component._door_runtime[name].timer_handle = "bad-timer"
+    component._schedule_timeout(component.safety_mechanisms[name], 30)
     hass_app.cancel_timer.side_effect = RuntimeError("scheduler unavailable")
 
     component._cancel_timer(name)
 
     assert component._door_runtime[name].timer_handle is None
-    hass_app.log.assert_called_with(
-        f"Unable to cancel Safety Doors timer {name}: scheduler unavailable",
-        level="WARNING",
-    )
+    scope = component.safety_mechanisms[name].scope
+    assert scope.cancellation_failures == 1
+    assert "scheduler unavailable" in scope.last_cancellation_error
 
 
 def test_duplicate_symptom_state_is_not_published_twice() -> None:

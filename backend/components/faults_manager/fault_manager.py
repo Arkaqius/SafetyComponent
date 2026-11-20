@@ -24,13 +24,16 @@ Note: This module is designed for internal use within the Home Assistant safety 
 """
 
 import hashlib
+import json
 from datetime import datetime, timezone
+from uuid import uuid4
 from typing import TYPE_CHECKING, Any, Callable, Mapping, Optional
 
 import appdaemon.plugins.hass.hassapi as hass
 
 from components.core.types_common import FaultState, SMState, Symptom, Fault
 from components.core.event_bus import EventBus
+from components.core.response_events import FaultResponseEvent
 from components.core.mqtt_entity_manager import MqttEntityManager
 from components.core.fault_state_policy import FaultEvaluation, FaultEvaluationStatus
 from components.faults_manager.evidence import FaultEvidenceJournal
@@ -93,8 +96,16 @@ class FaultManager:
         self.mqtt_entities = mqtt_entities
         self.evidence_journal = evidence_journal
         self.restriction_provider = restriction_provider
+        self.evaluation_reporting_deferred: Callable[[str], bool] | None = None
         self._symptom_contexts: dict[str, dict[str, str]] = {}
         self._retained_external_records: dict[str, "AssertionRecord"] = {}
+        self._retained_indoor_records: dict[str, Any] = {}
+        runtime = getattr(hass, "runtime_id", None)
+        self.runtime_id = runtime if isinstance(runtime, str) and runtime else uuid4().hex
+        self.projection_failures = 0
+        self.last_projection_error: str | None = None
+        self._response_state: dict[str, tuple[str, int, FaultState]] = {}
+        self.event_bus.configure_response_catalog(frozenset(self.faults), runtime_id=self.runtime_id)
 
     def restore_external_assertions(
         self,
@@ -103,7 +114,7 @@ class FaultManager:
         uncertain_faults: set[str] | None = None,
     ) -> None:
         """Restore retained danger before publication without replaying responses."""
-        self._retained_external_records = dict(records)
+        self._retained_external_records.update(records)
         for symptom_id, record in records.items():
             fault = self.faults.get(record.fault_id)
             if fault is None:
@@ -130,19 +141,95 @@ class FaultManager:
 
     def retained_assertions(self, fault_id: str) -> list[dict[str, Any]]:
         """Expose only unresolved assertions restored from an earlier runtime."""
-        return [record.model_dump(mode="json") for record in self._retained_external_records.values()
-                if record.fault_id == fault_id]
+        details = []
+        for record in (*self._retained_external_records.values(), *self._retained_indoor_records.values()):
+            if record.fault_id != fault_id:
+                continue
+            item = record.model_dump(mode="json")
+            if len(details) >= 64 or len(json.dumps(details + [item], ensure_ascii=False).encode("utf-8")) > 24_000:
+                break
+            details.append(item)
+        return details
+
+    def retained_assertion_counts(self, fault_id: str) -> dict[str, int]:
+        """Count every active contribution independently of bounded presentation."""
+        total = sum(record.fault_id == fault_id for record in (*self._retained_external_records.values(), *self._retained_indoor_records.values()))
+        return {"retained_assertions_total": total, "retained_assertions_omitted": total - len(self.retained_assertions(fault_id))}
+
+    def restore_indoor_assertions(self, records: Mapping[str, Any], *, uncertain_faults: set[str]) -> None:
+        """Restore exact original indoor contributions without replaying responses."""
+        for record in records.values():
+            if record.kind != "known" or not record.alarm_active:
+                continue
+            fault = self.faults.get(record.fault_id)
+            if fault is None:
+                continue
+            symptom_id = record.symptom_id
+            current = self.symptoms.get(symptom_id)
+            # A changed binding can reuse a stable symptom key. Its replacement
+            # cannot clear the old equipment's retained contribution.
+            monitor = getattr(current, "module", None)
+            owner = getattr(monitor, "_owner", None)
+            runtime = getattr(monitor, "_detectors", {}).get(record.detector_key)
+            exact = runtime is not None and runtime.record_id == record.record_id and owner is not None
+            contributor = symptom_id if exact else "RetainedIndoor" + hashlib.sha256(record.record_id.encode("utf-8")).hexdigest()
+            self._retained_indoor_records[contributor] = record
+            fault.evaluation.bind(contributor)
+            fault.evaluation.active = True
+            fault.evaluation.active_contributors.add(contributor)
+            fault.evaluation.status = FaultEvaluationStatus.UNEVALUABLE
+            self._symptom_contexts[contributor] = {str(key): str(value) for key, value in record.context.items()}
+            if exact:
+                current.state = FaultState.SET
+        self.restore_external_assertions({}, uncertain_faults=uncertain_faults)
 
     def acknowledge_external_evidence(self, symptom_id: str) -> None:
         """Replace historical presentation after a newly qualified real decision."""
         self._retained_external_records.pop(symptom_id, None)
+        self._retained_indoor_records.pop(symptom_id, None)
 
     def get_fault_evaluation(self, fault_id: str) -> FaultEvaluation:
         """Return the authoritative fault-owned evaluation."""
 
         return self.faults[fault_id].evaluation
 
+    def response_identity(self, fault_id: str) -> tuple[str, str, int] | None:
+        """Return the authoritative runtime, incident and latest admitted revision."""
+        state = self._response_state.get(fault_id)
+        return (self.runtime_id, state[0], state[1]) if state is not None else None
+
+    def _projection_failed(self, operation: str, exc: Exception) -> None:
+        """Retain bounded local failure evidence without recursive publication."""
+        self.projection_failures += 1
+        self.last_projection_error = f"{operation}:{type(exc).__name__}"[:512]
+
+    def _emit_response(self, **payload: Any) -> None:
+        """Commit one immutable identity before admitting independent consumers."""
+        fault_id = str(payload["fault_name"])
+        state = payload["fault_state"]
+        previous = self._response_state.get(fault_id)
+        incident = previous[0] if previous else uuid4().hex
+        if previous and previous[2] == FaultState.CLEARED and state == FaultState.SET:
+            incident = uuid4().hex
+        revision = previous[1] + 1 if previous else 1
+        self._response_state = {key: value for key, value in self._response_state.items() if key in self.faults}
+        self._response_state[fault_id] = (incident, revision, state)
+        event = FaultResponseEvent.create(
+            runtime_id=self.runtime_id, incident_id=incident, revision=revision,
+            fault_id=fault_id, symptom_id=payload["symptom"].name,
+            state=state, level=payload["level"], context=payload.get("additional_info"),
+        )
+        self.event_bus.configure_response_catalog(frozenset(self.faults), runtime_id=self.runtime_id)
+        self.event_bus.publish_response(event, **payload)
+
     def _publish_fault(self, fault: Fault, attributes: dict | None = None) -> None:
+        """Project fault diagnostics independently of authoritative response admission."""
+        try:
+            self._project_fault(fault, attributes)
+        except Exception as exc:
+            self._projection_failed("fault_projection", exc)
+
+    def _project_fault(self, fault: Fault, attributes: dict | None = None) -> None:
         """Publish evaluation status and independent activation/shadow axes."""
 
         entity_id = "sensor.fault_" + fault.name
@@ -158,11 +245,14 @@ class FaultManager:
             latched=fault.evaluation.latched,
             level=f"level_{fault.level}",
             category=fault.category.value,
-            contributors=self._configured_contributors(fault),
-            active_contributors=sorted(fault.evaluation.active_contributors),
+            contributors=self._configured_contributors(fault)[:64],
+            contributors_total=len(self._configured_contributors(fault)),
+            active_contributors=sorted(fault.evaluation.active_contributors)[:64],
+            active_contributors_total=len(fault.evaluation.active_contributors),
         )
-        if fault.name in {"ExternalWeatherExposure", "OutdoorAirQualityExposure"}:
+        if fault.name in {"ExternalWeatherExposure", "OutdoorAirQualityExposure", "InternalSmokeDetected", "InternalFlammableGasDetected", "InternalCarbonMonoxideDetected", "WaterLeakDetected"}:
             payload["retained_assertions"] = self.retained_assertions(fault.name)
+            payload.update(self.retained_assertion_counts(fault.name))
             payload["retained_hazard_unknown"] = any(
                 key.startswith("RetainedUnknown") for key in fault.evaluation.active_contributors
             )
@@ -255,6 +345,8 @@ class FaultManager:
 
     def mark_evaluation_unavailable(self, symptom_id: str) -> None:
         """Record a failed or invalid evaluation without treating it as clear."""
+        if self.evaluation_reporting_deferred is not None and self.evaluation_reporting_deferred(symptom_id):
+            return
 
         symptom = self.symptoms[symptom_id]
         fault = self.found_mapped_fault(symptom_id, symptom.sm_name)
@@ -343,6 +435,7 @@ class FaultManager:
         """
         # Update symptom registry
         self.symptoms[symptom_id].state = FaultState.SET
+        self._retained_indoor_records.pop(symptom_id, None)
         if additional_info:
             self._symptom_contexts[symptom_id] = {
                 str(key): str(value) for key, value in additional_info.items()
@@ -372,6 +465,7 @@ class FaultManager:
         """
         # Update symptom registry
         self.symptoms[symptom_id].state = FaultState.CLEARED
+        self._retained_indoor_records.pop(symptom_id, None)
         self._symptom_contexts.pop(symptom_id, None)
 
         # Call Related Fault
@@ -444,9 +538,10 @@ class FaultManager:
             was_active = fault.evaluation.active
             fault.evaluation.observe(symptom_id, True)
             if fault.evaluation.active and not was_active:
-                self._capture_activation(
-                    fault, symptom_id, additional_info, diagnostic_evidence
-                )
+                try:
+                    self._capture_activation(fault, symptom_id, additional_info, diagnostic_evidence)
+                except Exception as exc:
+                    self._projection_failed("activation_evidence", exc)
             if not fault.evaluation.active:
                 self._publish_fault(fault)
                 return
@@ -463,7 +558,6 @@ class FaultManager:
 
             # Generate a stable fault tag using the hash method
             fault_tag: str = self._generate_fault_tag(fault.name, additional_info)
-            self.update_system_state_entity()  # Update the system state entity
             self.hass.log(f"Fault {fault.name} was set", level="DEBUG")
 
             # Determinate additional info
@@ -481,11 +575,7 @@ class FaultManager:
             attributes: dict = info_to_send if info_to_send else {}
             attributes["notification_tag"] = fault_tag
 
-            # Set HA entity
-            self._publish_fault(fault, attributes)
-
-            self.event_bus.publish(
-                "fault",
+            self._emit_response(
                 fault_name=fault.name,
                 fault_friendly_name=fault.friendly_name,
                 level=fault.level,
@@ -497,6 +587,8 @@ class FaultManager:
                 symptom=self.symptoms[symptom_id],
                 should_notify=True,
             )
+            self.update_system_state_entity()
+            self._publish_fault(fault, attributes)
 
             self._apply_shadowing(fault, self.symptoms[symptom_id], additional_info)
 
@@ -531,7 +623,7 @@ class FaultManager:
                 Optional[dict]: The updated information as a dictionary, or None if there is no additional info.
             """
             # If no additional info is provided, return None
-            if not additional_info:
+            if not additional_info or fault_state not in {FaultState.SET, FaultState.CLEARED}:
                 return None
 
             # Retrieve the current state object for the entity
@@ -658,7 +750,6 @@ class FaultManager:
             additional_info (dict | None): Additional info to use for clearing notifications.
         """
         fault_tag: str = self._generate_fault_tag(fault.name, additional_info)
-        self.update_system_state_entity()
         self.hass.log(f"Fault {fault.name} was shadowed", level="DEBUG")
 
         entity_id = "sensor.fault_" + fault.name
@@ -672,10 +763,7 @@ class FaultManager:
         else:
             attributes = info_to_send
 
-        self._publish_fault(fault, attributes)
-
-        self.event_bus.publish(
-            "fault",
+        self._emit_response(
             fault_name=fault.name,
             fault_friendly_name=fault.friendly_name,
             level=fault.level,
@@ -685,6 +773,8 @@ class FaultManager:
             symptom=symptom,
             should_notify=True,
         )
+        self._publish_fault(fault, attributes)
+        self.update_system_state_entity()
 
     def _clear_fault(self, symptom_id: str, additional_info: dict) -> None:
         """
@@ -748,10 +838,7 @@ class FaultManager:
             attributes = info_to_send if info_to_send else {}
             attributes["notification_tag"] = fault_tag
 
-            self._publish_fault(fault, attributes)
-
-            self.event_bus.publish(
-                "fault",
+            self._emit_response(
                 fault_name=fault.name,
                 fault_friendly_name=fault.friendly_name,
                 level=fault.level,
@@ -763,6 +850,7 @@ class FaultManager:
                 symptom=self.symptoms[symptom_id],
                 should_notify=not evaluation.shadowed_by,
             )
+            self._publish_fault(fault, attributes)
             return
 
         if not has_active_related_symptoms and evaluation.active:
@@ -783,12 +871,9 @@ class FaultManager:
 
             # Clear HA entity
             evaluation.shadowed_by.clear()
-            self._publish_fault(fault, attributes)
-            self.update_system_state_entity()  # Update the system state entity
 
             should_notify = was_active and not was_shadowed
-            self.event_bus.publish(
-                "fault",
+            self._emit_response(
                 fault_name=fault.name,
                 fault_friendly_name=fault.friendly_name,
                 level=fault.level,
@@ -798,6 +883,8 @@ class FaultManager:
                 symptom=self.symptoms[symptom_id],
                 should_notify=should_notify,
             )
+            self._publish_fault(fault, attributes)
+            self.update_system_state_entity()
             self._restore_unshadowed_faults(fault.name)
 
     def _restore_unshadowed_faults(self, cleared_fault_name: str) -> None:
@@ -937,6 +1024,7 @@ class FaultManager:
 
                 # Fetch and update the state of the safety mechanism directly
                 sm_fcn = getattr(symptom_data.module, symptom_data.sm_name)
+                evaluation_serial = getattr(symptom_data.module, "_evaluation_serial", 0)
                 try:
                     sm_fcn(symptom_data.module.safety_mechanisms[symptom_data.name])
                 except Exception:
@@ -944,13 +1032,13 @@ class FaultManager:
                     self.event_bus.publish("evaluation_unavailable", symptom_id=sm_name)
                     self.mark_evaluation_unavailable(sm_name)
                     recorder = getattr(symptom_data.module, "record_evaluation", None)
-                    if callable(recorder):
+                    if callable(recorder) and getattr(symptom_data.module, "_evaluation_serial", 0) == evaluation_serial:
                         recorder(success=False)
                     raise
                 else:
                     self.event_bus.publish("evaluation_succeeded", symptom_id=sm_name)
                     recorder = getattr(symptom_data.module, "record_evaluation", None)
-                    if callable(recorder):
+                    if callable(recorder) and getattr(symptom_data.module, "_evaluation_serial", 0) == evaluation_serial:
                         recorder()
             else:
                 symptom_data.sm_state = SMState.ERROR
@@ -1002,7 +1090,7 @@ class FaultManager:
         if not merged_info:
             return additional_info
         return {
-            key: merged_info.get(key, value)
+            key: value if key.startswith("response_") else merged_info.get(key, value)
             for key, value in additional_info.items()
         }
     
@@ -1051,12 +1139,18 @@ class FaultManager:
 
     def _get_entity_attributes(self, entity_id: str) -> dict:
         """Return attributes cached for an internal MQTT entity."""
-        return self.mqtt_entities.get_attributes(entity_id)
+        try:
+            attributes = self.mqtt_entities.get_attributes(entity_id)
+            return attributes if isinstance(attributes, dict) else {}
+        except Exception as exc:
+            self._projection_failed("attribute_read", exc)
+            return {}
 
     def _set_internal_entity(
         self, entity_id: str, state: str, attributes: Optional[dict] = None
     ) -> None:
         """Publish an internal entity through MQTT."""
-        self.mqtt_entities.publish_sensor_state(
-            entity_id, state, attributes=attributes
-        )
+        try:
+            self.mqtt_entities.publish_sensor_state(entity_id, state, attributes=attributes)
+        except Exception as exc:
+            self._projection_failed("mqtt_publication", exc)

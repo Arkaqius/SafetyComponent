@@ -12,6 +12,7 @@ import yaml
 from build_app_config import compile_config
 from SafetyFunctions import SafetyFunctions
 from components.core.functional_safety_diagnostics import JsonFunctionalSafetyDiagnosticsStore
+from .fixtures.hass_fixture import drain_responses, install_response_fakes
 
 
 class StubExternalRuntime:
@@ -85,8 +86,10 @@ def test_example_external_hazard_startup_is_wired_before_polling(tmp_path, monke
 
     app.call_service = capture_service
     app._external_api_runtime_cls = StubExternalRuntime
+    install_response_fakes(app, app, capture_only=True)
 
     app.initialize()
+    drain_responses(app)
 
     assert app.degradation.binding_errors == {}
 
@@ -116,6 +119,7 @@ def test_example_external_hazard_startup_is_wired_before_polling(tmp_path, monke
     assert not any(service != "mqtt/publish" for service in service_calls)
 
     app.terminate()
+    drain_responses(app)
     assert app.external_api_runtime.started is False
     assert not state_file.exists()
     assert app.state_database.path == tmp_path / "safety_state.sqlite3"
@@ -165,9 +169,14 @@ def _start_target(raw, tmp_path, monkeypatch):
     app.get_state = lambda entity_id, **_: "22" if entity_id.startswith("sensor.") else "on"
     app.render_template = lambda *_args, **_kwargs: "Controlled area"
     calls = []
-    app.call_service = lambda service, **kwargs: calls.append((service, kwargs))
+    def accepted_service(service, **kwargs):
+        calls.append((service, kwargs))
+        return {"success": True}
+    app.call_service = accepted_service
     app._external_api_runtime_cls = StubExternalRuntime
+    install_response_fakes(app, app, capture_only=True)
     app.initialize()
+    drain_responses(app)
     return app, calls
 
 
@@ -227,9 +236,10 @@ def test_real_assertion_survives_source_disable_restart_without_false_clear(tmp_
     app.event_bus.publish("external_api_result", result=ApiResult(provider, (observation,), health))
     component = app.sm_modules["ExternalHazardComponent"]
     symptom_id = "ExternalWeatherExposureWindLivingRoomWindow"
-    assert component.policy["weather"]["persistence_seconds"] == 300
+    assert component.policy["weather"]["persistence_seconds"] == 75
+    assert component.policy["outdoor_air_quality"]["persistence_seconds"] == 300
     assert component.symptom_states[symptom_id] != FaultState.SET
-    elapsed[0] = 300.0
+    elapsed[0] = 75.0
     component._evaluate_all()
     assert component.symptom_states[symptom_id] == FaultState.SET
     assert symptom_id in app.real_assertion_store.records

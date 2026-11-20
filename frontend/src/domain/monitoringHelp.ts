@@ -14,8 +14,8 @@ export const monitoringHelp = [
         text: 'Widok podstawowy pokazuje skrót oceny, najpilniejsze zdarzenie, pokrycie i zalecenie. „Szczegóły i monitoring” lub „Wszystkie zdarzenia” otwierają widok rozszerzony. Wybór zapisuje się w tej przeglądarce.',
       },
       {
-        title: 'Połączenie, rozruch i próbki',
-        text: 'Przy braku połączenia czytaj widoczne wartości jako ostatnie znane dane. W rozruchu nowe usterki diagnostyczne czekają na stabilizację źródeł, a zagrożenia są oceniane od razu. Prognoza temperatury czeka osobno na próbki.',
+        title: 'Połączenie i rozruch',
+        text: 'Przy braku połączenia czytaj widoczne wartości jako ostatnie znane dane. W rozruchu nowe usterki diagnostyczne czekają na stabilizację źródeł, a zagrożenia są oceniane od razu.',
       },
       {
         title: 'Skrót monitoringu i źródła danych',

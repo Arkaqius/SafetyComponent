@@ -1,4 +1,5 @@
 import { MOCK_MODE } from './config';
+import { validateExternalTimingDraft } from './components/configurationFieldSchemas';
 import {
   decodeProviderCatalogue,
   decodeProviderFieldErrors,
@@ -199,9 +200,9 @@ let mockDocument: UserConfigurationDocument = {
         default_gust_watch_m_s: 15,
         default_gust_warning_m_s: 20,
         default_precipitation_warning_mm_h: 2.5,
-        default_persistence_seconds: 120,
+        default_persistence_seconds: 75,
       },
-      outdoor_air_quality: { default_warning_at: 60 },
+      outdoor_air_quality: { default_warning_at: 60, default_persistence_seconds: 300 },
     },
   },
 };
@@ -246,7 +247,10 @@ export async function saveUserConfiguration(userConfig: ConfigurationMap, revisi
     const catalogue = decodeProviderCatalogue(mockDocument.system_defaults?.external_hazard ?? {});
     const installation = userConfig.installation as ConfigurationMap | undefined;
     const site = installation?.site as ConfigurationMap | undefined;
-    const fieldErrors = validateProviderDraft(catalogue, userConfig, typeof site?.country_code === 'string' ? site.country_code : '');
+    const fieldErrors = [
+      ...validateProviderDraft(catalogue, userConfig, typeof site?.country_code === 'string' ? site.country_code : ''),
+      ...validateExternalTimingDraft(userConfig),
+    ];
     if (fieldErrors.length) throw new ConfigurationApiError('Sprawdź parametry źródeł danych.', 'invalid_configuration', 422, fieldErrors);
     mockDocument = {
       user_config: structuredClone(userConfig),

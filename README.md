@@ -46,7 +46,8 @@ it does not display the complete Home Assistant entity/device inventory.
 - `backend/components/core` — EventBus, MQTT entities, localization, common
   types, and `DerivativeMonitor`.
 - `backend/components/safetycomponents` — base safety framework plus
-  Temperature, Safety Doors, External Hazard, and Entity Monitor components.
+  Temperature, Safety Doors, External Hazard, Entity Monitor, Heating and
+  Internal Environmental Hazard components.
 - `backend/components/faults_manager` — fault catalog and symptom aggregation.
 - `backend/components/notification_manager` — user notification lifecycle.
 - `backend/components/recovery_manager` — supported recovery execution and
@@ -72,6 +73,13 @@ Feature architecture documents include
 [`Entity Health Monitoring`](docs/features/Entity%20Health%20Monitoring%20-%20Architecture.md),
 [`Heating System Monitoring`](docs/features/Heating%20System%20Monitoring%20-%20Architecture.md),
 and [`Internal Environmental Hazard Monitoring`](docs/features/Internal%20Environmental%20Hazard%20Monitoring%20-%20Architecture.md).
+
+The [timing and alarm-retention validation guide](docs/features/004-safety-timing-alarm-retention/quickstart.md)
+describes weather timing, reviewed indoor clear evidence, durable retained danger
+and the conservative restart/commissioning boundary. A full process restart
+without independent launch-continuity evidence retains unverified history and
+gas-related output restrictions; an old clean checkpoint alone cannot prove
+that no later alarm was lost.
 
 The [recovery action contract](<docs/features/Recommended Actions and Recovery - Architecture.md>)
 defines manual work, command consent, observed or operator-reported task

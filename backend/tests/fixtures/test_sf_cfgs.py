@@ -69,6 +69,9 @@ def _app_config_base():
         "class": "SafetyFunctions",
         "log_level": "DEBUG",
         "app_config": {
+            # Ordinary integration fixtures exercise the running phase.
+            # Startup-specific tests explicitly select their own grace interval.
+            "calibration": {"entity_monitor": {"startup_grace_seconds": 0}},
             "validation": {
                 "strict_validation": True,
                 "validate_entity_id_syntax": True,

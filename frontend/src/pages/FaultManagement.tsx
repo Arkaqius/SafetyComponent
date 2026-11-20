@@ -21,7 +21,7 @@ import { useSafetyEntities } from '../hooks/useSafetyEntities';
 export default function FaultManagement() {
   const [selectedEntityId, setSelectedEntityId] = useState<string | null>(null);
   const closeEntityDetails = useCallback(() => setSelectedEntityId(null), []);
-  const { connection, entities, faults, recoveries } = useSafetyEntities();
+  const { connection, entities, faults, recoveries, starting, startup } = useSafetyEntities();
   const coverage = getCoverageView(connection.cannotConnect || !connection.ready ? {} : entities);
   const hazardFaults = faults.filter(fault => fault.category === 'H');
   const diagnosticFaults = faults.filter(fault => fault.category === 'D');
@@ -41,7 +41,7 @@ export default function FaultManagement() {
             powiadomień. Pokrycie pokazuje, które funkcje system nadal może ocenić.
           </p>
         </div>
-        <StatusBadge tone={coverage.tone}>{coverage.label}</StatusBadge>
+        <StatusBadge tone={starting ? 'info' : coverage.tone}>{starting ? 'Rozruch monitoringu' : coverage.label}</StatusBadge>
       </section>
 
       <section aria-label='Podsumowanie usterek i diagnostyki' className='summary-grid'>
@@ -49,23 +49,27 @@ export default function FaultManagement() {
           detail={`${hazardFaults.length} zdefiniowanych warunków H`}
           icon='alert'
           label='Aktywne zagrożenia'
-          tone={activeHazards.length > 0 ? 'danger' : 'safe'}
-          value={activeHazards.length}
+          tone={activeHazards.length > 0 ? 'danger' : starting ? 'info' : 'safe'}
+          value={starting && activeHazards.length === 0 ? '—' : activeHazards.length}
         />
         <SummaryCard
-          detail={`${diagnosticFaults.length} zdefiniowanych warunków D · ${informationCount} informacji L4`}
+          detail={
+            starting
+              ? 'Oczekiwanie na zakończenie rozruchu'
+              : `${diagnosticFaults.length} zdefiniowanych warunków D · ${informationCount} informacji L4`
+          }
           icon='activity'
           label='Aktywne diagnostyki'
           tone={activeDiagnostics.length > 0 ? 'warning' : diagnosticFaults.length > 0 ? 'safe' : 'muted'}
-          value={activeDiagnostics.length}
+          value={starting ? '—' : activeDiagnostics.length}
         />
         <SummaryCard
-          detail={coverage.detail}
+          detail={starting ? (startup?.detail ?? 'Trwa rozruch monitoringu.') : coverage.detail}
           icon='shield'
           label='Pokrycie bezpieczeństwa'
           onClick={() => setSelectedEntityId(COVERAGE_ENTITY_ID)}
-          tone={coverage.tone}
-          value={coverage.label}
+          tone={starting ? 'info' : coverage.tone}
+          value={starting ? 'Rozruch' : coverage.label}
         />
         <SummaryCard
           detail='Podtrzymanie alarmu pozostaje widoczne także po ustąpieniu warunku'
@@ -76,7 +80,7 @@ export default function FaultManagement() {
         />
       </section>
 
-      {coverage.state === 'FULL' && activeHazards.length > 0 && (
+      {!starting && coverage.state === 'FULL' && activeHazards.length > 0 && (
         <section className='panel fault-contract-note fault-contract-note-warning'>
           <Icon name='alert' size={22} />
           <div>
@@ -86,9 +90,15 @@ export default function FaultManagement() {
         </section>
       )}
 
-      <CoverageDetails coverage={coverage} faults={faults} entities={entities} onSelectEntity={setSelectedEntityId} />
+      {!starting && <CoverageDetails coverage={coverage} faults={faults} entities={entities} onSelectEntity={setSelectedEntityId} />}
 
-      <FaultSection acknowledgedTags={acknowledgedTags} faults={faults} recoveries={recoveries} onSelectEntity={setSelectedEntityId} />
+      <FaultSection
+        starting={starting}
+        acknowledgedTags={acknowledgedTags}
+        faults={faults}
+        recoveries={recoveries}
+        onSelectEntity={setSelectedEntityId}
+      />
 
       <EntityDetailsDialog entities={entities} entityId={selectedEntityId} onClose={closeEntityDetails} />
     </div>

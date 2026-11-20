@@ -74,7 +74,7 @@ function countAttribute(attributes: Record<string, unknown>, key: string): numbe
 }
 
 export default function FunctionalSafety() {
-  const { entities, monitoredEntities, entityMonitorSummary, connection: safetyConnection } = useSafetyEntities();
+  const { entities, monitoredEntities, entityMonitorSummary, connection: safetyConnection, starting } = useSafetyEntities();
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = healthTabs.find(([key]) => key === searchParams.get('tab'))?.[0] ?? 'entities';
   const tabIntro = getHelpTopic(`health-${activeTab}`)?.intro;
@@ -208,6 +208,15 @@ export default function FunctionalSafety() {
       ) : null}
     </div>
   );
+
+  if (starting && activeTab !== 'faults') {
+    return (
+      <section className='panel' role='status'>
+        <h2>Rozruch monitoringu</h2>
+        <p>Wyniki diagnostyki źródeł i platformy pojawią się po zakończeniu zbierania danych.</p>
+      </section>
+    );
+  }
 
   return (
     <div className='page-stack functional-safety-page'>

@@ -3,31 +3,38 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 import re
+import time
 from typing import Any, Callable
+from uuid import uuid4
 
-import appdaemon.plugins.hass.hassapi as hass  # type: ignore
+import appdaemon.plugins.hass.hassapi as hass
 
 from components.core.common_entities import CommonEntities
 from components.core.event_bus import EventBus
 from components.core.mqtt_entity_manager import MqttEntityManager
 from components.core.sqlite_state_store import SqliteStateDatabase, state_database_path
-from components.core.types_common import FaultState, RecoveryAction, SMState, Symptom
+from components.core.types_common import FaultState, OutcomeKind, RecoveryAction, SMState, Symptom
 from components.recovery_manager.manual_actions import manual_action
 from components.safetycomponents.core.safety_component import (
     SafetyComponent,
+    SafetyMechanismResult,
+    evaluation_entry,
+    qualified_safety_mechanism_decorator,
     register_safety_component,
 )
 from components.safetycomponents.core.safety_mechanism import SafetyMechanism
 
 from .schema import COMPONENT_NAME
+from .observation import ClearAuthority, ClearCandidate, DetectorBinding, IndoorObservation, Provenance
 from .state_store import (
     InMemoryInternalEnvironmentStateStore,
     InternalEnvironmentStateStore,
+    IndoorStateOwner,
+    MAX_BYTES,
 )
 
-_STATE_VERSION = 1
 _HAZARD_MECHANISMS = {
     "smoke": "sm_iehm_smoke",
     "flammable_gas": "sm_iehm_flammable_gas",
@@ -69,6 +76,11 @@ class DetectorRuntime:
     last_observed_at: datetime | None = None
     last_authoritative_clear_at: datetime | None = None
     gas_switching_inhibited: bool = False
+    authority: ClearAuthority | None = None
+    incident_id: str | None = None
+    authority_scope_identity: tuple[Any, ...] | None = None
+    record_id: str | None = None
+    clear_pending: bool = False
 
 
 @register_safety_component
@@ -121,6 +133,16 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
         self._persistence_error: str | None = None
         self._health_failure_seconds = 5
         self._health_recovery_seconds = 60
+        self._receiver_session = uuid4().hex
+        self._monotonic: Callable[[], float] = time.monotonic
+        # Filter in AppDaemon before dispatch: observing our own MQTT sensors
+        # would report another evaluation and publish progress recursively.
+        self.own_event_listener(
+            "indoor:state_changed", self._source_event, "state_changed",
+            entity_id=lambda value: isinstance(value, str) and value in self._entity_to_detectors,
+        )
+        self.own_event_listener("indoor:connected", self._source_session_changed, "plugin_started")
+        self.own_event_listener("indoor:disconnected", self._source_session_changed, "plugin_stopped")
 
     def get_symptoms_data(
         self,
@@ -139,11 +161,16 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
         database = getattr(self.hass_app, "state_database", None)
         if not isinstance(database, SqliteStateDatabase):
             database = SqliteStateDatabase(state_database_path(persistence["state_file"]))
-        self._state_store = (
-            database.store("internal_environment_state", persistence["state_file"])
-            if persistence["enabled"]
-            else InMemoryInternalEnvironmentStateStore()
-        )
+        if persistence["enabled"]:
+            self._state_store = database.store("internal_environment_state", persistence["state_file"], max_bytes=MAX_BYTES)
+        else:
+            self._state_store = InMemoryInternalEnvironmentStateStore()
+        injected_owner = self.hass_app.__dict__.get("indoor_state_owner")
+        self._owner = injected_owner if isinstance(injected_owner, IndoorStateOwner) else IndoorStateOwner(self._state_store)
+        self._state_store = self._owner.store
+        self._owner.begin()
+        if injected_owner is None:
+            self.own_interval("indoor:durability", self._drain_state, "now", 1)
 
         profiles = component_cfg["profiles"]
         symptoms: dict[str, Symptom] = {}
@@ -154,6 +181,7 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
                 key=detector_key,
                 config=dict(detector),
                 profile=profile,
+                authority=ClearAuthority(DetectorBinding.from_config(detector_key, detector, profile), self._receiver_session),
             )
             self._detectors[detector_key] = runtime
             self._entity_to_detectors.setdefault(
@@ -209,7 +237,7 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
     def get_output_inhibitions(self) -> tuple[str, ...]:
         """Return persisted restrictions that must precede local output use."""
 
-        if any(
+        if self._owner.gas_inhibited or any(
             runtime.gas_switching_inhibited
             for runtime in self._detectors.values()
         ):
@@ -222,6 +250,9 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
         configured_hazards = {
             str(runtime.config["hazard"]) for runtime in self._detectors.values()
         }
+        configured_hazards.update(item.hazard for item in self._owner.records.values() if item.alarm_active and item.hazard is not None)
+        if any(item.alarm_active and item.hazard is None for item in self._owner.records.values()):
+            return set()
         return {
             fault_name
             for hazard, fault_name in _HAZARD_FAULTS.items()
@@ -257,14 +288,18 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
             callback=callback,
             name=name,
             isEnabled=False,
+            scope=self.scope.child(name),
             monitored_entities=[],
         )
         mechanism.sm_args.update(parameters)
         self.safety_mechanisms[name] = mechanism
+        mechanism.on_invalidate = lambda: self._interrupt_channel(runtime, kind)
+        mechanism.start()
         self.symptom_states[name] = FaultState.NOT_TESTED
 
         if runtime.listener_handle is None:
-            runtime.listener_handle = self.hass_app.listen_state(
+            runtime.listener_handle = self.own_state_listener(
+                f"source:{runtime.config['entity_id']}",
                 self._entity_changed,
                 str(runtime.config["entity_id"]),
                 attribute="all",
@@ -289,11 +324,18 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
             return False
         detector_key, kind = binding
         if state == SMState.ENABLED:
+            self.start()
+            mechanism.start()
             mechanism.isEnabled = True
             return True
         if state == SMState.DISABLED:
             mechanism.isEnabled = False
-            self._cancel_timer(self._detectors[detector_key], kind)
+            runtime = self._detectors[detector_key]
+            self._cancel_timer(runtime, kind)
+            if kind == "alarm" and runtime.authority is not None:
+                self._cancel_pending_clear(runtime)
+                runtime.authority.new_session(self._receiver_session)
+                runtime.last_authoritative_clear_at = None
             return True
         return False
 
@@ -342,29 +384,75 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
 
         return self._evaluate_mechanism(mechanism, entities_changes)
 
+    @qualified_safety_mechanism_decorator
     def _evaluate_mechanism(
         self,
         mechanism: SafetyMechanism,
         entities_changes: dict[str, str] | None = None,
-    ) -> bool:
+    ) -> SafetyMechanismResult:
         if not mechanism.isEnabled:
-            return False
+            return SafetyMechanismResult(False, outcome_kind=OutcomeKind.DISABLED)
         detector_key, kind = self._symptom_bindings[mechanism.name]
         runtime = self._detectors[detector_key]
         entity_id = str(runtime.config["entity_id"])
         if entities_changes is not None:
-            raw = entities_changes.get(entity_id, self._read_entity(entity_id))
+            raw = entities_changes[entity_id] if entity_id in entities_changes else self._read_entity(entity_id)
             classification, _, _ = self._classify(runtime, raw)
-            return (
-                classification == "alarm"
-                if kind == "alarm"
-                else classification in {"unavailable", "unevaluable"}
+            value = classification == "alarm" if kind == "alarm" else classification in {"unavailable", "unevaluable"}
+            return SafetyMechanismResult(
+                value, is_evaluable=kind == "health" or classification in {"alarm", "clear"},
+                outcome_kind=OutcomeKind.INHIBITED if kind == "alarm" and classification == "test" else None,
+                reason=classification,
             )
 
         raw = self._read_entity(entity_id)
         self._evaluate_runtime(runtime, raw, kinds={kind})
-        return runtime.alarm_active if kind == "alarm" else runtime.health_active
+        return self._runtime_outcome(runtime, kind)
 
+    def simulate(
+        self, mechanism: SafetyMechanism, changes: dict[str, str], *, evaluator: Any = None,
+    ) -> Any:
+        """Use the typed shared detector kernel for every indoor public callback."""
+        return super().simulate(mechanism, changes, evaluator=self._evaluate_mechanism)
+
+    def _runtime_outcome(self, runtime: DetectorRuntime, kind: str) -> SafetyMechanismResult:
+        """Separate alarm source authority from a valid detector-health failure."""
+        alarm = kind == "alarm"
+        active = runtime.alarm_active if alarm else runtime.health_active
+        pending = runtime.alarm_timer if alarm else runtime.health_timer
+        classification = runtime.last_classification
+        return SafetyMechanismResult(
+            active, is_evaluable=pending is None and (
+                not alarm or classification in {"alarm", "clear"}
+            ) and not (alarm and active and classification == "clear"),
+            outcome_kind=OutcomeKind.INHIBITED if alarm and classification in {"test", "hush"} else None,
+            reason="qualification_pending" if pending is not None else classification,
+        )
+
+    @evaluation_entry
+    def _source_session_changed(self, event_name: str, _data: dict[str, Any], **_kwargs: Any) -> None:
+        """Reconnect/initial sync destroys clear continuity, retaining danger."""
+        self._receiver_session = uuid4().hex
+        for runtime in self._detectors.values():
+            self._cancel_timer(runtime, "alarm")
+            self._cancel_pending_clear(runtime)
+            runtime.last_authoritative_clear_at = None
+            if runtime.authority is not None:
+                runtime.authority.new_session(self._receiver_session, connected=event_name != "plugin_stopped")
+            self._publish_diagnostics(runtime)
+
+    @evaluation_entry
+    def _source_event(self, _event_name: str, data: dict[str, Any], **_kwargs: Any) -> None:
+        """Use the HASS event envelope for recovery; never synthesize source order."""
+        for key in self._entity_to_detectors.get(str(data.get("entity_id")), []):
+            runtime = self._detectors[key]
+            if runtime.authority is None:
+                continue
+            observation = IndoorObservation.event(runtime.authority.binding, data,
+                session=self._receiver_session, received=self._monotonic(), received_at=self._now())
+            self._evaluate_runtime(runtime, data.get("new_state"), kinds={"alarm", "health"}, observation=observation)
+
+    @evaluation_entry
     def _entity_changed(
         self,
         entity: str,
@@ -380,12 +468,14 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
                 self._detectors[detector_key], new, kinds={"alarm", "health"}
             )
 
+    @evaluation_entry
     def _evaluate_runtime(
         self,
         runtime: DetectorRuntime,
         raw: Any,
         *,
         kinds: set[str],
+        observation: IndoorObservation | None = None,
     ) -> None:
         classification, normalized, observed_at = self._classify(runtime, raw)
         runtime.last_classification = classification
@@ -393,9 +483,20 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
         runtime.last_observed_at = observed_at
 
         if "alarm" in kinds and self._kind_enabled(runtime.key, "alarm"):
-            self._evaluate_alarm(runtime, classification, observed_at)
+            if runtime.authority is not None:
+                identity = self._kind_mechanism(runtime, "alarm").scope._identity()
+                if runtime.authority_scope_identity != identity:
+                    self._cancel_timer(runtime, "alarm")
+                    runtime.authority.new_session(self._receiver_session, connected=runtime.authority.connected)
+                    runtime.authority_scope_identity = identity
+                observation = observation or IndoorObservation.snapshot(runtime.authority.binding, raw,
+                    provenance=Provenance.READBACK, session=self._receiver_session, received=self._monotonic(), received_at=self._now())
+            self._evaluate_alarm(runtime, classification, observed_at, observation)
         if "health" in kinds and self._kind_enabled(runtime.key, "health"):
             self._evaluate_health(runtime, classification, observed_at)
+        for kind in kinds:
+            if self._kind_enabled(runtime.key, kind):
+                self.observe_outcome(self._kind_mechanism(runtime, kind), self._runtime_outcome(runtime, kind))
         self._publish_diagnostics(runtime)
         self.record_evaluation()
 
@@ -404,14 +505,33 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
         runtime: DetectorRuntime,
         classification: str,
         observed_at: datetime,
+        observation: IndoorObservation | None,
     ) -> None:
+        if classification == "alarm" and not runtime.alarm_active:
+            runtime.incident_id = uuid4().hex
+        candidate = (runtime.authority.observe(observation, runtime.incident_id or "")
+                     if runtime.authority is not None and observation is not None else None)
+        if candidate is None:
+            self._cancel_timer(runtime, "alarm")
+            self._cancel_pending_clear(runtime)
+            runtime.last_authoritative_clear_at = None
         if classification == "alarm":
             self._cancel_timer(runtime, "alarm")
             runtime.alarm_active = True
             if runtime.config["hazard"] == "flammable_gas":
                 runtime.gas_switching_inhibited = True
+            if runtime.authority is not None:
+                try:
+                    record = self._owner.set_alarm(runtime.authority.binding, {
+                        "detector": str(runtime.config["friendly_name"])[:256],
+                        "source_entity": str(runtime.config["entity_id"])[:255],
+                    }, at=self._now())
+                    runtime.record_id, runtime.incident_id = record.record_id, record.incident_id
+                except (ValueError, TypeError):
+                    self._owner.history_unknown = self._owner.gas_history_unknown = True
+                    self._owner.persistence_error = "positive_identity_invalid"
+                self._persistence_error = self._owner.persistence_error
             self._publish_symptom(runtime, "alarm", FaultState.SET)
-            self._persist_state()
             return
 
         if classification != "clear":
@@ -420,11 +540,14 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
                 self._publish_symptom(runtime, "alarm", FaultState.SET)
             return
 
-        runtime.last_authoritative_clear_at = observed_at
         if runtime.alarm_active:
             # Reassert restored state before beginning recovery qualification.
             self._publish_symptom(runtime, "alarm", FaultState.SET)
-        self._schedule_alarm_clear(runtime, observed_at)
+            if candidate is not None and not runtime.clear_pending:
+                runtime.last_authoritative_clear_at = candidate.ha_clear_changed_at
+                self._schedule_alarm_clear(runtime, candidate)
+        else:
+            self._publish_symptom(runtime, "alarm", FaultState.CLEARED)
 
     def _evaluate_health(
         self,
@@ -455,7 +578,8 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
             return
         self._cancel_timer(runtime, "health")
         runtime.health_timer_target = target
-        runtime.health_timer = self.hass_app.run_in(
+        runtime.health_timer = self._kind_mechanism(runtime, "health").run_in(
+            "qualification",
             self._health_timer_elapsed,
             delay,
             detector_key=runtime.key,
@@ -464,28 +588,39 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
         )
 
     def _schedule_alarm_clear(
-        self, runtime: DetectorRuntime, observed_at: datetime
+        self, runtime: DetectorRuntime, candidate: ClearCandidate
     ) -> None:
         if runtime.alarm_timer is not None:
             return
-        duration = int(runtime.profile["clear_duration_seconds"])
-        elapsed = max(0, int((self._now() - observed_at).total_seconds()))
         runtime.alarm_callback_running = True
         try:
-            runtime.alarm_timer = self.hass_app.run_in(
+            runtime.alarm_timer = self._kind_mechanism(runtime, "alarm").run_in(
+                "qualification",
                 self._alarm_clear_elapsed,
-                max(1, duration - elapsed),
+                max(0.001, candidate.deadline_monotonic - self._monotonic()),
                 detector_key=runtime.key,
+                candidate_token=candidate.token,
             )
         finally:
             runtime.alarm_callback_running = False
 
+    @evaluation_entry
     def _alarm_clear_elapsed(self, **kwargs: Any) -> None:
         runtime = self._detectors.get(str(kwargs["detector_key"]))
         if runtime is None:
             return
+        authority = runtime.authority
+        candidate = authority.candidate if authority is not None else None
+        if authority is None or candidate is None or kwargs.get("candidate_token") != candidate.token:
+            return
+        mechanism = self._kind_mechanism(runtime, "alarm")
+        identity = mechanism.scope._identity()
+        if not mechanism.scope.eligible:
+            return
         runtime.alarm_timer = None
         raw = self._read_entity(str(runtime.config["entity_id"]))
+        if not mechanism.scope.eligible or mechanism.scope._identity() != identity:
+            return
         classification, normalized, observed_at = self._classify(runtime, raw)
         runtime.last_classification = classification
         runtime.last_state = normalized
@@ -493,20 +628,67 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
         if classification != "clear":
             self._evaluate_runtime(runtime, raw, kinds={"alarm", "health"})
             return
-        clear_since = runtime.last_authoritative_clear_at or observed_at
-        duration = int(runtime.profile["clear_duration_seconds"])
-        if self._now() - clear_since < timedelta(seconds=duration):
+        if self._monotonic() < candidate.deadline_monotonic:
             # The lightweight test/runtime fallback may invoke run_in callbacks
             # synchronously. Do not recurse; a real scheduler callback reschedules.
             if runtime.alarm_callback_running:
                 return
-            self._schedule_alarm_clear(runtime, clear_since)
+            self._schedule_alarm_clear(runtime, candidate)
             return
-        runtime.alarm_active = False
-        self._publish_symptom(runtime, "alarm", FaultState.CLEARED)
-        self._persist_state()
+        readback = IndoorObservation.snapshot(authority.binding, raw, provenance=Provenance.READBACK,
+            session=self._receiver_session, received=self._monotonic(), received_at=self._now())
+        if not authority.eligible(candidate, runtime.incident_id or "", self._monotonic(), readback):
+            authority.candidate = None
+            self._publish_diagnostics(runtime)
+            return
+        def eligible() -> bool:
+            if not mechanism.scope.eligible or mechanism.scope._identity() != identity:
+                return False
+            latest = self._read_entity(str(runtime.config["entity_id"]))
+            current = IndoorObservation.snapshot(authority.binding, latest, provenance=Provenance.READBACK,
+                session=self._receiver_session, received=self._monotonic(), received_at=self._now())
+            return bool(mechanism.scope.eligible and mechanism.scope._identity() == identity
+                and authority.eligible(candidate, runtime.incident_id or "", self._monotonic(), current))
+        if runtime.record_id is not None:
+            runtime.clear_pending = self._owner.request_clear(runtime.record_id, candidate.token, eligible, candidate=candidate)
+        self._persistence_error = self._owner.persistence_error
         self._publish_diagnostics(runtime)
 
+    def _cancel_pending_clear(self, runtime: DetectorRuntime) -> None:
+        if runtime.record_id is not None:
+            self._owner.cancel_clear(runtime.record_id)
+        runtime.clear_pending = False
+
+    def _interrupt_channel(self, runtime: DetectorRuntime, kind: str) -> None:
+        """Discard one child's timer and authority without cancelling shared ingress."""
+        self._cancel_timer(runtime, kind)
+        if kind == "alarm":
+            self._cancel_pending_clear(runtime)
+            if runtime.authority is not None:
+                runtime.authority.new_session(self._receiver_session, connected=runtime.authority.connected)
+            runtime.last_authoritative_clear_at = None
+
+    def _drain_state(self, **_kwargs: Any) -> None:
+        """Apply immutable successful write evidence on the evaluation owner only."""
+        self.apply_durable_clears(self._owner.drain())
+
+    @evaluation_entry
+    def apply_durable_clears(self, record_ids: list[str]) -> None:
+        """Emit HEAL only for a currently authorized exact durable CLEAR."""
+        self._persistence_error = self._owner.persistence_error
+        for runtime in self._detectors.values():
+            if runtime.record_id in record_ids and runtime.clear_pending:
+                runtime.alarm_active = False
+                runtime.clear_pending = False
+                if runtime.authority is not None:
+                    runtime.authority.candidate = None
+                self.observe_outcome(self._kind_mechanism(runtime, "alarm"), self._runtime_outcome(runtime, "alarm"))
+                self._publish_symptom(runtime, "alarm", FaultState.CLEARED)
+            self._publish_diagnostics(runtime)
+        self.event_bus.publish("app_health_persistence", store="internal_environment_state",
+            failed=self._persistence_error is not None, operation="save")
+
+    @evaluation_entry
     def _health_timer_elapsed(self, **kwargs: Any) -> None:
         runtime = self._detectors.get(str(kwargs["detector_key"]))
         if runtime is None:
@@ -525,6 +707,7 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
             self._publish_diagnostics(runtime)
             return
         self._apply_health_target(runtime, target)
+        self.observe_outcome(self._kind_mechanism(runtime, "health"), self._runtime_outcome(runtime, "health"))
         self._publish_diagnostics(runtime)
 
     def _apply_health_target(self, runtime: DetectorRuntime, target: str) -> None:
@@ -562,6 +745,8 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
             "assertion_status": (
                 "confirmed" if state == FaultState.SET else "authoritative_clear"
             ),
+            "indoor_owner_generation": self._owner.revision,
+            "indoor_incident_id": runtime.incident_id,
         }
         if hazard == "flammable_gas":
             info["gas_identity"] = str(runtime.config["gas_identity"])
@@ -614,6 +799,7 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
             "alarm_active": runtime.alarm_active,
             "health_fault_active": runtime.health_active,
             "pending_alarm_clear": runtime.alarm_timer is not None,
+            "durable_clear_pending": runtime.clear_pending,
             "pending_health_transition": runtime.health_timer_target,
             "last_observed_at": (
                 runtime.last_observed_at.isoformat()
@@ -626,11 +812,15 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
                 else None
             ),
             "gas_switching_inhibited": runtime.gas_switching_inhibited,
+            "clear_authority": runtime.authority.reason if runtime.authority is not None else "unverified",
+            "receiver_session": self._receiver_session,
         }
 
     def _summary_state(self) -> str:
-        if any(runtime.alarm_active for runtime in self._detectors.values()):
+        if any(runtime.alarm_active for runtime in self._detectors.values()) or any(item.alarm_active for item in self._owner.records.values()):
             return "active_hazard"
+        if self._owner.history_unknown or self._owner.gas_history_unknown:
+            return "degraded"
         if any(runtime.health_active for runtime in self._detectors.values()):
             return "unavailable"
         if any(
@@ -642,7 +832,11 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
 
     def _summary_attributes(self) -> dict[str, Any]:
         hazards = tuple(_HAZARD_MECHANISMS)
+        localizer = getattr(self.hass_app, "localizer", None)
         return {
+            **self._owner.projection({runtime.key: runtime.authority.binding.fingerprint
+                for runtime in self._detectors.values() if runtime.authority is not None}, monitoring_enabled=self.scope.eligible,
+                localize=localizer.text if localizer is not None else None),
             "monitored_detectors": len(self._detectors),
             "monitored_channels": {
                 hazard: sum(
@@ -651,97 +845,45 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
                 )
                 for hazard in hazards
             },
-            "active_hazards": sum(
-                runtime.alarm_active for runtime in self._detectors.values()
-            ),
+            "active_hazards": len({item.record_id for item in self._owner.records.values() if item.alarm_active}
+                | {runtime.record_id or runtime.key for runtime in self._detectors.values() if runtime.alarm_active}),
             "unavailable_detectors": sum(
                 runtime.health_active for runtime in self._detectors.values()
             ),
-            "gas_switching_inhibited": any(
+            "gas_switching_inhibited": self._owner.gas_inhibited or any(
                 runtime.gas_switching_inhibited
                 for runtime in self._detectors.values()
             ),
             "persistence_error": self._persistence_error,
+            "retained_records_total": len(self._owner.records),
+            "history_unknown": self._owner.history_unknown,
+            "gas_inhibition_unknown": self._owner.gas_history_unknown,
         }
 
     def _restore_state(self) -> None:
-        try:
-            snapshot = self._state_store.load()
-            if not snapshot:
-                self.event_bus.publish(
-                    "app_health_persistence", store="internal_environment_state",
-                    failed=False, operation="load",
-                )
-                return
-            if int(snapshot.get("version", -1)) != _STATE_VERSION:
-                raise ValueError("unsupported internal environment state version")
-            stored = snapshot.get("detectors", {})
-            if not isinstance(stored, dict):
-                raise ValueError("detectors state must be an object")
-            for key, runtime in self._detectors.items():
-                item = stored.get(key)
-                if not isinstance(item, dict):
-                    continue
-                runtime.alarm_active = bool(item.get("alarm_active", False))
-                runtime.health_active = bool(item.get("health_active", False))
-                runtime.gas_switching_inhibited = bool(
-                    item.get("gas_switching_inhibited", False)
-                )
-                runtime.last_authoritative_clear_at = self._parse_datetime(
-                    item.get("last_authoritative_clear_at")
-                )
-        except Exception as exc:
-            self._persistence_error = str(exc)
-            self.hass_app.log(
-                f"Unable to restore internal environment state: {exc}",
-                level="ERROR",
-            )
-            self.event_bus.publish(
-                "app_health_persistence", store="internal_environment_state",
-                failed=True, operation="load",
-            )
-            return
+        """Rehydrate only exact original binding, keeping all other owner records."""
+        if self._owner.store is not self._state_store:
+            self._owner = IndoorStateOwner(self._state_store)
+            self._owner.begin()
+        self._persistence_error = self._owner.persistence_error
+        for runtime in self._detectors.values():
+            record = self._owner.current_record(runtime.authority.binding) if runtime.authority is not None else None
+            if record is not None:
+                runtime.alarm_active = record.alarm_active
+                runtime.health_active = record.health_active
+                runtime.gas_switching_inhibited = record.gas_switching_inhibited
+                runtime.incident_id, runtime.record_id = record.incident_id, record.record_id
+            runtime.last_authoritative_clear_at = None
         self.event_bus.publish(
             "app_health_persistence", store="internal_environment_state",
-            failed=False, operation="load",
+            failed=self._persistence_error is not None, operation="load",
         )
 
     def _persist_state(self) -> None:
-        snapshot = {
-            "version": _STATE_VERSION,
-            "updated_at": self._now().isoformat(),
-            "detectors": {
-                key: {
-                    "alarm_active": runtime.alarm_active,
-                    "health_active": runtime.health_active,
-                    "gas_switching_inhibited": runtime.gas_switching_inhibited,
-                    "last_authoritative_clear_at": (
-                        runtime.last_authoritative_clear_at.isoformat()
-                        if runtime.last_authoritative_clear_at is not None
-                        else None
-                    ),
-                }
-                for key, runtime in self._detectors.items()
-            },
-        }
-        try:
-            self._state_store.save(snapshot)
-            self._persistence_error = None
-        except Exception as exc:
-            self._persistence_error = str(exc)
-            self.hass_app.log(
-                f"Unable to persist internal environment state: {exc}",
-                level="ERROR",
-            )
-            self.event_bus.publish(
-                "app_health_persistence", store="internal_environment_state",
-                failed=True, operation="save",
-            )
-            return
-        self.event_bus.publish(
-            "app_health_persistence", store="internal_environment_state",
-            failed=False, operation="save",
-        )
+        """Queue the complete configuration-independent owner snapshot."""
+        self._owner.store = self._state_store
+        self._owner.persist()
+        self._persistence_error = self._owner.persistence_error
 
     def _kind_enabled(self, detector_key: str, kind: str) -> bool:
         symptom_name = self._symptom_name(
@@ -755,6 +897,26 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
         mechanism = self.safety_mechanisms.get(symptom_name)
         return bool(mechanism and mechanism.isEnabled)
 
+    def _kind_mechanism(self, runtime: DetectorRuntime, kind: str) -> SafetyMechanism:
+        """Resolve the child owning this detector's independent qualification."""
+        name = self._symptom_name(
+            str(runtime.config["hazard"]) if kind == "alarm" else "detector_health",
+            runtime.key,
+        )
+        return self.safety_mechanisms[name]
+
+    def stop(self) -> None:
+        """Stop source ingress and qualifications while retaining danger and gas latch."""
+        super().stop()
+        self._receiver_session = uuid4().hex
+        for runtime in self._detectors.values():
+            self._cancel_pending_clear(runtime)
+            runtime.alarm_timer = runtime.health_timer = runtime.listener_handle = None
+            runtime.health_timer_target = None
+            runtime.last_authoritative_clear_at = None
+            if runtime.authority is not None:
+                runtime.authority.new_session(self._receiver_session)
+
     def _cancel_timer(self, runtime: DetectorRuntime, kind: str) -> None:
         attribute = "alarm_timer" if kind == "alarm" else "health_timer"
         handle = getattr(runtime, attribute)
@@ -763,13 +925,7 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
         setattr(runtime, attribute, None)
         if kind == "health":
             runtime.health_timer_target = None
-        try:
-            self.hass_app.cancel_timer(handle)
-        except Exception as exc:
-            self.hass_app.log(
-                f"Unable to cancel internal hazard timer for {runtime.key}: {exc}",
-                level="WARNING",
-            )
+        self._kind_mechanism(runtime, kind).scope.cancel_handle(handle)
 
     def _classify(
         self, runtime: DetectorRuntime, raw: Any
@@ -790,6 +946,8 @@ class InternalEnvironmentalHazardMonitorComponent(SafetyComponent):
             return "clear", normalized, observed_at
         if normalized in runtime.profile["test_states"]:
             return "test", normalized, observed_at
+        if normalized in runtime.profile.get("hush_states", []):
+            return "hush", normalized, observed_at
         if normalized in runtime.profile["unavailable_states"] or not normalized:
             return "unavailable", normalized or "unavailable", observed_at
         return "unevaluable", normalized, observed_at

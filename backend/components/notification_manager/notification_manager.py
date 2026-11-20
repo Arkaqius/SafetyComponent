@@ -8,11 +8,15 @@ import math
 import re
 import time
 from collections.abc import Callable, Mapping
+from dataclasses import replace
 from typing import Any, Optional
+from uuid import uuid4
 
-import appdaemon.plugins.hass.hassapi as hass  # type: ignore
+import appdaemon.plugins.hass.hassapi as hass
 
 from components.core.localization import Localizer
+from components.core.lifecycle import CancellationKind, LifecycleScope
+from components.core.snapshot_writer import SnapshotWriter, process_snapshot_writer
 from components.core.types_common import FaultState
 from components.notification_manager.history import (
     HISTORY_LIMIT,
@@ -21,7 +25,9 @@ from components.notification_manager.history import (
 )
 from components.notification_manager.local_annunciator import LocalAnnunciator
 from components.notification_manager.mobile_push_provider import MobilePushProvider
-from components.notification_manager.models import PendingDelivery
+from components.notification_manager.models import (
+    DeliveryDisposition, PendingDelivery, TargetDeliveryResult,
+)
 from components.notification_manager.presentation import NotificationPresentation
 from components.notification_manager.schema import NotificationConfig
 from components.notification_manager.state_store import (
@@ -52,6 +58,7 @@ class NotificationManager:
         mqtt_entities: Any | None = None,
         clock: Callable[[], float] | None = None,
         diagnostics_observer: Callable[..., None] | None = None,
+        snapshot_writer: SnapshotWriter | None = None,
     ) -> None:
         """Create the manager without registering AppDaemon callbacks."""
 
@@ -84,6 +91,21 @@ class NotificationManager:
         self.mqtt_entities = mqtt_entities
         self.diagnostics_observer = diagnostics_observer
         self._clock = clock or time.time
+        self.scope = LifecycleScope("notification_manager", enabled=True)
+        self._async_delivery = getattr(self.mobile_provider, "dispatcher", None) is not None
+        self._writer = snapshot_writer or (
+            process_snapshot_writer("notification_state") if self._async_delivery else None
+        )
+        self._write_owner = uuid4().hex
+        self._write_revision = 0
+        self._durable_revision = 0
+        self._durability_error: str | None = None
+        self._durability_error_revision = 0
+        if self._writer is not None:
+            self._writer.claim(self._write_owner)
+        self._async_pending: dict[tuple[str, str], tuple[str, str]] = {}
+        self._async_deadlines: dict[str, tuple[PendingDelivery, float]] = {}
+        self._response_deadlines: dict[str, float] = {}
         self.active_notification: dict[str, dict[str, Any]] = {}
         self.pending_deliveries: dict[str, PendingDelivery] = {}
         self.notification_history: list[dict[str, Any]] = []
@@ -118,6 +140,10 @@ class NotificationManager:
         if self._started:
             return
         self.mobile_provider.validate_services()
+        self.scope.enabled = True
+        self.scope.start()
+        self.mobile_provider.start()
+        self.local_annunciator.start()
         self._started = True
         if self.mqtt_entities is not None:
             self.mqtt_entities.register_sensor(
@@ -131,24 +157,54 @@ class NotificationManager:
         if wan_entity:
             current = self.hass_app.get_state(wan_entity)
             self.wan_online = self._is_wan_online(current)
-            self.hass_app.listen_state(self.handle_wan_state, wan_entity)
+            self.scope.declare(
+                "wan", CancellationKind.STATE,
+                lambda callback: self.hass_app.listen_state(callback, wan_entity),
+                self.handle_wan_state, self.hass_app.cancel_listen_state,
+            )
 
         listen_event = getattr(self.hass_app, "listen_event", None)
         if callable(listen_event):
-            listen_event(self.handle_mobile_action, "mobile_app_notification_action")
-            listen_event(self.handle_ui_acknowledgement, _UI_ACK_EVENT)
-            listen_event(self.handle_test_notification, TEST_NOTIFICATION_EVENT)
-            listen_event(self.handle_reset_notifications, RESET_NOTIFICATIONS_EVENT)
-        self.hass_app.run_every(self.tick, "now", 1)
+            events: tuple[tuple[str, Callable[..., None]], ...] = (
+                ("mobile_app_notification_action", self.handle_mobile_action),
+                (_UI_ACK_EVENT, self.handle_ui_acknowledgement),
+                (TEST_NOTIFICATION_EVENT, self.handle_test_notification),
+                (RESET_NOTIFICATIONS_EVENT, self.handle_reset_notifications),
+            )
+            for event, callback in events:
+                def register_event(handler: Callable[..., Any], event_name: str = event) -> Any:
+                    return listen_event(handler, event_name)
+
+                self.scope.declare(
+                    event, CancellationKind.EVENT,
+                    register_event,
+                    callback, self.hass_app.cancel_listen_event,
+                )
+        self.scope.declare(
+            "tick", CancellationKind.TIMER,
+            lambda callback: self.hass_app.run_every(callback, "now", 1),
+            self.tick, self.hass_app.cancel_timer,
+        )
         self._publish_diagnostics()
 
     def stop(self) -> None:
-        """Persist lifecycle state during a controlled shutdown."""
+        """Fence callbacks and admit a final snapshot without claiming its durability."""
 
-        self._persist_state()
+        self.scope.stop()
+        try:
+            self.mobile_provider.stop()
+        finally:
+            try:
+                self.local_annunciator.stop()
+            finally:
+                self._async_pending.clear()
+                self._async_deadlines.clear()
+                self._started = False
+                self._persist_state()
 
     def retire_fault(self, tag: str) -> None:
         """Retire lifecycle state without asserting recovery or erasing history."""
+        self._response_deadlines.pop(tag, None)
         if tag not in self.active_notification and not any(
             pending.tag == tag for pending in self.pending_deliveries.values()
         ):
@@ -223,6 +279,12 @@ class NotificationManager:
         """Create, refresh, resolve, or remove one fault notification."""
 
         display_name = self.presentation.problem(friendly_name, additional_info or {})
+        deadline = (additional_info or {}).get("response_deadline_monotonic")
+        if (fault_status == FaultState.SET and isinstance(deadline, (int, float))
+                and not isinstance(deadline, bool) and math.isfinite(deadline)):
+            self._response_deadlines[fault_tag] = float(deadline)
+        elif fault_status in {FaultState.CLEARED, FaultState.SHADOWED}:
+            self._response_deadlines.pop(fault_tag, None)
         safe_info = self._filter_details(additional_info)
         default_message = self.presentation.default_recommendation(additional_info or {})
 
@@ -375,10 +437,11 @@ class NotificationManager:
     def tick(self, **_: Any) -> None:
         """Process due retries and bounded L1 repeats."""
 
+        self._drain_persistence()
         now = self._clock()
         state_changed = False
         for delivery in self.pending_deliveries.values():
-            if not delivery.deadline_missed and now > delivery.deadline_at:
+            if (not self._async_delivery or not self.wan_online) and not delivery.deadline_missed and now > delivery.deadline_at:
                 delivery.deadline_missed = True
                 self._counters["deadline_misses"] += 1
                 state_changed = True
@@ -635,6 +698,8 @@ class NotificationManager:
                     if service not in pending_new_targets
                 )
                 self._persist_state()
+                if self._async_delivery:
+                    self._attempt_delivery(pending_new)
                 delivery_key = f"{tag}:update"
             signature = self._content_signature(
                 tag=tag, level=level, title=title, message=message
@@ -660,6 +725,8 @@ class NotificationManager:
                 pending_update.target_services = target_services
                 # Keep original deadlines and retry timing.
                 self._persist_state()
+                if self._async_delivery:
+                    self._attempt_delivery(pending_update)
                 return
             for pending_id, pending in list(self.pending_deliveries.items()):
                 if pending.tag == tag and pending_id != f"{tag}:active":
@@ -676,6 +743,7 @@ class NotificationManager:
             + self.notification_config["retry"]["deadlines_seconds"][level],
             next_attempt_at=now + (1 if kind == "update" else 0),
             target_services=target_services,
+            incident_id=uuid4().hex,
         )
         self.pending_deliveries[delivery_key] = delivery
         self._persist_state()
@@ -693,6 +761,9 @@ class NotificationManager:
             self._publish_diagnostics()
 
     def _attempt_delivery(self, delivery: PendingDelivery) -> None:
+        if self._async_delivery:
+            self._admit_async_delivery(delivery)
+            return
         now = self._clock()
         if not delivery.deadline_missed and now > delivery.deadline_at:
             delivery.deadline_missed = True
@@ -784,10 +855,134 @@ class NotificationManager:
         self._persist_state()
         self._publish_diagnostics()
 
+    def _admit_async_delivery(self, delivery: PendingDelivery) -> None:
+        """Enqueue current target intent without waiting for transport completion."""
+        dispatcher = self.mobile_provider.dispatcher
+        if dispatcher is None or not self.scope.eligible:
+            return
+        signature = self._content_signature(
+            tag=delivery.tag, level=delivery.level, title=delivery.title, message=delivery.message,
+        )
+        targets = tuple(service for service in delivery.target_services if (
+            (delivery.delivery_id, service) not in self._async_pending
+            or self._async_pending[(delivery.delivery_id, service)][1] != signature
+        ))
+        if not targets:
+            return
+        delivery.attempts += 1
+        self._last_attempt_at = self._clock()
+        sent = replace(delivery)
+        deadline_record = self._async_deadlines.get(delivery.delivery_id)
+        if deadline_record is None or deadline_record[0] is not delivery:
+            initial = dispatcher.clock() + max(0, delivery.deadline_at - self._clock())
+            if delivery.kind == "new":
+                initial = min(initial, self._response_deadlines.get(delivery.tag, initial))
+            deadline_record = (delivery, initial)
+            self._async_deadlines[delivery.delivery_id] = deadline_record
+        deadline = deadline_record[1]
+        deadlines = {service: min(deadline, self._response_deadlines.get(delivery.tag, deadline))
+                     if delivery.kind in {"new", "update"} else deadline for service in targets}
+        completed = self.scope.guard(
+            lambda target: self._complete_async_delivery(delivery, sent, signature, target)
+        )
+
+        def eligible() -> bool:
+            return self.pending_deliveries.get(delivery.delivery_id) is delivery
+
+        if delivery.kind == "clear":
+            result = self.mobile_provider.clear(
+                delivery.tag, services=targets, on_complete=completed, deadline_at=deadline,
+                incident_id=delivery.incident_id,
+                before_dispatch=eligible,
+                deadlines=deadlines,
+            )
+        else:
+            result = self.mobile_provider.send(
+                level=delivery.level, title=delivery.title, message=delivery.message,
+                tag=delivery.tag, acknowledgement_title=self.localizer.text("notification.action.ack"),
+                quiet=delivery.kind in {"update", "acknowledged", "resolved"},
+                resolved=delivery.kind == "resolved",
+                acknowledged=delivery.kind in {"acknowledged", "test"} or bool(
+                    self.active_notification.get(delivery.tag, {}).get("acknowledged", False)
+                ), services=targets, on_complete=completed, deadline_at=deadline,
+                incident_id=delivery.incident_id,
+                before_dispatch=eligible,
+                deadlines=deadlines,
+            )
+        self._last_result = "queued"
+        for target in result.targets:
+            key = (delivery.delivery_id, target.service)
+            self._async_pending[key] = (target.operation_id, signature)
+            self._channel_status[target.service] = {
+                "status": target.disposition.value, "last_attempt_at": None,
+                "last_error": target.error or "",
+            }
+            if target.disposition != DeliveryDisposition.QUEUED:
+                completed(target)
+        self._persist_state()
+
+    def _complete_async_delivery(
+        self, delivery: PendingDelivery, sent: PendingDelivery, signature: str,
+        target: TargetDeliveryResult,
+    ) -> None:
+        """Apply an exact current target receipt on the owner, preserving deadline misses."""
+        key = (delivery.delivery_id, target.service)
+        receipt = self._async_pending.get(key)
+        if (self.pending_deliveries.get(delivery.delivery_id) is not delivery
+                or receipt != (target.operation_id, signature)):
+            return
+        now = self._clock()
+        missed = target.deadline_missed or (target.completed_at_monotonic is None and now > delivery.deadline_at)
+        if missed and not delivery.deadline_missed:
+            delivery.deadline_missed = True
+            self._counters["deadline_misses"] += 1
+        accepted = target.disposition == DeliveryDisposition.ACCEPTED
+        if accepted:
+            self._counters["accepted_attempts"] += 1
+            self._last_success_at = now
+            active = self.active_notification.get(delivery.tag)
+            if active is not None and delivery.kind in {"new", "update", "acknowledged", "repeat"}:
+                active.setdefault("_accepted_content_by_service", {})[target.service] = signature
+        else:
+            self._counters["failed_attempts"] += 1
+        if target.handed_off:
+            self.notification_history.append(submission_entry(replace(sent, deadline_missed=missed), target, now))
+        self.notification_history = self.notification_history[-HISTORY_LIMIT:]
+        self._channel_status[target.service] = {
+            "status": target.disposition.value, "last_attempt_at": now,
+            "last_error": target.error or ("deadline_missed" if missed else ""),
+            "deadline_missed": missed,
+        }
+        self._async_pending.pop(key, None)
+        current_signature = self._content_signature(
+            tag=delivery.tag, level=delivery.level, title=delivery.title, message=delivery.message,
+        )
+        terminal = accepted or missed or delivery.attempts >= self.notification_config["retry"]["max_attempts"]
+        if terminal and signature == current_signature:
+            delivery.target_services = tuple(s for s in delivery.target_services if s != target.service)
+        if not delivery.target_services:
+            self.pending_deliveries.pop(delivery.delivery_id, None)
+            self._async_deadlines.pop(delivery.delivery_id, None)
+        if not accepted and terminal:
+            self._counters["exhausted_deliveries"] += 1
+        delay = min(
+            self.notification_config["retry"]["base_delay_seconds"] * 2 ** max(0, delivery.attempts - 1),
+            self.notification_config["retry"]["max_delay_seconds"],
+        )
+        delivery.next_attempt_at = now + (delay if signature == current_signature else 0)
+        self._last_result = "accepted_by_home_assistant" if accepted else "failed_retry_scheduled" if not terminal else "failed_exhausted"
+        self._last_error = target.error or ("deadline_missed" if missed else None)
+        self._persist_state()
+        self._publish_diagnostics()
+
     def _drop_pending_for_tag(self, tag: str) -> None:
         for delivery_id, delivery in list(self.pending_deliveries.items()):
             if delivery.tag == tag:
                 del self.pending_deliveries[delivery_id]
+                self._async_deadlines.pop(delivery_id, None)
+                for key in tuple(self._async_pending):
+                    if key[0] == delivery_id:
+                        self._async_pending.pop(key)
 
     def _add_recovery_action(self, notification_msg: str, fault_tag: str) -> None:
         """Compatibility wrapper for older recovery producers."""
@@ -878,18 +1073,47 @@ class NotificationManager:
             ),
         }
         try:
+            if self._writer is not None:
+                self._write_revision += 1
+                if not self._writer.enqueue(self._write_owner, self._write_revision, snapshot, self.state_store.save):
+                    self._durability_error = "snapshot_admission_rejected"
+                    self._durability_error_revision = self._write_revision
+                    self._report_persistence(True)
+                return
             self.state_store.save(snapshot)
         except Exception as exc:
+            self._durability_error = type(exc).__name__
+            self._durability_error_revision = self._write_revision
             self._last_result = "state_persistence_failed"
-            self._last_error = str(exc)
+            self._last_error = type(exc).__name__
             self.hass_app.log(
-                f"Unable to persist notification state: {exc}", level="ERROR"
+                f"Unable to persist notification state: {type(exc).__name__}", level="ERROR"
             )
             if self.diagnostics_observer is not None:
                 self.diagnostics_observer("persistence", True, detail="notification_state", operation="save")
             return
         if self.diagnostics_observer is not None:
             self.diagnostics_observer("persistence", False, detail="notification_state", operation="save")
+
+    def _drain_persistence(self) -> None:
+        if self._writer is None:
+            return
+        result = self._writer.drain(self._write_owner)
+        if result is None:
+            return
+        if result.revision >= self._durability_error_revision:
+            self._durability_error = result.error
+            self._durability_error_revision = result.revision
+        if result.error is None:
+            self._durable_revision = result.revision
+        self._report_persistence(self._durability_error is not None)
+
+    def _report_persistence(self, failed: bool) -> None:
+        if self.diagnostics_observer is not None:
+            try:
+                self.diagnostics_observer("persistence", failed, detail="notification_state", operation="save")
+            except Exception:
+                self._durability_error = self._durability_error or "diagnostics_observer_failed"
 
     def _restore_state(self) -> None:
         try:
@@ -961,6 +1185,7 @@ class NotificationManager:
                             ),
                             "last_attempt_at": restored_channel.get("last_attempt_at"),
                             "last_error": str(restored_channel.get("last_error", "")),
+                            "deadline_missed": restored_channel.get("deadline_missed") is True,
                         }
             restore_local = getattr(self.local_annunciator, "restore", None)
             if callable(restore_local):
@@ -985,7 +1210,10 @@ class NotificationManager:
         pending_count = len(self.pending_deliveries)
         if pending_count and not self.wan_online:
             state = "queued"
-        elif self._last_error:
+        elif self._last_error or self._durability_error or any(
+            channel["status"] == "failed" or channel.get("deadline_missed") is True
+            for channel in self._channel_status.values()
+        ):
             state = "degraded"
         elif self._last_result == "reset":
             state = "unknown"
@@ -1017,6 +1245,9 @@ class NotificationManager:
             "last_test_request_at": self._operator_action_at.get("test"),
             "channels": self._channel_status,
             "delivery_confirmation": "Home Assistant acceptance only; device delivery is not confirmed",
+            "persistence_desired_revision": self._write_revision,
+            "persistence_durable_revision": self._durable_revision,
+            "persistence_error": self._durability_error or "",
         }
         self.mqtt_entities.publish_sensor_state(
             self.notification_config["diagnostics_sensor_id"],
@@ -1033,7 +1264,7 @@ class NotificationManager:
                     "failed", "accepted_by_home_assistant"
                 }:
                     self.diagnostics_observer(
-                        "delivery", status["status"] == "failed",
+                        "delivery", status["status"] == "failed" or status.get("deadline_missed") is True,
                         detail=f"target:{service}",
                     )
 

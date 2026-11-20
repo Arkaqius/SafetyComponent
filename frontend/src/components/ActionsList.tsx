@@ -1,18 +1,20 @@
 import { useState } from 'react';
-import { recoveryNeedsAttention, type RecoveryView } from '../domain/safety';
+import { currentRecoveries, type FaultView, type RecoveryView } from '../domain/safety';
 import Icon from './Icon';
 import HelpTooltip from './HelpTooltip';
 import RecoveryActionCard from './RecoveryActionCard';
 
 interface ActionsListProps {
   recoveries: RecoveryView[];
+  faults?: FaultView[];
+  starting?: boolean;
   onSelectEntity?: (entityId: string) => void;
 }
 
-export default function ActionsList({ recoveries, onSelectEntity }: ActionsListProps) {
+export default function ActionsList({ recoveries, faults = [], starting = false, onSelectEntity }: ActionsListProps) {
   const [showAll, setShowAll] = useState(false);
-  const actionable = recoveries.filter(recovery => recovery.status === 'to_perform');
-  const requiringAttention = recoveries.filter(recoveryNeedsAttention);
+  const requiringAttention = currentRecoveries(recoveries, faults);
+  const actionable = requiringAttention.filter(recovery => recovery.status === 'to_perform');
   const visibleRecoveries = showAll ? recoveries : requiringAttention;
   const countLabel =
     requiringAttention.length === 0
@@ -39,7 +41,7 @@ export default function ActionsList({ recoveries, onSelectEntity }: ActionsListP
       </div>
 
       <div className='panel-toolbar'>
-        {recoveries.length > 0 && (
+        {recoveries.length > 0 && !starting && (
           <button className='text-button' onClick={() => setShowAll(value => !value)} type='button'>
             {showAll ? 'Wróć do bieżących zaleceń' : `Katalog zaleceń (${recoveries.length})`}
           </button>
@@ -60,11 +62,19 @@ export default function ActionsList({ recoveries, onSelectEntity }: ActionsListP
             <div className='empty-state-icon'>
               <Icon name='recovery' size={28} />
             </div>
-            <strong>{recoveries.length === 0 ? 'Brak danych o zaleceniach' : 'Brak działań wymagających uwagi'}</strong>
+            <strong>
+              {starting
+                ? 'Oczekiwanie na ocenę po rozruchu'
+                : recoveries.length === 0
+                  ? 'Brak danych o zaleceniach'
+                  : 'Brak działań wymagających uwagi'}
+            </strong>
             <p>
-              {recoveries.length === 0
-                ? 'System nie przekazał zaleceń. Sprawdź dostępność monitoringu.'
-                : 'System nie zgłasza obecnie działania wymagającego uwagi.'}
+              {starting
+                ? 'W tym czasie nie zgłaszamy zaleceń diagnostycznych.'
+                : recoveries.length === 0
+                  ? 'System nie przekazał zaleceń. Sprawdź dostępność monitoringu.'
+                  : 'System nie zgłasza obecnie działania wymagającego uwagi.'}
             </p>
           </div>
         )}

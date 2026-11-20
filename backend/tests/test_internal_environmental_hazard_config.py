@@ -106,3 +106,25 @@ def test_nonstrict_schema_logs_nested_extra_keys() -> None:
     )
 
     assert log.call_count >= 3
+
+
+@pytest.mark.parametrize("reviewed", [True, False])
+def test_profile_without_reviewed_contract_can_assert_but_cannot_authorize_clear(reviewed):
+    from components.safetycomponents.internal_environmental_hazard.observation import DetectorBinding
+    config = _config()
+    config["profiles"]["binary"]["authoritative_clear"] = reviewed
+    runtime = validate_internal_environmental_hazard_config(config)
+    profile = runtime["profiles"]["binary"]
+    contract = DetectorBinding.from_config("BathroomGas", runtime["detectors"]["BathroomGas"], profile)
+    assert not contract.reviewed_clear
+    assert profile["clear_duration_seconds"] == 30
+    profile["clear_event_contract"] = "ha_state_changed_v1"
+    assert DetectorBinding.from_config("BathroomGas", runtime["detectors"]["BathroomGas"], profile).reviewed_clear is reviewed
+
+
+@pytest.mark.parametrize("category", ["alarm_states", "clear_states", "test_states", "unavailable_states"])
+def test_hush_must_have_a_separate_meaning(category):
+    config = _config()
+    config["profiles"]["binary"]["hush_states"] = config["profiles"]["binary"][category]
+    with pytest.raises(ValueError, match="overlap"):
+        validate_internal_environmental_hazard_config(config)

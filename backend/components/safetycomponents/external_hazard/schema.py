@@ -6,7 +6,7 @@ import re
 from typing import Any, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from components.core.pydantic_utils import StrictBaseModel
 
@@ -44,6 +44,7 @@ class SiteConfig(StrictBaseModel):
 
 class WeatherPolicy(StrictBaseModel):
     """Household weather thresholds."""
+    model_config = ConfigDict(allow_inf_nan=False)
 
     forecast_horizon_hours: int = Field(default=12, ge=1, le=72)
     frost_watch_c: float
@@ -51,7 +52,7 @@ class WeatherPolicy(StrictBaseModel):
     gust_watch_m_s: float = Field(gt=0)
     gust_warning_m_s: float = Field(gt=0)
     precipitation_warning_mm_h: float = Field(gt=0)
-    persistence_seconds: int = Field(default=300, ge=0)
+    persistence_seconds: int = Field(default=75, ge=1, le=75, strict=True)
     hysteresis: dict[str, float] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -65,9 +66,17 @@ class WeatherPolicy(StrictBaseModel):
 
 class AirQualityPolicy(StrictBaseModel):
     """Open-Meteo European Air Quality Index decision policy."""
+    model_config = ConfigDict(allow_inf_nan=False)
 
     standard: Literal["european_aqi"] = "european_aqi"
     warning_at: float = Field(gt=0)
+    persistence_seconds: int = Field(default=300, ge=1, strict=True)
+
+
+def validate_weather_response_budget(weather_seconds: int, notification_seconds: int) -> None:
+    """Include dispatch, concurrent opening, reconciliation and HA acceptance."""
+    if 5 + max(weather_seconds, 60) + 9 + 1 + notification_seconds > 120:
+        raise ValueError("External weather response exceeds the total 120 second allocation")
 
 
 class ExternalHazardPolicy(StrictBaseModel):

@@ -66,13 +66,14 @@ calibration:
       default_gust_watch_m_s: 15.0
       default_gust_warning_m_s: 20.0
       default_precipitation_warning_mm_h: 2.5
-      default_persistence_seconds: 300
+      default_persistence_seconds: 75
       default_hysteresis:
         temperature_c: 0.5
         gust_m_s: 1.0
     outdoor_air_quality:
       default_standard: european_aqi
       default_warning_at: 60
+      default_persistence_seconds: 300
 
   internal_environmental_hazard:
     profiles:
@@ -89,6 +90,7 @@ calibration:
           - unavailable
         clear_duration_seconds: 30
         authoritative_clear: true
+        clear_event_contract: ha_state_changed_v1
     default_health_failure_debounce_seconds: 5
     default_health_recovery_debounce_seconds: 60
     persistence:

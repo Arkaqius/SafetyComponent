@@ -73,8 +73,12 @@ async function openConfiguration(page: Page, document: unknown) {
     window.__safetyHomeConfigurationSeed = value;
   }, document);
   await page.route('**/*', route => (new URL(route.request().url()).hostname === '127.0.0.1' ? route.continue() : route.abort()));
-  await page.goto('/#/configuration/general');
+  await page.goto('/#/configuration/components/external-hazards');
   await expect(page.getByRole('heading', { name: 'Ustawienia SafetyComponent' })).toBeVisible();
+  await expect(page.getByText('Źródła danych zewnętrznych', { exact: true })).toBeVisible();
+  await expect(selector(page)).toBeHidden();
+  await page.getByText('Źródła danych zewnętrznych', { exact: true }).click();
+  await official(page).locator('summary').click();
 }
 const official = (page: Page) => page.locator('[data-capability="OfficialWeatherWarnings"]');
 const selector = (page: Page) => official(page).getByRole('combobox').first();
@@ -103,7 +107,7 @@ test('selects a German test source or disabled with conditional fields and clean
   });
   expect(saved.user_config.provider_parameters).toEqual({ GermanyDummyWarningsApiComponent: { region_code: 'BE' } });
   await page.getByRole('link', { name: 'Instalacja HA', exact: true }).click();
-  await page.getByRole('link', { name: 'Ogólne', exact: true }).click();
+  await page.getByRole('link', { name: 'Ustawienia komponentów', exact: true }).click();
   await expect(official(page).getByLabel('Kod regionu')).toHaveValue('BE');
 });
 
@@ -138,9 +142,10 @@ test('country changes preserve incompatible choice and draft until explicit corr
   document.user_config.external_sources.OfficialWeatherWarnings = 'GermanyDummyWarningsApiComponent';
   document.user_config.provider_parameters.GermanyDummyWarningsApiComponent = { region_code: 'BE' };
   await openConfiguration(page, document);
-  await page.getByRole('link', { name: 'Instalacja HA', exact: true }).click();
-  await page.getByRole('textbox', { name: 'Kod kraju', exact: false }).fill('PL');
   await page.getByRole('link', { name: 'Ogólne', exact: true }).click();
+  await page.getByText('Instalacja Home Assistant', { exact: true }).click();
+  await page.getByRole('textbox', { name: 'Kod kraju', exact: false }).fill('PL');
+  await page.getByRole('link', { name: 'Ustawienia komponentów', exact: true }).click();
   await expect(selector(page)).toHaveValue('GermanyDummyWarningsApiComponent');
   await expect(official(page).getByText('Źródło nie obsługuje wybranego kraju.')).toBeVisible();
   await expect(official(page).getByLabel('Kod regionu')).toHaveValue('BE');
@@ -212,4 +217,45 @@ test('keyboard labels and narrow layout stay usable', async ({ page }) => {
       .slice(0, 8),
   }));
   expect(bounds.width, JSON.stringify(bounds)).toBeLessThanOrEqual(bounds.viewport + 1);
+});
+
+test('preserves an invalid installed weather interval until correction and saves AQ independently', async ({ page }) => {
+  const base = fixture();
+  const document = {
+    ...base,
+    user_config: {
+      ...base.user_config,
+      installation: {
+        ...base.user_config.installation,
+        component_settings: {
+          external_hazard: {
+            weather: { persistence_seconds: 120 },
+            outdoor_air_quality: { persistence_seconds: 300 },
+          },
+        },
+      },
+    },
+  };
+  await openConfiguration(page, document);
+  await page.getByText('Progi i czasy oceny', { exact: true }).click();
+  const weather = page.getByLabel('Potwierdzenie warunku pogodowego (s)', { exact: true });
+  const air = page.getByLabel('Potwierdzenie jakości powietrza (s)', { exact: true });
+  await expect(weather).toHaveValue('120');
+  await expect(air).toHaveValue('300');
+  await expect(page.getByText(/Limit 120 s obejmuje cały przepływ/)).toBeVisible();
+  await air.fill('420');
+  await page.getByRole('button', { name: 'Zapisz konfigurację', exact: true }).click();
+  await expect(page.getByText(/Potwierdzenie pogody wymaga całkowitej liczby sekund od 1 do 75/)).toBeVisible();
+  expect((await page.evaluate(() => window.__safetyHomeConfigurationMock!.snapshot())).revision).toBe('fixture-1');
+  await expect(weather).toHaveValue('120');
+  await weather.fill('75');
+  await air.fill('420');
+  await page.getByRole('button', { name: 'Zapisz konfigurację', exact: true }).click();
+  await expect(page.getByText('Konfiguracja została zapisana', { exact: false })).toBeVisible();
+  const saved = await page.evaluate(() => window.__safetyHomeConfigurationMock!.snapshot());
+  expect(saved.user_config.external_sources).toEqual(base.user_config.external_sources);
+  expect((saved.user_config.installation as typeof document.user_config.installation).component_settings.external_hazard).toEqual({
+    weather: { persistence_seconds: 75 },
+    outdoor_air_quality: { persistence_seconds: 420 },
+  });
 });
