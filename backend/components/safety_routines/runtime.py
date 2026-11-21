@@ -11,6 +11,7 @@ from typing import Any, Callable, Mapping
 from uuid import uuid4
 
 from components.core.localization import Localizer
+from components.core.sqlite_state_store import SqliteStateError
 
 from .evaluation import evaluate_check, summarize
 from .schema import SafetyRoutinesConfig
@@ -20,6 +21,7 @@ RESPONSE_EVENT = "safety_routine_response"
 COMPLETED_EVENT = "safety_routine_completed"
 MAX_HISTORY = 20
 MAX_RESPONSE_BYTES = 256 * 1024
+_PERSIST_RETRY_DELAYS = (1, 2, 4)
 REQUEST_ID = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 
 
@@ -47,6 +49,9 @@ class SafetyRoutineRuntime:
         self.timers: dict[str, Any] = {}
         self.storage_available = True
         self.history_loaded = False
+        self._persist_retry_handle: Any | None = None
+        self._persist_retry_count = 0
+        self._persist_retry_id = 0
         self.diagnostics_observer = diagnostics_observer
         self.last_samples: dict[str, datetime] = {}
         self.observations: dict[str, dict[str, str | None]] = {}
@@ -59,6 +64,7 @@ class SafetyRoutineRuntime:
             if self.started:
                 return
             self.started = True
+            self.history_loaded = False
             try:
                 snapshot = self.store.load()
                 if snapshot and snapshot.get("version") != 1:
@@ -82,6 +88,7 @@ class SafetyRoutineRuntime:
                 self._persist()
             except Exception as exc:
                 self.history = []
+                self.history_loaded = False
                 self.storage_available = False
                 self._storage_diagnostic(True, "read")
                 self.app.log(f"Unable to restore routine history: {exc}", level="ERROR")
@@ -144,6 +151,7 @@ class SafetyRoutineRuntime:
         """Cancel pending work; keep unfinished runs explicitly interrupted."""
         with self.lock:
             self.started = False
+            self._reset_persist_retry()
             for routine_id in list(self.active):
                 self._finish(routine_id, "interrupted")
             for kind, handle in self.handles:
@@ -341,12 +349,60 @@ class SafetyRoutineRuntime:
             return
         try:
             self.store.save({"version": 1, "runs": self.history})
-            self.storage_available = True
-            self._storage_diagnostic(False, "write")
         except Exception as exc:
             self.storage_available = False
             self._storage_diagnostic(True, "write")
             self.app.log(f"Unable to persist routine history: {exc}", level="ERROR")
+            if isinstance(exc, SqliteStateError) and exc.sqlite_errorname == "SQLITE_BUSY":
+                self._schedule_persist_retry()
+            else:
+                self._reset_persist_retry()
+        else:
+            self._reset_persist_retry()
+            self.storage_available = True
+            self._storage_diagnostic(False, "write")
+
+    def _schedule_persist_retry(self) -> None:
+        if (
+            not self.started
+            or self._persist_retry_handle is not None
+            or self._persist_retry_count >= len(_PERSIST_RETRY_DELAYS)
+        ):
+            return
+        delay = _PERSIST_RETRY_DELAYS[self._persist_retry_count]
+        self._persist_retry_count += 1
+        self._persist_retry_id += 1
+        try:
+            self._persist_retry_handle = self.app.run_in(
+                self._retry_persist, delay, retry_id=self._persist_retry_id
+            )
+        except Exception as exc:
+            self.app.log(f"Unable to schedule routine history retry: {exc}", level="ERROR")
+
+    def _retry_persist(
+        self, kwargs: Mapping[str, Any] | None = None, **values: Any
+    ) -> None:
+        data = {**dict(kwargs or {}), **values}
+        with self.lock:
+            if (
+                not self.started
+                or self._persist_retry_handle is None
+                or data.get("retry_id") != self._persist_retry_id
+            ):
+                return
+            self._persist_retry_handle = None
+            # History may have changed while waiting for the writer lock to clear.
+            self._persist()
+
+    def _reset_persist_retry(self) -> None:
+        handle = self._persist_retry_handle
+        self._persist_retry_handle = None
+        self._persist_retry_count = 0
+        if handle is not None:
+            try:
+                self.app.cancel_timer(handle)
+            except Exception as exc:
+                self.app.log(f"Unable to cancel routine history retry: {exc}", level="WARNING")
 
     def _storage_diagnostic(self, failed: bool, operation: str) -> None:
         if self.diagnostics_observer:

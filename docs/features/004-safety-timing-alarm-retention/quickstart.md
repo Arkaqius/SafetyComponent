@@ -172,6 +172,36 @@ covered by the US4 tests; the complete weather/indoor response timelines remain
 separate acceptance gates. The adapter's legacy direct interface is tested only
 as a compatibility boundary.
 
+### Shared SQLite writer contention
+
+The regression for Beads `sc-88u` opens a second connection to a temporary
+database and holds `BEGIN IMMEDIATE` during routine history and recovery
+authorization saves. Both attempts shall report `SQLITE_BUSY` and leave the
+last committed snapshots readable. A failed authorization save shall leave the
+simulated Home Assistant transport idle. After the lock is released, a
+successful recovery save shall retract its own failure while an independent
+recovery load failure and routine write failure remain active.
+
+Snapshot admission rejection is tested separately from a failed transaction.
+An older successful write shall leave the rejection diagnostic active. Snapshot
+encoding runs before the write transaction, with SQLite's existing 50 ms busy
+timeout. [Regression tests](../../../backend/tests/test_recovery_dispatch.py)
+
+Recovery tests also hold a SQLite lock during restore and release it before
+stopping the owner. The stored snapshot shall survive that stop and a restore
+rejected for malformed state. Concurrent first connections shall see one
+consistent database identity and schema version. If a successful save supersedes
+an unread failure result, Recovery shall log the failure while using only the
+current result for authorization. Routine history shall retry a busy write at
+most three times with delays of 1, 2 and 4 seconds, using the latest history and
+cancelling outstanding retry work on stop.
+
+For a deployed incident, retain the logs from the failure window and follow the
+backup procedure before inspecting or repairing persistent state. Check available
+space, write permissions for the state directory, and concurrent database
+writers. Preserve the database and any WAL/SHM sidecars as a set.
+[Backup and recovery](../../../safety_component/DOCS.md#backup-and-recovery)
+
 ### Indoor persistence and restart admission
 
 The owner loads before monitor enablement, inactive-fault filtering and first

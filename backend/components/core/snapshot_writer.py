@@ -5,10 +5,12 @@ from __future__ import annotations
 import builtins
 from collections.abc import Callable, Mapping
 from concurrent.futures import Future, ThreadPoolExecutor, TimeoutError
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import json
 from threading import RLock
 from typing import Any
+
+from .sqlite_state_store import SqliteStateError
 
 MAX_SNAPSHOT_BYTES = 1024 * 1024
 _NAMESPACES = frozenset({"notification_state", "recovery_state", "internal_environment_state"})
@@ -30,6 +32,7 @@ class WriteResult:
     owner: str
     revision: int
     error: str | None = None
+    superseded_error: str | None = None
 
 
 class SnapshotWriter:
@@ -84,8 +87,11 @@ class SnapshotWriter:
         """Advance one completion and apply no domain state on the worker."""
         with self._lock:
             self._pump()
-            result, self._result = self._result, None
-            return result if result is not None and result.owner == owner else None
+            result = self._result
+            if result is None or result.owner != owner:
+                return None
+            self._result = None
+            return result
 
     def wait_for_progress(self, timeout: float) -> bool:
         """Wait only at startup/shutdown barriers; never on alarm ingress."""
@@ -101,7 +107,7 @@ class SnapshotWriter:
 
     def _pump(self) -> None:
         if self._future is not None and self._future.done():
-            self._result = self._future.result()
+            self._record_completion(self._future.result())
             self._future = None
         if self._future is None and self._pending is not None:
             request, save = self._pending
@@ -109,9 +115,21 @@ class SnapshotWriter:
             try:
                 self._future = self._executor.submit(self._write, request, save)
             except Exception as exc:
-                self._result = WriteResult(request.owner, request.revision, type(exc).__name__[:128])
+                self._record_completion(
+                    WriteResult(request.owner, request.revision, type(exc).__name__[:128])
+                )
                 return
             self._future.add_done_callback(self._completed)
+
+    def _record_completion(self, result: WriteResult) -> None:
+        if result.owner != self._owner:
+            return
+        previous = self._result
+        if previous is not None:
+            result = replace(
+                result, superseded_error=previous.error or previous.superseded_error
+            )
+        self._result = result
 
     def _completed(self, _: Future[WriteResult]) -> None:
         # This callback advances infrastructure only. Domain acknowledgements
@@ -123,6 +141,8 @@ class SnapshotWriter:
     def _write(request: WriteRequest, save: Callable[[Mapping[str, Any]], None]) -> WriteResult:
         try:
             save(json.loads(request.payload))
+        except SqliteStateError as exc:
+            return WriteResult(request.owner, request.revision, exc.sqlite_errorname)
         except Exception as exc:
             return WriteResult(request.owner, request.revision, type(exc).__name__[:128])
         return WriteResult(request.owner, request.revision)

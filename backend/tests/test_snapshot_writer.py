@@ -61,6 +61,32 @@ def test_failed_write_acknowledges_exact_identity_and_keeps_latest_work() -> Non
     assert writer.drain("fixture").error is None
 
 
+def test_superseded_failure_is_diagnostic_only_and_cannot_cross_owners() -> None:
+    executor = ControlledExecutor()
+    writer = SnapshotWriter(executor)
+    writer.claim("first")
+
+    def fail(_):
+        raise OSError("fictional storage failure")
+
+    assert writer.enqueue("first", 1, {}, fail)
+    assert writer.enqueue("first", 2, {}, lambda _: None)
+    executor.finish(0)
+    executor.finish(1)
+    assert writer.drain("retired") is None
+    result = writer.drain("first")
+    assert (result.revision, result.error, result.superseded_error) == (2, None, "OSError")
+    assert writer.drain("first") is None
+
+    assert writer.enqueue("first", 3, {}, fail)
+    writer.claim("second")
+    assert writer.enqueue("second", 1, {}, lambda _: None)
+    executor.finish(2)
+    executor.finish(3)
+    result = writer.drain("second")
+    assert (result.revision, result.error, result.superseded_error) == (1, None, None)
+
+
 @pytest.mark.parametrize("value", [float("nan"), object(), "x" * MAX_SNAPSHOT_BYTES], ids=["nan", "object", "oversize"])
 def test_snapshot_rejection_never_starts_storage(value) -> None:
     executor = ControlledExecutor()

@@ -6,12 +6,58 @@ import hashlib
 import json
 import sqlite3
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator, Mapping
 
 _SCHEMA_VERSION = 1
 _APPLICATION_ID = 0x53414645
 _BUSY_TIMEOUT_SECONDS = 0.05
+# Primary SQLite result codes are stable, including on Python 3.10, which
+# does not expose the sqlite3 result-code constants or exception attributes.
+_SQLITE_STORAGE_CODES = {
+    5: "SQLITE_BUSY",
+    6: "SQLITE_LOCKED",
+    8: "SQLITE_READONLY",
+    10: "SQLITE_IOERR",
+    11: "SQLITE_CORRUPT",
+    13: "SQLITE_FULL",
+    14: "SQLITE_CANTOPEN",
+    26: "SQLITE_NOTADB",
+}
+_SQLITE_LEGACY_MESSAGES = {
+    "database is locked": "SQLITE_BUSY",
+    "database table is locked": "SQLITE_LOCKED",
+    "attempt to write a readonly database": "SQLITE_READONLY",
+    "disk I/O error": "SQLITE_IOERR",
+    "database disk image is malformed": "SQLITE_CORRUPT",
+    "database or disk is full": "SQLITE_FULL",
+    "unable to open database file": "SQLITE_CANTOPEN",
+    "file is not a database": "SQLITE_NOTADB",
+}
+
+
+class SqliteStateError(OSError):
+    """Expose a SQLite result family while retaining the storage error contract."""
+
+    def __init__(self, operation: str, error: sqlite3.Error) -> None:
+        code = getattr(error, "sqlite_errorcode", None)
+        if code is not None:
+            self.sqlite_errorname: str = _SQLITE_STORAGE_CODES.get(
+                code & 0xFF, getattr(error, "sqlite_errorname", "SQLITE_ERROR")
+            )
+        elif type(error) in (sqlite3.OperationalError, sqlite3.DatabaseError):
+            self.sqlite_errorname = _SQLITE_LEGACY_MESSAGES.get(str(error), "SQLITE_ERROR")
+        else:
+            self.sqlite_errorname = "SQLITE_ERROR"
+        super().__init__(f"SQLite state storage {operation} failed ({self.sqlite_errorname}): {error}")
+
+
+@dataclass(frozen=True)
+class _EncodedSection:
+    kind: str
+    scalar: str | None
+    records: dict[str, tuple[int, str]]
 
 
 def state_database_path(legacy_path: str | Path) -> Path:
@@ -32,11 +78,15 @@ class SqliteStateDatabase:
         try:
             connection = sqlite3.connect(self.path, timeout=_BUSY_TIMEOUT_SECONDS)
         except sqlite3.Error as exc:
-            raise OSError(f"Unable to open SQLite state storage: {exc}") from exc
+            raise SqliteStateError("open", exc) from exc
         try:
             connection.execute("PRAGMA foreign_keys = ON")
-            application_id = connection.execute("PRAGMA application_id").fetchone()[0]
-            version = connection.execute("PRAGMA user_version").fetchone()[0]
+            # Read both header values from the same committed snapshot. Release
+            # the reader before a possible schema initialization.
+            with connection:
+                connection.execute("BEGIN")
+                application_id = connection.execute("PRAGMA application_id").fetchone()[0]
+                version = connection.execute("PRAGMA user_version").fetchone()[0]
             if application_id not in (0, _APPLICATION_ID) or version not in (
                 0,
                 _SCHEMA_VERSION,
@@ -52,7 +102,7 @@ class SqliteStateDatabase:
             connection.execute("PRAGMA synchronous = FULL")
             yield connection
         except sqlite3.Error as exc:
-            raise OSError(f"SQLite state storage failed: {exc}") from exc
+            raise SqliteStateError("transaction", exc) from exc
         finally:
             connection.close()
 
@@ -148,11 +198,12 @@ class SqliteStateStore:
             json.dumps(dict(snapshot), ensure_ascii=False, default=str)
         )
         self._check_size(payload)
+        sections = self._encode_sections(payload)
         with self.database.connect() as connection:
             self._ensure_imported(connection)
             with connection:
                 connection.execute("BEGIN IMMEDIATE")
-                self._write(connection, payload)
+                self._write(connection, sections)
 
     def _check_size(self, payload: Mapping[str, Any]) -> None:
         if (
@@ -187,6 +238,7 @@ class SqliteStateStore:
             if self.legacy_validator is not None:
                 self.legacy_validator(payload)
             digest = hashlib.sha256(raw).hexdigest()
+        sections = self._encode_sections(payload)
         with connection:
             connection.execute("BEGIN IMMEDIATE")
             if connection.execute(
@@ -197,7 +249,7 @@ class SqliteStateStore:
                 "INSERT INTO stores VALUES (?,?,?)",
                 (self.name, str(self.legacy_path) if self.legacy_path is not None else None, digest),
             )
-            self._write(connection, payload)
+            self._write(connection, sections)
 
     def _read(self, connection: sqlite3.Connection) -> dict[str, Any]:
         if self.max_bytes is not None:
@@ -238,15 +290,10 @@ class SqliteStateStore:
         self._check_size(snapshot)
         return snapshot
 
-    def _write(
-        self, connection: sqlite3.Connection, snapshot: Mapping[str, Any]
-    ) -> None:
-        existing = {
-            row[0]
-            for row in connection.execute(
-                "SELECT name FROM sections WHERE store=?", (self.name,)
-            )
-        }
+    @staticmethod
+    def _encode_sections(snapshot: Mapping[str, Any]) -> dict[str, _EncodedSection]:
+        """Encode the detached snapshot before taking SQLite's shared writer lock."""
+        sections = {}
         for section, value in snapshot.items():
             items: Iterable[tuple[Any, Any]]
             scalar = None
@@ -260,29 +307,39 @@ class SqliteStateStore:
                 kind = "scalar"
                 items = []
                 scalar = json.dumps(value, ensure_ascii=False, sort_keys=True)
+            records = {
+                str(key): (position, json.dumps(item, ensure_ascii=False, sort_keys=True))
+                for position, (key, item) in enumerate(items)
+            }
+            sections[section] = _EncodedSection(kind, scalar, records)
+        return sections
+
+    def _write(
+        self, connection: sqlite3.Connection, sections: dict[str, _EncodedSection]
+    ) -> None:
+        existing = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sections WHERE store=?", (self.name,)
+            )
+        }
+        for section, encoded in sections.items():
             connection.execute(
                 "INSERT INTO sections VALUES (?,?,?,?) ON CONFLICT(store,name) DO UPDATE "
                 "SET kind=excluded.kind,value=excluded.value "
                 "WHERE kind!=excluded.kind OR value IS NOT excluded.value",
-                (self.name, section, kind, scalar),
+                (self.name, section, encoded.kind, encoded.scalar),
             )
-            keys: set[str] = set()
-            for position, (key, item) in enumerate(items):
-                record_key = str(key)
-                keys.add(record_key)
-                connection.execute(
-                    "INSERT INTO records VALUES (?,?,?,?,?) "
-                    "ON CONFLICT(store,section,record_key) DO UPDATE "
-                    "SET position=excluded.position,value=excluded.value "
-                    "WHERE position!=excluded.position OR value!=excluded.value",
-                    (
-                        self.name,
-                        section,
-                        record_key,
-                        position,
-                        json.dumps(item, ensure_ascii=False, sort_keys=True),
-                    ),
-                )
+            connection.executemany(
+                "INSERT INTO records VALUES (?,?,?,?,?) "
+                "ON CONFLICT(store,section,record_key) DO UPDATE "
+                "SET position=excluded.position,value=excluded.value "
+                "WHERE position!=excluded.position OR value!=excluded.value",
+                (
+                    (self.name, section, key, position, value)
+                    for key, (position, value) in encoded.records.items()
+                ),
+            )
             old_keys = {
                 row[0]
                 for row in connection.execute(
@@ -292,9 +349,9 @@ class SqliteStateStore:
             }
             connection.executemany(
                 "DELETE FROM records WHERE store=? AND section=? AND record_key=?",
-                [(self.name, section, key) for key in old_keys - keys],
+                [(self.name, section, key) for key in old_keys - encoded.records.keys()],
             )
         connection.executemany(
             "DELETE FROM sections WHERE store=? AND name=?",
-            [(self.name, section) for section in existing - snapshot.keys()],
+            [(self.name, section) for section in existing - sections.keys()],
         )

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import sqlite3
+from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock
 
@@ -51,6 +53,20 @@ def _journal(
         elapsed_clock=lambda: elapsed[0],
         **bounds,
     )
+
+
+def test_fault_evidence_save_logs_sqlite_busy_without_private_payload(tmp_path) -> None:
+    database = SqliteStateDatabase(tmp_path / "state.sqlite3")
+    store = database.record_store("fault_evidence_state", max_bytes=4096)
+    log = Mock()
+    journal = FaultEvidenceJournal(store, log=log)
+    before = store.load()
+    with closing(sqlite3.connect(database.path)) as lock, lock:
+        lock.execute("BEGIN IMMEDIATE")
+        journal._save()
+        assert store.load() == before
+
+    log.assert_called_once_with("Unable to save fault evidence: SQLITE_BUSY", level="ERROR")
 
 
 @pytest.mark.parametrize("durable", [False, True])

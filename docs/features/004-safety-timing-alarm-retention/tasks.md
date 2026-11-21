@@ -357,8 +357,18 @@ with metadata-only changes and injected late callbacks during stop/restart.
 
 - [X] T073 Add combined retained heating/indoor-gas/external startup regressions to `backend/tests/test_internal_environmental_hazard_startup.py`, `backend/tests/test_heating_monitor.py` and `backend/tests/test_external_hazard_startup.py`; restore owners before initial publication without one owner filtering/overwriting another. Exercise whichever feature-003 modules are implemented, keeping absent thermal capabilities excluded rather than inventing coverage.
 - [ ] T074 Verify supported-runtime source/service admission evidence and every FR-001..023 / SC-001..010 / story acceptance scenario against the coverage matrix in `docs/features/004-safety-timing-alarm-retention/tasks.md`; close scoped gaps without weakening HARA/SYS timing, source authority, durability or resource bounds.
+  The local Beads `sc-88u` regression covers shared database contention and
+  independent persistence failures for SWR-FLT-021, SWR-REC-006 and SWR-ROUTINE-005.
+  [Shared SQLite writer contention](quickstart.md#shared-sqlite-writer-contention)
 - [X] T075 Reconcile final implementation/configuration examples and local links in `docs/features/004-safety-timing-alarm-retention/quickstart.md`, affected architecture/reference documents and `README.md`; report actual implementation/installation limits separately from normative requirements and preserve English source documentation with Polish UI and EN/PL/DE runtime parity.
 - [ ] T076 Run root backend checks from `AGENTS.md` (Ruff, mypy, pytest and coverage) and frontend test/typecheck/lint/format/build plus mock browser regressions from `frontend/package.json`; record exact commands, mypy scope and results in `docs/features/004-safety-timing-alarm-retention/tasks.md`, distinguishing unchanged baseline failures from new failures rather than suppressing them.
+  For `sc-88u` on Python 3.12, `python -m ruff check backend` passed and
+  `python -m mypy` passed for the 33 files in its configured scope.
+  `python -m pytest backend/tests` and
+  `python -m pytest backend/tests --cov=backend --cov-report=term-missing`
+  each passed with 1,817 passed and 2 skipped. Coverage was 92.17%.
+  Frontend `npm test` passed all 200 tests on Node 20. Typecheck, lint, and
+  build passed. The formatting check reported issues in 87 untouched files.
 - [ ] T077 Execute all nine scenarios from `docs/features/004-safety-timing-alarm-retention/quickstart.md` under deterministic timing/load/overload, permanent hang, crash and cancellation failures; include dispatch/queue latency within the 120 s weather, ten-second binary and existing supervision allocations, with no real household actions and no false delivery/durability/physical-cancellation claim.
 - [X] T078 Review scoped Git diff and safety evidence, update completed checkboxes only after their acceptance passes, and prepare the implementation PR description using `CONTRIBUTING.md`; report remaining admission limits and preserve unrelated work/secrets. Commit/push/merge/deploy only within that later authorized delivery workflow.
 

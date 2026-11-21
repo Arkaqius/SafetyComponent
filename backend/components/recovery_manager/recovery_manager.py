@@ -142,6 +142,7 @@ class RecoveryManager:
         self.nm: NotificationManager = nm
         self.mqtt_entities = mqtt_entities
         self.state_store = state_store or InMemoryRecoveryStateStore()
+        self._requires_restore_before_write = not isinstance(self.state_store, InMemoryRecoveryStateStore)
         self.degradation = degradation
         self.diagnostics_observer = diagnostics_observer
         self.recovery_observer = recovery_observer
@@ -152,7 +153,7 @@ class RecoveryManager:
         self._command_postconditions: dict[tuple[str, str], dict[str, str]] = {}
         self._command_failure_handles: dict[tuple[str, str], list[Any]] = {}
         self._state_restored = False
-        self._storage_available = True
+        self._storage_available = not self._requires_restore_before_write
         self._saving_state = False
         self._pending_recovery_confirmations: dict[str, dict[str, str]] = {}
         self._recovery_confirmation_handles: dict[str, list[Any]] = {}
@@ -206,7 +207,6 @@ class RecoveryManager:
                 self._drain_writes, self.hass_app.cancel_timer,
             )
         if not self._restore_attempted:
-            self._restore_attempted = True
             self._restore_state()
         self.invalidate_restricted_proposals()
 
@@ -240,12 +240,18 @@ class RecoveryManager:
             self._cancel_recovery_confirmation_listeners(symptom_name)
         for key in tuple(self._command_failure_handles):
             self._cancel_command_failure_watch(key)
-        self._persist_state()
+        if self._state_restored:
+            self._persist_state()
 
     def _persist_state(self) -> bool:
         """Persist only the allowlisted proposal lifecycle state."""
 
         if self._saving_state:
+            return False
+        # A replacement snapshot must not overwrite state this owner could not read.
+        if not self._state_restored and (
+            self._requires_restore_before_write or self._restore_attempted
+        ):
             return False
         self._saving_state = True
         try:
@@ -290,6 +296,10 @@ class RecoveryManager:
                     self._write_error_revision = revision
                     if self.diagnostics_observer is not None:
                         self.diagnostics_observer("persistence", True, detail="recovery_state", operation="save")
+                    self.hass_app.log(
+                        "Unable to persist recovery state: snapshot admission rejected",
+                        level="ERROR",
+                    )
                     return False
                 for pending in self._pending_async_commands.values():
                     if not pending["admitted"]:
@@ -337,15 +347,29 @@ class RecoveryManager:
                 self._finish_report_write(name, pending, result.error)
         if self.diagnostics_observer is not None:
             self.diagnostics_observer("persistence", not self._storage_available, detail="recovery_state", operation="save")
+        if result.error is not None:
+            self.hass_app.log(
+                f"Unable to persist recovery state: snapshot write failed ({result.error})",
+                level="ERROR",
+            )
+        if result.superseded_error is not None:
+            self.hass_app.log(
+                "Unable to persist recovery state: superseded snapshot write failed "
+                f"({result.superseded_error})",
+                level="ERROR",
+            )
 
     def _restore_state(self) -> None:
         """Restore visible active state without replaying actuator commands."""
 
+        self._restore_attempted = True
         self._state_restored = False
+        self._storage_available = False
         try:
+            if self._requires_restore_before_write and self._writer is not None and self._writer.busy:
+                raise OSError("Previous recovery snapshot write is still in progress")
             snapshot = self.state_store.load()
         except Exception as exc:
-            self._storage_available = False
             if self.diagnostics_observer is not None:
                 self.diagnostics_observer("persistence", True, detail="recovery_state", operation="load")
             self.hass_app.log(
@@ -397,7 +421,19 @@ class RecoveryManager:
             )
             for item in raw_failures
         }
-        for raw in snapshot.get("proposals", []):
+        raw_proposals = snapshot.get("proposals", [])
+        if not isinstance(raw_proposals, list):
+            raw_proposals = []
+            proposals_valid = False
+        else:
+            proposals_valid = all(isinstance(raw, dict) for raw in raw_proposals)
+        if not proposals_valid:
+            if self.diagnostics_observer is not None:
+                self.diagnostics_observer(
+                    "persistence", True, detail="recovery_state", operation="load"
+                )
+            self.hass_app.log("Invalid recovery proposal state", level="ERROR")
+        for raw in raw_proposals:
             if not isinstance(raw, dict):
                 continue
             proposal_id = str(raw.get("proposal_id", ""))
@@ -444,7 +480,10 @@ class RecoveryManager:
             self._proposals[proposal_id] = record
         for recovery in {action.name: action for action in self.recovery_actions.values()}.values():
             self._set_rec_entity(recovery)
+        if not proposals_valid:
+            return
         self._state_restored = True
+        self._storage_available = True
         if self.diagnostics_observer is not None:
             self.diagnostics_observer("persistence", False, detail="recovery_state", operation="load")
 
