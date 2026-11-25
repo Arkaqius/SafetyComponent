@@ -63,7 +63,7 @@ Execution steps:
 1. Run `python .specify/scripts/python/check_prerequisites.py --json --paths-only` from repo root **once** (combined `--json --paths-only` mode / `-Json -PathsOnly`). Parse minimal JSON payload fields:
    - `FEATURE_DIR`
    - `FEATURE_SPEC`
-   - (Optionally capture `IMPL_PLAN`, `TASKS` for future chained flows.)
+   - Load `<FEATURE_DIR>/requirements.sdoc` if present and use it as the normative source alongside the feature brief. A feature with only legacy Markdown can be clarified in its existing source pending explicit migration.
    - If JSON parsing fails, abort and instruct user to re-run `$speckit-specify` or verify feature branch environment.
    - For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
 
@@ -185,10 +185,10 @@ Execution steps:
        - Under it, create (if not present) a `### Session YYYY-MM-DD` subheading for today.
     - Append a bullet line immediately after acceptance: `- Q: <question> → A: <final answer>`.
     - Then immediately apply the clarification to the most appropriate section(s):
-       - Functional ambiguity → Update or add a bullet in Functional Requirements.
+       - Functional ambiguity → Update the applicable requirement and retain its UID. For an existing feature awaiting migration, update its legacy specification.
        - User interaction / actor distinction → Update User Stories or Actors subsection (if present) with clarified role, constraint, or scenario.
        - Data shape / entities → Update Data Model (add fields, types, relationships) preserving ordering; note added constraints succinctly.
-       - Non-functional constraint → Add/modify measurable criteria in Success Criteria > Measurable Outcomes (convert vague adjective to metric or explicit target).
+       - Quality attribute or constraint → Update the applicable StrictDoc requirement with the metric, conditions and verification evidence. Reference the UID in the feature brief.
        - Edge case / negative flow → Add a new bullet under Edge Cases / Error Handling (or create such subsection if template provides placeholder for it).
        - Terminology conflict → Normalize term across spec; retain original only if necessary by adding `(formerly referred to as "X")` once.
     - If the clarification invalidates an earlier ambiguous statement, replace that statement instead of duplicating; leave no obsolete contradictory text.
@@ -197,6 +197,7 @@ Execution steps:
     - Keep each inserted clarification minimal and testable (avoid narrative drift).
 
 7. Validation (performed after EACH write plus final pass):
+   - When `requirements.sdoc` is present, run `python tools/strictdoc_workflow.py requirements "<FEATURE_DIR>"` and report validation failures before continuing.
    - Clarifications session contains exactly one bullet per accepted answer (no duplicates).
    - Total asked (accepted) questions ≤ 5.
    - Updated sections contain no lingering vague placeholders the new answer was meant to resolve.

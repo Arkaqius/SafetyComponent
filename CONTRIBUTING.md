@@ -69,21 +69,29 @@ Codex loads the project roles from [.codex/agents](.codex/agents) in a
 trusted workspace. The primary agent assigns work to the roles the task needs.
 See [Codex subagent configuration](https://learn.chatgpt.com/docs/agent-configuration/subagents#custom-agents).
 
-| Name | Codex role | Responsibility |
-| --- | --- | --- |
-| Irena | [`project_leader`](.codex/agents/project-leader.toml) | Coordinates dependencies, owners, and readiness across workstreams |
-| Bożena | [`requirements_writer`](.codex/agents/requirements-writer.toml) | Traces requirements and makes acceptance criteria observable |
-| Antek | [`system_architect`](.codex/agents/system-architect.toml) | Allocates safety responsibilities across components and dependencies |
-| Ewa | [`software_architect`](.codex/agents/software-architect.toml) | Designs interfaces, data flows, and compatibility boundaries |
-| Wiesiek | [`backend_engineer`](.codex/agents/backend-engineer.toml) | AppDaemon behavior, configuration, and backend tests |
-| Miro | [`frontend_engineer`](.codex/agents/frontend-engineer.toml) | React UI, operator workflows, and frontend tests |
-| Ola | [`ui_designer`](.codex/agents/ui-designer.toml) | Designs visual hierarchy, components, and accessible interaction states |
-| Magda | [`ux_manager`](.codex/agents/ux-manager.toml) | Defines operator journeys and prioritizes usability findings |
-| Kazek | [`safety_reviewer`](.codex/agents/safety-reviewer.toml) | Independently reviews safety behavior and test evidence |
-| Zdzisława | [`safety_manager`](.codex/agents/safety-manager.toml) | Evaluates safety evidence and recommends readiness |
-| Jurek | [`target_integration_tester`](.codex/agents/target-integration-tester.toml) | Checks end-to-end integration on an authorized deployment target |
-| Basia | [`target_recovery_tester`](.codex/agents/target-recovery-tester.toml) | Checks degradation and recovery on an authorized deployment target |
-| Hania | [`end_user_validator`](.codex/agents/end-user-validator.toml) | Walks through the finished product as a household operator |
+| Name | Job title | Codex role | Responsibility |
+| --- | --- | --- | --- |
+| Irena | Project Lead | [`project_leader`](.codex/agents/project-leader.toml) | Coordinates workstream owners and dependencies and reports readiness for the current stage. |
+| Kaśka | AR (AiResources) | [`ai_resources`](.codex/agents/ai-resources.toml) | Maintains the agent roster and role responsibilities, reviews how agents work together, and facilitates onboarding and introductions. |
+| Jurand | AI Workflow & Harness Engineer | [`ai_harness_engineer`](.codex/agents/ai-harness-engineer.toml) | Maintains AI workflows and their execution tooling, including orchestration, approval gates, handoffs, and verification. |
+| Bożena | Safety Requirements Writer | [`requirements_writer`](.codex/agents/requirements-writer.toml) | Traces safety requirements through related documents and defines observable acceptance criteria. |
+| Antek | Safety System Architect | [`system_architect`](.codex/agents/system-architect.toml) | Assigns safety responsibilities across components and defines how faults affect their dependencies. |
+| Ewa | Software Architect | [`software_architect`](.codex/agents/software-architect.toml) | Designs software interfaces and data flows and identifies compatibility and integration checks. |
+| Wiesiek | Backend Engineer | [`backend_engineer`](.codex/agents/backend-engineer.toml) | Implements and tests AppDaemon behavior, configuration, and provider integrations. |
+| Miro | Frontend Engineer | [`frontend_engineer`](.codex/agents/frontend-engineer.toml) | Implements and tests the React UI, operator workflows, and their integration with the backend. |
+| Ola | UI Designer | [`ui_designer`](.codex/agents/ui-designer.toml) | Designs accessible components, visual hierarchy, and how the UI presents alarms and degraded states. |
+| Magda | UX Manager | [`ux_manager`](.codex/agents/ux-manager.toml) | Defines operator journeys and usability criteria and prioritizes findings by operator impact. |
+| Kazek | Independent Safety Reviewer | [`safety_reviewer`](.codex/agents/safety-reviewer.toml) | Reviews changes for safety regressions and checks whether tests cover failure and recovery paths. |
+| Jurek | Target Integration Tester | [`target_integration_tester`](.codex/agents/target-integration-tester.toml) | Verifies the assigned build and follows end-to-end behavior on an authorized deployment target. |
+| Basia | Target Recovery Tester | [`target_recovery_tester`](.codex/agents/target-recovery-tester.toml) | Verifies degradation and recovery on an authorized isolated target and checks that the agreed baseline is restored. |
+| Hania | End-User Validator | [`end_user_validator`](.codex/agents/end-user-validator.toml) | Simulates household operator tasks in an approved preview or test environment and records where the UI is unclear. |
+
+When using Agent Mail for local handoffs, include the roster name, job title,
+and Codex role ID at the start of the mailbox profile's `task_description`,
+followed by the current task. For example, use
+`Wiesiek — Backend Engineer (backend_engineer). Investigate SQLite write contention.`
+Reuse the existing mailbox for that role in the local Agent Mail project so
+earlier handoffs remain accessible.
 
 1. The primary agent assigns each subagent an outcome, files it may edit, and
    the checks or evidence expected. Give each file one writer at a time.
@@ -107,23 +115,45 @@ The [Spec Kit workflow](.specify/workflows/speckit/workflow.yml) runs
 `plan`. The primary agent delegates work within each stage and uses each
 stage's artifact as the handoff to the next.
 
-- **Specify.** Ask `requirements_writer` to trace affected requirements and
-  surface ambiguities. Involve `ux_manager` for operator-facing acceptance
-  criteria and `safety_manager` for safety evidence needs.
+Pass the feature directory explicitly when starting a run. Use an unused
+feature number for a new feature.
+
+```powershell
+specify workflow run speckit --input 'feature_directory=docs/features/005-example' --input 'spec=Describe the desired behavior'
+```
+
+Deterministic checks validate the StrictDoc files before review, pin the
+reviewed artifact revisions across approvals, and verify the Beads graph
+before implementation and at completion.
+
+| Gate | Executable check | Human review |
+| --- | --- | --- |
+| Requirements decomposition | Validate StrictDoc fields, kinds, UIDs, stakeholder and HARA links, and SYS-to-SW allocation. | Review scope, completeness, measurable acceptance and the suitability of the allocation. |
+| Planning | Validate the approved requirements revision, ADR links and verification coverage. Bind the plan, design artifacts and verification plan to the approved revision. | Review interfaces, architectural decisions, case expectations and target conditions. |
+| Dispatch and completion | Verify the published Beads graph against the approved feature artifacts, then require its tasks to be closed at completion. | Review acceptance evidence and unresolved issues for the change. |
+
+- **Specify.** Ask `requirements_writer` to author and trace requirements in
+  `requirements.sdoc` and surface ambiguities. Use `spec.md` for scope, scenarios
+  and requirement references. Involve `ux_manager` for operator-facing acceptance
+  criteria and ask the system architect to identify the evidence required for
+  affected safety goals.
 - **Plan.** Ask the architects and relevant engineering roles to check
   component responsibilities, interfaces, compatibility, and test coverage.
   Involve `ui_designer` for visual interaction changes and the target testers
-  for required deployment verification. Record decisions before plan review.
-- **Tasks.** Use `project_leader` for cross-role dependencies and ownership
-  when needed. Capture them in `tasks.md`. Mark tasks `[P]` only when they
-  touch different files and have no dependencies on unfinished work.
-- **Implement.** Assign tasks to the owning roles and run eligible `[P]`
-  tasks together. The primary agent updates completion checkboxes in
-  `tasks.md` after verifying each result. Have `safety_reviewer` independently
+  for required deployment verification. Record ADRs in `architecture.sdoc`
+  and reference their UIDs in the plan before plan review.
+- **Tasks.** Irena identifies independently testable work and its prerequisites.
+  The Spec Kit tasks stage registers the generated work and its blocking
+  dependencies directly in Beads. Run work in parallel when the graph marks it
+  ready and the tasks touch disjoint files.
+- **Implement.** Select ready work in Beads that belongs to the current stage.
+  Run eligible tasks together and record their verified status in Beads.
+  Have `safety_reviewer` independently
   review the combined diff for safety contract changes and report the outcome
   with verification results. Collect applicable target and operator evidence
-  from the assigned testers and `end_user_validator`. Ask `safety_manager`
-  for a readiness recommendation when the change affects a safety contract.
+  from the assigned testers and `end_user_validator`. For a change affecting a
+  safety contract, have Irena collect the evidence and Kazek's findings for
+  the human release decision.
 
 [GitHub Actions](.github/workflows/safety-component-app.yml) runs the
 repository's CI checks. The Codex session coordinates subagents and resolves
@@ -139,13 +169,134 @@ current feature's Spec Kit artifacts:
 
 | Information | Where to record it |
 | --- | --- |
-| Operator scenarios and acceptance criteria | `spec.md` |
-| Design decisions, rationale, and interfaces | `plan.md`, `research.md`, or `contracts/` |
-| Task dependencies, assigned roles, and progress | `tasks.md` |
+| Scope and operator scenarios | `spec.md` with requirement UID references |
+| Stakeholder, SYS and SW requirements and acceptance criteria | `requirements.sdoc` |
+| Architectural decisions and rationale | `architecture.sdoc` |
+| Design interfaces and implementation strategy | `plan.md` and `contracts/` with ADR references |
+| Task decomposition, dependencies, owners, blockers, completion and evidence references | Beads issues and dependency edges |
+| Role-to-role findings, acknowledgements and requests for a decision | Project Agent Mail thread keyed by Beads issue ID |
 | Reproducible verification scenarios | `quickstart.md` |
 | Run evidence, open blockers, and readiness summary | Final report or the associated issue or PR when authorized |
 
+Give each independent role a fresh conversation with the assignment, input
+revision, relevant requirement IDs, permitted files, expected output and
+recipient. With Codex delegation use `fork_turns="none"` for this assignment.
+The workspace and tools are shared. Use one writer per file and keep peer
+opinions and implementation proposals out of the initial acceptance brief.
+Give the tester the approved requirement, operating conditions and observable
+interface. Have the tester record the expected result and a counterexample
+before inspecting the patch. The author can share implementation details for
+diagnosis after that first assessment. Preserve differing assessments with their
+evidence until the responsible specialist resolves them or identifies a decision
+for the human approver.
+
+Use the Beads issue ID as the Agent Mail `thread_id` and prefix the subject
+with that ID in brackets. Address the role that must act and copy the
+coordinator when a dependency or decision affects another task. Write findings
+in the first person. Include the requirement and artifact revision, what you
+observed, what you conclude, supporting evidence, uncertainty and the requested
+next action. Request an acknowledgement when another role depends on the
+handoff. On resumption, read the assigned issue and its thread before acting.
+For a result consumed by another role, the coordinator checks the message
+ID, linked evidence and the recipient's response before marking the handoff
+complete. If Mail is unavailable, relay the same fields in the session and
+record the delivery method in Beads so the next session can recover the result.
+An acknowledgement records receipt. Record a human gate decision separately
+with its outcome and the artifact revision it covers.
+
+For example, a heating verification handoff from Basia to Wiesiek could read:
+
+> **[issue ID] T019 · FR-005 · changed target**
+>
+> I derived the deadline from FR-005 at the attached spec revision. At the
+> original deadline the room was still below the new target. I observed a
+> pending decision in the local fixture. I attached the timestamps and the
+> failing assertion. Wiesiek, please investigate the decision at that boundary.
+
+In an actual message replace the issue ID and attach or link the cited
+revision and evidence. Keep the raw discussion in the thread. Forward the
+conclusion and the artifact reference to roles that need the result.
+
+### Validating requirements and architecture
+
+Install StrictDoc in the development environment and run the same checks used
+by the specification and planning stages. Substitute the active feature path.
+
+```powershell
+python -m pip install -r tools/requirements-strictdoc.txt
+python tools/strictdoc_workflow.py requirements docs/features/<feature>
+python tools/strictdoc_workflow.py architecture docs/features/<feature>
+```
+
+Use the [requirements](.specify/templates/overrides/strictdoc-requirements.sdoc)
+and [ADR](.specify/templates/overrides/strictdoc-architecture.sdoc) examples.
+Preserve published IDs when adopting an existing requirement. Review the
+feature brief and requirements together, then review the plan and ADRs together.
+Legacy features may still use their original Markdown artifacts. Reconcile
+their requirement IDs and task evidence during explicit adoption of the new flow.
+
+### Planning verification
+
+Write `verification.json` in the feature directory before plan approval.
+Give each case a stable ID, the requirement UIDs it verifies, its method
+and the expected result. Cover each stakeholder requirement with a
+`stakeholder` case, each SYS requirement with a `system` case, and each SW
+requirement with at least one `static`, `unit` or `integration` case.
+A requirement can have additional cases. Record case procedures, inputs
+and authorized target conditions in `quickstart.md`.
+
+```json
+{
+  "cases": [
+    {
+      "id": "HSM-SYS-TIME-001",
+      "requirements": ["SYS-SR-HSM-012"],
+      "method": "system",
+      "expected": "For an allocated supervision failure, HA accepts the notification within 60 seconds."
+    }
+  ]
+}
+```
+
+The planning guard checks case IDs, requirement references, method
+compatibility and expected results. It checks the planned coverage.
+Record observed results separately after executing the relevant checks.
+
+### Executing Spec Kit tasks with Beads
+
+After plan approval, `speckit-tasks` passes a graph through standard input to
+the [registrar](tools/register_speckit_tasks.py). It validates the graph and
+registers each task with a stable external reference such as `spec/003/T019`.
+Keep task numbers stable and retry interrupted registration with the same
+graph. Review the graph before dispatch and resolve binding conflicts in Beads.
+
+```powershell
+python tools/register_speckit_tasks.py docs/features/<feature> --check
+```
+
+The check confirms that the graph matches the current approved inputs before
+implementation. Treat previously written task lists as migration inputs.
+Consult Beads for work state and handoffs after migration.
+
+Use `bd ready` to select work, `bd show <id>` to read its contract, and
+`bd update <id> --claim` as the assigned role with its own Beads actor.
+If a new blocker appears, record its issue and edge and notify the dependent
+role. Close verified work with `bd close <id> --reason "<outcome and evidence reference>"`.
+
+For a bug against an existing contract, open a Beads bug with the requirement,
+symptom, affected revision and reproduction conditions. Have an independent
+role derive the expected result, then reproduce the failure locally. Hand
+the evidence to the implementer. Verify the fix against the original case
+and relevant regressions and attach the evidence to the issue before closure.
+If triage reveals a change to required behavior, return that decision to the
+Spec Kit specification and plan review gates. A standalone bug can use its
+Beads ID directly as its mail thread.
+
 ### Target verification and acceptance
+
+Follow the [release workflow](docs/RELEASE_WORKFLOW.md) from candidate checks
+through isolated target verification, household promotion and post-deploy
+verification.
 
 Use the [Home Assistant App verification runbook](safety_component/DOCS.md#verification)
 for target smoke checks and its [backup and recovery procedure](safety_component/DOCS.md#backup-and-recovery)
@@ -158,8 +309,8 @@ Report checks as pass, fail, or blocked and identify the environment used.
 
 Hania validates the finished workflow in an approved preview or test environment
 and reports simulated operator acceptance separately from human acceptance.
-Zdzisława assesses the collected safety evidence. Human approval governs Spec
-Kit review gates, live actions, and release decisions.
+Irena collects the safety evidence and Kazek independently reviews it. Human
+approval governs Spec Kit review gates, live actions, and release decisions.
 
 ## Documentation changes
 

@@ -54,17 +54,18 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Outline
 
-1. **Setup**: Run `python .specify/scripts/python/setup_plan.py --json` from repo root and parse JSON for FEATURE_SPEC, IMPL_PLAN, FEATURE_DIR, BRANCH. For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
+1. **Setup**: If the workflow passes `SPECIFY_FEATURE_DIRECTORY=<path>`, set that environment variable for the setup command and verify the returned directory matches. Run `python .specify/scripts/python/setup_plan.py --json` from repo root and parse JSON for FEATURE_SPEC, IMPL_PLAN, FEATURE_DIR and BRANCH. Use the absolute feature directory for validators.
 
-2. **Load context**: Read FEATURE_SPEC and `.specify/memory/constitution.md`. Load IMPL_PLAN template (already copied).
+2. **Load context**: Run `python tools/strictdoc_workflow.py requirements "<FEATURE_DIR>"` and stop on failure. Read the approved `requirements.sdoc`, FEATURE_SPEC and `.specify/memory/constitution.md`. Load IMPL_PLAN template.
+   Treat the approved brief and requirements as read-only. Raise any change in required behavior for specification review.
 
 3. **Execute plan workflow**: Follow the structure in IMPL_PLAN template to:
    - Fill Technical Context (mark unknowns as "NEEDS CLARIFICATION")
    - Fill Constitution Check section from constitution
    - Evaluate gates (ERROR if violations unjustified)
-   - Phase 0: Generate research.md (resolve all NEEDS CLARIFICATION)
-   - Phase 1: Generate data-model.md, contracts/, quickstart.md
-   - Re-evaluate Constitution Check post-design
+   - Phase 0: Resolve unknowns in research.md and record architecture decisions in `architecture.sdoc`.
+   - Phase 1: Generate data-model.md, contracts/, quickstart.md and verification.json.
+   - Re-evaluate Constitution Check post-design. Run `python tools/strictdoc_workflow.py architecture "<FEATURE_DIR>" --verification-plan` and stop on failure.
 
 ## Mandatory Post-Execution Hooks
 
@@ -123,10 +124,7 @@ Command ends after Phase 1 design. Report branch, IMPL_PLAN path, and generated 
      Task: "Find best practices for {tech} in {domain}"
    ```
 
-3. **Consolidate findings** in `research.md` using format:
-   - Decision: [what was chosen]
-   - Rationale: [why chosen]
-   - Alternatives considered: [what else evaluated]
+3. **Consolidate evidence** in `research.md` and record each ADR in `architecture.sdoc` using `.specify/templates/overrides/strictdoc-architecture.sdoc`. Give the ADR a stable UID. Record context and considered alternatives in `CONTEXT`, followed by the decision and consequences. Link to the affected SYS or SW requirement UIDs and reference the ADR from the plan and research. If no architectural decision is needed, record a `NO_ADR` rationale in StrictDoc.
 
 **Output**: research.md with all NEEDS CLARIFICATION resolved
 
@@ -148,9 +146,12 @@ Command ends after Phase 1 design. Report branch, IMPL_PLAN path, and generated 
 3. **Create quickstart validation guide** → `quickstart.md`:
    - Document runnable validation scenarios that prove the feature works end-to-end
    - Include prerequisites, setup commands, test/run commands, and expected outcomes
+   - Map applicable StrictDoc UIDs to static analysis, SW unit or integration tests, SYS scenarios, or stakeholder validation. State the target need and executable result used by each applicable gate.
+   - Write the machine-readable `verification.json` plan using the [verification plan contract](../../../CONTRIBUTING.md#planning-verification). Use the case IDs in `quickstart.md` for runnable scenarios and prerequisites.
+   - Use `docs/RELEASE_WORKFLOW.md` to plan candidate evidence, authorized target verification and recovery for deployable changes.
    - Use links or references to contracts and data model details instead of duplicating them
    - Do not include full implementation code, model/service/controller bodies, migrations, or complete test suites
-   - Keep this artifact as a validation/run guide; implementation details belong in `tasks.md` and the implementation phase
+   - Keep this artifact as a validation/run guide. Implementation work goes into Beads after plan approval.
 
 **Output**: data-model.md, /contracts/*, quickstart.md
 

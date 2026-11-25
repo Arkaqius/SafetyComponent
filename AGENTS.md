@@ -73,11 +73,39 @@ read-only mode. Relay findings and dependencies between roles and present one
 consolidated report. Include `safety_reviewer` for changes affecting a safety
 contract.
 
+Use these tools for project work:
+
+- **Beads** tracks work items, owners, blockers, and status. Use `bd ready` to
+  find available work or `bd show <issue-id>` to open the assigned item. On
+  Windows, use `bd.cmd` if needed. Reference the Beads ID in handoffs. The
+  assigned owner updates status, and read-only reviewers send their findings to
+  that owner or the primary agent.
+- **MCP Agent Mail** carries local handoffs, findings, and acknowledgements
+  between roles. Use the existing role mailbox in the local project and include
+  the Beads ID in the subject. Report unavailable access to the primary agent
+  so they can relay the handoff.
+- **Spec Kit** guides work on a feature through its approved stages. Read the
+  active artifacts before acting and record decisions or evidence in the
+  applicable artifact. Preserve the workflow's approval gates.
+
 For Spec Kit work, delegate within the active stage and preserve the workflow's
 approval gates and task dependencies. Record durable handoffs in the
-[Spec Kit artifacts](CONTRIBUTING.md#sharing-decisions-and-evidence). Follow the
+[artifacts and Agent Mail threads](CONTRIBUTING.md#sharing-decisions-and-evidence).
+For independent verification, start a fresh role context with the requirement,
+approved interfaces, acceptance question and permitted evidence. Have the role
+record its expected result before showing it the implementation or peer findings.
+Use the [Beads task procedure](CONTRIBUTING.md#executing-spec-kit-tasks-with-beads)
+after the Spec Kit tasks stage registers its generated graph directly in
+Beads. Keep all task state there. Author new requirements and architectural
+decisions in StrictDoc and reference their UIDs from the feature brief and plan.
+Follow the
 [target verification and acceptance rules](CONTRIBUTING.md#target-verification-and-acceptance)
 for work involving a deployed system or operator validation.
+
+For release and deployment work, use the
+[release skill](.agents/skills/safetycomponent-release/SKILL.md) and the
+[release workflow](docs/RELEASE_WORKFLOW.md). Advance only when the required
+check results and applicable human authorization cover the candidate and target.
 
 ## Always
 
