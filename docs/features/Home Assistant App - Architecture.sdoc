@@ -1,7 +1,29 @@
-# Home Assistant App Architecture
+[DOCUMENT]
+TITLE: Home Assistant App Architecture
+UID: ARCH-HOME-ASSISTANT-APP-DOC
+OPTIONS:
+  MARKUP: Markdown
+  AUTO_LEVELS: Off
 
-## 1. Purpose
+[GRAMMAR]
+ELEMENTS:
+- TAG: TEXT
+  FIELDS:
+  - TITLE: LEVEL
+    TYPE: String
+    REQUIRED: True
+  - TITLE: STATEMENT
+    TYPE: String
+    REQUIRED: True
 
+[[SECTION]]
+UID: ARCH-HOME-ASSISTANT-APP-SEC-1-PURPOSE
+LEVEL: None
+TITLE: 1. Purpose
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 The Home Assistant App is the deployment boundary for SafetyComponent. It
 packages the AppDaemon runtime, SafetyFunctions backend, and Safety Home
 frontend as one versioned artifact with one installation, configuration,
@@ -9,9 +31,18 @@ backup, update, and rollback lifecycle.
 
 AppDaemon remains the backend execution environment. It is not a separately
 installed or operator-managed dependency of the resulting App.
+<<<
 
-## 2. Runtime structure
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-HOME-ASSISTANT-APP-SEC-2-RUNTIME-STRUCTURE
+LEVEL: None
+TITLE: 2. Runtime structure
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 ```mermaid
 flowchart LR
     Supervisor -->|SUPERVISOR_TOKEN| AppDaemon
@@ -33,9 +64,18 @@ flowchart LR
 The image contains immutable backend source, system policy, frontend assets,
 and runtime service definitions. Installation-owned configuration and runtime
 state remain outside the image in the App-specific configuration directory.
+<<<
 
-## 3. Configuration boundary
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-HOME-ASSISTANT-APP-SEC-3-CONFIGURATION-BOUNDARY
+LEVEL: None
+TITLE: 3. Configuration boundary
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 The App uses one packaged source, one editable source, and one generated runtime
 configuration:
 
@@ -52,7 +92,7 @@ The compiler resolves system defaults, component settings, and per-asset
 overrides in that order. It then generates the existing component-specific
 runtime bindings. Physical assets are declared once, so one opening entity can
 serve multiple component roles without duplicated installation data. The
-[Configuration Model architecture](<Configuration Model - Architecture.md>)
+[LINK: ARCH-CONFIGURATION-MODEL-DOC, Configuration Model architecture]
 defines the complete editable schema and version policy.
 
 The Home Assistant App configuration tab owns shallow operational settings,
@@ -74,9 +114,18 @@ the operator saves a validated version 2 configuration. The editor can also
 preview an imported YAML file without writing it. On restart, the backend
 compiles the saved source before starting AppDaemon. A compiler failure leaves
 Ingress available for correction.
+<<<
 
-## 4. Frontend and Ingress
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-HOME-ASSISTANT-APP-SEC-4-FRONTEND-AND-INGRESS
+LEVEL: None
+TITLE: 4. Frontend and Ingress
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Nginx serves the built Safety Home assets on the internal Ingress port. The
 port is not published to the host. Network policy accepts Supervisor Ingress
 traffic and local process-health probes and rejects other container-network
@@ -108,9 +157,18 @@ admin service; it shall not use the Supervisor token or request a host/Core
 restart. No additional manager/admin role shall be granted to the App. The
 editor shall reject unsaved drafts and warn about the temporary interruption
 of safety monitoring. HA acceptance shall not establish backend health.
+<<<
 
-## 5. Home Assistant communication
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-HOME-ASSISTANT-APP-SEC-5-HOME-ASSISTANT-COMMUNICATION
+LEVEL: None
+TITLE: 5. Home Assistant communication
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 The App requests `homeassistant_api: true`. AppDaemon authenticates through the
 Supervisor-injected token and connects to Home Assistant Core through the
 Supervisor boundary. No long-lived access token is stored in the image,
@@ -119,9 +177,18 @@ repository, App options, or browser bundle.
 Safety Home continues to use the authenticated Home Assistant frontend
 connection for state, history, service, and event access. The Supervisor token
 shall never be exposed to frontend JavaScript.
+<<<
 
-## 6. Persistence and backup
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-HOME-ASSISTANT-APP-SEC-6-PERSISTENCE-AND-BACKUP
+LEVEL: None
+TITLE: 6. Persistence and backup
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 The App-specific configuration directory contains:
 
 - `user_config.yml`;
@@ -133,13 +200,22 @@ The App-specific configuration directory contains:
 Cold backup mode stops the App while Supervisor captures these files. Generated
 runtime code, compiled `apps.yaml`, AppDaemon runtime configuration, and
 frontend assets are image-owned or ephemeral and are recreated after restore.
-The [Runtime State Storage architecture](<Runtime State Storage - Architecture.md>)
+The [LINK: ARCH-RUNTIME-STATE-STORAGE-DOC, Runtime State Storage architecture]
 defines one-time JSON import, per-store transactions, and the copy/rollback
 boundary. Existing state-file keys name import sources; runtime state is written
 to SQLite after initialization.
+<<<
 
-## 7. Functional self-monitoring boundary
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-HOME-ASSISTANT-APP-SEC-7-FUNCTIONAL-SELF-MONITORING-BOUNDARY
+LEVEL: None
+TITLE: 7. Functional self-monitoring boundary
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Self-monitoring is part of the App runtime rather than a separate Safety
 Component:
 
@@ -166,9 +242,16 @@ failure, Home Assistant dependency failure, and missing heartbeat. A live
 process or reachable web port is not positive evidence that all safety logic is
 correct. Semantic checks, dependency checks, and fault diagnostics remain
 independent and shall not be replaced by the container watchdog.
+<<<
 
-### Temperature forecast readiness
+[[SECTION]]
+UID: ARCH-HOME-ASSISTANT-APP-SEC-TEMPERATURE-FORECAST-READINESS
+LEVEL: None
+TITLE: Temperature forecast readiness
 
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Safety Home shall show temperature sample collection globally across navigation,
 independently of the diagnostic startup countdown. The notice shall identify
 the number of pending room rates and their configured sampling interval. It
@@ -176,9 +259,20 @@ shall use the backend `_rate` sampling metadata and end on current numeric
 results, not on a browser timer. Invalid source input and lost connection shall
 have distinct messages; neither shall imply a usable forecast. Direct
 temperature evaluation remains independent of forecast sample collection.
+<<<
 
-## 8. Safe migration
+[[/SECTION]]
 
+[[/SECTION]]
+
+[[SECTION]]
+UID: ARCH-HOME-ASSISTANT-APP-SEC-8-SAFE-MIGRATION
+LEVEL: None
+TITLE: 8. Safe migration
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Only one SafetyFunctions backend may own the stable MQTT entities and Home
 Assistant listeners at a time. Migration shall preserve the reviewed
 `user_config.yml` and, when lifecycle continuity is required, the complete
@@ -190,9 +284,18 @@ stopped or removed before the standalone App starts.
 Running both instances concurrently is prohibited because duplicate listeners
 can duplicate notifications and recovery handling, while both publishers would
 contend for the same stable MQTT discovery and state topics.
+<<<
 
-## 9. Build and release
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-HOME-ASSISTANT-APP-SEC-9-BUILD-AND-RELEASE
+LEVEL: None
+TITLE: 9. Build and release
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 The image build uses the repository root as its context so backend and frontend
 sources remain canonical and are not duplicated under the App directory. The
 multi-stage image build compiles Safety Home with Node.js and installs the
@@ -201,3 +304,6 @@ version-pinned AppDaemon runtime on a Home Assistant Python base image.
 Release tags shall match the version in `safety_component/config.yaml`.
 Per-architecture `amd64` and `aarch64` images are combined into the generic
 `ghcr.io/arkaqius/safetycomponent:<version>` manifest consumed by Supervisor.
+<<<
+
+[[/SECTION]]

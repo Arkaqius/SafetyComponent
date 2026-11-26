@@ -53,4 +53,4 @@ handoffs keyed by the Beads ID. Keep credentials and private configuration
 out of evidence. Follow the [installation, verification and recovery runbook](../safety_component/DOCS.md#verification)
 and the [repository authorization rules](../AGENTS.md#ask-first).
 For direct AppDaemon directory replacement, preserve the stopped replacement
-and file hash checks from [SWR-NFR-007](<sys/SafetyComponent - SSRD.md#5-non-functional-requirements>).
+and file hash checks from [SWR-NFR-007](<sys/SafetyComponent - SSRD.sdoc>).

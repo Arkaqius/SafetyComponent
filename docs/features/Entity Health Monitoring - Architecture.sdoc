@@ -1,11 +1,37 @@
-# Entity Health Monitoring - Feature Architecture
+[DOCUMENT]
+TITLE: Entity Health Monitoring - Feature Architecture
+UID: ARCH-ENTITY-HEALTH-MONITORING-DOC
+OPTIONS:
+  MARKUP: Markdown
+  AUTO_LEVELS: Off
 
+[GRAMMAR]
+ELEMENTS:
+- TAG: TEXT
+  FIELDS:
+  - TITLE: LEVEL
+    TYPE: String
+    REQUIRED: True
+  - TITLE: STATEMENT
+    TYPE: String
+    REQUIRED: True
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 **Safety component:** `EntityMonitorComponent`
 
 **System component ID:** `C-ENT`
+<<<
 
-## 1. Fixed decisions
+[[SECTION]]
+UID: ARCH-ENTITY-HEALTH-MONITORING-SEC-1-FIXED-DECISIONS
+LEVEL: None
+TITLE: 1. Fixed decisions
 
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 The following decisions define the feature boundary:
 
 1. Entity Health Monitoring has two monitored source groups: explicit safety
@@ -34,9 +60,18 @@ The following decisions define the feature boundary:
    diagnostics retain their separate faults without duplicate C-ENT faults.
 10. Failure and recovery debounce govern the transition of each check result
     between passing and failed states.
+<<<
 
-## 2. Goals
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-ENTITY-HEALTH-MONITORING-SEC-2-GOALS
+LEVEL: None
+TITLE: 2. Goals
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 The feature shall:
 
 - detect unavailable or stale entities that could mask a household safety
@@ -57,11 +92,23 @@ The feature shall:
 - avoid unbounded MQTT payloads and unnecessary duplicate Home Assistant state
   subscriptions;
 - provide deterministic evidence and fault-injection seams for automated tests.
+<<<
 
-## 3. Boundaries
+[[/SECTION]]
 
-### 3.1 In scope
+[[SECTION]]
+UID: ARCH-ENTITY-HEALTH-MONITORING-SEC-3-BOUNDARIES
+LEVEL: None
+TITLE: 3. Boundaries
 
+[[SECTION]]
+UID: ARCH-ENTITY-HEALTH-MONITORING-SEC-31-IN-SCOPE
+LEVEL: None
+TITLE: 3.1 In scope
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 - Home Assistant entity state and registry metadata.
 - Explicit installation-owned safety dependencies.
 - Safety Component and core dependency declarations.
@@ -71,9 +118,18 @@ The feature shall:
 - Search, health/source filtering, and diagnostic details for monitored records
   within System Health.
 - Fault aggregation for failures owned by C-ENT.
+<<<
 
-### 3.2 Out of scope
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-ENTITY-HEALTH-MONITORING-SEC-32-OUT-OF-SCOPE
+LEVEL: None
+TITLE: 3.2 Out of scope
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 - Inferring that every Home Assistant entity is safety-relevant.
 - Treating an unchanged state as stale without a declared update cadence.
 - Repairing, reloading, enabling, disabling, or commanding an entity or device.
@@ -83,11 +139,25 @@ The feature shall:
 - Persisting the complete Home Assistant entity registry in MQTT.
 - A general Home Assistant entity/device inventory or using unmonitored entities
   as evidence that a safety condition is clear.
+<<<
 
-## 4. Monitoring groups
+[[/SECTION]]
 
-### 4.1 Group A - explicit safety entities
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-ENTITY-HEALTH-MONITORING-SEC-4-MONITORING-GROUPS
+LEVEL: None
+TITLE: 4. Monitoring groups
+
+[[SECTION]]
+UID: ARCH-ENTITY-HEALTH-MONITORING-SEC-41-GROUP-A---EXPLICIT-SAFETY-ENTITIES
+LEVEL: None
+TITLE: 4.1 Group A - explicit safety entities
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Group A covers dependencies known by the installation owner but not owned by a
 SafetyFunctions component. Typical examples include climate entities, heating
 controllers, pumps, valves, helper entities, or sensors used by important Home
@@ -107,9 +177,18 @@ Group A selection belongs to the installation registry under
 `installation.monitored_entities`; generated runtime configuration places the
 validated entries under `EntityMonitorComponent`. System timing defaults remain
 under `calibration.entity_monitor`.
+<<<
 
-### 4.2 Group B - component dependencies
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-ENTITY-HEALTH-MONITORING-SEC-42-GROUP-B---COMPONENT-DEPENDENCIES
+LEVEL: None
+TITLE: 4.2 Group B - component dependencies
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Group B makes SafetyFunctions self-aware. A component or core service registers
 every entity whose loss affects its inputs or required diagnostics. Registration
 contains:
@@ -134,9 +213,18 @@ Examples of Group B dependencies include temperature inputs registered by
 `TemperatureComponent`, door contacts registered by `SafetyDoorsComponent`,
 and shared outside-temperature or occupancy inputs registered by the application
 core or their consuming component.
+<<<
 
-### 4.3 Unmonitored entities
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-ENTITY-HEALTH-MONITORING-SEC-43-UNMONITORED-ENTITIES
+LEVEL: None
+TITLE: 4.3 Unmonitored entities
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Entities outside Groups A/B shall not appear in the monitored list and shall
 not create C-ENT symptoms, faults, notifications, recovery actions, or
 application-health degradation. SafetyHome shall not offer a general Home
@@ -152,9 +240,20 @@ fault-family records sharing one physical entity; no fixed count is assumed.
 state or its attributes changed. Neither timestamp proves a physical heartbeat
 unless the owning integration or dependency contract guarantees periodic
 updates.
+<<<
 
-## 5. Logical architecture
+[[/SECTION]]
 
+[[/SECTION]]
+
+[[SECTION]]
+UID: ARCH-ENTITY-HEALTH-MONITORING-SEC-5-LOGICAL-ARCHITECTURE
+LEVEL: None
+TITLE: 5. Logical architecture
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 ```text
                    validated application configuration
                               |
@@ -193,9 +292,18 @@ updates.
  EntityMonitorComponent has no edge to RecoveryManager actuator execution.
  Unmonitored entities have no edge to C-ENT fault evaluation.
 ```
+<<<
 
-## 6. Code placement
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-ENTITY-HEALTH-MONITORING-SEC-6-CODE-PLACEMENT
+LEVEL: None
+TITLE: 6. Code placement
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 ```text
 backend/components/safetycomponents/entity_monitor/
   __init__.py
@@ -212,9 +320,18 @@ frontend/src/
 The component module implements registry and check evaluation. Tests mirror
 backend placement under `backend/tests/` and frontend placement
 under `frontend/src/` using the repository's existing test conventions.
+<<<
 
-## 7. Core model
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-ENTITY-HEALTH-MONITORING-SEC-7-CORE-MODEL
+LEVEL: None
+TITLE: 7. Core model
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 ```python
 class EntitySource(str, Enum):
     EXPLICIT = "explicit"
@@ -265,15 +382,31 @@ A component-owned check cannot be disabled or relaxed by Group A configuration.
 Conflicting value kinds or ownership within the same logical record are
 configuration errors. Distinct fault-family roles are not an ownership conflict.
 Identical checks within a record are deduplicated by their stable check key.
+<<<
 
-## 8. Check model
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-ENTITY-HEALTH-MONITORING-SEC-8-CHECK-MODEL
+LEVEL: None
+TITLE: 8. Check model
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Every check returns a structured result containing check key, result state,
 reason code, observed value, evaluation timestamp, relevant source timestamps,
 and calibration identity.
+<<<
 
-### 8.1 Mandatory check
+[[SECTION]]
+UID: ARCH-ENTITY-HEALTH-MONITORING-SEC-81-MANDATORY-CHECK
+LEVEL: None
+TITLE: 8.1 Mandatory check
 
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 | Check code | Purpose | Failure state |
 | --- | --- | --- |
 | `availability` | Detect missing entities, read failures, and native `unknown` or `unavailable` states | `unavailable` |
@@ -282,9 +415,18 @@ Availability is evaluated against the entity itself. It fails when the entity
 cannot be read, is missing, returns `None`, or has a normalized native state of
 `unknown` or `unavailable`. An empty state may be rejected by an enabled
 `required_value` check rather than by availability.
+<<<
 
-### 8.2 Optional checks
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-ENTITY-HEALTH-MONITORING-SEC-82-OPTIONAL-CHECKS
+LEVEL: None
+TITLE: 8.2 Optional checks
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Every optional check targets either the entity `state` or one named attribute.
 
 | Check code | Required calibration | Exact pass condition | Failure state |
@@ -352,7 +494,7 @@ Availability, value and freshness checks shall evaluate from the initial
 snapshot; startup shall not postpone freshness calculation or reset source-report
 age. Qualified D contributions without an allocated `detection_budget_seconds`
 shall use the application-wide
-[startup gate](<Fault Routing and Aggregation - Architecture.md#startup-qualification>).
+[LINK: ARCH-FAULT-ROUTING-AND-AGGREGATION-SEC-STARTUP-QUALIFICATION, startup gate].
 Dependencies with an allocated detection budget shall bypass the gate and retain
 their existing detection, degradation and notification timing from startup.
 The configured timeout shall reflect the source's real update behavior; C-ENT shall
@@ -409,18 +551,38 @@ a 4020-second detection budget. The budget covers report silence, 120-second
 acquisition cadence, a 120-second read deadline, scheduling and evaluation
 phase allowances, and failure confirmation. It does not change temperature
 hazard thresholds or the owning component's direct alarm paths.
+<<<
 
-### 8.3 Debounce policy
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-ENTITY-HEALTH-MONITORING-SEC-83-DEBOUNCE-POLICY
+LEVEL: None
+TITLE: 8.3 Debounce policy
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 `failure_debounce_seconds` and `recovery_debounce_seconds` apply independently
 to the state transition of each check result and do not create additional
 symptom IDs. A failing check enters `PENDING_FAILURE`; it creates its symptom
 only when failure debounce expires without a passing result. A failed check
 enters `PENDING_RECOVERY` only on current positive passing evidence and clears
 only when recovery debounce expires without another failure.
+<<<
 
-## 9. Evaluation lifecycle
+[[/SECTION]]
 
+[[/SECTION]]
+
+[[SECTION]]
+UID: ARCH-ENTITY-HEALTH-MONITORING-SEC-9-EVALUATION-LIFECYCLE
+LEVEL: None
+TITLE: 9. Evaluation lifecycle
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 1. Validate Group A configuration and component/core dependency declarations.
 2. Resolve entity IDs, area names, and Group B registrations.
 3. Merge records and reject incompatible contracts.
@@ -473,9 +635,18 @@ unchanged input.
 Availability failure dominates freshness and optional checks. Freshness failure
 dominates optional checks. The entity state is `healthy` only when every enabled
 check has current positive passing evidence.
+<<<
 
-## 10. Failure and recovery state machine
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-ENTITY-HEALTH-MONITORING-SEC-10-FAILURE-AND-RECOVERY-STATE-MACHINE
+LEVEL: None
+TITLE: 10. Failure and recovery state machine
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 ```text
             passing evidence
     +------------------------------+
@@ -495,9 +666,18 @@ check has current positive passing evidence.
 - The per-entity health is the most severe active check state.
 - Restart reconstructs health from the initial snapshot and timestamps; it does
   not assume that the previous process state was healthy.
+<<<
 
-## 11. Fault ownership and aggregation
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-ENTITY-HEALTH-MONITORING-SEC-11-FAULT-OWNERSHIP-AND-AGGREGATION
+LEVEL: None
+TITLE: 11. Fault ownership and aggregation
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 C-ENT uses the following stable contract when it owns a failure:
 
 | Element | Stable ID |
@@ -509,7 +689,7 @@ C-ENT uses the following stable contract when it owns a failure:
 | Recovery action | Cause-specific manual repair; no actuator command |
 
 The owner shall supply repair proposals under the
-[shared recovery contract](<Recommended Actions and Recovery - Architecture.md>),
+[LINK: ARCH-RECOMMENDED-ACTIONS-AND-RECOVERY-DOC, shared recovery contract],
 naming the affected entity and failed availability, freshness or value path.
 Positive recovery of that cause shall complete its observed repair action;
 operator-reported inspection shall not establish that the source is healthy.
@@ -551,10 +731,19 @@ repair can release only that command contributor.
 The shared input fault retains independent per-source contributors, so repair
 of one entity cannot clear another failure or enable an unrelated H consumer.
 The binding and fault identities are defined in
-[Fault Routing and Aggregation](Fault%20Routing%20and%20Aggregation%20-%20Architecture.md).
+[LINK: ARCH-FAULT-ROUTING-AND-AGGREGATION-DOC, Fault Routing and Aggregation].
+<<<
 
-## 12. MQTT diagnostics
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-ENTITY-HEALTH-MONITORING-SEC-12-MQTT-DIAGNOSTICS
+LEVEL: None
+TITLE: 12. MQTT diagnostics
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Each Group A/B entity publishes one diagnostic sensor:
 
 ```text
@@ -578,9 +767,18 @@ monitored list; the summary does not contain the complete Home Assistant invento
 
 MQTT discovery names and `state_label` are localized. Raw health, source, check,
 and reason codes remain language-independent.
+<<<
 
-## 13. Frontend architecture
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-ENTITY-HEALTH-MONITORING-SEC-13-FRONTEND-ARCHITECTURE
+LEVEL: None
+TITLE: 13. Frontend architecture
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 System Health presents C-ENT MQTT diagnostics for authoritative Group A/B
 health and fault context alongside the separate C-FSM battery section. Its
 monitored list shall not enumerate the Home Assistant entity or device registry.
@@ -622,9 +820,18 @@ The monitored-entities section provides:
 Diagnostic details shall be expandable per monitored record. The old `/entities`
 route shall redirect to `/functional-safety`; the navigation shall expose
 System Health rather than a separate entity/device inventory.
+<<<
 
-## 14. Configuration contract
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-ENTITY-HEALTH-MONITORING-SEC-14-CONFIGURATION-CONTRACT
+LEVEL: None
+TITLE: 14. Configuration contract
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Global timing and publication policy belongs in `system_config.yml` under
 `calibration.entity_monitor`. Explicit installation health
 dependencies belong in the private `user_config.yml` under
@@ -730,9 +937,18 @@ Strict validation rejects:
 - rate checks without a sample window, minimum sample count, or direction bound;
 - incompatible checks for the declared value type;
 - Group B ownership or calibration conflicts.
+<<<
 
-## 15. Performance and boundedness
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-ENTITY-HEALTH-MONITORING-SEC-15-PERFORMANCE-AND-BOUNDEDNESS
+LEVEL: None
+TITLE: 15. Performance and boundedness
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 - Group A/B state listeners are deduplicated by entity ID and supplement shared
   periodic report reads without replacing the owning component's alarm path.
 - The shared background reader batches due entity groups and prevents
@@ -742,9 +958,18 @@ Strict validation rejects:
 - MQTT diagnostics use bounded attributes and unhealthy summaries.
 - Frontend filtering operates on the installed monitored records.
 - A presentation failure cannot block Group A/B backend evaluation.
+<<<
 
-## 16. Security and privacy
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-ENTITY-HEALTH-MONITORING-SEC-16-SECURITY-AND-PRIVACY
+LEVEL: None
+TITLE: 16. Security and privacy
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 - The feature uses the existing authenticated Home Assistant and MQTT paths.
 - Entity states, friendly names, device names, and area names may reveal
   occupancy or household layout and shall not be sent to external services.
@@ -753,11 +978,23 @@ Strict validation rejects:
   copying arbitrary Home Assistant attributes.
 - Monitored diagnostic presentation remains inside the authenticated
   Home Assistant/SafetyHome session.
+<<<
 
-## 17. Verification
+[[/SECTION]]
 
-### 17.1 Backend unit tests
+[[SECTION]]
+UID: ARCH-ENTITY-HEALTH-MONITORING-SEC-17-VERIFICATION
+LEVEL: None
+TITLE: 17. Verification
 
+[[SECTION]]
+UID: ARCH-ENTITY-HEALTH-MONITORING-SEC-171-BACKEND-UNIT-TESTS
+LEVEL: None
+TITLE: 17.1 Backend unit tests
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 - Group A schema validation and calibration precedence.
 - Group B registration for Temperature, Safety Doors, shared application inputs,
   and every common entity.
@@ -789,17 +1026,35 @@ Strict validation rejects:
 - Stable MQTT IDs and bounded attributes.
 - Cause-specific manual recovery registration and valid recovery evidence;
   no actuator service calls or recovery creation for unmonitored entities.
+<<<
 
-### 17.2 Backend integration tests
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-ENTITY-HEALTH-MONITORING-SEC-172-BACKEND-INTEGRATION-TESTS
+LEVEL: None
+TITLE: 17.2 Backend integration tests
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 - AppCfgValidator and component registry integration.
 - State-listener deduplication, shared batch scheduling, and single-flight reads.
 - EventBus and FaultManager transitions.
 - Application startup/termination and MQTT availability.
 - Component-owned fault behavior remains authoritative.
+<<<
 
-### 17.3 Frontend tests
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-ENTITY-HEALTH-MONITORING-SEC-173-FRONTEND-TESTS
+LEVEL: None
+TITLE: 17.3 Frontend tests
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 - Group A/B diagnostic membership without a general HA inventory.
 - Monitored entities and battery maintenance both remain in System Health.
 - Combined filters and search.
@@ -810,9 +1065,20 @@ Strict validation rejects:
   are dynamic, and separate fault-family records remain visible.
 - The legacy entity route redirects to System Health.
 - English, Polish, and German state-label parity.
+<<<
 
-## 18. Traceability
+[[/SECTION]]
 
+[[/SECTION]]
+
+[[SECTION]]
+UID: ARCH-ENTITY-HEALTH-MONITORING-SEC-18-TRACEABILITY
+LEVEL: None
+TITLE: 18. Traceability
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 | Safety source | Allocation |
 | --- | --- |
 | HARA 1.3.11 System Failure | Groups A/B entity availability, freshness, diagnostics, and alerts |
@@ -823,3 +1089,6 @@ Strict validation rejects:
 | NFR-040/041 | Per-check evidence, health counts, and freshness metrics |
 
 Unmonitored Home Assistant entities have no C-ENT safety-goal allocation.
+<<<
+
+[[/SECTION]]

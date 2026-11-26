@@ -433,7 +433,7 @@ dozwolone stany, skończoną liczbę, zakres liczbowy i tempo zmian. Dodawaj
 tylko kontrole, dla których znasz znaczenie stanu lub atrybutu encji. Przy
 zakresie podaj co najmniej jedną granicę. Czasy kontroli muszą mieścić się w
 budżecie wykrycia. Szczegółowe ograniczenia walidacji są w
-[kontrakcie modelu](<../docs/features/Configuration Model - Architecture.md>).
+[kontrakcie modelu](<../docs/features/Configuration Model - Architecture.sdoc>).
 
 ## Wartości systemowe, nazwy i prywatność
 

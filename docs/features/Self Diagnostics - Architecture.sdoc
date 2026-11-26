@@ -1,7 +1,29 @@
-# Self-diagnostics and independent supervision
+[DOCUMENT]
+TITLE: Self-diagnostics and independent supervision
+UID: ARCH-SELF-DIAGNOSTICS-DOC
+OPTIONS:
+  MARKUP: Markdown
+  AUTO_LEVELS: Off
 
-## Purpose and ownership
+[GRAMMAR]
+ELEMENTS:
+- TAG: TEXT
+  FIELDS:
+  - TITLE: LEVEL
+    TYPE: String
+    REQUIRED: True
+  - TITLE: STATEMENT
+    TYPE: String
+    REQUIRED: True
 
+[[SECTION]]
+UID: ARCH-SELF-DIAGNOSTICS-SEC-PURPOSE-AND-OWNERSHIP
+LEVEL: None
+TITLE: Purpose and ownership
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Provider adapters own polling, schema validation, freshness, normalized results,
 and raw provider-health telemetry. `SelfDiagnosticsComponent` converts each
 installed live adapter's current health to an independent contributor of the shared
@@ -9,8 +31,8 @@ installed live adapter's current health to an independent contributor of the sha
 contributors share that fault and retain their separate meaning: loss of a
 required household capability after redundancy policy differs from failure of
 one adapter. A failed weather provider must not disable independent official-warning
-or outdoor-air-quality evidence. See [External Hazard Monitoring](External%20Hazard%20Monitoring%20-%20Architecture.md)
-and [Fault Degradation and Coverage](Fault%20Degradation%20and%20Coverage%20-%20Architecture.md).
+or outdoor-air-quality evidence. See [LINK: ARCH-EXTERNAL-HAZARD-MONITORING-DOC, External Hazard Monitoring]
+and [LINK: ARCH-FAULT-DEGRADATION-AND-COVERAGE-DOC, Fault Degradation and Coverage].
 
 Provider contributors shall be allocated from the validated installed-provider
 registry rather than a fixed list of provider names. Each selected applicable live
@@ -51,7 +73,7 @@ configured; an absent optional vector does not make coverage unknown. Existing
 health entities retain detail and are not replaced by fault state.
 
 The diagnostic owner shall supply cause-specific manual repair proposals under
-the [shared recovery contract](<Recommended Actions and Recovery - Architecture.md>).
+the [LINK: ARCH-RECOMMENDED-ACTIONS-AND-RECOVERY-DOC, shared recovery contract].
 Provider guidance shall name the failing adapter or required capability; App
 Health guidance shall name the failed channel, output, store operation or
 evaluation/recovery subject. Repair of one path shall not confirm another path.
@@ -63,7 +85,7 @@ dispatcher shall not prevent presentation of valid repair instructions.
 Provider, input and maintenance checks shall acquire and evaluate evidence from
 startup. Their qualified D contributions without allocated detection budgets shall
 use the shared
-[startup qualification](<Fault Routing and Aggregation - Architecture.md#startup-qualification>),
+[LINK: ARCH-FAULT-ROUTING-AND-AGGREGATION-SEC-STARTUP-QUALIFICATION, startup qualification],
 whose system default is 600 seconds. `SafetyAppHealth` and all its startup,
 persistence, publication, delivery and evaluator contributors shall bypass this
 gate. Contributions with allocated `detection_budget_seconds`, including required
@@ -71,9 +93,18 @@ sensor/communication supervision, shall also bypass it and retain their existing
 detection, degradation and notification timing. A healthy process during
 qualification shall not imply completed diagnostic evaluation or full safety
 coverage.
+<<<
 
-## Routing and restrictions
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-SELF-DIAGNOSTICS-SEC-ROUTING-AND-RESTRICTIONS
+LEVEL: None
+TITLE: Routing and restrictions
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 | Contributor | Fault and priority | Restriction target | Clear evidence |
 | --- | --- | --- | --- |
 | Each installed provider adapter | `ExternalDataUnavailable`, D/L3, separate provider contributor | Installed weather or AQ H symptoms using that provider's capability; consumer redundancy still applies | Fresh `OK` result from the same adapter |
@@ -95,9 +126,18 @@ effect. Only evaluation and recovery effects block dependent actuator proposals.
 The other effects remain visible in coverage without treating valid H detection
 as failed. Recovery remains subject to a fresh H evaluation after an evaluation
 restriction clears. An unavailable D observation does not clear an active fault.
+<<<
 
-## Health-signal allocation contract
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-SELF-DIAGNOSTICS-SEC-HEALTH-SIGNAL-ALLOCATION-CONTRACT
+LEVEL: None
+TITLE: Health-signal allocation contract
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 | Signal class | Fault owner or explicit exemption |
 | --- | --- |
 | Entity Monitor Group A/B input checks | `EntityHealth{EntityKey}` for external-only Group A; component input checks share `InputMonitoringUnavailable`; recovery dependencies retain their designated D fault. Unmonitored entities create no C-ENT fault. |
@@ -111,9 +151,18 @@ restriction clears. An unavailable D observation does not clear an active fault.
 | MQTT heartbeat and process/startup absence | In-process `SafetyAppHealth` publication contribution when observable; HA-hosted independent observer for the outage itself. |
 | Derivative Monitor numerical outputs and evaluation-progress timestamps | Measurement and progress evidence consumed by the owning H or component D mechanisms; no second fault for the helper. |
 | SafetyHome request-local validation errors and diagnostic snapshot export | Request response or debug projection only; not a safety capability loss by themselves. |
+<<<
 
-## Independent observer boundary
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-SELF-DIAGNOSTICS-SEC-INDEPENDENT-OBSERVER-BOUNDARY
+LEVEL: None
+TITLE: Independent observer boundary
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 An AppDaemon process cannot attest its own continued execution, startup before
 its managers exist, or broker delivery while MQTT is unavailable. An observer
 outside AppDaemon shall check the `sensor.safety_app_health` heartbeat and raw
@@ -137,3 +186,6 @@ outage the in-process D fault cannot be published, so the independent alert is
 the authoritative outage indication. On return, current D evidence must be
 reevaluated; a missed heartbeat is not retroactively converted into a false H
 clear.
+<<<
+
+[[/SECTION]]

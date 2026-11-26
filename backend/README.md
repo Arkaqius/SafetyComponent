@@ -43,7 +43,7 @@ room or opening may override its applicable values last. The compiler accepts
 only explicit `user_config.model_version: 2`; missing, older, or unknown
 versions fail before AppDaemon starts. Print the machine-readable contract with
 `python backend/build_app_config.py --print-user-schema`. See
-[`Configuration Model - Architecture.md`](<../docs/features/Configuration Model - Architecture.md>).
+[`Configuration Model - Architecture.md`](<../docs/features/Configuration Model - Architecture.sdoc>).
 
 ## Runtime state storage
 
@@ -53,7 +53,7 @@ SQLite database outside the deployed image. The default is
 `/config/appdaemon/safety_state.sqlite3`.
 Existing JSON state paths remain one-time import inputs; they are not
 dual-written after import. Store transactions and health contributors remain
-independent. See [Runtime State Storage](<../docs/features/Runtime State Storage - Architecture.md>)
+independent. See [Runtime State Storage](<../docs/features/Runtime State Storage - Architecture.sdoc>)
 for schema ownership, migration, failure handling, and stopped-App copying.
 
 ## MQTT retained-message migration
@@ -84,7 +84,7 @@ remain internal reader policy. Legacy nested `checks.freshness.max_silence_secon
 is accepted as the report-age timeout alias; both forms must agree when present.
 Existing startup, evaluation, recovery and detection-budget fields remain accepted
 and validated for migration without weakening tighter dependency requirements.
-See [Entity Health Monitoring](../docs/features/Entity%20Health%20Monitoring%20-%20Architecture.md#14-configuration-contract).
+See [Entity Health Monitoring](../docs/features/Entity%20Health%20Monitoring%20-%20Architecture.sdoc).
 
 ### Retained state and attribute audit
 
@@ -101,7 +101,7 @@ The existing `clear_retained_state_on_start: true` setting remains accepted
 for compatibility. An explicit override still clears active entity topics on
 each application start and must be disabled after a migration. Configured
 retired entities and legacy discovery topics are still removed at startup.
-The [software requirement](../docs/sys/SafetyComponent%20-%20SSRD.md#47-mqtt-lifecycle-and-diagnostics)
+The [software requirement](../docs/sys/SafetyComponent%20-%20SSRD.sdoc)
 separates this retirement from active-topic migration.
 
 The [migration tool](migrate_mqtt_retained.py) audits only retained messages on

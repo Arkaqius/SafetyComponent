@@ -1,5 +1,24 @@
-# Heating System Monitoring — Architecture
+[DOCUMENT]
+TITLE: Heating System Monitoring — Architecture
+UID: ARCH-HEATING-SYSTEM-MONITORING-DOC
+OPTIONS:
+  MARKUP: Markdown
+  AUTO_LEVELS: Off
 
+[GRAMMAR]
+ELEMENTS:
+- TAG: TEXT
+  FIELDS:
+  - TITLE: LEVEL
+    TYPE: String
+    REQUIRED: True
+  - TITLE: STATEMENT
+    TYPE: String
+    REQUIRED: True
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 **Component:** `HeatingSystemMonitorComponent`
 
 **System allocation:** C-HVAC
@@ -7,9 +26,16 @@
 **Document role:** Normative feature architecture
 
 **Source language:** English
+<<<
 
-## 1. Purpose and safety allocation
+[[SECTION]]
+UID: ARCH-HEATING-SYSTEM-MONITORING-SEC-1-PURPOSE-AND-SAFETY-ALLOCATION
+LEVEL: None
+TITLE: 1. Purpose and safety allocation
 
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Heating System Monitoring shall supervise the chain from permitted room heat
 need through controller request and boiler response to delivered room heat.
 Its conclusions shall distinguish observed failures from suspected causes and
@@ -21,9 +47,9 @@ monitoring remains the independent C-ALARM responsibility.
 
 The controlling documents are:
 
-- [HARA section 1.3.12](<../sys/SafetyConcept - HARA.md#1312-loss-of-heatingcooling>), HZ‑HVAC‑01 / HZ‑HVAC‑LOSS‑01 and SG‑010 / SG‑012;
-- [SYS section 8.6](<../sys/SafetyConcept - SYS.md#86-heating-system-monitoring-component-c-hvac>), SYS-SR-HSM-001..018;
-- [SSRD section 4.10](<../sys/SafetyComponent - SSRD.md#410-heating-system-monitoring>), SWR-HSM-001..026.
+- [LINK: HARA-SEC-1-3-12, HARA section 1.3.12], HZ‑HVAC‑01 / HZ‑HVAC‑LOSS‑01 and SG‑010 / SG‑012;
+- [LINK: SYS-SEC-8-6, SYS section 8.6], SYS-SR-HSM-001..018;
+- [LINK: SSRD-SEC-4-10, SSRD section 4.10], SWR-HSM-001..026.
 
 C-HVAC shall contribute heating-health and heating-loss warnings to SG-010/012
 and supervision-loss detection to SG-003. It shall retain independent C-TEMP
@@ -31,9 +57,18 @@ room-temperature hazard detection and native appliance protection. Its scope
 shall exclude cooling, combustion certification and automatic heating control.
 Its SS-4 contribution shall be diagnosed degradation, timely notification and
 manual guidance; notification acceptance shall not prove physical risk removal.
+<<<
 
-## 2. Ownership and architecture
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-HEATING-SYSTEM-MONITORING-SEC-2-OWNERSHIP-AND-ARCHITECTURE
+LEVEL: None
+TITLE: 2. Ownership and architecture
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 | Element | Contract |
 | --- | --- |
 | Configured input normalizer | Resolve installation-owned entity/attribute/value mappings into the normalized model; preserve signal meaning, provenance and freshness without product recognition or an actuator API |
@@ -70,15 +105,24 @@ be bounded and shall not block evaluation of other rules. Cached data shall reta
 original observation time and shall not become fresh because it was read again.
 
 C-HVAC shall supply model-specific manual inspection and service recovery under
-the [shared action contract](<Recommended Actions and Recovery - Architecture.md>).
+the [LINK: ARCH-RECOMMENDED-ACTIONS-AND-RECOVERY-DOC, shared action contract].
 It shall not issue boiler reset,
 climate/setpoint, pump, relay or gas-valve commands. Input bindings shall not expose
 a write path to the policy engine. Notification transport calls shall remain
 owned by NotificationManager. Separate backup/failover authorization shall not
 be inferred from an active heating fault.
+<<<
 
-## 3. Input and dependency contract
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-HEATING-SYSTEM-MONITORING-SEC-3-INPUT-AND-DEPENDENCY-CONTRACT
+LEVEL: None
+TITLE: 3. Input and dependency contract
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Each sample shall identify the semantic signal, installation and source entity,
 value, normalized unit, source observation time, receipt time, optional sequence,
 quality and interpretation reason. Unsupported, absent, malformed, stale and
@@ -110,9 +154,16 @@ intentionally disabled optional rules shall expose excluded coverage. A partial
 installation shall not report full need-to-delivery supervision. Full CH
 coverage requires need, request, response, thermal and quality paths, with a
 valid current-code interpretation path for a code-reporting boiler.
+<<<
 
-### 3.1 Entity Monitor integration
+[[SECTION]]
+UID: ARCH-HEATING-SYSTEM-MONITORING-SEC-31-ENTITY-MONITOR-INTEGRATION
+LEVEL: None
+TITLE: 3.1 Entity Monitor integration
 
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 The component shall declare dependencies through the component registration
 contract, with stable keys, area, owner, purpose and quality/timing checks.
 They shall appear in monitored entities without duplicate `explicit_entities`
@@ -128,9 +179,18 @@ their quality and shall not emit a second notification for the same root input
 failure. Incompatible shared checks/ownership shall be rejected, not silently
 overridden. Secondary loss of heating assessment shall remain visible in
 coverage without asserting a new mechanical failure.
+<<<
 
-### 3.2 Freshness and synchronization
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-HEATING-SYSTEM-MONITORING-SEC-32-FRESHNESS-AND-SYNCHRONIZATION
+LEVEL: None
+TITLE: 3.2 Freshness and synchronization
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 IR-008 flow sampling shall be at least 0.2 Hz and samples older than 120 s shall
 be invalid. Tighter freshness thresholds shall apply to SG-003 paths as needed
 by section 7. HA `last_updated` shall be used only when its integration contract
@@ -145,9 +205,18 @@ reject excessive cross-signal skew and sample gaps; interpolation across a gap
 shall not supply failure or recovery evidence. Rate windows shall use source
 time, while runtime durations shall use a monotonic clock. Receipt time shall
 support latency diagnosis, not replace the original observation time.
+<<<
 
-### 3.3 Configurable read-only input boundary
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-HEATING-SYSTEM-MONITORING-SEC-33-CONFIGURABLE-READ-ONLY-INPUT-BOUNDARY
+LEVEL: None
+TITLE: 3.3 Configurable read-only input boundary
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 The safety engine shall consume a product-neutral normalized input model. Installation
 configuration shall bind semantic signals to Home Assistant entity states or
 attributes, including explicit value/state mappings, units and freshness
@@ -197,9 +266,18 @@ refresh that temperature. Missing original observation time shall be exposed as
 unverified measurement freshness, even when publication contact is current.
 The normalizer shall not translate unavailable/unsupported fields into `false`,
 zero, no demand or a passing rule.
+<<<
 
-### 3.4 Capability and coverage admission
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-HEATING-SYSTEM-MONITORING-SEC-34-CAPABILITY-AND-COVERAGE-ADMISSION
+LEVEL: None
+TITLE: 3.4 Capability and coverage admission
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Coverage shall be admitted per rule and installation, rather than inferred from
 component enablement. The validator shall bind each enabled rule to its required
 signals, independent source where required, freshness/rate proof, equipment
@@ -216,9 +294,20 @@ controller contact, room-need assessment, boiler response, thermal output,
 distribution, room delivery, code interpretation and thermal protection. A
 healthy selected subset shall still identify the missing end-to-end paths;
 neither its health nor an empty fault list shall imply full C-HVAC coverage.
+<<<
 
-## 4. Operating phase and supervision coverage
+[[/SECTION]]
 
+[[/SECTION]]
+
+[[SECTION]]
+UID: ARCH-HEATING-SYSTEM-MONITORING-SEC-4-OPERATING-PHASE-AND-SUPERVISION-COVERAGE
+LEVEL: None
+TITLE: 4. Operating phase and supervision coverage
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 | Raw phase | Required interpretation |
 | --- | --- |
 | `idle` | Fresh evidence establishes no applicable heat request and no conflicting boiler activity |
@@ -240,9 +329,18 @@ Healthy supervision means its selected inputs/rules are evaluable, not that the
 boiler has no active fault. Coverage shall enumerate enabled, disabled, shadow,
 applicable and unevaluable rules. Each unknown/inhibited result shall carry a
 reason and, where applicable, an expiry/deadline.
+<<<
 
-## 5. Rules, fault identities and evidence
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-HEATING-SYSTEM-MONITORING-SEC-5-RULES-FAULT-IDENTITIES-AND-EVIDENCE
+LEVEL: None
+TITLE: 5. Rules, fault identities and evidence
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 The [additional rule policy reference](<Heating Additional Rule Policies.md>)
 defines explicit R07..R12 input, qualification, thermal-allocation and cycling
 contracts without manufacturer-specific defaults.
@@ -351,9 +449,18 @@ count as a zero-start healthy interval. Optional DHW performance and pressure
 rules shall require their own explicit input, timing, fault and verification
 contract before enablement; DHW phase handling shall remain required for CH
 eligibility when the boiler supplies DHW.
+<<<
 
-## 6. Rule lifecycle, incident correlation and restart
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-HEATING-SYSTEM-MONITORING-SEC-6-RULE-LIFECYCLE-INCIDENT-CORRELATION-AND-RESTART
+LEVEL: None
+TITLE: 6. Rule lifecycle, incident correlation and restart
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Rule evaluation shall use `not_applicable`, `unevaluable`, `passing`,
 `pending_failure`, `failed` and `pending_recovery`, with a separate active
 symptom latch. A result shall retain current applicability, reasons, observed
@@ -413,9 +520,18 @@ Additive inactive policy defaults or new rule paths shall not reset unchanged
 existing contracts. New rules shall begin without fabricated prior successful
 observations. Removed or materially changed active contracts shall require
 explicit reconciliation rather than an empty healthy snapshot.
+<<<
 
-## 7. Calibration and timing allocation
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-HEATING-SYSTEM-MONITORING-SEC-7-CALIBRATION-AND-TIMING-ALLOCATION
+LEVEL: None
+TITLE: 7. Calibration and timing allocation
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 All operating thresholds shall be calibration values with source, units,
 equipment applicability and validation evidence. Manufacturer absolute limits
 shall be required for the absolute-temperature rule; a generic 90°C bound shall
@@ -483,9 +599,18 @@ R10/R11 shall be rejected without that reviewed bound. Neither the heating-loss
 30-minute budget nor the occupied-room SG-004 budget shall be inherited as an
 appliance thermal bound. Supervision grace shall not inhibit a valid absolute
 overtemperature reading or a confirmed current blocking code.
+<<<
 
-## 8. Configuration ownership and validation
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-HEATING-SYSTEM-MONITORING-SEC-8-CONFIGURATION-OWNERSHIP-AND-VALIDATION
+LEVEL: None
+TITLE: 8. Configuration ownership and validation
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 The configuration contract shall preserve the repository's two-source model:
 
 | Source | Heating responsibility |
@@ -528,9 +653,18 @@ calibration, published status strings and MQTT discovery defaults shall not
 become heating policy by inheritance. Adding C-HVAC shall preserve
 the configuration model's explicit component/installation selection and shall
 not enable monitoring of every discovered controller room or boiler entity.
+<<<
 
-## 9. Fault, notification and diagnostic presentation
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-HEATING-SYSTEM-MONITORING-SEC-9-FAULT-NOTIFICATION-AND-DIAGNOSTIC-PRESENTATION
+LEVEL: None
+TITLE: 9. Fault, notification and diagnostic presentation
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Each transition shall produce bounded structured evidence: `incident_id`, fault
 and symptom IDs, rule ID, installation/room, UTC onset/evaluation/transition
 times, phase and inference reason, independent need and request, input values
@@ -542,7 +676,7 @@ enter notification payloads or durable notification state.
 SET shall explain what was observed and its consequence. HEAL shall include the
 original incident identity, duration and the measured reason it is now clear.
 Fault MQTT state shall use the eight evaluation codes in
-[Fault State Policy](Fault%20State%20Policy%20-%20Architecture.md), with activation
+[LINK: ARCH-FAULT-STATE-POLICY-DOC, Fault State Policy], with activation
 and shadowing carried separately. Notification journal transition codes remain
 `SET`, `SHADOWED`, `CLEARED`. HEAL is presentation/domain terminology for a
 positively cleared incident, not a new evaluation status. Shadowing and
@@ -574,9 +708,18 @@ preserving the notification-history-before-entity-history ordering. EN/PL/DE
 labels and notification templates shall have equivalent meaning; stable IDs,
 codes and timestamps shall remain language-independent. UTC evidence shall be
 rendered with the user's local date, time and timezone.
+<<<
 
-## 10. Verification and traceability
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-HEATING-SYSTEM-MONITORING-SEC-10-VERIFICATION-AND-TRACEABILITY
+LEVEL: None
+TITLE: 10. Verification and traceability
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Tests shall use controlled time, source-input fixtures and the bundled AppDaemon
 stub. Passive installation evidence shall calibrate thermal windows and code
 profiles. No household heating/actuator routine shall be triggered merely to
@@ -597,28 +740,31 @@ verify documentation or backend unit behavior.
 
 | SYS requirement | Refinement in SSRD |
 | --- | --- |
-| SYS-SR-HSM-001 | SWR-HSM-001/005/008 |
-| SYS-SR-HSM-002 | SWR-HSM-003/024 |
-| SYS-SR-HSM-003 | SWR-HSM-002/012 |
-| SYS-SR-HSM-004 | SWR-HSM-006/007 |
-| SYS-SR-HSM-005 | SWR-HSM-003/004/014/017 |
-| SYS-SR-HSM-006 | SWR-HSM-005/007/008 |
-| SYS-SR-HSM-007 | SWR-HSM-007/009 |
-| SYS-SR-HSM-008 | SWR-HSM-010 |
-| SYS-SR-HSM-009 | SWR-HSM-011 |
-| SYS-SR-HSM-010 | SWR-HSM-012/013 |
-| SYS-SR-HSM-011 | SWR-HSM-014/015 |
-| SYS-SR-HSM-012 | SWR-HSM-007/018/020 |
-| SYS-SR-HSM-013 | SWR-HSM-019/020 |
-| SYS-SR-HSM-014 | SWR-HSM-016/017 |
-| SYS-SR-HSM-015 | SWR-HSM-021/022 |
-| SYS-SR-HSM-016 | SWR-HSM-023 |
-| SYS-SR-HSM-017 | SWR-HSM-024 |
-| SYS-SR-HSM-018 | SWR-HSM-025/026 |
+| [LINK: SYS-SR-HSM-001, SYS-SR-HSM-001] | [LINK: SWR-HSM-001, SWR-HSM-001]/[LINK: SWR-HSM-005, 005]/[LINK: SWR-HSM-008, 008] |
+| [LINK: SYS-SR-HSM-002, SYS-SR-HSM-002] | [LINK: SWR-HSM-003, SWR-HSM-003]/[LINK: SWR-HSM-024, 024] |
+| [LINK: SYS-SR-HSM-003, SYS-SR-HSM-003] | [LINK: SWR-HSM-002, SWR-HSM-002]/[LINK: SWR-HSM-012, 012] |
+| [LINK: SYS-SR-HSM-004, SYS-SR-HSM-004] | [LINK: SWR-HSM-006, SWR-HSM-006]/[LINK: SWR-HSM-007, 007] |
+| [LINK: SYS-SR-HSM-005, SYS-SR-HSM-005] | [LINK: SWR-HSM-003, SWR-HSM-003]/[LINK: SWR-HSM-004, 004]/[LINK: SWR-HSM-014, 014]/[LINK: SWR-HSM-017, 017] |
+| [LINK: SYS-SR-HSM-006, SYS-SR-HSM-006] | [LINK: SWR-HSM-005, SWR-HSM-005]/[LINK: SWR-HSM-007, 007]/[LINK: SWR-HSM-008, 008] |
+| [LINK: SYS-SR-HSM-007, SYS-SR-HSM-007] | [LINK: SWR-HSM-007, SWR-HSM-007]/[LINK: SWR-HSM-009, 009] |
+| [LINK: SYS-SR-HSM-008, SYS-SR-HSM-008] | [LINK: SWR-HSM-010, SWR-HSM-010] |
+| [LINK: SYS-SR-HSM-009, SYS-SR-HSM-009] | [LINK: SWR-HSM-011, SWR-HSM-011] |
+| [LINK: SYS-SR-HSM-010, SYS-SR-HSM-010] | [LINK: SWR-HSM-012, SWR-HSM-012]/[LINK: SWR-HSM-013, 013] |
+| [LINK: SYS-SR-HSM-011, SYS-SR-HSM-011] | [LINK: SWR-HSM-014, SWR-HSM-014]/[LINK: SWR-HSM-015, 015] |
+| [LINK: SYS-SR-HSM-012, SYS-SR-HSM-012] | [LINK: SWR-HSM-007, SWR-HSM-007]/[LINK: SWR-HSM-018, 018]/[LINK: SWR-HSM-020, 020] |
+| [LINK: SYS-SR-HSM-013, SYS-SR-HSM-013] | [LINK: SWR-HSM-019, SWR-HSM-019]/[LINK: SWR-HSM-020, 020] |
+| [LINK: SYS-SR-HSM-014, SYS-SR-HSM-014] | [LINK: SWR-HSM-016, SWR-HSM-016]/[LINK: SWR-HSM-017, 017] |
+| [LINK: SYS-SR-HSM-015, SYS-SR-HSM-015] | [LINK: SWR-HSM-021, SWR-HSM-021]/[LINK: SWR-HSM-022, 022] |
+| [LINK: SYS-SR-HSM-016, SYS-SR-HSM-016] | [LINK: SWR-HSM-023, SWR-HSM-023] |
+| [LINK: SYS-SR-HSM-017, SYS-SR-HSM-017] | [LINK: SWR-HSM-024, SWR-HSM-024] |
+| [LINK: SYS-SR-HSM-018, SYS-SR-HSM-018] | [LINK: SWR-HSM-025, SWR-HSM-025]/[LINK: SWR-HSM-026, 026] |
 
 Integration shall preserve the
-[Entity Health Monitoring contract](<Entity Health Monitoring - Architecture.md>),
-[Mobile Notification Delivery contract](<Mobile Notification Delivery - Architecture.md>)
-and [Recommended Actions and Recovery boundary](<Recommended Actions and Recovery - Architecture.md>).
+[LINK: ARCH-ENTITY-HEALTH-MONITORING-DOC, Entity Health Monitoring contract],
+[LINK: ARCH-MOBILE-NOTIFICATION-DELIVERY-DOC, Mobile Notification Delivery contract]
+and [LINK: ARCH-RECOMMENDED-ACTIONS-AND-RECOVERY-DOC, Recommended Actions and Recovery boundary].
 Verification evidence shall distinguish requirement coverage from runtime
 implementation and from passive or controlled installation validation.
+<<<
+
+[[/SECTION]]

@@ -100,10 +100,11 @@ from silently altering safety policy.
 
 ## Documentation and Repository Boundaries
 
-- The [hazard analysis](<../../docs/sys/SafetyConcept - HARA.md>),
-  [system requirements](<../../docs/sys/SafetyConcept - SYS.md>),
-  [software requirements](<../../docs/sys/SafetyComponent - SSRD.md>), and
-  `docs/features/` define required safety behavior. Current source, validated
+- The StrictDoc [hazard analysis](<../../docs/sys/SafetyConcept - HARA.sdoc>),
+  [system requirements](<../../docs/sys/SafetyConcept - SYS.sdoc>),
+  [software requirements](<../../docs/sys/SafetyComponent - SSRD.sdoc>), and
+  feature architecture sources under `docs/features/` define required safety behavior.
+  Current source, validated
   configuration, and tests provide implementation evidence.
 - Evidence reviews MUST inspect `backend/config/system_config.yml`,
   `backend/config/user_config.example.yml`, and any applicable local ignored

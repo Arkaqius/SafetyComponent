@@ -1,9 +1,52 @@
-# ISO 26262 Inspired Safety Strategy for Home Automation Systems
+[DOCUMENT]
+TITLE: ISO 26262 Inspired Safety Strategy for Home Automation Systems
+UID: HARA-DOC
+OPTIONS:
+  MARKUP: Markdown
 
-## 1. Hazard analysis and risk assessment
+[GRAMMAR]
+ELEMENTS:
+- TAG: HAZARD
+  FIELDS:
+  - TITLE: UID
+    TYPE: String
+    REQUIRED: True
+  - TITLE: TITLE
+    TYPE: String
+    REQUIRED: True
+  - TITLE: STATEMENT
+    TYPE: String
+    REQUIRED: False
+- TAG: SAFETY_GOAL
+  FIELDS:
+  - TITLE: UID
+    TYPE: String
+    REQUIRED: True
+  - TITLE: TITLE
+    TYPE: String
+    REQUIRED: True
+  - TITLE: STATEMENT
+    TYPE: String
+    REQUIRED: False
+  RELATIONS:
+  - TYPE: Parent
+    ROLE: Mitigates
+- TAG: TEXT
+  FIELDS:
+  - TITLE: STATEMENT
+    TYPE: String
+    REQUIRED: True
 
-### 1.1 Hazard identification
+[[SECTION]]
+UID: HARA-SEC-1
+TITLE: Hazard analysis and risk assessment
 
+[[SECTION]]
+UID: HARA-SEC-1-1
+TITLE: Hazard identification
+
+[TEXT]
+STATEMENT: >>>
 This process identifies and analyzes potential hazards to the home automation system and its occupants.
 By assessing the system, components, and external factors, all hazards are identified for a comprehensive understanding of risks.
 This involves examining security vulnerabilities, safety concerns, environmental factors, and system malfunctions.
@@ -13,167 +56,284 @@ This document defines hazards, risk classifications, and stakeholder-level
 safety goals. Component allocations, interface contracts, algorithms, runtime
 identifiers, and software behavior are refined in the SYS, SSRD, and feature
 architecture documents.
+<<<
 
----
+[[SECTION]]
+UID: HARA-SEC-1-1-1
+TITLE: Identified hazards
 
-#### 1.1.1 Identified hazards
-
----
-
-**Unauthorized Access (HZ‑UNAUTH‑01):**
-
+[HAZARD]
+UID: HZ-UNAUTH-01
+TITLE: Unauthorized Access
+STATEMENT: >>>
 This could occur if a door or window is left open or unlocked, or if a security system is disabled.
+<<<
 
-**Cybersecurity Compromise (HZ‑CYBER‑SPOOF‑01 / HZ‑CYBER‑DENIAL‑01):**
+[[SECTION]]
+TITLE: Cybersecurity Compromise
 
+[TEXT]
+STATEMENT: >>>
 Unauthorized manipulation, denial of service, or loss of trustworthy data could
 prevent a safety function from detecting, warning about, or responding to a
 hazard.
+<<<
 
-**Fire (HZ‑FIRE‑01):**
+[HAZARD]
+UID: HZ-CYBER-SPOOF-01
+TITLE: Untrustworthy safety data
 
+[HAZARD]
+UID: HZ-CYBER-DENIAL-01
+TITLE: Denial of a safety function
+
+[[/SECTION]]
+
+[HAZARD]
+UID: HZ-FIRE-01
+TITLE: Fire
+STATEMENT: >>>
 This could be caused by a malfunctioning device, such as a heater, stove, or electrical equipment.
+<<<
 
-**Gas Leak (HZ‑GAS‑01):**
-
+[HAZARD]
+UID: HZ-GAS-01
+TITLE: Gas Leak
+STATEMENT: >>>
 Gas appliances could leak, leading to potential poisoning or explosion.
+<<<
 
-**Carbon Monoxide Poisoning (HZ‑CO‑01):**
-
+[HAZARD]
+UID: HZ-CO-01
+TITLE: Carbon Monoxide Poisoning
+STATEMENT: >>>
 This is another risk associated with gas appliances, particularly if they are not properly
 ventilated.
+<<<
 
-**Water Leak/Flood (HZ‑WATER‑01):**
-
+[HAZARD]
+UID: HZ-WATER-01
+TITLE: Water Leak/Flood
+STATEMENT: >>>
 This could occur if a pipe bursts or a faucet is left running.
+<<<
 
-**Electrical Shock (HZ‑ELECT‑01):**
-
+[HAZARD]
+UID: HZ-ELECT-01
+TITLE: Electrical Shock
+STATEMENT: >>>
 This could be caused by a faulty device, or by water coming into contact with electrical equipment.
+<<<
 
-**Poor Air Quality (HZ‑AQ‑01):**
-
+[HAZARD]
+UID: HZ-AQ-01
+TITLE: Poor Air Quality
+STATEMENT: >>>
 This could be caused by a lack of ventilation, leading to a buildup of pollutants or allergens.
+<<<
 
-**Loss of Heating/Cooling (HZ‑HVAC‑01 / HZ‑HVAC‑LOSS‑01):**
+[[SECTION]]
+TITLE: Loss of Heating/Cooling
 
+[TEXT]
+STATEMENT: >>>
 This could occur if the HVAC system fails, leading to uncomfortable or even dangerous indoor temperatures.
 A heating or cooling system may appear operational while still failing to
 deliver the indoor conditions needed to protect occupants.
+<<<
 
-**Privacy Invasion (HZ‑PRIV‑01):**
+[HAZARD]
+UID: HZ-HVAC-01
+TITLE: HVAC failure
 
+[HAZARD]
+UID: HZ-HVAC-LOSS-01
+TITLE: Loss of heating or cooling
+
+[[/SECTION]]
+
+[HAZARD]
+UID: HZ-PRIV-01
+TITLE: Privacy Invasion
+STATEMENT: >>>
 Unauthorized access to the system could lead to privacy concerns, such as surveillance through security cameras.
+<<<
 
-**System Failure (HZ‑SYSTEM‑FAIL‑01):**
-
+[HAZARD]
+UID: HZ-SYSTEM-FAIL-01
+TITLE: System Failure
+STATEMENT: >>>
 A failure of the home automation system or a safety-relevant monitoring device
 could prevent hazard detection, warning, or an authorized protective response.
+<<<
 
-**Unsafe Cold Exposure (HZ‑UNDERTEMP‑01 / HZ‑UNDERTEMP‑02):**
+[[SECTION]]
+TITLE: Unsafe Cold Exposure
 
+[TEXT]
+STATEMENT: >>>
 This can occur if a room's temperature falls below the safe threshold for the situation or occupants. For example, the bathroom temperature might need to be at least 22°C during a child's bath.
+<<<
 
-**Unsafe Heat Exposure (HZ‑OVERTEMP‑01):**
+[HAZARD]
+UID: HZ-UNDERTEMP-01
+TITLE: Unsafe indoor cold
 
+[HAZARD]
+UID: HZ-UNDERTEMP-02
+TITLE: Approaching unsafe indoor cold
+
+[[/SECTION]]
+
+[HAZARD]
+UID: HZ-OVERTEMP-01
+TITLE: Unsafe Heat Exposure
+STATEMENT: >>>
 Similarly, a room's temperature could rise above the safe threshold for the situation or occupants. For example, the living room might become uncomfortably or unsafely hot during a summer heatwave if the cooling system isn't functioning properly.
+<<<
 
-**Rain Entering Window (HZ‑WEATHER‑01):**
-
+[HAZARD]
+UID: HZ-WEATHER-01
+TITLE: Rain Entering Window
+STATEMENT: >>>
 This hazard arises when rain enters through an open window or door, potentially
 causing water damage to the home's interior and electrical systems.
+<<<
 
-**Frost Exposure Through Openings (HZ‑EXT‑FROST‑01):**
-
+[HAZARD]
+UID: HZ-EXT-FROST-01
+TITLE: Frost Exposure Through Openings
+STATEMENT: >>>
 An external door or window left open during frost can cause rapid heat loss,
 localized freezing, increased energy consumption, and in extreme cases damage
 to water-bearing installations. This is distinct from unsafe occupant cold
 exposure because the initiating condition is an external hazard combined with
 an open building aperture.
+<<<
 
-**Wind Damage to Openings (HZ‑EXT‑WIND‑01):**
-
+[HAZARD]
+UID: HZ-EXT-WIND-01
+TITLE: Wind Damage to Openings
+STATEMENT: >>>
 Strong wind or gusts can slam or damage an open window or door and can carry
 rain or debris into the building. The hazardous exposure occurs when damaging
 wind coincides with an open building aperture.
+<<<
 
-**Outdoor Air Pollution Entering the Home (HZ‑EXT‑AQ‑01):**
-
+[HAZARD]
+UID: HZ-EXT-AQ-01
+TITLE: Outdoor Air Pollution Entering the Home
+STATEMENT: >>>
 Opening windows or external doors while outdoor particulate or gaseous
 pollution is elevated can worsen indoor air quality and can conflict with
 otherwise valid ventilation or comfort advice.
+<<<
 
----
+[[/SECTION]]
 
-### 1.2 Hazards assessment and risk classification
+[[/SECTION]]
 
+[[SECTION]]
+UID: HARA-SEC-1-2
+TITLE: Hazards assessment and risk classification
+
+[TEXT]
+STATEMENT: >>>
 This process evaluates identified hazards based on severity, exposure, and controllability.
 By quantifying these factors and calculating risk scores, hazards are prioritized.
 The assigned priorities guide the development of safety measures and risk mitigation strategies.
 
 Based on the hazard assessment, each identified hazard is assigned a risk level. This risk level is typically determined by factors such as the potential severity of the hazard, the likelihood of the hazard occurring, and the ability of the user or system to control the hazard.
+<<<
 
----
+[[SECTION]]
+UID: HARA-SEC-1-2-1
+TITLE: Definitions
 
-#### 1.2.1 Definitions
-
+[TEXT]
+STATEMENT: >>>
 **Severity** refers to the potential harm that could be caused by the hazard. High severity hazards could cause serious harm, such as injury or significant property damage, while medium severity hazards might cause discomfort or minor damage.
 
 **Exposure** refers to the likelihood of the hazard occurring. High exposure hazards could occur regularly, while medium exposure hazards might only occur occasionally.
 
 **Controllability** refers to the user's ability to prevent or mitigate the hazard. High controllability hazards can be easily managed by the user, while medium controllability hazards might require more effort or specialized knowledge to manage.
+<<<
 
----
+[[/SECTION]]
 
-#### 1.2.2 Numerical values
+[[SECTION]]
+UID: HARA-SEC-1-2-2
+TITLE: Numerical values
 
-High=3, Medium=2, and Low=1 for _Severity_, _Exposure_  
+[TEXT]
+STATEMENT: >>>
+High=3, Medium=2, and Low=1 for _Severity_, _Exposure_\
 High=1, Medium=2, and Low=3 for _Controllability_
+<<<
 
----
+[[/SECTION]]
 
-#### 1.2.3 Formula Risk
+[[SECTION]]
+UID: HARA-SEC-1-2-3
+TITLE: Formula Risk
 
+[TEXT]
+STATEMENT: >>>
 Risk score = (2 x _Severity_) x _Exposure_ x _Controllability_ to calculate risk.
+<<<
 
----
+[[/SECTION]]
 
-#### 1.2.4 Categories
+[[SECTION]]
+UID: HARA-SEC-1-2-4
+TITLE: Categories
 
-**Level 1:** High Risk (Risk score 24 and above)  
-**Level 2:** Medium Risk (Risk score between 12 and 23)  
-**Level 3:** Low Risk (Risk score between 6 and 11)  
+[TEXT]
+STATEMENT: >>>
+**Level 1:** High Risk (Risk score 24 and above)\
+**Level 2:** Medium Risk (Risk score between 12 and 23)\
+**Level 3:** Low Risk (Risk score between 6 and 11)\
 **Level 4:** Very Low Risk (Risk score 5 or below)
+<<<
 
----
+[[/SECTION]]
 
-#### 1.2.5 Risk assessment rules
+[[SECTION]]
+UID: HARA-SEC-1-2-5
+TITLE: Risk assessment rules
 
-**Severity:**  
+[TEXT]
+STATEMENT: >>>
+**Severity:**\
 _High_: These hazards pose immediate threats to health or life. They require instant action to mitigate. Examples include a fire, gas leak, or carbon monoxide poisoning.
 
 _Medium_: These hazards could lead to potential costs if not addressed promptly. They might not directly threaten health or life but can cause significant damage or inconvenience. For instance, unauthorized access could lead to theft, while a water leak could cause property damage.
 
 _Low_: These hazards might cause minor costs if repeated over time, or could potentially impact health if the exposure is sustained or repeated. For example, poor air quality might not pose a direct threat but can lead to health issues over time. Similarly, a slight loss of heating or cooling might be uncomfortable but is not immediately dangerous.
 
-**Exposure:**  
+**Exposure:**\
 _Low:_ These hazards are very unlikely to occur. There might be very specific or rare conditions that could lead to these hazards, but under normal circumstances, the chances are minimal.
 
 _Medium:_ These hazards are possible under certain circumstances. They might not happen regularly, but there are known situations or conditions where these hazards could materialize.
 
 _High:_ These hazards occur often or under a wide range of common conditions. They are part of the routine or daily operation and therefore have a higher likelihood of happening.
 
-**Controllability:**  
+**Controllability:**\
 _Low:_ These hazards are beyond the control of the residents or can only be mitigated in a limited way. They often require the involvement of specialists or emergency services to manage. For example, a gas leak would be considered a low controllability hazard, as it requires professional assistance to mitigate.
 
 _Medium:_ Residents can mitigate these hazards, but it may take time and the recovery may not be complete. These are situations that may not be easily managed remotely. For example, a water leak could be considered a medium controllability hazard, as a resident could potentially stop the leak, but may not be able to repair the damage without professional help.
 
 _High:_ These hazards can be easily mitigated if residents are notified in time, and many of these situations can be managed remotely. For instance, an open window could be considered a high controllability hazard, as it can be simply closed if a resident is notified and still in the house, or potentially even remotely via an automated system.
+<<<
 
----
+[[/SECTION]]
 
-#### 1.2.6 Risk assessment table
+[[SECTION]]
+UID: HARA-SEC-1-2-6
+TITLE: Risk assessment table
 
+[TEXT]
+STATEMENT: >>>
 | Hazard                    | Severity   | Exposure   | Controllability | Risk Score     | Level   |
 | ------------------------- | ---------- | ---------- | --------------- | -------------- | ------- |
 | Unauthorized Access       | High (3)   | Medium (2) | Low (3)         | (2x3)x2x3 = 36 | Level 1 |
@@ -194,13 +354,20 @@ _High:_ These hazards can be easily mitigated if residents are notified in time,
 | Wind Damage to Openings   | Medium (2) | Medium (2) | High (1)        | (2x2)x2x1 = 8  | Level 3 |
 | Outdoor Air Pollution Ingress | Low (1) | High (3) | High (1)       | (2x1)x3x1 = 6  | Level 3 |
 
-> Life-threatening hazards (Fire, Gas Leak, CO Poisoning, Electrical Shock) should never drop below Level 2 after mitigation, even if the formula suggests Level 3 or 4.  
+> Life-threatening hazards (Fire, Gas Leak, CO Poisoning, Electrical Shock) should never drop below Level 2 after mitigation, even if the formula suggests Level 3 or 4.\
 > Certainly, it's important to note that the initial risk assessment you have conducted takes into consideration the basic safety measures that are commonly found in homes, even without the presence of a home automation system. These traditional safety measures form the baseline upon which the home automation system's additional safety features are built. (ie. RCD, door locks or manual window locks)
+<<<
 
----
+[[/SECTION]]
 
-### 1.3 Safety goals
+[[/SECTION]]
 
+[[SECTION]]
+UID: HARA-SEC-1-3
+TITLE: Safety goals
+
+[TEXT]
+STATEMENT: >>>
 The goals below state the required safety outcomes without allocating them to a
 particular component, interface, or implementation. Corresponding system
 safety-goal IDs are referenced in the traceability matrix.
@@ -208,9 +375,16 @@ safety-goal IDs are referenced in the traceability matrix.
 Safety monitoring supplements rather than replaces autonomous device
 protection. An acknowledgement does not establish that a hazard has cleared or
 that re-entry is safe.
+<<<
 
-#### 1.3.1 Unauthorized Access
+[[SECTION]]
+UID: HARA-SEC-1-3-1
+TITLE: Unauthorized Access
 
+[SAFETY_GOAL]
+UID: SG-015
+TITLE: Unauthorized Access
+STATEMENT: >>>
 - The system shall continuously monitor for indications of unauthorized access or unexpected movement when the home is declared unoccupied.
 - The system shall immediately issue alerts to the occupants upon detection of unauthorized access or unexpected movement.
 - The system shall support escalation appropriate to the household's security
@@ -220,9 +394,22 @@ that re-entry is safe.
 - An opening remaining open shall not by itself be treated as proof of
   intrusion, unexpected entry, or lock integrity.
 - Any automatic securing action shall be separately assessed and authorized.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: HZ-UNAUTH-01
+  ROLE: Mitigates
 
-#### 1.3.2 Cybersecurity
+[[/SECTION]]
 
+[[SECTION]]
+UID: HARA-SEC-1-3-2
+TITLE: Cybersecurity
+
+[SAFETY_GOAL]
+UID: SG-016
+TITLE: Cybersecurity
+STATEMENT: >>>
 - The system shall prevent unauthorized access to or manipulation of
   safety-relevant functions and information.
 - The system shall preserve the confidentiality, integrity, authenticity, and
@@ -231,9 +418,25 @@ that re-entry is safe.
   functions.
 - Security maintenance and recovery shall not introduce an unacceptable loss of
   safety capability.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: HZ-CYBER-SPOOF-01
+  ROLE: Mitigates
+- TYPE: Parent
+  VALUE: HZ-CYBER-DENIAL-01
+  ROLE: Mitigates
 
-#### 1.3.3 Fire
+[[/SECTION]]
 
+[[SECTION]]
+UID: HARA-SEC-1-3-3
+TITLE: Fire
+
+[SAFETY_GOAL]
+UID: SG-006
+TITLE: Fire
+STATEMENT: >>>
 - The system shall actively detect the presence of smoke.
 - The system shall promptly alert the occupants in the event of a fire.
 - A valid alarm from any smoke detector shall remain effective and shall not be
@@ -241,9 +444,22 @@ that re-entry is safe.
 - The system shall support maintenance of effective fire detection.
 - The system shall support safe evacuation without creating a conflicting
   security hazard.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: HZ-FIRE-01
+  ROLE: Mitigates
 
-#### 1.3.4 Gas Leak
+[[/SECTION]]
 
+[[SECTION]]
+UID: HARA-SEC-1-3-4
+TITLE: Gas Leak
+
+[SAFETY_GOAL]
+UID: SG-007
+TITLE: Gas Leak
+STATEMENT: >>>
 - The system shall distinguish a flammable-gas hazard from carbon monoxide and
   general air-quality conditions.
 - The system shall alert the occupants promptly upon detection of a gas leak.
@@ -252,27 +468,79 @@ that re-entry is safe.
 - Automatic gas isolation or ventilation shall be used only when the response
   has been separately assessed and approved for the installation.
 - The system shall support maintenance of effective gas detection.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: HZ-GAS-01
+  ROLE: Mitigates
 
-#### 1.3.5 Carbon Monoxide Poisoning
+[[/SECTION]]
 
+[[SECTION]]
+UID: HARA-SEC-1-3-5
+TITLE: Carbon Monoxide Poisoning
+
+[SAFETY_GOAL]
+UID: SG-008
+TITLE: Carbon Monoxide Poisoning
+STATEMENT: >>>
 - The system shall alert occupants when hazardous levels of carbon monoxide are detected.
 - The system shall preserve the authority of a valid carbon-monoxide detector
   alarm and shall not suppress it because supplementary measurements are absent
   or contradictory.
 - The system shall support maintenance of effective carbon-monoxide detection.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: HZ-CO-01
+  ROLE: Mitigates
 
-#### 1.3.6 Water Leak/Flood
+[[/SECTION]]
 
+[[SECTION]]
+UID: HARA-SEC-1-3-6
+TITLE: Water Leak/Flood
+
+[SAFETY_GOAL]
+UID: SG-009
+TITLE: Water Leak/Flood
+STATEMENT: >>>
 - The system shall promptly alert the occupants upon detecting a leak.
 - The system shall support separately assessed measures that limit water damage.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: HZ-WATER-01
+  ROLE: Mitigates
 
-#### 1.3.7 Electrical Shock
+[[/SECTION]]
 
+[[SECTION]]
+UID: HARA-SEC-1-3-7
+TITLE: Electrical Shock
+
+[SAFETY_GOAL]
+UID: SG-013
+TITLE: Electrical Shock
+STATEMENT: >>>
 - The system shall reduce the risk of electrical shock and warn occupants when
   required electrical protection is unavailable or requires attention.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: HZ-ELECT-01
+  ROLE: Mitigates
 
-#### 1.3.8 Poor Air Quality
+[[/SECTION]]
 
+[[SECTION]]
+UID: HARA-SEC-1-3-8
+TITLE: Poor Air Quality
+
+[SAFETY_GOAL]
+UID: SG-005
+TITLE: Poor Air Quality
+STATEMENT: >>>
 - The system shall promptly notify residents when the air quality within the home deteriorates below a predefined standard.
 - The system shall provide timely information that enables occupants to prevent
   or limit harmful indoor air-quality exposure.
@@ -281,21 +549,70 @@ that re-entry is safe.
   gas, and carbon-monoxide hazards.
 - Air-quality mitigation and advice shall not conflict with a concurrent
   life-safety hazard or unsafe outdoor conditions.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: HZ-AQ-01
+  ROLE: Mitigates
 
-#### 1.3.9 Unsafe Cold Exposure
+[[/SECTION]]
 
+[[SECTION]]
+UID: HARA-SEC-1-3-9
+TITLE: Unsafe Cold Exposure
+
+[TEXT]
+STATEMENT: >>>
 - The system shall prevent prolonged occupant exposure to unsafe indoor cold.
 - The system shall warn occupants early enough to take protective action.
 - Any automatic mitigation shall be separately assessed for the installation.
+<<<
 
-#### 1.3.10 Unsafe Heat Exposure
+[SAFETY_GOAL]
+UID: SG-001
+TITLE: Prevent sustained undercooling
+RELATIONS:
+- TYPE: Parent
+  VALUE: HZ-UNDERTEMP-01
+  ROLE: Mitigates
 
+[SAFETY_GOAL]
+UID: SG-002
+TITLE: Predict approaching undercooling
+RELATIONS:
+- TYPE: Parent
+  VALUE: HZ-UNDERTEMP-02
+  ROLE: Mitigates
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: HARA-SEC-1-3-10
+TITLE: Unsafe Heat Exposure
+
+[SAFETY_GOAL]
+UID: SG-004
+TITLE: Unsafe Heat Exposure
+STATEMENT: >>>
 - The system shall prevent prolonged occupant exposure to unsafe indoor heat.
 - The system shall warn occupants early enough to take protective action.
 - Any automatic mitigation shall be separately assessed for the installation.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: HZ-OVERTEMP-01
+  ROLE: Mitigates
 
-#### 1.3.11 System Failure
+[[/SECTION]]
 
+[[SECTION]]
+UID: HARA-SEC-1-3-11
+TITLE: System Failure
+
+[SAFETY_GOAL]
+UID: SG-003
+TITLE: System Failure
+STATEMENT: >>>
 - The system shall supervise safety-relevant sensors, actuators, communication,
   and processing functions for loss or degradation.
 - Loss of safety monitoring shall be reported separately from the absence of a
@@ -304,34 +621,96 @@ that re-entry is safe.
   foreseeable power or communication failures.
 - The system shall support maintenance and periodic verification of its
   safety-relevant capabilities.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: HZ-SYSTEM-FAIL-01
+  ROLE: Mitigates
 
-#### 1.3.12 Loss of Heating/Cooling
+[[/SECTION]]
 
+[[SECTION]]
+UID: HARA-SEC-1-3-12
+TITLE: Loss of Heating/Cooling
+
+[TEXT]
+STATEMENT: >>>
 - The system shall detect loss or degradation of heating or cooling when it
   could result in an unsafe indoor temperature.
 - The system shall warn occupants and support separately assessed measures for
   maintaining safe indoor temperatures.
 - Loss of monitoring shall not be presented as normal operation, and restoration
   shall not be reported without current evidence of restored capability.
+<<<
 
-#### 1.3.13 Privacy Invasion
+[SAFETY_GOAL]
+UID: SG-010
+TITLE: Detect HVAC failure
+RELATIONS:
+- TYPE: Parent
+  VALUE: HZ-HVAC-01
+  ROLE: Mitigates
 
+[SAFETY_GOAL]
+UID: SG-012
+TITLE: Mitigate loss of heating or cooling
+RELATIONS:
+- TYPE: Parent
+  VALUE: HZ-HVAC-LOSS-01
+  ROLE: Mitigates
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: HARA-SEC-1-3-13
+TITLE: Privacy Invasion
+
+[SAFETY_GOAL]
+UID: SG-014
+TITLE: Privacy Invasion
+STATEMENT: >>>
 - The system shall prevent unauthorized observation or recording of occupants.
 - The system shall notify occupants of suspected unauthorized access to
   audio-visual monitoring functions.
 - Occupants shall be able to place audio-visual monitoring functions into an
   appropriate privacy-preserving state.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: HZ-PRIV-01
+  ROLE: Mitigates
 
-#### 1.3.14 Rain Entering Window
+[[/SECTION]]
 
+[[SECTION]]
+UID: HARA-SEC-1-3-14
+TITLE: Rain Entering Window
+
+[SAFETY_GOAL]
+UID: SG-011
+TITLE: Rain Entering Window
+STATEMENT: >>>
 - The system shall monitor weather data and predict potential rain events.
 - The system shall alert occupants when windows or external doors are left open during rain, a storm, or an applicable official warning.
 - The system shall not automatically close an ordinary window or door solely
   because of advisory environmental information. Any automatic closure shall
   require a separately assessed and authorized safety response.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: HZ-WEATHER-01
+  ROLE: Mitigates
 
-#### 1.3.15 Frost Exposure Through Openings
+[[/SECTION]]
 
+[[SECTION]]
+UID: HARA-SEC-1-3-15
+TITLE: Frost Exposure Through Openings
+
+[SAFETY_GOAL]
+UID: SG-017
+TITLE: Frost Exposure Through Openings
+STATEMENT: >>>
 - The system shall monitor current and forecast external temperature.
 - The system shall alert occupants when an open window or external door creates
   hazardous frost exposure.
@@ -339,9 +718,22 @@ that re-entry is safe.
   affected opening and take appropriate action.
 - Advisory frost information alone shall not authorize automatic control of
   openings, heating, or ventilation.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: HZ-EXT-FROST-01
+  ROLE: Mitigates
 
-#### 1.3.16 Wind Damage to Openings
+[[/SECTION]]
 
+[[SECTION]]
+UID: HARA-SEC-1-3-16
+TITLE: Wind Damage to Openings
+
+[SAFETY_GOAL]
+UID: SG-018
+TITLE: Wind Damage to Openings
+STATEMENT: >>>
 - The system shall monitor current and forecast wind gusts and applicable
   official wind or storm warnings.
 - The system shall alert occupants when an open window or external door is
@@ -350,9 +742,22 @@ that re-entry is safe.
   affected opening and take appropriate action.
 - Advisory wind information alone shall not authorize automatic control of
   openings or blinds.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: HZ-EXT-WIND-01
+  ROLE: Mitigates
 
-#### 1.3.17 Outdoor Air Pollution Ingress
+[[/SECTION]]
 
+[[SECTION]]
+UID: HARA-SEC-1-3-17
+TITLE: Outdoor Air Pollution Ingress
+
+[SAFETY_GOAL]
+UID: SG-019
+TITLE: Outdoor Air Pollution Ingress
+STATEMENT: >>>
 - The system shall monitor current and forecast outdoor air quality.
 - The system shall alert occupants when an open window or external door creates
   hazardous outdoor-pollution exposure.
@@ -361,34 +766,62 @@ that re-entry is safe.
   of openings, ventilation, or air purifiers.
 - The warning shall provide enough context for occupants to understand the
   hazardous condition and take appropriate action.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: HZ-EXT-AQ-01
+  ROLE: Mitigates
 
----
+[[/SECTION]]
 
-### 1.4 Risk Evaluation
+[[/SECTION]]
 
+[[SECTION]]
+UID: HARA-SEC-1-4
+TITLE: Risk Evaluation
+
+[TEXT]
+STATEMENT: >>>
 In this stage, you compare the risk levels from your risk assessment with your predetermined risk acceptance criteria. Risk acceptance criteria can be defined based on factors such as legal requirements, industry standards, and the risk tolerance of the stakeholders involved.
+<<<
 
-#### 1.4.1 Priority rules
+[[SECTION]]
+UID: HARA-SEC-1-4-1
+TITLE: Priority rules
 
+[TEXT]
+STATEMENT: >>>
 **Level 1 Risks:** Level 1 must be addressed immediately due to its high severity, high exposure, and low controllability. These risks are the top priority and should be mitigated before moving forward with the implementation. However, if additional measures cannot be implemented, Level 1 risks should be clearly stated.
 
 **High Severity Risks:** Regardless of their exposure or controllability, risks with a high severity level should be next in line for mitigation. These risks can cause significant harm and, therefore, should be addressed promptly to protect the occupants and the property.
 
 **Low Controllability Risks:** After high exposure risks, focus on risks with low controllability. These are risks that occupants have little to no control over and, thus, require an effective mitigation strategy to prevent potential harm.
+<<<
 
----
+[[/SECTION]]
 
-### 1.5 Risk Mitigation
+[[/SECTION]]
 
+[[SECTION]]
+UID: HARA-SEC-1-5
+TITLE: Risk Mitigation
+
+[TEXT]
+STATEMENT: >>>
 For risks that need further mitigation, you'll need to develop a risk mitigation strategy. This strategy should outline specific actions to reduce the likelihood and/or impact of each risk. The strategy can include a variety of measures such as:
 
 - _Mitigation:_ Reducing the impact or likelihood of the risk. This is often the main focus in the context of home automation systems.
 - _Acceptance:_ Acknowledging the risk and preparing contingency plans.
 - _Avoidance:_ Changing plans or strategies to entirely avoid the risk.
 - _Transfer:_ Shifting the risk to another party, such as purchasing insurance.
+<<<
 
-#### 1.5.1 Risk assessment after implementing safety goals
+[[SECTION]]
+UID: HARA-SEC-1-5-1
+TITLE: Risk assessment after implementing safety goals
 
+[TEXT]
+STATEMENT: >>>
 | Hazard                    | Severity   | Exposure   | Controllability | Risk Score     | Level   |
 | ------------------------- | ---------- | ---------- | --------------- | -------------- | ------- |
 | Unauthorized Access       | High (3)   | Low (1)    | Low (3)         | (2x3)x1x3 = 18 | Level 2 |
@@ -408,11 +841,18 @@ For risks that need further mitigation, you'll need to develop a risk mitigation
 | Frost Exposure Through Openings | Medium (2) | Low (1) | High (1)     | (2x2)x1x1 = 4  | Level 4 |
 | Wind Damage to Openings   | Medium (2) | Low (1)    | High (1)        | (2x2)x1x1 = 4  | Level 4 |
 | Outdoor Air Pollution Ingress | Low (1) | Medium (2) | High (1)      | (2x1)x2x1 = 4  | Level 4 |
+<<<
 
----
+[[/SECTION]]
 
-### 1.6 Risk Monitoring
+[[/SECTION]]
 
+[[SECTION]]
+UID: HARA-SEC-1-6
+TITLE: Risk Monitoring
+
+[TEXT]
+STATEMENT: >>>
 Residual risk and the effectiveness of the safety goals shall be reviewed
 periodically using evidence appropriate to each hazard. The review shall cover
 warning timeliness, missed and unnecessary warnings, availability of
@@ -424,31 +864,43 @@ defined in the system and installation requirements. Any change to detection
 criteria or automatic mitigation shall undergo a safety-impact assessment
 before use. Traceability from hazards through safety goals to verification
 evidence shall be maintained throughout the system lifecycle.
+<<<
 
-## 2. Traceability Matrix
+[[/SECTION]]
 
+[[/SECTION]]
+
+[[SECTION]]
+UID: HARA-SEC-2
+TITLE: Traceability Matrix
+
+[TEXT]
+STATEMENT: >>>
 The table assigns stable hazard and safety-goal identifiers shared with the SYS
 and SSRD. Detailed mitigation allocation and verification belong to those
 documents.
 
 | Hazard | Hazard ID(s) | HARA goal | Safety goal ID(s) | Risk before | Residual risk |
 | --- | --- | --- | --- | --- | --- |
-| Unauthorized Access | HZ‑UNAUTH‑01 | 1.3.1 | SG‑015 | Level 1 | Level 2 |
-| Cybersecurity | HZ‑CYBER‑SPOOF‑01 / HZ‑CYBER‑DENIAL‑01 | 1.3.2 | SG‑016 | Level 2 | Level 2 |
-| Fire\* | HZ‑FIRE‑01 | 1.3.3 | SG‑006 | Level 2 | Level 2 |
-| Gas Leak\* | HZ‑GAS‑01 | 1.3.4 | SG‑007 | Level 2 | Level 2 |
-| CO Poisoning\* | HZ‑CO‑01 | 1.3.5 | SG‑008 | Level 2 | Level 2 |
-| Water Leak/Flood | HZ‑WATER‑01 | 1.3.6 | SG‑009 | Level 1 | Level 2 |
-| Electrical Shock\* | HZ‑ELECT‑01 | 1.3.7 | SG‑013 | Level 1 | Level 2 |
-| Poor Air Quality | HZ‑AQ‑01 | 1.3.8 | SG‑005 | Level 2 | Level 4 |
-| Unsafe Cold Exposure | HZ‑UNDERTEMP‑01 / HZ‑UNDERTEMP‑02 | 1.3.9 | SG‑001 / SG‑002 | Level 1 | Level 3 |
-| Unsafe Heat Exposure | HZ‑OVERTEMP‑01 | 1.3.10 | SG‑004 | Level 1 | Level 3 |
-| System Failure | HZ‑SYSTEM‑FAIL‑01 | 1.3.11 | SG‑003 | Level 2 | Level 2 |
-| Loss of Heating/Cooling | HZ‑HVAC‑01 / HZ‑HVAC‑LOSS‑01 | 1.3.12 | SG‑010 / SG‑012 | Level 2 | Level 2 |
-| Privacy Invasion | HZ‑PRIV‑01 | 1.3.13 | SG‑014 | Level 1 | Level 3 |
-| Rain Entering Window | HZ‑WEATHER‑01 | 1.3.14 | SG‑011 | Level 3 | Level 4 |
-| Frost Exposure Through Openings | HZ‑EXT‑FROST‑01 | 1.3.15 | SG‑017 | Level 3 | Level 4 |
-| Wind Damage to Openings | HZ‑EXT‑WIND‑01 | 1.3.16 | SG‑018 | Level 3 | Level 4 |
-| Outdoor Air Pollution Ingress | HZ‑EXT‑AQ‑01 | 1.3.17 | SG‑019 | Level 3 | Level 4 |
+| Unauthorized Access | [LINK: HZ-UNAUTH-01, HZ-UNAUTH-01] | 1.3.1 | [LINK: SG-015, SG-015] | Level 1 | Level 2 |
+| Cybersecurity | [LINK: HZ-CYBER-SPOOF-01, HZ-CYBER-SPOOF-01] / [LINK: HZ-CYBER-DENIAL-01, HZ-CYBER-DENIAL-01] | 1.3.2 | [LINK: SG-016, SG-016] | Level 2 | Level 2 |
+| Fire\* | [LINK: HZ-FIRE-01, HZ-FIRE-01] | 1.3.3 | [LINK: SG-006, SG-006] | Level 2 | Level 2 |
+| Gas Leak\* | [LINK: HZ-GAS-01, HZ-GAS-01] | 1.3.4 | [LINK: SG-007, SG-007] | Level 2 | Level 2 |
+| CO Poisoning\* | [LINK: HZ-CO-01, HZ-CO-01] | 1.3.5 | [LINK: SG-008, SG-008] | Level 2 | Level 2 |
+| Water Leak/Flood | [LINK: HZ-WATER-01, HZ-WATER-01] | 1.3.6 | [LINK: SG-009, SG-009] | Level 1 | Level 2 |
+| Electrical Shock\* | [LINK: HZ-ELECT-01, HZ-ELECT-01] | 1.3.7 | [LINK: SG-013, SG-013] | Level 1 | Level 2 |
+| Poor Air Quality | [LINK: HZ-AQ-01, HZ-AQ-01] | 1.3.8 | [LINK: SG-005, SG-005] | Level 2 | Level 4 |
+| Unsafe Cold Exposure | [LINK: HZ-UNDERTEMP-01, HZ-UNDERTEMP-01] / [LINK: HZ-UNDERTEMP-02, HZ-UNDERTEMP-02] | 1.3.9 | [LINK: SG-001, SG-001] / [LINK: SG-002, SG-002] | Level 1 | Level 3 |
+| Unsafe Heat Exposure | [LINK: HZ-OVERTEMP-01, HZ-OVERTEMP-01] | 1.3.10 | [LINK: SG-004, SG-004] | Level 1 | Level 3 |
+| System Failure | [LINK: HZ-SYSTEM-FAIL-01, HZ-SYSTEM-FAIL-01] | 1.3.11 | [LINK: SG-003, SG-003] | Level 2 | Level 2 |
+| Loss of Heating/Cooling | [LINK: HZ-HVAC-01, HZ-HVAC-01] / [LINK: HZ-HVAC-LOSS-01, HZ-HVAC-LOSS-01] | 1.3.12 | [LINK: SG-010, SG-010] / [LINK: SG-012, SG-012] | Level 2 | Level 2 |
+| Privacy Invasion | [LINK: HZ-PRIV-01, HZ-PRIV-01] | 1.3.13 | [LINK: SG-014, SG-014] | Level 1 | Level 3 |
+| Rain Entering Window | [LINK: HZ-WEATHER-01, HZ-WEATHER-01] | 1.3.14 | [LINK: SG-011, SG-011] | Level 3 | Level 4 |
+| Frost Exposure Through Openings | [LINK: HZ-EXT-FROST-01, HZ-EXT-FROST-01] | 1.3.15 | [LINK: SG-017, SG-017] | Level 3 | Level 4 |
+| Wind Damage to Openings | [LINK: HZ-EXT-WIND-01, HZ-EXT-WIND-01] | 1.3.16 | [LINK: SG-018, SG-018] | Level 3 | Level 4 |
+| Outdoor Air Pollution Ingress | [LINK: HZ-EXT-AQ-01, HZ-EXT-AQ-01] | 1.3.17 | [LINK: SG-019, SG-019] | Level 3 | Level 4 |
 
 \* Life-threatening hazards must **not** be reduced below **Level 2** after mitigation, even if formulas suggest a lower level.
+<<<
+
+[[/SECTION]]

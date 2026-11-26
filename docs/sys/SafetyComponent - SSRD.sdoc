@@ -1,0 +1,4146 @@
+[DOCUMENT]
+TITLE: Software Safety Requirements Document — SafetyComponent
+UID: SSRD-DOC
+OPTIONS:
+  MARKUP: Markdown
+  NODE_IN_TOC: False
+
+[GRAMMAR]
+ELEMENTS:
+- TAG: REQUIREMENT
+  FIELDS:
+  - TITLE: UID
+    TYPE: String
+    REQUIRED: True
+  - TITLE: STATEMENT
+    TYPE: String
+    REQUIRED: True
+  - TITLE: RESPONSIBLE_ELEMENT
+    TYPE: String
+    REQUIRED: False
+- TAG: SOFTWARE_TRACE
+  FIELDS:
+  - TITLE: UID
+    TYPE: String
+    REQUIRED: True
+  - TITLE: TITLE
+    TYPE: String
+    REQUIRED: True
+  RELATIONS:
+  - TYPE: Parent
+    ROLE: Safety scope
+  - TYPE: Parent
+    ROLE: System allocation
+  - TYPE: Parent
+    ROLE: Software allocation
+- TAG: TEXT
+  FIELDS:
+  - TITLE: STATEMENT
+    TYPE: String
+    REQUIRED: True
+
+[TEXT]
+STATEMENT: >>>
+**Document ID:** SAF-SWR-SSRD
+
+**Version:** 0.8.0
+
+**Status:** Software requirements baseline
+
+**Last updated:** 2026-11-14
+<<<
+
+[[SECTION]]
+UID: SSRD-SEC-1
+TITLE: Purpose and scope
+
+[TEXT]
+STATEMENT: >>>
+This Software Safety Requirements Document (SSRD) defines the required software
+behaviour of the AppDaemon-based SafetyComponent. It refines the
+system requirements and hazards described in:
+
+- [LINK: HARA-DOC, SafetyConcept - HARA.sdoc];
+- [LINK: SYS-DOC, SafetyConcept - SYS.sdoc];
+- the deployed configuration in `backend/app_cfg.yaml`.
+
+The software in scope includes configuration validation, component lifecycle,
+temperature, heating-system, internal-environmental, safety-door, and external-hazard monitoring, fault aggregation,
+notification and recovery handling, MQTT discovery/state publication,
+localization metadata, and backend verification. The web frontend consumes the
+published contract but does not implement safety decisions.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SSRD-SEC-2
+TITLE: Operating context
+
+[TEXT]
+STATEMENT: >>>
+SafetyComponent runs as the `SafetyFunctions` AppDaemon application connected
+to Home Assistant. It reads Home Assistant entities, schedules evaluations,
+publishes internal entities over MQTT discovery, calls explicitly allow-listed
+Home Assistant services for recoveries, and sends user notifications.
+
+The implementation assumes:
+
+- Home Assistant, AppDaemon, and the MQTT broker are available;
+- configured entity IDs and area IDs identify the intended installation
+  objects;
+- severity level `1` is the highest severity and level `4` the lowest;
+- raw entity IDs and runtime state codes form a stable machine contract;
+- translated names and labels are presentation metadata, not control inputs.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SSRD-SEC-3
+TITLE: Software architecture
+
+[TEXT]
+STATEMENT: >>>
+| Element | Responsibility |
+| --- | --- |
+| `SafetyFunctions` | Validate configuration, create managers/components, wire events, start and stop MQTT reporting. |
+| `SafetyRoutineRuntime` (C-ROUTINE) | Execute bounded advisory check sessions and persist timestamped reports independently of household fault/recovery state. |
+| `AppCfgValidator` | Validate the complete Pydantic configuration model, component schemas, entity syntax/existence, and Home Assistant areas. |
+| `SafetyComponent` | Common safety-mechanism lifecycle, listeners, reevaluation, and debounce handling. |
+| `TemperatureComponent` | Direct and forecast low/high temperature evaluation and window recovery proposals. |
+| `HeatingSystemMonitorComponent` (C-HVAC) | Supervise heating need, controller request, boiler response and heat delivery; own heating incidents without issuing heating commands. |
+| Heating telemetry adapter | Normalize provider/model signals, timestamps and current error-code classifications; expose communication and interpretation quality. |
+| `HeatingMonitorStateStore` | Persist bounded heating incident, symptom and timing state independently of notification delivery persistence. |
+| `InternalEnvironmentalHazardMonitorComponent` | Implement C-ALARM smoke/gas/CO and C-AQ indoor PM2.5 monitoring, per-detector symptoms and incident evidence. |
+| Internal environmental input adapters | Normalize detector-specific alarm/trouble states, timestamps and pollutant units independently of household policy. |
+| `InternalEnvironmentStateStore` | Persist alarm/PM symptom latches, incident correlation and timing independently of notification transport state. |
+| `SafetyDoorsComponent` | Per-door open-duration monitoring with optional state gating. |
+| `ExternalHazardComponent` | Correlate normalized external hazards with configured openings, create close recommendations, and maintain advice-inhibition state. |
+| External API Components | One isolated component per remote API; validate and normalize provider data without creating faults or actions. |
+| `DerivativeMonitor` | Calculate and publish first- and second-order temperature derivatives. |
+| `FaultManager` | Aggregate symptoms, preserve multi-symptom fault context, and publish fault/system state. |
+| `NotificationManager` | Maintain one notification lifecycle per fault, including acknowledgement, retry, deadlines, WAN queueing, bounded L1 repeats, persistence, and diagnostics. |
+| `MobilePushProvider` | Build Android/iOS Companion payloads and submit them to explicit Home Assistant notify services. |
+| `LocalAnnunciator` | Operate optional local light and alarm outputs independently from mobile delivery. |
+| `NotificationStateStore` | Atomically persist filtered active and pending notification state across AppDaemon reloads and restarts. |
+| `RecoveryManager` | Determine, execute, and confirm supported recovery actions. |
+| `MqttEntityManager` | MQTT discovery, state, attributes, availability, retained cleanup, and heartbeat. |
+| `Localizer` | Translate presentation text while retaining stable internal codes. |
+
+Event ordering is deterministic: the FaultManager processes symptom events;
+for fault events, NotificationManager admits its lifecycle update before
+RecoveryManager handles the event. Admission shall not wait for notification
+transport or diagnostic publication. Failure in one response consumer shall be
+isolated so remaining eligible consumers still receive the event; ordering does
+not make one consumer's successful delivery a prerequisite for another.
+
+All Safety Components shall use the shared `SafetyMechanism` lifecycle and
+execution-outcome contract. Domain rules and qualification intervals shall remain
+with their owning components. FaultManager shall own fault aggregation,
+RecoveryManager authorization and execution policy, NotificationManager delivery
+lifecycle, and MqttEntityManager diagnostic publication. These responsibilities
+shall remain separate despite sharing lifecycle infrastructure.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SSRD-SEC-4
+TITLE: Software safety requirements
+
+[[SECTION]]
+UID: SSRD-SEC-4-1
+TITLE: Configuration and initialization
+
+[REQUIREMENT]
+UID: SWR-CFG-001
+STATEMENT: >>>
+The application shall validate the complete configuration before enabling any safety mechanism.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`AppCfgValidator.validate`
+<<<
+
+[REQUIREMENT]
+UID: SWR-CFG-002
+STATEMENT: >>>
+An enabled component shall have a registered implementation and a valid component-specific configuration.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+component registry and schemas
+<<<
+
+[REQUIREMENT]
+UID: SWR-CFG-003
+STATEMENT: >>>
+Strict mode shall reject unknown configuration fields; compatibility mode shall retain them and log their paths.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`StrictBaseModel`, `log_extra_keys`
+<<<
+
+[REQUIREMENT]
+UID: SWR-CFG-004
+STATEMENT: >>>
+Entity IDs shall be syntax-checked and, when configured, checked for existence in Home Assistant.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`AppCfgValidator`
+<<<
+
+[REQUIREMENT]
+UID: SWR-CFG-005
+STATEMENT: >>>
+Every configured temperature room and safety door shall provide an `area_id`.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+temperature and Safety Doors schemas
+<<<
+
+[REQUIREMENT]
+UID: SWR-CFG-006
+STATEMENT: >>>
+At startup the application shall resolve every configured `area_id` with Home Assistant `area_name(...)`; an unknown area shall invalidate the configuration.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`AppCfgValidator._resolve_area_names`
+<<<
+
+[REQUIREMENT]
+UID: SWR-CFG-007
+STATEMENT: >>>
+A validation failure shall publish health state `invalid_cfg`, include `configuration_error`, keep MQTT reporting available for diagnosis, and shall not enable safety mechanisms.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`SafetyFunctions.initialize`
+<<<
+
+[REQUIREMENT]
+UID: SWR-CFG-008
+STATEMENT: >>>
+Successful initialization shall publish health state `running` only after managers, event subscriptions, entities, and mechanisms are initialized and enabled.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`SafetyFunctions.initialize`
+<<<
+
+[[SECTION]]
+UID: SSRD-SEC-4-1-1
+TITLE: Shared safety-mechanism lifecycle and execution
+
+[REQUIREMENT]
+UID: SWR-SM-001
+STATEMENT: >>>
+Every installed temperature, Safety Doors, Entity Monitor, heating, indoor environmental hazard and external hazard mechanism shall use the shared SafetyMechanism lifecycle contract. Domain-specific evaluation and qualification shall remain component-owned; infrastructure reuse shall add no generic assertion debounce or weaken an allocated deadline.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`SafetyMechanism`, `SafetyComponent`, domain components
+<<<
+
+[REQUIREMENT]
+UID: SWR-SM-002
+STATEMENT: >>>
+Mechanisms shall declare monitored entity inputs explicitly and separately from descriptive or policy parameters. Location, friendly names and arbitrary strings shall not implicitly create state subscriptions. Each owned subscription shall have a retained cancellation handle.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+mechanism configuration and listener ownership
+<<<
+
+[REQUIREMENT]
+UID: SWR-SM-003
+STATEMENT: >>>
+Lifecycle start, enable/disable and stop shall have consistent eligibility semantics. Stop shall be idempotent, release owned subscriptions and qualification timers, and invalidate pending execution identities. A callback or completion from a stopped or superseded session shall not change symptom/fault state or authorize an action.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+mechanism and component lifecycle
+<<<
+
+[REQUIREMENT]
+UID: SWR-SM-004
+STATEMENT: >>>
+Disabling or stopping a mechanism shall cancel its pending qualification without clearing active assertions, retained incidents or independently latched restrictions. Restoration and valid positive recovery shall retain their owner-specific contracts.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`SafetyComponent` and domain assertion owners
+<<<
+
+[REQUIREMENT]
+UID: SWR-SM-005
+STATEMENT: >>>
+Event-triggered and scheduled execution shall distinguish valid positive/negative evaluation from unevaluable, inhibited and disabled outcomes and report execution failure consistently. Missing evidence and execution exceptions shall not be interpreted as a valid negative or recovery proof.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+shared execution result and diagnostics
+<<<
+
+[REQUIREMENT]
+UID: SWR-SM-006
+STATEMENT: >>>
+Shared lifecycle integration shall preserve stable mechanism/symptom identifiers and existing registration contracts across all six component families. Acceptance shall cover repeated start/stop, late listeners/timers, disable during qualification and descriptive-text changes, with no duplicate logical evaluation or unintended monitored input.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+mechanism integration and contract tests
+<<<
+
+[[/SECTION]]
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SSRD-SEC-4-2
+TITLE: Temperature monitoring
+
+[REQUIREMENT]
+UID: SWR-TEMP-001
+STATEMENT: >>>
+Each configured room shall evaluate direct low temperature (`sm_tc_1`), forecast low temperature (`sm_tc_2`), direct high temperature (`sm_tc_3`), and forecast high temperature (`sm_tc_4`).
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`TemperatureComponent`
+<<<
+
+[REQUIREMENT]
+UID: SWR-TEMP-002
+STATEMENT: >>>
+Direct mechanisms shall compare the current numeric sensor value with the configured low or high threshold.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`sm_tc_1`, `sm_tc_3`
+<<<
+
+[REQUIREMENT]
+UID: SWR-TEMP-003
+STATEMENT: >>>
+Forecast mechanisms shall calculate a bounded linear forecast from current temperature, a first derivative in °C/min, and the configured forecast timespan. A state change of either the temperature or its `_rate` input shall trigger reevaluation, including transitions to or from unavailable input.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`sm_tc_2`, `sm_tc_4`
+<<<
+
+[REQUIREMENT]
+UID: SWR-TEMP-004
+STATEMENT: >>>
+Missing, non-numeric, non-finite, `unknown`, `unavailable`, out-of-range temperature, or implausible derivative/forecast input shall neither create a new symptom nor constitute positive evidence to clear an active symptom.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`_get_temperature_value`, `forecast_temperature`, and mechanism callbacks
+<<<
+
+[REQUIREMENT]
+UID: SWR-TEMP-005
+STATEMENT: >>>
+Mechanism results shall use configured debounce and reevaluation timing before fault lifecycle changes are emitted.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`SafetyComponent`, temperature calibration
+<<<
+
+[REQUIREMENT]
+UID: SWR-TEMP-006
+STATEMENT: >>>
+The DerivativeMonitor shall publish only derivative measurements (`_rate` in °C/min and `_rateofrate` in °C/min²); it shall not own temperature safety limits.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`DerivativeMonitor`
+<<<
+
+[REQUIREMENT]
+UID: SWR-TEMP-007
+STATEMENT: >>>
+Each room shall expose its low and high configured limits as separate diagnostic MQTT sensors named `<source>_low_threshold` and `<source>_high_threshold`.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`TemperatureComponent._register_temperature_threshold_entities`
+<<<
+
+[REQUIREMENT]
+UID: SWR-TEMP-008
+STATEMENT: >>>
+Threshold sensors shall identify the source entity, threshold type, `area_id`, and current Home Assistant area name, and expose the corresponding room/threshold's last forecast predicate observation as `forecast_evaluation`. The observation shall distinguish risk, valid input within limits, unevaluable input, and no evaluation; it shall not replace the fault's qualified alarm state.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+threshold sensor attributes and forecast callbacks
+<<<
+
+[REQUIREMENT]
+UID: SWR-TEMP-009
+STATEMENT: >>>
+Low-temperature mechanisms `sm_tc_1` and `sm_tc_2` shall provide eligible `ManipulateWindow<Room>` proposals when a window sensor or supported cover actuator is configured, and manual room-inspection guidance when window recovery is unavailable. High-temperature mechanisms `sm_tc_3` and `sm_tc_4` shall provide manual room-inspection/service guidance without window actuation. C-TEMP shall not issue HVAC/climate commands.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+TemperatureComponent, RecoveryManager
+<<<
+
+[REQUIREMENT]
+UID: SWR-TEMP-010
+STATEMENT: >>>
+Direct low/high symptoms shall aggregate into level-2 `RiskyTemperature`; forecast low/high symptoms shall aggregate into level-3 `RiskyTemperatureForecast`; the direct fault shall shadow the forecast fault and each fault shall remain active until every related symptom clears.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+fault catalog and `FaultManager`
+<<<
+
+[REQUIREMENT]
+UID: SWR-TEMP-011
+STATEMENT: >>>
+The derivative monitor shall seed the first source sample at registration so that a valid second sample can produce `_rate` after one configured sampling interval. The `_rate` diagnostic dependency shall allow more than one interval after startup before declaring the first missing rate a monitoring failure. Its detection budget shall derive from that interval and include scheduler margin; invalid rate data shall remain unevaluable meanwhile, not positive evidence of a safe forecast.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`TemperatureComponent.get_entity_dependencies`, `DerivativeMonitor`
+<<<
+
+[TEXT]
+STATEMENT: >>>
+The `_rate` sensor shall expose its `source_entity_id`, configured
+`sample_interval_seconds`, and `sampling_status`: `waiting_for_samples` only
+while valid source samples are being collected, `source_unavailable` for invalid
+source input, and `ready` after a numeric rate has been calculated. The operator
+notice shall remain independent of diagnostic startup grace and shall end only
+when current numeric results arrive. Connection loss shall be shown as missing
+current evidence, never as completion of sample collection.
+
+Each existing `<source>_low_threshold` and `<source>_high_threshold` sensor
+shall expose a `forecast_evaluation` object with the following attributes:
+
+| Attribute | Meaning |
+| --- | --- |
+| `status` | `not_evaluated` before the first observation; `risk` for a valid modeled crossing; `within_limits` for a valid non-crossing; `unevaluable` when the forecast cannot be calculated. |
+| `symptom_id` | Exact corresponding low or high forecast symptom ID from the stable patterns below. |
+| `temperature_c` | Numeric input temperature used by the predicate, or `null` when no valid numeric temperature is available. |
+| `rate_per_minute` | Finite numeric first derivative in °C/min, or `null` when no numeric rate is available. A numeric rate may still fail the forecast's plausibility bounds. |
+| `modeled_temperature_c` | Valid modeled temperature in °C, or `null` before evaluation or when the forecast is unevaluable. |
+| `threshold_c` | The configured limit for this threshold sensor. |
+| `forecast_timespan_hours` | The configured forecast horizon in hours. |
+| `evaluated_at` | UTC time of the predicate observation, or `null` before the first observation. |
+
+The object shall contain the last observed predicate result, before fault
+qualification. On invalid input it shall remove the prior modeled value,
+report `unevaluable`, and preserve independently qualified active fault
+evidence. Simulated input supplied through `entities_changes` shall not
+overwrite this live diagnostic object. Operator displays shall use the
+published observation without independently recalculating safety decisions,
+and shall present it separately from the fault's status and
+`active_contributors`. Forecast input health confirms only the allocated
+input checks; successful application-health evaluation checks or the absence
+of repair proposals shall not establish absence of a forecast hazard.
+
+Stable Temperature runtime IDs are:
+
+| Mechanism | Symptom ID pattern | Fault ID |
+| --- | --- | --- |
+| `sm_tc_1` | `RiskyTemperature<Room>` | `RiskyTemperature` |
+| `sm_tc_2` | `RiskyTemperature<Room>ForeCast` | `RiskyTemperatureForecast` |
+| `sm_tc_3` | `RiskyTemperatureHigh<Room>` | `RiskyTemperature` |
+| `sm_tc_4` | `RiskyTemperatureHigh<Room>ForeCast` | `RiskyTemperatureForecast` |
+
+The existing `ForeCast` capitalization is part of the runtime contract.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SSRD-SEC-4-3
+TITLE: Safety Doors monitoring
+
+[REQUIREMENT]
+UID: SWR-DOOR-001
+STATEMENT: >>>
+Every configured door or gate shall have an independent `timeout_seconds` value, inherited from component defaults only when no per-door override is supplied.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+Safety Doors schema
+<<<
+
+[REQUIREMENT]
+UID: SWR-DOOR-002
+STATEMENT: >>>
+A continuously open door shall set its symptom only after its own configured timeout expires.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`sm_safety_door_open_timeout`
+<<<
+
+[REQUIREMENT]
+UID: SWR-DOOR-003
+STATEMENT: >>>
+Closing a door shall cancel its pending timer and clear its symptom.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+Safety Doors runtime
+<<<
+
+[REQUIREMENT]
+UID: SWR-DOOR-004
+STATEMENT: >>>
+An unavailable or unsupported door state shall publish diagnostic state `unavailable`, cancel pending timing, and shall neither create a new open-timeout fault nor clear an already active per-door symptom.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`_read_door_state` and evaluation flow
+<<<
+
+[REQUIREMENT]
+UID: SWR-DOOR-005
+STATEMENT: >>>
+A configured condition shall monitor its entity alongside the door; pass states enable timing and blocked states suspend timing and clear the symptom.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`SafetyDoorCondition`, Safety Doors runtime
+<<<
+
+[REQUIREMENT]
+UID: SWR-DOOR-006
+STATEMENT: >>>
+An unavailable or unsupported condition state shall publish diagnostic state `unavailable`, cancel pending timing, and shall neither create a new fault nor clear an already active per-door symptom.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`_read_condition_state`
+<<<
+
+[REQUIREMENT]
+UID: SWR-DOOR-007
+STATEMENT: >>>
+Each Safety Door MQTT entity shall publish door state, elapsed and remaining time, source entity, timeout, condition diagnostics, `area_id`, and resolved area name.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`_publish_door_state`
+<<<
+
+[REQUIREMENT]
+UID: SWR-DOOR-008
+STATEMENT: >>>
+Every installation shall keep its door keys, areas, entity bindings, and per-door timeout overrides in the private installation configuration; a missing override shall inherit the validated public default.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+Safety Doors schema and configuration compiler
+<<<
+
+[REQUIREMENT]
+UID: SWR-DOOR-009
+STATEMENT: >>>
+A condition-gated door shall enable monitoring only for its configured pass states and shall block monitoring for its configured blocked states; both sets shall be explicit, normalized, and disjoint.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`SafetyDoorCondition` and Safety Doors runtime
+<<<
+
+[REQUIREMENT]
+UID: SWR-DOOR-010
+STATEMENT: >>>
+`SafetyDoorsComponent` shall use mechanism ID `sm_safety_door_open_timeout`, per-door symptom IDs `SafetyDoorOpenTimeout<DoorName>`, independent level-2 faults `SafetyDoorOpenTimeout{DoorKey}`, and diagnostic entities `sensor.safety_door_<door_name>`. It shall supply a manual close action for the affected door/gate, completed only by that contact's current valid closed state.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+Safety Doors, RecoveryManager, fault catalog
+<<<
+
+[REQUIREMENT]
+UID: SWR-DOOR-011
+STATEMENT: >>>
+Safety Doors shall not infer unauthorized entry, lock integrity, or intrusion state and shall not close, lock, unlock, or otherwise actuate a door or gate; those security responsibilities are outside C-DOOR.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+Safety Doors component boundary
+<<<
+
+[TEXT]
+STATEMENT: >>>
+Diagnostic startup grace shall defer operator-facing diagnostic activation,
+unavailable/pending evaluation, recommendations and notification until the bounded
+startup interval ends. The router shall retain only the latest result for each
+diagnostic symptom, including application-health and budgeted diagnostic sources.
+It shall not publish initial waiting as `UNEVALUABLE`. At expiry it shall release
+the latest valid result, current pending/unavailable state or unavailability for
+an unseen source. Internal degradation/recovery restrictions shall consume current
+component-qualified evidence independently of this reporting delay; H activation
+and retained danger shall remain immediate. SafetyHome shall show a neutral
+startup view, preserve active H incidents and in-flight actions, and shall not
+claim healthy monitoring or suppress failures behind stale startup metadata.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SSRD-SEC-4-4
+TITLE: Fault aggregation and system state
+
+[REQUIREMENT]
+UID: SWR-FLT-001
+STATEMENT: >>>
+A fault shall aggregate all related active symptoms rather than replace the previous contribution from the same fault.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`FaultManager` merged symptom context
+<<<
+
+[REQUIREMENT]
+UID: SWR-FLT-002
+STATEMENT: >>>
+When one symptom clears but another related symptom remains set, the fault shall remain set and its notification context shall be refreshed.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`FaultManager._clear_fault`
+<<<
+
+[REQUIREMENT]
+UID: SWR-FLT-003
+STATEMENT: >>>
+The highest aggregate severity shall be the minimum numeric active L1–L3 fault level, including shadowed faults. Active L4 conditions shall not contribute to aggregate severity.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`get_system_fault_level`
+<<<
+
+[REQUIREMENT]
+UID: SWR-FLT-004
+STATEMENT: >>>
+With no active L1–L3 faults, system state shall be `no_faults` and `highest_fault_level` shall be `0`, including when L4 conditions are active. The raw `fault_count` shall retain all active conditions including L4. This state does not establish application health or complete coverage.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`SYSTEM_STATE_BY_FAULT_LEVEL`
+<<<
+
+[REQUIREMENT]
+UID: SWR-FLT-005
+STATEMENT: >>>
+Active L1–L3 faults shall produce aggregate system state `emergency`, `hazard`, or `warning` respectively. Active L4 conditions shall remain informational records with evidence, history and applicable manual tasks; they shall not increase headline warning/fault counts or produce red, warning, fault or unhealthy overall presentation. Legacy aggregate `information` / level `4` shall remain accepted as non-degrading. Uncertainty confined to a known L4 condition or its unambiguously linked task shall remain visible locally without degrading the summary; startup, missing fault priority, unlinked task uncertainty and independent coverage/channel failures shall remain visible.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`SYSTEM_STATE_BY_FAULT_LEVEL`, SafetyHome summary and task presentation
+<<<
+
+[REQUIREMENT]
+UID: SWR-FLT-006
+STATEMENT: >>>
+Application health shall be represented independently by `sensor.safety_app_health`.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`SafetyFunctions`
+<<<
+
+[REQUIREMENT]
+UID: SWR-FLT-007
+STATEMENT: >>>
+Fault entities shall publish the raw evaluation status `NOT_EVALUATED`, `PASS`, `PENDING_FAILURE`, `FAIL`, `PENDING_RECOVERY`, `UNEVALUABLE`, `INHIBITED`, or `DISABLED`, with independent Boolean `active` and `latched` attributes and a `shadowed_by` owner list. The frontend attention filter shall include `NOT_EVALUATED` and other uncertain fault evaluations. Verification counts shall identify evaluations rather than monitored entities and distinguish uncertain fault evaluations, recovery states and system level.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`FaultManager` and SafetyHome fault presentation
+<<<
+
+[REQUIREMENT]
+UID: SWR-FLT-008
+STATEMENT: >>>
+A Safety Mechanism predicate shall yield only a Boolean violation result for eligible evidence. Missing, invalid, or failed evaluation shall be reported separately and shall not be interpreted as `false` recovery evidence.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`SafetyComponent`, `FaultManager`
+<<<
+
+[REQUIREMENT]
+UID: SWR-FLT-009
+STATEMENT: >>>
+A fault shall own its evaluation status and activation independently. Its statuses shall be `NOT_EVALUATED`, `PASS`, `PENDING_FAILURE`, `FAIL`, `PENDING_RECOVERY`, `UNEVALUABLE`, `INHIBITED`, or `DISABLED`; unavailable or excluded evidence shall not clear prior activation. Every initialization shall defer operator D reporting for `startup_grace_seconds` (default 600, explicit overrides preserved, 0 disables), including application-health and budgeted diagnostic contributions. Acquisition, component qualification, internal degradation/output restrictions and H detection/notification shall remain immediate; internal detection/FTTI allocations shall not be enlarged. Initial waiting shall not be published as `UNEVALUABLE` or create diagnostic operator actions. Retain only each diagnostic symptom's latest result, pending qualification or unavailability; at expiry route that state, with unseen sources unavailable. Grace shall not invent healthy evidence, clear retained alarms or authorize recovery. Exception fallback shall respect the same diagnostic reporting gate.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+fault evaluation policy and shared startup routing
+<<<
+
+[REQUIREMENT]
+UID: SWR-FLT-010
+STATEMENT: >>>
+OR-aggregated valid positive evidence shall assert a fault even with another contribution unavailable; clearing shall require valid negative evidence from every bound contribution after the fault's recovery qualification. Shadowing shall remain an independent set of explicit owner identities and shall withdraw only redundant responses.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`FaultManager`
+<<<
+
+[REQUIREMENT]
+UID: SWR-FLT-011
+STATEMENT: >>>
+Fault priority shall be the existing numeric level 1..4 and shall select the same notification level. H/D category shall not change urgency. The level shall select notification defaults, while recovery action, degradation target and shadowing shall require explicit bindings.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+fault catalog, notification policy
+<<<
+
+[REQUIREMENT]
+UID: SWR-FLT-012
+STATEMENT: >>>
+Each installed door shall have its own `SafetyDoorOpenTimeout{DoorKey}` fault. The shared `SafetyDoorOpenTimeout` discovery and retained state shall be retired without a false clear. Notification-history `SET`/`CLEARED`/`SHADOWED` codes shall describe response events, not MQTT evaluation status. A shadowed active condition shall remain counted in system severity and shall be re-presented when its final shadow owner clears.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`FaultManager`, consumer contracts
+<<<
+
+[REQUIREMENT]
+UID: SWR-FLT-013
+STATEMENT: >>>
+Startup shall validate one owner and one fault binding for each installed mechanism/subject/contributor or an explicit diagnostic-only exemption. It shall reject missing or ambiguous routes, unknown mechanism IDs, duplicate instance identities and invalid shadow targets or cycles. Known mechanisms of uninstalled optional components shall not be treated as live contributors.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+fault catalogue and configuration compiler
+<<<
+
+[REQUIREMENT]
+UID: SWR-FLT-014
+STATEMENT: >>>
+Each installed D contributor shall declare exact installed H targets, affected capability and subject, restriction effect, and recovery evidence; an intentional external-only target list shall be explicit. Missing, duplicate, ambiguous, or non-H targets shall be rejected without stopping independent monitoring paths. Recognizable targets of a rejected binding shall remain unresolved; an unresolvable binding shall not be assigned an invented global restriction.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+degradation binding compiler
+<<<
+
+[REQUIREMENT]
+UID: SWR-FLT-015
+STATEMENT: >>>
+An evaluation or recovery restriction shall be keyed by independent D causes and shall affect only declared H subjects. Unavailable evidence shall not clear a restriction or an active H fault. Restrictive changes shall take effect before dependent recovery handling.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+degradation registry and event order
+<<<
+
+[REQUIREMENT]
+UID: SWR-FLT-016
+STATEMENT: >>>
+Automatic recovery and pending confirmation shall be ineligible under an active or unresolved dependent restriction. Removing an evaluation restriction shall require fresh H evidence and current policy before a new actuator proposal; it shall not replay an old command.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+RecoveryManager and degradation registry
+<<<
+
+[REQUIREMENT]
+UID: SWR-FLT-017
+STATEMENT: >>>
+Installed H capability coverage shall publish `FULL`, `PARTIAL`, `DEGRADED`, or `UNKNOWN` independently of fault severity, with technical loss taking precedence over unresolved state and explicit exclusions. It shall expose cause, affected fault, subject, capability, and effect; exclusions shall remain in the baseline.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+coverage registry and MQTT publication
+<<<
+
+[REQUIREMENT]
+UID: SWR-FLT-018
+STATEMENT: >>>
+Provider capability loss shall not disable independent weather/AQ paths or valid redundant evidence. A local room, door, detector, opening, or recovery dependency failure shall not shut down its whole component.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+provider and component policy
+<<<
+
+[REQUIREMENT]
+UID: SWR-FLT-019
+STATEMENT: >>>
+In-process diagnostics shall report only observable execution, input, storage, and transport evidence. Process absence, failed startup, and publication loss beyond the process shall be assigned to an independent supervisor; neither observer shall claim unverified handset delivery.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+app health and independent supervisor
+<<<
+
+[REQUIREMENT]
+UID: SWR-FLT-020
+STATEMENT: >>>
+Each installed live provider adapter shall route current timeout, stale, unavailable, or schema-error health into its own contributor of the shared L3 D fault `ExternalDataUnavailable`. Clearing that contributor shall require a current `OK` result from the same provider. Consumer capability-loss contributors shall remain independently evaluated under redundancy policy, and failed-provider restrictions shall affect only declared installed H consumers.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+provider adapters, `SelfDiagnosticsComponent`, degradation compiler
+<<<
+
+[REQUIREMENT]
+UID: SWR-FLT-021
+STATEMENT: >>>
+One L2 App Health D fault shall retain independent current contributors for startup/process, MQTT publication, notification delivery, local-output command failure, persistence, H evaluation invocation, and recovery dispatch. Historical counters, operator decline, and intentional output inhibition shall not assert a failure. Success of one store, vector, target, or store operation shall not clear another failed one.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+App Health contributors and fault routing
+<<<
+
+[REQUIREMENT]
+UID: SWR-FLT-022
+STATEMENT: >>>
+App Health degradation shall distinguish evaluation, recovery, notification, publication, and durability effects. Evaluation and recovery failures shall bind to exact installed H subjects; notification and publication failures shall not erase valid H evidence. Failure of fault transport or the process shall have an observer outside AppDaemon with a separate alert route and documented HA/host blind spots.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+degradation registry and independent supervisor
+<<<
+
+[REQUIREMENT]
+UID: SWR-FLT-023
+STATEMENT: >>>
+A rejected recovery actuator command or missed physical postcondition shall contribute to the requesting component's existing recovery-path D fault (`TemperatureRecoveryUnavailable` or `ExternalRecoveryUnavailable`) for the exact affected H subject. Command acceptance alone shall not clear that contributor. Outstanding command-path failures shall survive restart and clear only on observed postcondition evidence; independent input-health contributors shall retain their own state.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+RecoveryManager, EntityMonitor, recovery state store
+<<<
+
+[REQUIREMENT]
+UID: SWR-FLT-024
+STATEMENT: >>>
+The first transition to an active fault shall capture one versioned, allowlisted freeze frame before asynchronous response handling. It shall retain the original captured evidence through contributor changes, shadowing, and quiet notification refresh; valid clear shall retain it until the next activation replaces it. The capture shall exclude secrets and unbounded Home Assistant attributes, and shall be stored independently of notification history. API fault records and MQTT fault attributes shall expose capture and lifecycle metadata in one `freeze_frame` object, shown in one Freeze frame section in the frontend.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`FaultManager`, fault evidence journal, frontend
+<<<
+
+[REQUIREMENT]
+UID: SWR-FLT-025
+STATEMENT: >>>
+The same freeze frame shall retain bounded first/last activation times, last valid pass, activation count, last diagnostic reason, and active duration only when a continuous monotonic observation permits it. Lifecycle metadata may update on valid clear or restart without rewriting the captured evidence. After restart, duration shall be unknown until a new activation; no downtime observation or fault-episode identity shall be invented. The per-frame byte bound shall apply to activation-capture fields; separately validated lifecycle fields shall count toward the total serialized evidence-content bound, independently of the database's physical size. Schema migration shall preserve validated legacy capture and lifecycle data within their original bounds without creating an activation. Evidence capacity shall evict the oldest inactive record before active records; if capacity is occupied by active records, losing a new diagnostic capture shall not block fault handling. Storage failure shall contribute to App Health durability and shall not clear active safety evidence.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+fault evidence journal, App Health
+<<<
+
+[TEXT]
+STATEMENT: >>>
+FaultManager shall commit qualified fault state and admit its response event
+independently of diagnostic publication. An isolated response-consumer failure
+shall not prevent other eligible consumers from receiving that event.
+<<<
+
+[REQUIREMENT]
+UID: SWR-FLT-026
+STATEMENT: >>>
+MQTT or other diagnostic publication failure shall not prevent qualified fault activation or admission to notification and recovery processing. Fault state shall remain authoritative in memory, publication failure shall remain diagnosable, and publication retry shall not replay fault transitions, notification commands or actuator actions.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`FaultManager`, response-event routing, diagnostic publisher
+<<<
+
+[REQUIREMENT]
+UID: SWR-FLT-027
+STATEMENT: >>>
+Response routing shall preserve deterministic per-incident lifecycle order and isolate each consumer's failure. Remaining eligible consumers shall still receive the event; consumer error shall be recorded independently rather than treated as successful handling or alarm clearance. Retry shall preserve logical event identity and shall not duplicate authorized actions.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+EventBus and response consumers
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SSRD-SEC-4-5
+TITLE: Notifications and recovery
+
+[REQUIREMENT]
+UID: SWR-NOT-001
+STATEMENT: >>>
+Notifications shall use the configured fault friendly name and resolved user-facing location.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`FaultManager`, `NotificationManager`
+<<<
+
+[REQUIREMENT]
+UID: SWR-NOT-002
+STATEMENT: >>>
+A fault shall use one stable notification tag throughout its lifecycle.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+fault tag generation and `active_notification`
+<<<
+
+[REQUIREMENT]
+UID: SWR-NOT-003
+STATEMENT: >>>
+A repeated SET for an active fault shall update the current base message instead of creating a second notification.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`NotificationManager.active_notification`
+<<<
+
+[REQUIREMENT]
+UID: SWR-NOT-004
+STATEMENT: >>>
+Distinct recovery guidance accumulated for the same active fault shall be retained and shown once under a localized guidance heading.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`_recovery_messages`
+<<<
+
+[REQUIREMENT]
+UID: SWR-NOT-005
+STATEMENT: >>>
+Clearing a fault shall publish a friendly cleared message using the same tag.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`cleared_notification`
+<<<
+
+[REQUIREMENT]
+UID: SWR-NOT-006
+STATEMENT: >>>
+Mobile delivery shall use one or more explicitly configured `notify/<service>` targets and shall reject the ambiguous `notify/notify` service.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`MobilePushConfig`, `MobilePushProvider`
+<<<
+
+[REQUIREMENT]
+UID: SWR-NOT-007
+STATEMENT: >>>
+A shadowed fault shall remove its mobile notification by sending `message: clear_notification` with the stable tag.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`MobilePushProvider.clear`
+<<<
+
+[REQUIREMENT]
+UID: SWR-NOT-008
+STATEMENT: >>>
+Levels 1 through 3 shall use separately configured Android and iOS profiles. A newly active fault or same-tag increase in urgency may alert audibly; repeated context and recovery-guidance updates at the same severity shall use a quiet profile and shall not reactivate local annunciators. An update shall not downgrade a still-pending new-alert attempt for an undelivered target to quiet.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`MobileProfile`, `MobilePushProvider`, `LocalAnnunciator`
+<<<
+
+[REQUIREMENT]
+UID: SWR-NOT-009
+STATEMENT: >>>
+Mobile submission shall use the bundled AppDaemon-compatible service shape without `return_result`, `timeout`, or `hass_timeout`, using reviewed background completion callbacks. Immediate scheduling return shall not establish acceptance. Only a completed envelope with Boolean `success: true` shall establish `accepted_by_home_assistant`; `result: null` within that envelope is valid. Bare `None`, an absent or ambiguous completion and an explicit completed failure shall not establish acceptance or phone delivery. An unresolved timed-out resource lease shall not permit an overlapping retry.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+delivery result and diagnostics contract
+<<<
+
+[REQUIREMENT]
+UID: SWR-NOT-010
+STATEMENT: >>>
+Failed target submissions shall be retried independently with bounded exponential backoff. Failure of one target shall not prevent submission to another configured target. A newer lifecycle state or content update for the same tag shall replace superseded queued submissions.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`PendingDelivery`, scheduler
+<<<
+
+[REQUIREMENT]
+UID: SWR-NOT-011
+STATEMENT: >>>
+When configured WAN state is not positively online, remote notification submissions shall remain queued. The queue shall be flushed after confirmed WAN recovery. Unknown, unavailable, or malformed WAN state shall not be treated as online.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+WAN state handler and delivery queue
+<<<
+
+[REQUIREMENT]
+UID: SWR-NOT-012
+STATEMENT: >>>
+Home Assistant acceptance later than 10 seconds for L1 or 30 seconds for L2/L3 shall increment deadline-miss telemetry without blocking fault or recovery processing.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+retry deadlines and diagnostics
+<<<
+
+[REQUIREMENT]
+UID: SWR-NOT-013
+STATEMENT: >>>
+An acknowledgement action from Companion or the authenticated SafetyHome event shall suppress subsequent L1 repeats without clearing the active fault or preventing quiet content refreshes. It shall cancel superseded queued submissions and quietly replace the phone notification without the acknowledgement action so that the user receives visible feedback.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+mobile and SafetyHome action handlers
+<<<
+
+[REQUIREMENT]
+UID: SWR-NOT-014
+STATEMENT: >>>
+L1 repeats shall use a configurable interval and finite maximum count. Clearing, shadowing, or acknowledging the fault shall cancel pending repeats.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`LevelOneRepeatPolicy`
+<<<
+
+[REQUIREMENT]
+UID: SWR-NOT-015
+STATEMENT: >>>
+Active records, acknowledgement, pending deliveries, repeat state, counters, and last transport result shall be restored from a versioned atomic state snapshot after AppDaemon reload or restart. A restored active record shall remain fail-safe until a current authoritative fault event confirms or clears it.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`NotificationStateStore`, fault-event reconciliation
+<<<
+
+[REQUIREMENT]
+UID: SWR-NOT-016
+STATEMENT: >>>
+Only configured allowlisted detail fields shall be included in mobile payloads or persistent notification state.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`_filter_details`
+<<<
+
+[REQUIREMENT]
+UID: SWR-NOT-017
+STATEMENT: >>>
+Mobile transport, local light/alarm outputs, persistence and diagnostic publication shall be isolated adapters. A failed or stalled adapter shall not block fault processing, recovery policy or another independent adapter beyond its allocated deadline. Fault-event admission shall not wait for service submission completion. Pending work and retries shall be bounded, overload and deadline failure shall be visible, and obsolete completions shall not rewrite a newer incident/runtime outcome. Existing output restrictions and confirmation requirements shall remain effective.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+notification adapter boundaries and completion handling
+<<<
+
+[REQUIREMENT]
+UID: SWR-NOT-018
+STATEMENT: >>>
+`sensor.notification_delivery_health` shall expose active, acknowledged, queued, accepted, failed, deadline-miss and exhausted counts; stable tags for currently acknowledged active notifications; per-service status, attempt time and error; plus the last Home Assistant acceptance result and error.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+MQTT delivery diagnostics
+<<<
+
+[REQUIREMENT]
+UID: SWR-NOT-019
+STATEMENT: >>>
+The notification journal shall retain the latest 100 individual target submission attempts, including failures and retries, and shall restore them using the existing notification persistence configuration. A compatible snapshot without history shall restore an empty journal while preserving lifecycle state.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`NotificationManager`, `NotificationStateStore`
+<<<
+
+[REQUIREMENT]
+UID: SWR-NOT-020
+STATEMENT: >>>
+Each journal entry shall identify its UUID, stable tag, submission kind, fault state, title and message bounded to 2048 characters each, severity, UTC ISO creation and attempt timestamps, attempt number, actual target service, acceptance or failure result, and deadline-miss status. Raw transport exceptions and unfiltered fault events shall not enter the journal.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+notification history entry contract
+<<<
+
+[REQUIREMENT]
+UID: SWR-NOT-021
+STATEMENT: >>>
+New, updated, repeated, and acknowledged fault notifications shall appear as `SET`; resolved notifications as `CLEARED`; and notification removal after shadowing as `SHADOWED`. Acknowledgement and shadowing shall not be represented as fault healing.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+notification history lifecycle mapping
+<<<
+
+[REQUIREMENT]
+UID: SWR-NOT-022
+STATEMENT: >>>
+`SafetyHomeApiGateway` shall expose notification history through correlated `safetyhome_notification_history_request` and `safetyhome_notification_history_response` events on the authenticated Home Assistant connection. Pages shall be newest first, default to 20 entries, accept at most 25 entries, remain within 12 KiB serialized, and use revision plus cursor validation to prevent mixed snapshots. The journal shall not be published in Home Assistant entity attributes; startup migration shall remove retained MQTT state and discovery for `sensor.notification_history`. WAN queueing without a submission shall not create a history entry.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`SafetyHomeApiGateway`, notification history provider, MQTT legacy cleanup
+<<<
+
+[REQUIREMENT]
+UID: SWR-NOT-023
+STATEMENT: >>>
+SafetyHome shall show notification history before entity history, with date, local time, fault state, target service, and submission result. Selecting an entry shall reveal its content and diagnostics. The interface shall distinguish Home Assistant acceptance from confirmed device delivery and shall not infer people or devices behind a notify group.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+SafetyHome History page
+<<<
+
+[REQUIREMENT]
+UID: SWR-NOT-024
+STATEMENT: >>>
+The SafetyHome history interface shall be read-only and shall not expose configuration access, notification-routing changes, fault-state changes, or actuator commands. Its request and response event types shall be excluded from Home Assistant Recorder.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`SafetyHomeApiGateway`, installation Recorder configuration
+<<<
+
+[REQUIREMENT]
+UID: SWR-REC-001
+STATEMENT: >>>
+Recovery commands shall be limited to explicitly supported Home Assistant entity domains and services.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`RecoveryManager._resolve_entity_action`
+<<<
+
+[REQUIREMENT]
+UID: SWR-REC-002
+STATEMENT: >>>
+A recovery action requiring observed completion shall verify all declared postconditions and shall report missing effect, failure or applicable timeout instead of assuming success. Procedural operator-report tasks and advisory instructions shall follow their declared completion semantics.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+RecoveryManager completion flow
+<<<
+
+[REQUIREMENT]
+UID: SWR-REC-003
+STATEMENT: >>>
+Recovery entities shall expose stable raw states `DO_NOT_PERFORM`, `TO_PERFORM`, `AWAITING_CONFIRMATION`, `EXECUTING`, `CONFIRMED`, `FAILED`, and `TIMED_OUT`; the frontend shall localize their presentation.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+RecoveryManager and SafetyHome
+<<<
+
+[REQUIREMENT]
+UID: SWR-REC-004
+STATEMENT: >>>
+A `user_confirmed` proposal shall not execute until RecoveryManager receives the exact current proposal ID and one-time confirmation token through the authenticated Home Assistant event connection.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+confirmation event handler
+<<<
+
+[REQUIREMENT]
+UID: SWR-REC-005
+STATEMENT: >>>
+RecoveryManager shall re-evaluate current symptom state, expiry, policy, and the exact configured actuator immediately before a confirmed command, and shall reject replayed or stale confirmation.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+confirmation validation
+<<<
+
+[REQUIREMENT]
+UID: SWR-REC-006
+STATEMENT: >>>
+Active proposal state shall be atomically persisted outside the deployed app directory. Restart shall restore operator-visible state without replaying an actuator command and shall rotate confirmation tokens.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`RecoveryStateStore`
+<<<
+
+[REQUIREMENT]
+UID: SWR-REC-007
+STATEMENT: >>>
+MQTT proposal attributes shall use an explicit allowlist and shall include instruction, policy, lifecycle, reason, source, validity, area, postcondition, and actuator only where applicable.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+proposal publication
+<<<
+
+[REQUIREMENT]
+UID: SWR-REC-008
+STATEMENT: >>>
+Recovery guidance shall be owned by proposal ID so that updates replace prior text and clearing or shadowing removes stale guidance.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+NotificationManager guidance API
+<<<
+
+[REQUIREMENT]
+UID: SWR-REC-009
+STATEMENT: >>>
+Each fault family shall supply a cause-specific action allocation or a rationale for no applicable action. Proposal metadata shall identify fault/incident, action, purpose, contributor, subject, executor, eligibility and declared completion method; distinct actions shall have distinct identities and updates shall not duplicate the same work.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+component recovery contracts, RecoveryManager
+<<<
+
+[REQUIREMENT]
+UID: SWR-REC-010
+STATEMENT: >>>
+Manual actions shall be accepted without an actuator or postcondition entity. RecoveryManager shall centrally reject any actuator changes under manual policy and reject unknown execution policies before dispatch.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+proposal validation and command dispatch
+<<<
+
+[REQUIREMENT]
+UID: SWR-REC-011
+STATEMENT: >>>
+Manual-work reports shall record actor identity derived from authenticated Home Assistant context, server-assigned time and the reported task. The request shall carry the current proposal ID, incident-instance ID and a separate one-time report token. Unexpected client actor/time fields, missing authenticated actor context, wrong or replayed tokens and expired, cleared, shadowed or superseded instances shall be rejected. Acceptance shall consume the token; restart shall invalidate old report tokens. Reporting shall make no actuator call, directly clear no fault or restriction, and bypass no owner evidence/reset policy. Approved maintenance-test reports may enter the owning test's existing attestation policy. Reports shall complete only procedural tasks whose declared method is operator report; actions requiring observed evidence shall remain pending that evidence.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+RecoveryManager, authenticated operator interface
+<<<
+
+[REQUIREMENT]
+UID: SWR-REC-012
+STATEMENT: >>>
+Completion metadata shall identify method, evidence source/time and expected result. Server completion-verification time shall remain distinguishable from device measurement/report time and shall not refresh stale evidence. All observed postconditions shall require current valid evidence; stale, missing or malformed evidence shall not confirm completion. CONFIRMED shall be presented as observed or operator-reported completion according to the declared method, never as implicit fault healing.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+completion observers, SafetyHome
+<<<
+
+[REQUIREMENT]
+UID: SWR-REC-013
+STATEMENT: >>>
+Relevant evidence, cause, policy and dependency changes shall reevaluate proposals. Empty or rejected replacements shall withdraw stale executable proposals, tokens, timers/listeners and guidance. Clear/shadow withdrawal shall be distinguishable from successful completion.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+owner reevaluation, RecoveryManager, NotificationManager
+<<<
+
+[REQUIREMENT]
+UID: SWR-REC-014
+STATEMENT: >>>
+The backend shall expose blocked execution and unknown-effect reasons through bounded allowlisted metadata. Valid manual repair guidance shall remain available when the failed path blocks execution or verification; its applicability shall not require that path to be healthy. No applicable action shall be distinguishable from missing proposal data.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+policy decisions, proposal publication, SafetyHome
+<<<
+
+[REQUIREMENT]
+UID: SWR-REC-015
+STATEMENT: >>>
+Command-consent expiry, executed-command postcondition timeout and optional action-specific manual-task deadlines shall use distinct system-owned policy fields and validation. Installation entity bindings shall not configure these deadlines. The consent timeout shall not govern battery replacement or service work, and reporting manual work shall not renew command consent. Restart shall preserve deadline semantics without counting downtime as fresh completion evidence.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+RecoveryManager deadlines, system configuration validation
+<<<
+
+[REQUIREMENT]
+UID: SWR-REC-016
+STATEMENT: >>>
+Recovery persistence shall retain active work, operator reports and bounded recent action outcomes with fault/incident, proposal, result, method, evidence source/time and withdrawal/failure reason. Restart shall reconcile current evidence without replay; saved reports shall not become fresh device evidence.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+recovery state store, outcome view
+<<<
+
+[REQUIREMENT]
+UID: SWR-REC-017
+STATEMENT: >>>
+SafetyHome shall show the same action in its fault card and shared list, naming executor, affected subject, expected result, completion source and block reason. Useful manual tasks shall expose report controls; command-consent controls shall name the actual command. Notifications shall use the same instruction, and runtime text shall maintain EN/PL/DE parity without changing stable identifiers or raw lifecycle codes.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+SafetyHome, NotificationManager, localization
+<<<
+
+[REQUIREMENT]
+UID: SWR-REC-018
+STATEMENT: >>>
+Contract tests shall cover manual close, delayed battery recovery, cause-specific input repair, procedural tasks without sensors, advisory instructions without completion controls, independent contributors, manual-policy command rejection, empty/rejected replacement withdrawal, distinct task deadlines, durable outcomes and restart without replay. Report tests shall reject unexpected client actor/time fields, missing authenticated context, wrong/replayed tokens, old incident instances and stale tokens after restart. Hazard guidance shall preserve the owning component's command exclusions and shall not require emergency-task acknowledgement.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+component, recovery and frontend contract tests
+<<<
+
+[TEXT]
+STATEMENT: >>>
+The shared action allocation and completion semantics are defined in
+[LINK: ARCH-RECOMMENDED-ACTIONS-AND-RECOVERY-DOC, Recommended Actions and Recovery].
+
+| System requirement | Software allocation |
+| --- | --- |
+| SYS-SR-REC-001 | SWR-REC-009; SWR-TEMP-009, SWR-DOOR-010, SWR-ENT-014, SWR-FSM-012, SWR-HSM-025, SWR-IEHM-025 |
+| SYS-SR-REC-002 | SWR-REC-001/004/010 |
+| SYS-SR-REC-003 | SWR-REC-011/012; SWR-FLT-010 |
+| SYS-SR-REC-004 | SWR-REC-009/011/012; SWR-FSM-014/017 |
+| SYS-SR-REC-005 | SWR-REC-002/012; SWR-FLT-023 |
+| SYS-SR-REC-006 | SWR-REC-008/013/014 |
+| SYS-SR-REC-007 | SWR-REC-001/004/005/006/010 |
+| SYS-SR-REC-008 | SWR-REC-006/015/016 |
+| SYS-SR-REC-009 | SWR-REC-007/014/017; SWR-LOC-* |
+| SYS-SR-REC-010 | SWR-REC-018; SWR-DOOR-011, SWR-ENT-014, SWR-FSM-012, SWR-HSM-025, SWR-IEHM-025 |
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SSRD-SEC-4-6
+TITLE: Localization contract
+
+[REQUIREMENT]
+UID: SWR-LOC-001
+STATEMENT: >>>
+English (`en`), Polish (`pl`), and German (`de`) shall be supported installation languages.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`LocalizationSettings`, `_TRANSLATIONS`
+<<<
+
+[REQUIREMENT]
+UID: SWR-LOC-002
+STATEMENT: >>>
+Entity IDs, MQTT topic identifiers, fault identifiers, event codes, and raw lifecycle states shall remain language-independent.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+backend runtime contract
+<<<
+
+[REQUIREMENT]
+UID: SWR-LOC-003
+STATEMENT: >>>
+Localization shall apply to MQTT discovery names, `state_label`, notification text, recovery guidance, and dynamic threshold/recovery entity names.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+Localizer consumers
+<<<
+
+[REQUIREMENT]
+UID: SWR-LOC-004
+STATEMENT: >>>
+Home Assistant area names shall be used as returned by Home Assistant and shall not be translated or reconstructed from internal configuration keys.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+area resolution flow
+<<<
+
+[REQUIREMENT]
+UID: SWR-LOC-005
+STATEMENT: >>>
+Missing translation keys shall fall back to English and then to the key itself without changing safety logic.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`Localizer.text`, `state_label`
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SSRD-SEC-4-7
+TITLE: MQTT lifecycle and diagnostics
+
+[REQUIREMENT]
+UID: SWR-MQTT-001
+STATEMENT: >>>
+Internal entities shall use MQTT discovery with stable unique IDs and default entity IDs.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`MqttEntityManager`
+<<<
+
+[REQUIREMENT]
+UID: SWR-MQTT-002
+STATEMENT: >>>
+Discovery payloads may be retained; transient state and attribute payloads shall not be retained.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+MQTT settings and publisher
+<<<
+
+[REQUIREMENT]
+UID: SWR-MQTT-003
+STATEMENT: >>>
+Startup shall clear explicitly configured retired entities and legacy discovery topics before publishing current state. Active entity state and attributes shall not be cleared during ordinary startup; stale retained messages shall be audited, removed, and verified through an explicit one-time migration. Empty attribute payloads shall preserve the last attributes without asserting freshness or clearance.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+MQTT startup flow, discovery attribute template, retained-message migration
+<<<
+
+[REQUIREMENT]
+UID: SWR-MQTT-004
+STATEMENT: >>>
+Availability shall be `offline` during initialization and `online` after successful startup or diagnostic invalid-configuration startup.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`SafetyFunctions`
+<<<
+
+[REQUIREMENT]
+UID: SWR-MQTT-005
+STATEMENT: >>>
+The heartbeat period shall remain shorter than `expire_after` so unchanged entities do not become unavailable.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`heartbeat_seconds`, `expire_after`
+<<<
+
+[REQUIREMENT]
+UID: SWR-MQTT-006
+STATEMENT: >>>
+Application termination shall publish health and system state `stopped` before publishing availability `offline`.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`SafetyFunctions.terminate`
+<<<
+
+[REQUIREMENT]
+UID: SWR-MQTT-007
+STATEMENT: >>>
+MQTT diagnostics shall remain a projection of authoritative domain state, not a prerequisite for accepting danger or admitting response processing. Publication failure shall be surfaced independently without fabricating clear, healthy coverage or successful delivery. Publication retry/coalescing shall preserve current lifecycle order and shall not repeat household actions or fault-response commands.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`MqttEntityManager`, FaultManager and diagnostic callers
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SSRD-SEC-4-8
+TITLE: External Hazard Monitoring
+
+[TEXT]
+STATEMENT: >>>
+This subsection defines the software contract for External Hazard Monitoring.
+The detailed design is in
+[LINK: ARCH-EXTERNAL-HAZARD-MONITORING-DOC, External Hazard Monitoring - Architecture.sdoc].
+The provider-boundary rationale is recorded in
+[ADR-0001](../adr/0001-external-provider-plugins.md).
+
+The stable runtime contract is:
+
+| Fault ID | Safety Mechanism ID (`related_sms`) | Symptom ID contract | Level |
+| --- | --- | --- | ---: |
+| `ExternalWeatherExposure` | `sm_ext_weather_exposure` | `ExternalWeatherExposure{HazardId}{OpeningId}` | 2 |
+| `OutdoorAirQualityExposure` | `sm_ext_outdoor_air_quality_exposure` | `OutdoorAirQualityExposure{OpeningId}` | 3 |
+| `ExternalDataUnavailable` | `sm_ext_provider_unavailable`, `sm_provider_adapter_health` | `ExternalHazardDataUnavailable{CapabilityId}`, `ProviderHealth{ProviderId}` | 3 |
+
+Each Safety Mechanism ID shall occur in exactly one fault's `related_sms` list.
+The complete `SafetyFunctions.app_config` and `SafetyFunctions.user_config`
+contract, including provider policies and opening bindings, is defined in the
+feature architecture §12.
+<<<
+
+[REQUIREMENT]
+UID: SWR-EXT-001
+STATEMENT: >>>
+Registered provider plugins shall implement a common internal observation and health contract and declare their schemas, capability, hazard coverage, countries, data_kind and transport_kind. The installation shall explicitly select one applicable provider or null per capability. Adding a bundled conforming plugin shall follow SWR-EXT-018..030 without a provider-name branch in shared consumers.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+external API component registry
+<<<
+
+[REQUIREMENT]
+UID: SWR-EXT-002
+STATEMENT: >>>
+API Components shall have independent schemas, polling schedules, caches, failure counters, health, and contract tests.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`components/external_apis/*`
+<<<
+
+[REQUIREMENT]
+UID: SWR-EXT-003
+STATEMENT: >>>
+API Components shall not inherit from `SafetyComponent` and shall not create symptoms, faults, notifications, recovery actions, or actuator calls.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`ExternalApiComponent` protocol
+<<<
+
+[REQUIREMENT]
+UID: SWR-EXT-004
+STATEMENT: >>>
+Network work shall run outside the serialized safety-decision callback and results shall return through a bounded queue for ordered EventBus publication.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`ExternalApiRuntime`
+<<<
+
+[REQUIREMENT]
+UID: SWR-EXT-005
+STATEMENT: >>>
+`ExternalHazardComponent` shall be the only Safety Component in this feature and shall own household thresholds, freshness, cross-provider policy, opening correlation, aggregation, notification context, and the stable runtime identifiers defined above.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`ExternalHazardComponent`
+<<<
+
+[REQUIREMENT]
+UID: SWR-EXT-006
+STATEMENT: >>>
+Frost, wind/gust, rain/storm, and outdoor-pollution exposure symptoms shall require applicable valid hazard evidence and a qualified configured aperture. Modeled threshold evidence and applicable official warnings shall remain valid continuously for the configured persistence interval (75 seconds for weather and independently 300 seconds for outdoor AQ by default), measured independently per provider and hazard on a monotonic clock. Weather configuration and execution shall fit 120 seconds total from usable applicable input and a relevant known-open aperture: 5 s dispatch + max(75 s weather qualification, 60 s opening qualification) + 9 s scheduling/reconciliation + 1 s decision + 30 s notification allocation. Invalid overrides shall be rejected, and failed notification acceptance shall expose uncertainty rather than successful delivery. Missing, expired, invalid or below-threshold evidence shall reset pending hazard qualification. Official warnings, including `immediate` warnings, shall require fresh healthy provider evidence and authoritative validity throughout that interval. New exposures at an external door, garage door, or gate shall qualify after 60 seconds of continuously known-open state, measured on a monotonic clock. A closed or unknown contact shall reset the opening interval. Timers shall re-evaluate the current contact and provider evidence at their deadlines. Open windows shall require no additional opening delay after hazard qualification. A valid, locally applicable official warning normalized as `immediate` shall also qualify an open aperture configured for its hazard. Clearing an existing exposure shall require current positive evidence under the clear policy, including configured frost and gust hysteresis for modeled weather.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+external hazard policy mechanisms and timers
+<<<
+
+[REQUIREMENT]
+UID: SWR-EXT-009
+STATEMENT: >>>
+A configured hazard without applicable selected live evidence shall remain unevaluable. Provider timeout, stale data, schema error, disabled selection or synthetic preview shall not clear an active real condition. Selected live-provider and required-live-capability failures shall contribute independently to ExternalDataUnavailable. Synthetic and unselected providers shall create no real D contribution or improve real safety coverage. Active real opening/hazard assertions shall be durably retained and restored active but unevaluable before startup publication, including source/component disabling or synthetic replacement, without notification, proposal, consent or qualification-timer replay. Missing/corrupt retained state shall remain explicit uncertainty rather than recovery.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+provider health, SelfDiagnostics, and clear policy
+<<<
+
+[REQUIREMENT]
+UID: SWR-EXT-010
+STATEMENT: >>>
+External Hazard Monitoring shall register a close recommendation for each exposure symptom. Window and ordinary-door recommendations shall remain manual.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+recovery registration
+<<<
+
+[REQUIREMENT]
+UID: SWR-EXT-011
+STATEMENT: >>>
+Same-fault updates shall retain all active hazards/openings and refresh one notification tag using friendly names and localized area labels.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+FaultManager and NotificationManager integration
+<<<
+
+[REQUIREMENT]
+UID: SWR-EXT-012
+STATEMENT: >>>
+External pollution, damaging wind, or storm shall inhibit contradictory advice to open external apertures.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`RecoveryPolicyEvaluator` integration
+<<<
+
+[REQUIREMENT]
+UID: SWR-EXT-014
+STATEMENT: >>>
+`ImgwWarningsApiComponent` shall operate only for `PL` and require valid TERYT codes when enabled. It shall expose only current sanitized warnings matching at least one configured code, mark them as locally applicable, and dispatch recognized hazards through the internal API. IMGW degree 3 shall normalize to `immediate` urgency.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`ImgwWarningsApiComponent` and provider diagnostic MQTT entity
+<<<
+
+[REQUIREMENT]
+UID: SWR-EXT-015
+STATEMENT: >>>
+Each provider diagnostic MQTT entity shall expose an `observations` list of at most 64 summaries containing the stable observation ID, hazard type, provider level, observation and validity timestamps, and an optional operator-display value and unit. The list shall contain normalized current observations only and shall not expose unbounded provider payloads.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`ExternalHazardComponent._publish_provider_health`
+<<<
+
+[REQUIREMENT]
+UID: SWR-EXT-016
+STATEMENT: >>>
+The garage and external gate may bind only directional `cover.*` actuators and `user_confirmed` execution. No other opening kind may define an actuator.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`OpeningConfig` validation
+<<<
+
+[REQUIREMENT]
+UID: SWR-EXT-017
+STATEMENT: >>>
+A gate close shall call only `cover.close_cover` after valid SafetyHome confirmation and shall use its configured contact as the physical closed postcondition.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+RecoveryManager confirmed execution
+<<<
+
+[REQUIREMENT]
+UID: SWR-EXT-018
+STATEMENT: >>>
+The bundled provider registry shall declare each plugin's stable ID, capability, covered hazard types, applicable countries, display metadata, and provider-owned installation-parameter schema. Registration shall reject duplicate IDs and invalid declarations. Runtime package installation shall not be required or exposed by provider selection.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+external API component registry
+<<<
+
+[REQUIREMENT]
+UID: SWR-EXT-019
+STATEMENT: >>>
+The required user_config.external_sources mapping shall contain exactly WeatherPointModel, OfficialWeatherWarnings and OutdoorAirQuality, each with one applicable registered provider ID or explicit null. Optional `user_config.provider_parameters.<ProviderId>` shall contain only that plugin's declared installation fields. Shared coordinates shall come from Home Assistant Core; country and timezone remain common site fields. Supplied values shall be validated even for inactive providers; requiredness applies only to selected active providers. Selection-capability, country and parameter errors shall identify configuration paths before save, polling or mechanism activation.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+source compiler, provider schemas, and `AppCfgValidator`
+<<<
+
+[REQUIREMENT]
+UID: SWR-EXT-020
+STATEMENT: >>>
+Source model version 2 shall accept only the explicit external_sources and provider_parameters target shape. Former user_config.providers enablement, selection_origin, inherited source selection and installation.site.teryt_codes shall be rejected without alias resolution, migration or reconciliation. Packaged runtime_cfg.providers shall contain lifecycle policy without enabled selection defaults. Compiled api_components may derive enabled internally; parameters shall not independently activate a provider. IMGW TERYT shall exist only under provider_parameters.ImgwWarningsApiComponent.teryt_codes.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+configuration compiler and IMGW parameter schema
+<<<
+
+[REQUIREMENT]
+UID: SWR-EXT-021
+STATEMENT: >>>
+The authenticated configuration interface shall supply provider_metadata_version 2 with registered country/capability/hazard coverage, installation-parameter schemas/defaults, friendly metadata, required_when_selected and trusted data_kind live or synthetic plus transport_kind http or none. It shall export no enabled/default-selection or legacy_parameter_paths. SafetyHome shall present named applicable providers or Wyłączone per category and reveal only the selected provider's fields while retaining valid inactive drafts. Unknown metadata shall not authorize activation.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+configuration API and SafetyHome configuration
+<<<
+
+[REQUIREMENT]
+UID: SWR-EXT-022
+STATEMENT: >>>
+The runtime shall publish complete live ApiResult snapshots through external_api_result and synthetic snapshots exclusively through external_api_test_result, selecting the route from trusted registered definitions rather than result-supplied flags. Normalized observations shall retain source identity, hazard, values/units, source/retrieval times, validity, region, level and authority. Unsupported or incomplete input shall not become healthy empty evidence. Live handlers shall reject synthetic sources; synthetic observations shall not claim real official authority.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+provider adapters, `ApiResult`, and serialized EventBus dispatch
+<<<
+
+[REQUIREMENT]
+UID: SWR-EXT-023
+STATEMENT: >>>
+SelfDiagnosticsComponent shall allocate selected applicable live providers' independent health contributions to ExternalDataUnavailable from trusted registry declarations. Real coverage and degradation bindings shall derive only from live definitions, declared hazards and validated selection. Synthetic sources shall be excluded from real diagnostic contributors, H evaluation, degradation requalification, notifications and recovery proposals, without fixed provider-name policy.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+SelfDiagnostics, provider registry, and degradation binding compiler
+<<<
+
+[REQUIREMENT]
+UID: SWR-EXT-024
+STATEMENT: >>>
+For each configured hazard, C-EXT shall evaluate only selected country-applicable live providers declaring that hazard. Data-based clear shall require a non-empty relevant live set with fresh healthy complete evidence from every member and no active warning or threshold assertion. Failed, stale, partial, disabled, unsupported or synthetic input shall not clear an active hazard. Confirmed physical opening closure retains its independent exposure-clear semantics.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+C-EXT provider selection and hazard-evidence policy
+<<<
+
+[REQUIREMENT]
+UID: SWR-EXT-025
+STATEMENT: >>>
+Diagnostics shall distinguish explicit disabled selection, unconfigured capability, unsupported hazard, awaiting evidence, stale/unavailable input, healthy complete no-warning evidence and synthetic preview. Disabled sections shall remain visible with muted styling and explicit text or a nonnumeric placeholder, never a green healthy zero. Inactive retained diagnostics shall not override applied selection. Independent enabled model monitoring shall retain its own state; all-disabled or synthetic-only inputs shall not imply healthy real coverage.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+provider diagnostics, coverage reporting, and SafetyHome
+<<<
+
+[REQUIREMENT]
+UID: SWR-EXT-026
+STATEMENT: >>>
+Open-Meteo weather and air-quality adapters shall retain their common contract and global model roles; public examples shall select them explicitly. Official-warning sources shall be independently selectable. Model values shall not be presented as official alerts or physical measurements; air-quality index identity and units remain explicit. Friendly runtime text shall maintain EN/PL/DE parity while technical identifiers remain language-independent.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+provider adapters, C-EXT, localization, and SafetyHome
+<<<
+
+[REQUIREMENT]
+UID: SWR-EXT-027
+STATEMENT: >>>
+Automated acceptance shall exercise Polish and German target-model configuration through compile, save/import, startup, independent polling, live/test routing, presentation and shutdown. Tests shall cover explicit null selections, inactive drafts, obsolete-shape rejection, complete empty versus failed/stale/partial feeds, unsupported coverage, independent real-source failures and synthetic isolation. Assertions shall prove no test result changes real H/D state, coverage, alarm notifications, recovery proposals or household actuators.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+backend integration and contract tests, frontend configuration tests
+<<<
+
+[REQUIREMENT]
+UID: SWR-EXT-028
+STATEMENT: >>>
+Generic category headings/help/counters shall be provider-neutral, retaining provider names only for actual selection or provenance. Each category shall have exactly one provider-or-disabled choice and accessible dynamic fields on desktop/mobile.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+SafetyHome configuration and External Hazards
+<<<
+
+[REQUIREMENT]
+UID: SWR-EXT-029
+STATEMENT: >>>
+GermanyDummyWarningsApiComponent shall be an explicit DE-only wind source with data_kind synthetic and transport_kind none. Parameters shall be region_code, a non-empty bounded synthetic identifier of at most 32 characters, and scenario empty, warning, unavailable or stale. It shall perform no HTTP or require credentials; all affected preview views shall identify test data. C-EXT shall store and publish its preview separately through sensor.external_hazard_test_state without changing real safety state or action paths.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+dummy adapter, runtime dispatch and C-EXT preview
+<<<
+
+[REQUIREMENT]
+UID: SWR-EXT-030
+STATEMENT: >>>
+SafetyFunctions shall publish sensor.external_source_selection independently of C-EXT enablement with schema_version 1, per-start runtime_id, component_enabled and a selections entry for every capability containing provider ID or null, data_kind or null and hazards. Provider diagnostics, aggregate and preview shall carry the same runtime_id; SafetyHome shall join only same-start records and describe applied settings, never an unsaved/saved-unapplied draft. Missing or mismatched truth shall remain unknown; explicit null or component-disabled truth shall override retained healthy data. Active real assertions shall be checkpointed in existing SQLite state with at most 4096 assertions and 1 MiB and restored before FaultManager initial publication; overflow/failure shall be explicit unknown without silent discard. Missing/corrupt checkpoint plus active evidence journal shall remain unknown; cold startup without prior assertions awaits fresh evidence. Disabled/replaced sources and removed openings shall retain unresolved active conditions without replaying timers, notifications, proposals or consent; physical-closure clear requires a valid matching live contact.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+startup, durable assertions, MQTT applied selection and SafetyHome projection
+<<<
+
+[TEXT]
+STATEMENT: >>>
+For SWR-EXT-030, restored external faults shall publish `retained_assertions`
+and `retained_hazard_unknown`, retain `active: true` with `UNEVALUABLE` evaluation,
+and never replay prior external recovery proposals or consent during restore.
+The application-level safety coverage wrapper shall expose
+`retained_external_assertion_count`, at most 32 `retained_external_assertions`,
+and `retained_hazard_unknown`; unresolved retained state shall replace
+`FULL`/`PARTIAL` with `UNKNOWN` without hiding an existing `DEGRADED` state.
+Atomic checkpoint failure shall retain asserted danger with an observable
+persistence failure and shall withhold a clear transition whose checkpoint failed.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SSRD-SEC-4-9
+TITLE: Entity Health Monitoring
+
+[TEXT]
+STATEMENT: >>>
+The detailed design is in
+[LINK: ARCH-ENTITY-HEALTH-MONITORING-DOC, Entity Health Monitoring - Architecture.sdoc],
+with fault ownership and subject routing in
+[LINK: ARCH-FAULT-ROUTING-AND-AGGREGATION-DOC, Fault Routing and Aggregation - Architecture.sdoc].
+
+The stable runtime contract is:
+
+| Element | Stable ID |
+| --- | --- |
+| Component | `EntityMonitorComponent` |
+| Safety Mechanism pattern | `sm_entity_health_<entity_key>` |
+| Symptom pattern | `EntityHealthFailure{EntityKey}{CheckKey}` |
+| Group A-owned fault pattern | `EntityHealth{EntityKey}`, level 3 |
+| Per-entity diagnostic | `sensor.entity_health_<entity_key>` |
+| Shared component-input fault | `InputMonitoringUnavailable` |
+| Aggregate diagnostic | `sensor.entity_monitor_summary` |
+<<<
+
+[REQUIREMENT]
+UID: SWR-ENT-001
+STATEMENT: >>>
+The feature shall distinguish the monitored `explicit` and `component` source groups. `EntityHealthRegistry` shall maintain Groups A/B, and System Health shall present their diagnostic records while preserving every applicable membership and logical fault-family identity.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`EntityHealthRegistry` and SafetyHome presentation
+<<<
+
+[REQUIREMENT]
+UID: SWR-ENT-002
+STATEMENT: >>>
+Explicit safety entities shall be accepted only from validated installation configuration with a stable key, valid entity ID, area when configured, debounce policy, and complete definitions for every enabled optional check.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+Entity Monitor schema and `AppCfgValidator`
+<<<
+
+[REQUIREMENT]
+UID: SWR-ENT-003
+STATEMENT: >>>
+Safety Components and the application core shall register their entity dependencies with owner, purpose, checks, debounce, optional freshness contract, and fault ownership; all configured `common_entities` shall be registered as component dependencies.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+component registry integration
+<<<
+
+[REQUIREMENT]
+UID: SWR-ENT-004
+STATEMENT: >>>
+Availability shall fail when Home Assistant reports `unknown` or `unavailable`, the entity cannot be read, or the entity disappears after startup. A shared background reader shall batch live reports without overlapping requests within each worker; an independent short-budget worker and evaluation timer shall prevent ordinary read timeouts from delaying short-budget reconciliation. Acquisition shall use its own monotonic five-second scheduler independently of pinned AppDaemon callbacks and MQTT publication, skip missed ticks without bursts, and stop without accepting late responses. Short-budget requests shall have a four-second response deadline; evidence shall expire ten seconds from acquisition start, including a one-second scheduling allowance. A nine-second scheduling gap shall not restart qualification of a valid report. Failed attempts and evidence beyond the bound shall remain invalid. State-change events shall supplement reports immediately. Failed or expired read evidence shall not clear an active fault. Acquisition, bounded read timeout, evaluation scheduling and failure debounce shall fit the allocated detection path and applicable FTTI; the default fast path shall retain its thirty-second allocation with five-second evaluation and fifteen-second failure debounce. Owning components shall retain their immediate alarm paths.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+availability check and shared HA report reader
+<<<
+
+[REQUIREMENT]
+UID: SWR-ENT-005
+STATEMENT: >>>
+Freshness shall be enabled only when the entity contract identifies a trustworthy heartbeat or timestamp source and positive `report_timeout_seconds`, the maximum source-report age. Legacy nested `max_silence_seconds` shall remain accepted as an equivalent alias; simultaneous forms shall agree. It shall become `stale` when that confirmation expires. Availability, value and freshness checks shall evaluate from initial acquisition. All D operator reporting shall use shared startup grace without resetting source-report age; allocated detection and internal degradation restrictions shall remain immediate. Live `last_reported` shall preserve unchanged integration reports but shall not independently prove a new physical measurement. Temperature dependencies shall default to `timestamp_source: last_contact_at`, normalized from the unique same-device `sensor.*_last_seen`, with a 3600-second timeout: recent device contact shall allow the last valid temperature without a changed value or new temperature report. Availability, finite-number and configured numeric-range checks shall remain required. Explicit dependency overrides may select another trustworthy integration-specific source. Other channels shall use contact freshness only when explicitly declared; neither polling nor traffic from another device shall renew it. Missing, ambiguous, invalid or future contact shall remain unevaluable with no automatic fallback to HA write timestamps. The monitor shall derive acquisition/evaluation cadence from effective timing requirements within system-owned bounds. Network response deadlines remain separate from report-age timeout; legacy scheduling inputs shall not weaken tighter requirements. Freshness timeout and applicable acquisition/evaluation/debounce delays shall fit the allocated detection path and FTTI.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+freshness check, schema normalization, and scheduler
+<<<
+
+[REQUIREMENT]
+UID: SWR-ENT-006
+STATEMENT: >>>
+Required-value, allowed-values, finite-number, numeric-range, and rate-of-change checks shall be opt-in and shall reject incomplete or type-incompatible calibration. Numeric-range checks shall define at least one inclusive bound. Rate-of-change checks shall define a sample window, minimum sample count, and at least one permitted rise or fall bound.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+check registry and schemas
+<<<
+
+[REQUIREMENT]
+UID: SWR-ENT-007
+STATEMENT: >>>
+A failing C-ENT-owned check shall set its stable symptom only after failure debounce and shall clear only after fresh valid observations pass recovery debounce. Invalid or missing observations shall not clear an active symptom.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+evaluation state machine
+<<<
+
+[REQUIREMENT]
+UID: SWR-ENT-008
+STATEMENT: >>>
+Components shall declare each Group B dependency and its consumer bindings. Temperature, safety-door, external-opening and shared-input checks shall contribute to one level-3 `InputMonitoringUnavailable` fault with independent source/check contributors. Recovery and indoor-detector faults shall remain separate. Entity Monitor shall expose dependency health without a duplicate Group A fault for the same failure. A shared input shall have one declared fault owner and explicit consumer bindings.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+fault-ownership resolver
+<<<
+
+[REQUIREMENT]
+UID: SWR-ENT-009
+STATEMENT: >>>
+C-ENT-owned Group A check symptoms shall aggregate per entity into one level-3 `EntityHealth{EntityKey}` fault. Different unhealthy Group A entities shall have different faults. Each fault shall retain the friendly name, entity ID, source groups, failed checks, last valid value, and relevant timestamps.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+dynamic fault registration and FaultManager integration
+<<<
+
+[REQUIREMENT]
+UID: SWR-ENT-010
+STATEMENT: >>>
+Each Group A/B diagnostic shall publish `healthy`, `degraded`, `stale`, or `unavailable`, plus source membership, owner, friendly name, area, device, current state, last change, last update, last valid observation, checks, and fault ownership.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+MQTT diagnostics
+<<<
+
+[REQUIREMENT]
+UID: SWR-ENT-011
+STATEMENT: >>>
+The aggregate diagnostic shall publish bounded counts by health and source group plus bounded summaries of unhealthy Group A/B entities; it shall not contain the complete Home Assistant inventory.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`sensor.entity_monitor_summary` publisher
+<<<
+
+[REQUIREMENT]
+UID: SWR-ENT-012
+STATEMENT: >>>
+System Health shall list all installed Group A/B diagnostic records, including healthy and unavailable records, with dynamic counts, search, health/source/owner/area filters and expandable identity, ownership, check, timestamp and selected-source history details. Battery maintenance shall remain a separate section on that page. The frontend shall not offer a general Home Assistant entity/device inventory; `/entities` shall redirect to `/functional-safety`.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+SafetyHome System Health view
+<<<
+
+[REQUIREMENT]
+UID: SWR-ENT-013
+STATEMENT: >>>
+Entities outside Groups A/B shall not be implicitly enrolled in C-ENT or create C-ENT symptoms, faults, notifications, recovery actions, MQTT inventory payloads, or application-health degradation.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+frontend monitored-list boundary and backend negative contract
+<<<
+
+[REQUIREMENT]
+UID: SWR-ENT-014
+STATEMENT: >>>
+Entity Monitor shall supply cause-specific manual repair actions for owned Group A/B faults, naming the entity and failed check/path and observing that cause's valid recovery evidence. Unmonitored entities shall create no C-ENT recovery action. Entity Monitor shall make no Home Assistant actuator service call.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+Entity Monitor, RecoveryManager
+<<<
+
+[REQUIREMENT]
+UID: SWR-ENT-015
+STATEMENT: >>>
+User-facing Entity Monitor names and states shall support English, Polish, and German; entity IDs, source codes, check codes, and raw health states shall remain language-independent.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+localization and frontend presentation
+<<<
+
+[REQUIREMENT]
+UID: SWR-ENT-016
+STATEMENT: >>>
+Group B checks shall route by declared capability and subject to the shared input diagnostic or separate recovery/detector/application-health diagnostic. Compatible declarations shall merge within one physical-entity/fault-family record; distinct families referencing one entity shall retain separate records, checks, debounce state and owners. Acquisition shall be shared at the shortest derived interval. Group A membership shall attach once, preferring the input record when present, without relaxing Group B checks or creating duplicate Group A faults for other roles. Each logical contribution shall have one fault owner. A Group B failure shall affect only explicitly bound hazard evaluation or recovery capabilities. Shared fault aggregation shall not widen contributor scope; one contributor's recovery shall not clear another failed or unevaluable contributor.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+Entity Monitor registry and component fault bindings
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SSRD-SEC-4-10
+TITLE: Heating System Monitoring
+
+[TEXT]
+STATEMENT: >>>
+C-HVAC shall refine [LINK: SYS-SEC-8-6, SYS section 8.6]
+and [LINK: HARA-SEC-1-3-12, HARA section 1.3.12].
+The [LINK: ARCH-HEATING-SYSTEM-MONITORING-DOC, Heating System Monitoring architecture]
+defines signal contracts, rule IDs, calibration, lifecycle and verification.
+The scope is observation and notification of heating-system behavior. Normal
+control, automatic backup/failover, cooling and native appliance protection
+shall retain their separate responsibilities.
+<<<
+
+[REQUIREMENT]
+UID: SWR-HSM-001
+STATEMENT: >>>
+The registered `HeatingSystemMonitorComponent` shall evaluate independent heating installations and their associated rooms using immutable normalized snapshots and bounded per-source sample buffers.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+component lifecycle and snapshot builder
+<<<
+
+[REQUIREMENT]
+UID: SWR-HSM-002
+STATEMENT: >>>
+A read-only normalizer shall resolve installation-configured entity states/attributes, value/state mappings, units, observation-time/sequence sources and quality into a product-neutral input model. Unmapped/invalid values shall not default to false or zero. The safety engine shall neither select device/provider integrations nor require a controller product, release or entity prefix. Controller room-control setpoints, command confirmation or publication heartbeat shall not substitute for boiler flow targets, physical operation or source measurement freshness.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+configured input normalizer
+<<<
+
+[REQUIREMENT]
+UID: SWR-HSM-003
+STATEMENT: >>>
+The component shall declare Group B dependencies for every enabled rule, retaining entity/area identity, owner, purpose and quality/timing contracts. Boiler-specific health faults shall use component ownership; shared room/common dependencies shall preserve compatible existing ownership and shall not be silently reassigned.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+dependency declaration and C-ENT integration
+<<<
+
+[REQUIREMENT]
+UID: SWR-HSM-004
+STATEMENT: >>>
+Communication checks shall require evidence of fresh boiler telemetry as well as transport state. Cached `connected`, static numeric values and HA availability alone shall not reset an observation deadline.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+communication evaluator
+<<<
+
+[REQUIREMENT]
+UID: SWR-HSM-005
+STATEMENT: >>>
+Room heat need shall be evaluated independently of controller demand from qualified room temperature, the effective current target and independently evidenced heating permission/inhibition. Future comfort targets and numeric targets in an off room shall not establish present permitted need. Controller request and burner state shall be separate inputs; missing need inputs shall produce unevaluable coverage rather than no demand, and controller-only target/permission evidence shall retain its common-cause coverage limitation.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+need evaluator
+<<<
+
+[REQUIREMENT]
+UID: SWR-HSM-006
+STATEMENT: >>>
+The phase resolver shall publish `idle`, `starting`, `heating`, `dhw`, `pump_overrun`, `inhibited` or `unknown` separately from supervision health, with precedence and contradiction handling defined by the equipment profile.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+phase resolver
+<<<
+
+[REQUIREMENT]
+UID: SWR-HSM-007
+STATEMENT: >>>
+Each rule shall declare required inputs and phases, startup/inhibition allowance, sample coverage, failure predicate/duration, recovery predicate/duration and allocated detection budget; changing phase or restarting shall not repeatedly renew an unresolved heating-need deadline.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+rule contract and deadline scheduler
+<<<
+
+[REQUIREMENT]
+UID: SWR-HSM-008
+STATEMENT: >>>
+Missing-request and missing-response checks shall distinguish unmet permitted room need from an issued heat request that lacks a valid boiler response; already-satisfied targets and legitimate bounded inhibition shall not be faulted.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`sm_hsm_missing_demand`, `sm_hsm_no_response`
+<<<
+
+[REQUIREMENT]
+UID: SWR-HSM-009
+STATEMENT: >>>
+Flow rise/tracking checks shall operate on eligible, time-coherent heating intervals and valid targets, with minimum sample count, observed time coverage and maximum gaps; repeated cached samples shall not count as new evidence.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`sm_hsm_no_flow_rise`, `sm_hsm_flow_tracking`
+<<<
+
+[REQUIREMENT]
+UID: SWR-HSM-010
+STATEMENT: >>>
+Pump, differential-temperature and room-delivery checks shall respect hydraulic topology, assigned rooms, load and operating mode; they shall expose suspected delivery failure with measured evidence rather than assert an unobserved mechanical cause.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+distribution mechanisms
+<<<
+
+[REQUIREMENT]
+UID: SWR-HSM-011
+STATEMENT: >>>
+Mode excess-temperature checks shall apply the configured CH/DHW/overrun envelope and recovery hysteresis; the manufacturer absolute-limit check shall remain eligible without a heating request when its temperature input is valid. Validation shall require a reviewed `HSM-H05/<EquipmentProfileKey>` response bound and shall reject plausibility ranges that mask physically valid dangerous temperatures.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+temperature-limit mechanisms
+<<<
+
+[REQUIREMENT]
+UID: SWR-HSM-012
+STATEMENT: >>>
+Current operating, maintenance and fault codes shall use a versioned model-specific classification. Historical last-error values shall be diagnostic only, and unknown codes shall create interpretation/coverage diagnostics rather than automatically pass or assert an active device fault.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+code classifier and device-fault mechanism
+<<<
+
+[REQUIREMENT]
+UID: SWR-HSM-013
+STATEMENT: >>>
+Short-cycling checks shall use positive counter deltas or validated burner transitions over bounded CH/DHW windows; reset/wrap/replay shall not generate negative usage or spurious starts. Maintenance and cycling shall use L4 diagnostics.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+maintenance and cycling mechanisms
+<<<
+
+[REQUIREMENT]
+UID: SWR-HSM-014
+STATEMENT: >>>
+Rule evaluation shall expose `not_applicable`, `unevaluable`, `passing`, `pending_failure`, `failed`, or `pending_recovery` independently of the active symptom latch. Invalid evidence shall cancel pending recovery but shall not clear the latch.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+rule state machine
+<<<
+
+[REQUIREMENT]
+UID: SWR-HSM-015
+STATEMENT: >>>
+An active performance symptom shall clear only after fresh eligible successful operation satisfies its recovery duration. Demand removal, phase change, acknowledgement, communication recovery alone or restored saved values shall not constitute HEAL.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+recovery evidence evaluator
+<<<
+
+[REQUIREMENT]
+UID: SWR-HSM-016
+STATEMENT: >>>
+C-HVAC shall emit symptoms through the existing EventBus/FaultManager path using the architecture's one-mechanism-to-one-fault mapping. Multiple installations/rooms shall retain separate symptoms; the fault shall clear only after all its active symptoms clear.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+mechanism/fault catalog integration
+<<<
+
+[REQUIREMENT]
+UID: SWR-HSM-017
+STATEMENT: >>>
+Loss of a shared boiler feed shall aggregate into supervision loss and make dependent checks unevaluable without manufacturing new downstream failures. Each installation's supervision symptom shall retain a cause ledger and clear only when every active constituent cause has positively recovered. Existing active performance symptoms and independent C-TEMP faults shall remain visible.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+fault correlation and dependency handling
+<<<
+
+[REQUIREMENT]
+UID: SWR-HSM-018
+STATEMENT: >>>
+Timing validation and deterministic clock tests shall include timeout, phase allowance, sample windows, evaluation cadence, debounce, decision and notification reserve. Safety-supervision paths shall meet SG-003; heating-loss paths shall meet SG-010/012 even with repeated phase changes or bounded inhibition.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+calibration validator and scheduler
+<<<
+
+[REQUIREMENT]
+UID: SWR-HSM-019
+STATEMENT: >>>
+A bounded versioned atomic `HeatingMonitorStateStore` outside the deployed app directory shall retain active symptoms, fault-episode IDs, first failure/need times, elapsed budget and the calibration fingerprint. Notification storage alone shall not be used as heating-state persistence.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+heating state store
+<<<
+
+[REQUIREMENT]
+UID: SWR-HSM-020
+STATEMENT: >>>
+Startup shall reconcile persisted symptoms with FaultManager before declaring healthy supervision. Missing/corrupt/incompatible state, clock discontinuities and persistence failures shall remain explicit diagnostics; downtime shall consume deadline budget but shall not count as observed failure or recovery samples.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+startup reconciliation and clock abstraction
+<<<
+
+[REQUIREMENT]
+UID: SWR-HSM-021
+STATEMENT: >>>
+SET/HEAL context shall retain incident identity, installation/room, phase, demand, current/target/range/rate values and units, timestamps, rule IDs, elapsed duration, classified codes, confidence limits and positive recovery evidence through a bounded versioned allowlist.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+evidence builder and notification context integration
+<<<
+
+[REQUIREMENT]
+UID: SWR-HSM-022
+STATEMENT: >>>
+Heating notification attempts shall preserve SWR-NOT-019..023 journal retention and target/result semantics while adding compatible incident/evidence correlation. Fault publication shall use the shared eight evaluation codes with activation and shadowing separate. Domain HEAL shall require positive recovery and the `CLEARED` journal transition; shadowing shall never be called HEAL.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+NotificationManager and SafetyHome history
+<<<
+
+[REQUIREMENT]
+UID: SWR-HSM-023
+STATEMENT: >>>
+Per-installation MQTT diagnostics and SafetyHome details shall expose phase, supervision coverage, active faults, rule reasons, input ages and recovery-wait reasons. Friendly labels/messages shall have EN/PL/DE parity while machine identifiers remain unchanged.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+MQTT publication, Localizer and SafetyHome
+<<<
+
+[REQUIREMENT]
+UID: SWR-HSM-024
+STATEMENT: >>>
+System configuration shall own rule policies/calibration and fault/code profiles; user configuration shall own enabled installations and entity/attribute/area/equipment bindings, value/state mappings, units, source roles and freshness provenance. Mappings shall contain no executable expressions or service calls. Compilation shall preserve only explicitly selected installations and validation shall reject incomplete enabled rules, incompatible shared ownership, ambiguous signal meaning, unproven required independence/freshness and unvalidated thermal or timing bounds. Coverage shall enumerate controller, need, response, thermal, distribution, delivery and code paths with excluded/shadow rules visibly outside active safety coverage.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+configuration compiler and validators
+<<<
+
+[REQUIREMENT]
+UID: SWR-HSM-025
+STATEMENT: >>>
+The component shall supply model-specific manual inspection/service recovery. Input mappings/normalization shall own no recovery policy; the component shall issue no heating actuator or reset service calls, including while recovering from communication failure or replaying persisted state.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+component recovery policy, negative-actuation boundary
+<<<
+
+[REQUIREMENT]
+UID: SWR-HSM-026
+STATEMENT: >>>
+Evaluation and sample retention shall be bounded; slow source reads, notification failures and persistence failures shall not block other mechanisms. Shadow evaluation shall remain explicitly non-operational coverage and shall not count as an active safety path.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+runtime isolation and coverage reporting
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SSRD-SEC-4-11
+TITLE: Internal Environmental Hazard Monitoring
+
+[TEXT]
+STATEMENT: >>>
+This component shall refine [LINK: SYS-SEC-8-7, SYS section 8.7]
+and [LINK: HARA-SEC-1-3, HARA section 1.3].
+The [LINK: ARCH-INTERNAL-ENVIRONMENTAL-HAZARD-MONITORING-DOC, Internal Environmental Hazard Monitoring architecture]
+defines mechanism/fault identities, inputs, lifecycle, timing and verification.
+<<<
+
+[REQUIREMENT]
+UID: SWR-IEHM-001
+STATEMENT: >>>
+The registered component shall maintain independent configured detector/pollutant subjects with stable keys, area metadata and typed hazard identity; logical C-ALARM and C-AQ responsibilities shall remain distinct.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+component registration and models
+<<<
+
+[REQUIREMENT]
+UID: SWR-IEHM-002
+STATEMENT: >>>
+Input adapters shall explicitly normalize alarm/clear/trouble/test/hush states, units, source/receipt times, sequence and quality. CO, CO2, combustible gas, smoke, PM2.5 and AQI shall not share interchangeable mappings.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+provider/profile adapters
+<<<
+
+[REQUIREMENT]
+UID: SWR-IEHM-003
+STATEMENT: >>>
+The component shall declare Group B dependencies for enabled channels, preserving shared owner/check compatibility. Component-owned health symptoms shall suppress duplicate C-ENT faults without modeling an asserted hazard as a failed required-clear entity check.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+dependency integration
+<<<
+
+[REQUIREMENT]
+UID: SWR-IEHM-004
+STATEMENT: >>>
+A fresh valid smoke assertion shall SET `InternalSmokeDetected` through `sm_iehm_smoke` without startup/availability debounce, numeric measurement gating or peer voting.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+smoke mechanism
+<<<
+
+[REQUIREMENT]
+UID: SWR-IEHM-005
+STATEMENT: >>>
+A fresh valid combustible-gas assertion shall SET `InternalFlammableGasDetected` through `sm_iehm_flammable_gas`, retaining the equipment's gas identity and output restrictions.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+flammable-gas mechanism
+<<<
+
+[REQUIREMENT]
+UID: SWR-IEHM-006
+STATEMENT: >>>
+A fresh valid CO assertion shall SET `InternalCarbonMonoxideDetected` through `sm_iehm_carbon_monoxide`; absent or low numeric telemetry shall not override the detector's alarm state.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+CO mechanism
+<<<
+
+[REQUIREMENT]
+UID: SWR-IEHM-007
+STATEMENT: >>>
+Alarm edges shall be captured before slower averaging/persistence work so an observed short assertion cannot disappear through a later snapshot. A simultaneous fresh alarm and separate low-battery/trouble condition shall preserve both hazard and diagnostic evidence.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+event ingestion and alarm latch
+<<<
+
+[REQUIREMENT]
+UID: SWR-IEHM-008
+STATEMENT: >>>
+PM2.5 shall require indoor concentration in µg/m³, finite nonnegative values, known sensor range and saturation semantics; invalid or unrecognized saturated data shall not be clamped into normal measurements or clear an active PM symptom.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+PM adapter and quality checks
+<<<
+
+[REQUIREMENT]
+UID: SWR-IEHM-009
+STATEMENT: >>>
+Short-window PM policy shall define threshold, averaging period, minimum covered duration/sample count, maximum gap and source age, failure persistence and a lower recovery threshold/duration; it shall assert the L2 `InternalParticulateMatterHigh` fault.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`sm_iehm_pm25_high`
+<<<
+
+[REQUIREMENT]
+UID: SWR-IEHM-010
+STATEMENT: >>>
+Time-weighted PM averages shall use actual valid elapsed coverage with bounded hold between samples, excluding gaps, duplicates and replay. Partial windows shall expose coverage and shall not be reported as complete.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+PM sample buffer and integration
+<<<
+
+[REQUIREMENT]
+UID: SWR-IEHM-011
+STATEMENT: >>>
+Optional long-term PM exposure shall use a separately named averaging/coverage policy and L3 `InternalParticulateMatterExposure`; it shall not replace the short-window path or represent WHO daily/annual guidance as an instantaneous alarm.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`sm_iehm_pm25_exposure`
+<<<
+
+[REQUIREMENT]
+UID: SWR-IEHM-012
+STATEMENT: >>>
+Required-channel loss, detector fault/end-of-life, warmup beyond allowance and uncertain input interpretation shall create per-detector supervision symptoms; ancillary diagnostics shall not gate fresh alarm processing. Each supervision symptom shall retain all failed causes until all recover.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+`sm_iehm_detector_health`
+<<<
+
+[REQUIREMENT]
+UID: SWR-IEHM-013
+STATEMENT: >>>
+Hazard symptoms shall remain independent per detector; FaultManager shall aggregate all contributors and clear only after every related symptom clears. No cross-hazard shadowing shall conceal smoke/gas/CO alarms.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+symptom/FaultManager integration
+<<<
+
+[REQUIREMENT]
+UID: SWR-IEHM-014
+STATEMENT: >>>
+Binary HEAL shall require new authoritative clear evidence confirmed throughout a complete monotonic clear interval by the reviewed detector event/heartbeat contract. Cached age and downtime shall contribute zero observed recovery duration. Session/incident/binding tokens shall reject obsolete callbacks; reconnect, alarm, unknown, test/hush, offline or order uncertainty shall invalidate qualification. Initial/readback/attribute-only historical state, acknowledgement and removed configuration shall not initiate recovery. Durable clear acknowledgement shall precede HEAL.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+binary recovery state machine
+<<<
+
+[REQUIREMENT]
+UID: SWR-IEHM-015
+STATEMENT: >>>
+PM HEAL shall require a sufficiently covered valid recovery window below its clear threshold for its clear duration; invalid data shall cancel pending recovery, preserve the active latch and expose lost coverage.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+PM recovery state machine
+<<<
+
+[REQUIREMENT]
+UID: SWR-IEHM-016
+STATEMENT: >>>
+Timing validation shall budget reception, component decision, queue/scheduler delays and delivery against the 10 s binary interface path, 60 s supervision path and 600 s short-window PM path. Timers shall expose onset and deadline; repeated restart/gaps shall not reset unresolved detection budgets.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+validators and deterministic clock
+<<<
+
+[REQUIREMENT]
+UID: SWR-IEHM-017
+STATEMENT: >>>
+Bounded versioned atomic `InternalEnvironmentStateStore` outside the deployment tree shall retain active symptom/incident IDs, cause ledger, channel clear-order watermarks, gas switching-inhibition state, pending evidence and timing debt. Source history shall remain historical after restore, and downtime shall not count as observed healthy samples. Owner-level restoration shall preserve orphan active assertions and independent gas restrictions before initial fault/global publication even when the component is disabled. Removal/rebinding shall not erase or transfer recovery authority. Failed SET shall preserve in-memory danger; failed CLEAR shall deny HEAL/release.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+component persistence
+<<<
+
+[REQUIREMENT]
+UID: SWR-IEHM-018
+STATEMENT: >>>
+Reload, reconnect, resubscription and coverage recovery shall reconcile retained assertions and active notification/incident state. Unconfirmed positive retained alarm evidence shall be labeled unverified and handled conservatively; replay rejection shall require a persisted authoritative clear watermark with profile-defined source epoch/order. Corruption/clock uncertainty shall not fabricate HEAL or fully monitored safe state.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+source-session reconciliation
+<<<
+
+[REQUIREMENT]
+UID: SWR-IEHM-019
+STATEMENT: >>>
+Evidence shall identify incident, hazard, detector, area, source/receipt/transition times, values/units, alarm or threshold policy, coverage, quality and positive clear basis using a bounded versioned allowlist.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+incident evidence builder
+<<<
+
+[REQUIREMENT]
+UID: SWR-IEHM-020
+STATEMENT: >>>
+NotificationManager shall preserve stable tags, quiet updates, acknowledgement/retry semantics and the latest-100 target-attempt journal while adding incident correlation. Fault MQTT evaluation states shall follow SWR-FLT-007; journal `SET`/`CLEARED` transition codes shall remain distinct. HA acceptance shall not imply phone delivery or environmental safety.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+notification integration and history
+<<<
+
+[REQUIREMENT]
+UID: SWR-IEHM-021
+STATEMENT: >>>
+Hazard-specific guidance shall avoid generic ventilation, purifier or opening instructions for smoke/gas/CO. PM advice shall consult current outdoor/advice-conflict policy and shall be inhibited while relevant life-safety incidents or unresolved evidence are present.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+guidance policy integration
+<<<
+
+[REQUIREMENT]
+UID: SWR-IEHM-022
+STATEMENT: >>>
+Shared LocalAnnunciator activation, level changes and restoration shall check hazard/installation output eligibility across all active incidents and a separately persisted gas switching-inhibition latch. That latch shall precede gas notification dispatch, survive HEAL/restart and require explicit authorized clearance under the reviewed installation policy. Blocking unapproved outputs shall not block mobile delivery or autonomous detectors.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+NotificationManager and LocalAnnunciator policy
+<<<
+
+[REQUIREMENT]
+UID: SWR-IEHM-023
+STATEMENT: >>>
+MQTT/SafetyHome shall separately expose alarm, PM result, detector health, evaluated coverage, input ages and recovery reasons. EN/PL/DE messages shall retain equivalent meaning; HEAL wording shall not assert safe re-entry.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+diagnostics and localization
+<<<
+
+[REQUIREMENT]
+UID: SWR-IEHM-024
+STATEMENT: >>>
+System configuration shall own rules, profiles, thresholds, timing, severities and output policy; user configuration shall own detector/entity/area bindings and selection. Validation shall reject incomplete channels, contradictory state sets, wrong pollutant units, unsafe timing and unreviewed gas-output policy.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+compiler and configuration schema
+<<<
+
+[REQUIREMENT]
+UID: SWR-IEHM-025
+STATEMENT: >>>
+The component shall supply hazard-specific manual response and detector-repair recovery, and make no detector hush/reset, fan, purifier, valve, lock, cover or HVAC call. Manual reports shall not clear an alarm or authorize re-entry. Bounded isolated adapters shall keep binary alarms responsive during PM load or storage failures; tests/maintenance shall not downgrade live alarms.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+lifecycle, RecoveryManager, isolation and negative-actuation tests
+<<<
+
+[TEXT]
+STATEMENT: >>>
+Historical continuity uncertainty shall be exposed separately from current
+detector availability and actual write/acknowledgement failures. It shall not by
+itself synthesize active smoke, gas, CO or water-leak faults, including channels
+absent from the installation. Concrete active records and active journal
+evidence shall remain unresolved until their own recovery contract is satisfied;
+independent gas switching restrictions shall remain enforced. A successful
+current write shall not be labelled as a database failure because earlier
+history remains unverified.
+<<<
+
+[[SECTION]]
+UID: SSRD-SEC-4-11-1
+TITLE: Water-Leak Alarm Channel (C-LEAK)
+
+[TEXT]
+STATEMENT: >>>
+The shared binary-detector runtime shall implement the independent C-LEAK
+decision specified by [LINK: SYS-SEC-8-9, SYS section 8.9].
+The technical `sm_iehm_water_leak` mechanism and `WaterLeakDetected` fault shall
+not merge C-LEAK with C-ALARM severity or recovery evidence.
+<<<
+
+[REQUIREMENT]
+UID: SWR-LEAK-001
+STATEMENT: >>>
+The configuration compiler shall accept `water_leak` only as an explicit detector hazard with a system-owned disjoint alarm/clear profile and installation-owned entity and area binding.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+source schema and compiler
+<<<
+
+[REQUIREMENT]
+UID: SWR-LEAK-002
+STATEMENT: >>>
+A valid asserted wet state shall set `InternalEnv_water_leak_<DetectorKey>` immediately; unknown, unavailable, test or malformed state shall neither assert a confirmed new leak nor clear an active one.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+binary detector evaluator
+<<<
+
+[REQUIREMENT]
+UID: SWR-LEAK-003
+STATEMENT: >>>
+A leak shall clear only after fresh authoritative dry evidence satisfies the profile clear interval; independent leak detectors shall retain separate symptoms.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+alarm latch and FaultManager
+<<<
+
+[REQUIREMENT]
+UID: SWR-LEAK-004
+STATEMENT: >>>
+MQTT and SafetyHome shall present leak alarm, source state and coverage separately. Localized guidance shall describe safe manual response without claiming an automatic valve action or safe electrical conditions.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+diagnostics and notification
+<<<
+
+[REQUIREMENT]
+UID: SWR-LEAK-005
+STATEMENT: >>>
+Periodic test records shall include configured leak sensors, require explicit attestation or device evidence, and shall not trigger a sensor, valve or other actuator.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+maintenance monitor
+<<<
+
+[[/SECTION]]
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SSRD-SEC-4-12
+TITLE: Functional Safety and Platform Health Monitoring
+
+[TEXT]
+STATEMENT: >>>
+The software refines [LINK: SYS-SEC-8-8, SYS section 8.8]
+and [LINK: HARA-SEC-1-3-11, HARA section 1.3.11].
+The [Safety Monitoring Responsibility Boundaries architecture](<../features/Safety Monitoring Responsibility Boundaries.md>)
+defines observer and fault ownership. C-ENT's existing entity diagnostics are
+inputs to this view, not a substitute for platform-specific severity policy.
+<<<
+
+[REQUIREMENT]
+UID: SWR-FSM-001
+STATEMENT: >>>
+The backend shall publish bounded, separate diagnostics for safety-evaluation progress, host/platform resources, network reachability, update information, device maintenance, and reporting-channel health. Each result shall include a source, observation time, validity/freshness, reason, and fault owner. Host/WAN and battery/backup/update acquisition shall use independently scheduled shared-reader groups. Maintenance policy shall evaluate each completed maintenance read attempt, including failure, without reinterpreting repeated cached reads as fresh evidence. The system-owned maintenance period shall not alter immediate alarm or explicit test-attestation paths.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+functional safety diagnostic registry and shared HA report reader
+<<<
+
+[REQUIREMENT]
+UID: SWR-FSM-002
+STATEMENT: >>>
+The application shall record each enabled component's last completed evaluation time and result. Periodic components shall additionally record expected interval and missed-deadline count; event-driven components shall identify their trigger mode and must not treat an idle period alone as a missed evaluation. A heartbeat, successful callback registration, or one component's evaluation shall not make another component healthy. The aggregate view shall keep unknown and overdue components visible separately from `sensor.safety_app_health` and `sensor.safetysystem_state`. Existing `sensor.safety_evaluation_progress` attributes shall add bounded startup phase, duration, remaining time, start/end/report timestamps and `deferred_symptom_count`, the number of contributors enrolled in the gate for this initialization rather than queued observations. For startup-capable progress reports, a persistent global frontend notice shall show qualification and its countdown in both operator modes; reaching zero locally shall require current valid backend completion before dismissal. Malformed, stale or unavailable supplied startup metadata shall remain visibly distinct. Legacy progress reports without startup metadata shall remain compatible without asserting a startup phase.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+component evaluation instrumentation, startup routing and frontend
+<<<
+
+[REQUIREMENT]
+UID: SWR-FSM-003
+STATEMENT: >>>
+Resource checks shall validate numeric type, units, plausible range, source freshness, and host-versus-container scope. Missing or invalid required host-memory telemetry shall be `unknown` coverage rather than a passing sample or a fabricated low-memory assertion.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+platform telemetry adapter
+<<<
+
+[REQUIREMENT]
+UID: SWR-FSM-004
+STATEMENT: >>>
+The memory rule shall require both low available memory and elevated memory pressure/PSI for a calibrated duration before asserting a level-2 fault. It shall require fresh samples beyond distinct recovery margins before HEAL. If either input is absent or invalid, the rule shall be uncovered and shall not assert a fabricated low-memory fault or positively clear an active one.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+platform health policy and FaultManager
+<<<
+
+[REQUIREMENT]
+UID: SWR-FSM-005
+STATEMENT: >>>
+CPU, disk, swap, and thermal observations shall use independent calibration and retain persistence, recovery, and last-valid evidence. Qualified CPU pressure shall assert a level-3 warning. One high sample shall not create an urgent platform fault.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+resource policies
+<<<
+
+[REQUIREMENT]
+UID: SWR-FSM-006
+STATEMENT: >>>
+Network observation shall distinguish local Home Assistant transport, MQTT transport, WAN reachability, and independent external providers; it shall not interpret one failed probe as proof of all Internet loss or treat an unknown route as online. Confirmed WAN loss shall assert a level-3 network fault. The WAN rule shall use reachability only, without packet-loss or latency classification.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+network monitor and notification integration
+<<<
+
+[REQUIREMENT]
+UID: SWR-FSM-007
+STATEMENT: >>>
+The update adapter shall process Home Assistant `update` entities for Core, Operating System, Supervisor, and the SafetyComponent App individually, retaining installed/latest versions and observation age from a trustworthy source refresh contract rather than unchanged state timestamps alone. A confirmed available update shall create a level-3 warning for its product; unknown or unavailable entities shall not mean "up to date". The adapter shall call no install or restart service.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+update monitor
+<<<
+
+[REQUIREMENT]
+UID: SWR-FSM-008
+STATEMENT: >>>
+Valid `sensor` battery percentages or `binary_sensor` low-battery states for remote devices shall be associated with stable device identity and produce one level-4 maintenance condition per device below effective merged calibration or on a valid low assertion. At startup, automatic discovery shall use enabled Home Assistant entity-registry entries, device associations, and matching battery device classes; percentage sensors shall use `%` units. Device exclusions shall use Home Assistant device registry IDs, and explicit manual bindings shall not be monitored a second time by discovery. The authenticated editor shall expose the discovered inventory and monitoring selection; saving and restarting the App shall apply selections. The backend shall atomically retain its owned battery-fault identity catalog and remove retained MQTT discovery, state and attributes for excluded or removed device faults without emitting HEAL. Previously retired identities shall be retried on restart. Failed discovery shall expose unknown coverage and shall not by itself retire prior device identities. Unavailable or invalid readings shall not prove low or full charge; the owning component's unavailable-input fault remains independent.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+device maintenance policy, battery fault catalog, MQTT lifecycle
+<<<
+
+[REQUIREMENT]
+UID: SWR-FSM-009
+STATEMENT: >>>
+One underlying failure shall have one fault owner. A platform telemetry entity may be checked by C-ENT, but C-FSM shall not duplicate an existing component-owned unavailable-input symptom and C-ENT shall not be re-leveled to represent platform severity.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+dependency registry and FaultManager integration
+<<<
+
+[REQUIREMENT]
+UID: SWR-FSM-010
+STATEMENT: >>>
+Source bindings, exclusions and approved calibration overrides shall be validated installation data. The compiler shall merge non-null threshold, qualification/recovery and maintenance-interval overrides with system defaults and validate the complete effective calibration before saving/importing or starting. Unknown, non-finite and incompatible overrides shall fail validation. Severity, freshness, technical sampling and persistence shall remain system-only. Tests shall cover unchanged defaults, null inheritance, forbidden keys and merged hysteresis. Missing runtime sources shall be uncovered without disabling unrelated mechanisms.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+configuration compiler and schemas
+<<<
+
+[REQUIREMENT]
+UID: SWR-FSM-011
+STATEMENT: >>>
+When SafetyFunctions is down, its in-process checks shall not be claimed as operational. A complete loss of the process, Home Assistant, or the host shall remain uncovered unless an independent observer and reporting path are installed; an AppDaemon timer or MQTT heartbeat shall not be treated as that observer.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+deployment supervision boundary
+<<<
+
+[REQUIREMENT]
+UID: SWR-FSM-012
+STATEMENT: >>>
+The monitor shall supply cause-specific manual inspection, repair and supported test-report tasks, including device-specific battery replacement/charging guidance, and shall make no update-install, restart, actuator, or device-control service call. Tests shall cover stale and wrong-unit data, qualification/recovery, owner deduplication, outage combinations, manual-task completion and negative actuation.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+functional safety monitor, RecoveryManager, contract tests
+<<<
+
+[REQUIREMENT]
+UID: SWR-FSM-013
+STATEMENT: >>>
+The backend shall expose notification attempt, Home Assistant acceptance, retry/queue state, and observable channel failure separately from confirmed recipient delivery. It shall expose recovery command and postcondition status from the owning RecoveryManager without inferring effect from command acceptance. The frontend shall show unknown delivery explicitly and retain unknown effect in the dedicated recovery view without merging either with coverage health. The functional-safety view shall group platform, WAN, updates, batteries, and component progress into initially collapsed sections; discovery metadata shall not be presented as a battery-health monitor. The aggregate functional-safety entity shall expose only bounded, allowlisted source identifiers and validated evidence, shall omit raw source snapshots, and shall report omitted battery counts; offered update versions shall not imply stable-channel releases.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+NotificationManager, RecoveryManager, diagnostic registry, frontend
+<<<
+
+[REQUIREMENT]
+UID: SWR-FSM-014
+STATEMENT: >>>
+Detector maintenance shall retain one test schedule and last valid result per configured smoke, gas, or carbon-monoxide detector. Device-reported tests and operator attestations shall be identified by source and time; a normal detector state shall not count as a test. Due, overdue and failed detector tests shall assert level-3 maintenance warnings. The frontend shall show due/overdue status and allow an authenticated operator to record a manual test result without invoking detector control or clearing an active alarm.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+maintenance state store, API, frontend
+<<<
+
+[REQUIREMENT]
+UID: SWR-FSM-015
+STATEMENT: >>>
+Free-disk-space and host-temperature rules shall use installation-bound host sensors, valid compatible units, finite plausible values, source freshness, independent qualification, and recovery hysteresis. Qualified low-space or high-temperature conditions shall assert separate level-3 maintenance warnings. Invalid samples shall reset pending qualification/recovery evidence without positively clearing an active fault.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+platform telemetry adapter, resource policies, FaultManager
+<<<
+
+[REQUIREMENT]
+UID: SWR-FSM-016
+STATEMENT: >>>
+Backup evaluation shall parse a timezone-aware last-success timestamp and an optional fresh binary problem source. A valid old success shall be overdue; a valid asserted failure shall be failed; malformed, future, unavailable, or transport-failed evidence shall not pass or clear an active condition. The backend shall expose separate backup evidence and level-3 overdue/failed maintenance warnings without invoking backup creation or restore.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+backup policy and functional safety diagnostics
+<<<
+
+[REQUIREMENT]
+UID: SWR-FSM-017
+STATEMENT: >>>
+The backend shall persist authenticated `safety_periodic_test_result` events only for enabled `notification_delivery` or `backup_restore` keys and explicit `passed`/`failed` outcomes, stamping source `operator_attestation` and completion time. `sensor.safety_periodic_tests` shall publish bounded per-test status, last result/time, due time, and interval. Missing records shall be due, expired passes overdue, failures failed, and unreadable history unknown; due/overdue/failed states shall produce level-4 maintenance. The frontend shall explain actual receipt and separate-installation restore; recording a result shall submit no notification, actuator, or restore command. Separate authenticated `safety_notification_test` and `safety_notification_reset` events shall require literal `confirmed: true` and independent 60-second rate limits. Test shall submit a mobile-only L3 notification through NotificationManager retry/history with kind `test` and state `TEST`, without auto-attesting receipt. Full reset shall clear prior history, counters, queue and acknowledgements, preserve active faults and local-annunciator restrictions, and reissue currently active warnings through normal delivery policy; it shall not clear maintenance test records.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+periodic test monitor, durable state store, NotificationManager, authenticated frontend
+<<<
+
+[REQUIREMENT]
+UID: SWR-FSM-018
+STATEMENT: >>>
+Each functional-safety evaluation shall atomically expose one versioned, ephemeral full-diagnostics snapshot to the authenticated same-origin `GET /api/functional-safety` endpoint. The snapshot shall contain the same overall state and evaluated diagnostic data used to publish the bounded aggregate entity; the API shall not independently reinterpret Home Assistant states. The response shall not be published to Home Assistant Recorder and shall use `no-store` caching. A missing, malformed, or unsupported snapshot shall return unavailable, and Safety Home shall identify use of the bounded entity fallback without treating omitted details as healthy evidence.
+<<<
+RESPONSIBLE_ELEMENT: >>>
+functional safety monitor, diagnostics store, Ingress API, frontend
+<<<
+
+[TEXT]
+STATEMENT: >>>
+For **SWR-FSM-008**, both percentage and binary battery sources shall prefer
+the unique same-device `sensor.*_last_seen` normalized as `last_contact_at`.
+The provider shall expose `last_contact_source_count` and retain
+`last_contact_source_entity` even when the selected timestamp is invalid.
+Ambiguous, missing, malformed, future or expired selected contact shall not
+fall back to native battery-report timestamps. Only sources without contact
+capability shall use `last_reported`, with `last_updated` as the absent-report
+fallback. Both paths shall use `battery_stale_after_seconds` (default 86400).
+Battery value/class/unit/availability and reader transport checks shall remain
+independent requirements. Full API source evidence shall preserve native report
+timestamps and contact timestamp/source/cardinality as separate fields.
+Tests shall cover unchanged old battery reports with fresh contact, selected
+contact loss or ambiguity with fresh native timestamps, absence of contact
+capability, malformed values, binary assertions, and active-fault preservation.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SSRD-SEC-4-13
+TITLE: Safety Routines
+
+[REQUIREMENT]
+UID: SWR-ROUTINE-001
+STATEMENT: >>>
+The source compiler and startup schema shall validate optional scenario definitions, complete triggers, check expectations, explicit source-time selectors and bounded capacities. The last-known-value option shall be allowed only for a check of an entity state in a single-sample routine, with no observation time selector on that check.
+<<<
+
+[REQUIREMENT]
+UID: SWR-ROUTINE-002
+STATEMENT: >>>
+Evaluation shall reject unavailable or malformed values, invalid numbers and incompatible units. Timestamp-qualified checks and applicability conditions shall reject stale, future or missing timestamps. Last-known-value checks shall report whether the available reading matches the expectation, with a distinct reason and an empty source observation time. Unknown applicability shall remain unknown.
+<<<
+
+[REQUIREMENT]
+UID: SWR-ROUTINE-003
+STATEMENT: >>>
+The runtime shall allocate independent run IDs, reject overlap, deduplicate retained request IDs, sample within bounded windows and retain problems/evidence gaps across samples. Cached timestamps shall not qualify successive passing observations.
+<<<
+
+[REQUIREMENT]
+UID: SWR-ROUTINE-004
+STATEMENT: >>>
+Reports shall preserve names, expectations, observations, result counts and timestamps; an all-skipped run shall return not_applicable. Pending/interrupted/cancelled runs shall remain unknown.
+<<<
+
+[REQUIREMENT]
+UID: SWR-ROUTINE-005
+STATEMENT: >>>
+The runtime shall persist bounded history in an independent SQLite store, interrupt unfinished runs at restart, reject stale callbacks and report storage failure separately from check results.
+<<<
+
+[REQUIREMENT]
+UID: SWR-ROUTINE-006
+STATEMENT: >>>
+The event API shall correlate bounded list/report/run/cancel responses; completion events shall contain summaries without full installation configuration.
+<<<
+
+[REQUIREMENT]
+UID: SWR-ROUTINE-007
+STATEMENT: >>>
+SafetyHome shall support scenario editing, explicit execution/cancellation and historical reports; transport errors, incomplete evidence and disconnected state shall remain visible. Runtime result/reason labels shall have EN/PL/DE parity.
+<<<
+
+[REQUIREMENT]
+UID: SWR-ROUTINE-008
+STATEMENT: >>>
+The routine service shall not dispatch actuators, mutate household fault/recovery state, or enroll optional check inputs as continuous coverage dependencies.
+<<<
+
+[TEXT]
+STATEMENT: >>>
+See [LINK: ARCH-SAFETY-ROUTINES-DOC, Safety Routines architecture]
+for exact interfaces and limits. These advisory requirements do not allocate a
+new safety goal or detection FTTI.
+<<<
+
+[[/SECTION]]
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SSRD-SEC-5
+TITLE: Non-functional requirements
+
+[REQUIREMENT]
+UID: SWR-NFR-001
+STATEMENT: >>>
+Public modules, classes, and functions shall use type hints and purpose-oriented docstrings.
+<<<
+
+[REQUIREMENT]
+UID: SWR-NFR-002
+STATEMENT: >>>
+Safety decisions shall be deterministic for identical validated configuration, entity states, and timestamps.
+<<<
+
+[REQUIREMENT]
+UID: SWR-NFR-003
+STATEMENT: >>>
+Failure to read optional diagnostics shall not crash AppDaemon or set a false safety condition.
+<<<
+
+[REQUIREMENT]
+UID: SWR-NFR-004
+STATEMENT: >>>
+Exceptions that prevent configuration or runtime actions shall be logged with enough context to identify the component and entity.
+<<<
+
+[REQUIREMENT]
+UID: SWR-NFR-005
+STATEMENT: >>>
+Backend application line coverage (`backend/components` and `backend/SafetyFunctions.py`) shall remain at least 90%. Generated test stubs, tests, templates, and deployment utilities are excluded from this metric.
+<<<
+
+[REQUIREMENT]
+UID: SWR-NFR-006
+STATEMENT: >>>
+Every defect fix that changes a safety contract shall include an automated regression test.
+<<<
+
+[REQUIREMENT]
+UID: SWR-NFR-007
+STATEMENT: >>>
+Production deployment shall stop AppDaemon, preserve a rollback backup, replace the complete backend application directory, verify file hashes, restart AppDaemon, and verify live health/log/entity behaviour.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SSRD-SEC-6
+TITLE: Verification strategy
+
+[TEXT]
+STATEMENT: >>>
+The required local verification commands are:
+
+```text
+pytest backend/tests
+pytest backend/tests --cov=backend --cov-report=term-missing
+npm run test --prefix frontend
+npm run typecheck --prefix frontend
+npm run lint --prefix frontend
+npm run build --prefix frontend
+```
+
+Coverage shall be interpreted over application code only. Including tests,
+AppDaemon stubs, templates, or `backend/deploy.py` in the denominator is not a
+valid measure of safety-logic verification.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SSRD-SEC-7
+TITLE: Requirements traceability
+
+[TEXT]
+STATEMENT: >>>
+| Safety scope | SYS requirements | Software requirements |
+| --- | --- | --- |
+| Advisory contextual checks; no independent safety-goal credit | `SYS-SR-ROUTINE-001..006` | `SWR-ROUTINE-001..008` |
+| SG-001 Unsafe Cold Exposure | `SYS-SR-TEMP-001/002/004/005/007/008/009/010` | `SWR-TEMP-*` |
+| SG-002 Temperature Prediction | `SYS-SR-TEMP-001/003/004/005/006/009/010` | `SWR-TEMP-*` |
+| SG-003 Sensor/Communication Fault Detection | `SYS-SR-ENT-001..009/012/014`, `SYS-SR-EXT-006/008/009/053..059` plus component-specific unavailable-input requirements | `SWR-ENT-*`, `SWR-TEMP-004`, `SWR-DOOR-004/006`, `SWR-EXT-009/018..030` |
+| SG-003 Functional safety and platform health | `SYS-SR-FSM-001..017` | `SWR-FSM-001..017` |
+| SG-004 Unsafe Heat Exposure | `SYS-SR-TEMP-001/002/003/004/005/006/007/008/010` | `SWR-TEMP-*` |
+| SG-003 Heating supervision contribution | `SYS-SR-HSM-002/003/005/011/012/013` | `SWR-HSM-002/003/004/012/014/017/018/019/020` |
+| SG-010/012 Heating-system health and loss of heating | `SYS-SR-HSM-001..018` | `SWR-HSM-001..026` |
+| SG-003 Internal detector supervision | `SYS-SR-IEHM-002/008/010/012/013` | `SWR-IEHM-002/003/012/014/016/017/018` |
+| SG-005 Indoor PM2.5 | `SYS-SR-IEHM-006/007/010/012/014/016` | `SWR-IEHM-008/009/010/011/015/016/021/023` |
+| SG-006/007/008 Smoke, flammable gas and CO | `SYS-SR-IEHM-001..005/008..020` | `SWR-IEHM-001..007/012..025` |
+| SG-009 Water leak | `SYS-SR-LEAK-001..004` | `SWR-LEAK-001..005` |
+| SG-015 Door/Gate Open-Duration Contribution | `SYS-SR-DOOR-001..011` | `SWR-DOOR-*` |
+| SG-011/017/018 External Weather Exposure | `SYS-SR-EXT-001..014/040..043/050..056` | `SWR-EXT-*` |
+| SG-019 Outdoor Pollution Exposure | `SYS-SR-EXT-001..009/020..023/040..043/050..056` | `SWR-EXT-*` |
+<<<
+
+[SOFTWARE_TRACE]
+UID: SSRD-TRACE-001
+TITLE: Advisory contextual checks; no independent safety-goal credit
+RELATIONS:
+- TYPE: Parent
+  VALUE: SYS-SR-ROUTINE-001
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-ROUTINE-002
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-ROUTINE-003
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-ROUTINE-004
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-ROUTINE-005
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-ROUTINE-006
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SWR-ROUTINE-001
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-ROUTINE-002
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-ROUTINE-003
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-ROUTINE-004
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-ROUTINE-005
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-ROUTINE-006
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-ROUTINE-007
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-ROUTINE-008
+  ROLE: Software allocation
+
+[SOFTWARE_TRACE]
+UID: SSRD-TRACE-002
+TITLE: SG-001 Unsafe Cold Exposure
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-001
+  ROLE: Safety scope
+- TYPE: Parent
+  VALUE: SYS-SR-TEMP-001
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-TEMP-002
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-TEMP-004
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-TEMP-005
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-TEMP-007
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-TEMP-008
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-TEMP-009
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-TEMP-010
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SWR-TEMP-001
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-TEMP-002
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-TEMP-003
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-TEMP-004
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-TEMP-005
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-TEMP-006
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-TEMP-007
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-TEMP-008
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-TEMP-009
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-TEMP-010
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-TEMP-011
+  ROLE: Software allocation
+
+[SOFTWARE_TRACE]
+UID: SSRD-TRACE-003
+TITLE: SG-002 Temperature Prediction
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-002
+  ROLE: Safety scope
+- TYPE: Parent
+  VALUE: SYS-SR-TEMP-001
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-TEMP-003
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-TEMP-004
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-TEMP-005
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-TEMP-006
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-TEMP-009
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-TEMP-010
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SWR-TEMP-001
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-TEMP-002
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-TEMP-003
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-TEMP-004
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-TEMP-005
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-TEMP-006
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-TEMP-007
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-TEMP-008
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-TEMP-009
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-TEMP-010
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-TEMP-011
+  ROLE: Software allocation
+
+[SOFTWARE_TRACE]
+UID: SSRD-TRACE-004
+TITLE: SG-003 Sensor/Communication Fault Detection
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-003
+  ROLE: Safety scope
+- TYPE: Parent
+  VALUE: SYS-SR-ENT-001
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-ENT-002
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-ENT-003
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-ENT-004
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-ENT-005
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-ENT-006
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-ENT-007
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-ENT-008
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-ENT-009
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-ENT-012
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-ENT-014
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-006
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-008
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-009
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-053
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-054
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-055
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-056
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-057
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-058
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-059
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SWR-ENT-001
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-ENT-002
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-ENT-003
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-ENT-004
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-ENT-005
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-ENT-006
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-ENT-007
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-ENT-008
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-ENT-009
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-ENT-010
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-ENT-011
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-ENT-012
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-ENT-013
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-ENT-014
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-ENT-015
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-ENT-016
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-TEMP-004
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-DOOR-004
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-DOOR-006
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-009
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-018
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-019
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-020
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-021
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-022
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-023
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-024
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-025
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-026
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-027
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-028
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-029
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-030
+  ROLE: Software allocation
+
+[SOFTWARE_TRACE]
+UID: SSRD-TRACE-005
+TITLE: SG-003 Functional safety and platform health
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-003
+  ROLE: Safety scope
+- TYPE: Parent
+  VALUE: SYS-SR-FSM-001
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-FSM-002
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-FSM-003
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-FSM-004
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-FSM-005
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-FSM-006
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-FSM-007
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-FSM-008
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-FSM-009
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-FSM-010
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-FSM-011
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-FSM-012
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-FSM-013
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-FSM-014
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-FSM-015
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-FSM-016
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-FSM-017
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SWR-FSM-001
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-FSM-002
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-FSM-003
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-FSM-004
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-FSM-005
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-FSM-006
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-FSM-007
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-FSM-008
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-FSM-009
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-FSM-010
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-FSM-011
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-FSM-012
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-FSM-013
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-FSM-014
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-FSM-015
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-FSM-016
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-FSM-017
+  ROLE: Software allocation
+
+[SOFTWARE_TRACE]
+UID: SSRD-TRACE-006
+TITLE: SG-004 Unsafe Heat Exposure
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-004
+  ROLE: Safety scope
+- TYPE: Parent
+  VALUE: SYS-SR-TEMP-001
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-TEMP-002
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-TEMP-003
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-TEMP-004
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-TEMP-005
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-TEMP-006
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-TEMP-007
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-TEMP-008
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-TEMP-010
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SWR-TEMP-001
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-TEMP-002
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-TEMP-003
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-TEMP-004
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-TEMP-005
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-TEMP-006
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-TEMP-007
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-TEMP-008
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-TEMP-009
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-TEMP-010
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-TEMP-011
+  ROLE: Software allocation
+
+[SOFTWARE_TRACE]
+UID: SSRD-TRACE-007
+TITLE: SG-003 Heating supervision contribution
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-003
+  ROLE: Safety scope
+- TYPE: Parent
+  VALUE: SYS-SR-HSM-002
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-HSM-003
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-HSM-005
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-HSM-011
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-HSM-012
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-HSM-013
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SWR-HSM-002
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-HSM-003
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-HSM-004
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-HSM-012
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-HSM-014
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-HSM-017
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-HSM-018
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-HSM-019
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-HSM-020
+  ROLE: Software allocation
+
+[SOFTWARE_TRACE]
+UID: SSRD-TRACE-008
+TITLE: SG-010/012 Heating-system health and loss of heating
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-010
+  ROLE: Safety scope
+- TYPE: Parent
+  VALUE: SG-012
+  ROLE: Safety scope
+- TYPE: Parent
+  VALUE: SYS-SR-HSM-001
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-HSM-002
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-HSM-003
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-HSM-004
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-HSM-005
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-HSM-006
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-HSM-007
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-HSM-008
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-HSM-009
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-HSM-010
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-HSM-011
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-HSM-012
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-HSM-013
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-HSM-014
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-HSM-015
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-HSM-016
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-HSM-017
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-HSM-018
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SWR-HSM-001
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-HSM-002
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-HSM-003
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-HSM-004
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-HSM-005
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-HSM-006
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-HSM-007
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-HSM-008
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-HSM-009
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-HSM-010
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-HSM-011
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-HSM-012
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-HSM-013
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-HSM-014
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-HSM-015
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-HSM-016
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-HSM-017
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-HSM-018
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-HSM-019
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-HSM-020
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-HSM-021
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-HSM-022
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-HSM-023
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-HSM-024
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-HSM-025
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-HSM-026
+  ROLE: Software allocation
+
+[SOFTWARE_TRACE]
+UID: SSRD-TRACE-009
+TITLE: SG-003 Internal detector supervision
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-003
+  ROLE: Safety scope
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-002
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-008
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-010
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-012
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-013
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SWR-IEHM-002
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-IEHM-003
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-IEHM-012
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-IEHM-014
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-IEHM-016
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-IEHM-017
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-IEHM-018
+  ROLE: Software allocation
+
+[SOFTWARE_TRACE]
+UID: SSRD-TRACE-010
+TITLE: SG-005 Indoor PM2.5
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-005
+  ROLE: Safety scope
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-006
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-007
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-010
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-012
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-014
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-016
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SWR-IEHM-008
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-IEHM-009
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-IEHM-010
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-IEHM-011
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-IEHM-015
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-IEHM-016
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-IEHM-021
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-IEHM-023
+  ROLE: Software allocation
+
+[SOFTWARE_TRACE]
+UID: SSRD-TRACE-011
+TITLE: SG-006/007/008 Smoke, flammable gas and CO
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-006
+  ROLE: Safety scope
+- TYPE: Parent
+  VALUE: SG-007
+  ROLE: Safety scope
+- TYPE: Parent
+  VALUE: SG-008
+  ROLE: Safety scope
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-001
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-002
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-003
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-004
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-005
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-008
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-009
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-010
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-011
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-012
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-013
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-014
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-015
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-016
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-017
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-018
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-019
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-020
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SWR-IEHM-001
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-IEHM-002
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-IEHM-003
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-IEHM-004
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-IEHM-005
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-IEHM-006
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-IEHM-007
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-IEHM-012
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-IEHM-013
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-IEHM-014
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-IEHM-015
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-IEHM-016
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-IEHM-017
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-IEHM-018
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-IEHM-019
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-IEHM-020
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-IEHM-021
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-IEHM-022
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-IEHM-023
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-IEHM-024
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-IEHM-025
+  ROLE: Software allocation
+
+[SOFTWARE_TRACE]
+UID: SSRD-TRACE-012
+TITLE: SG-009 Water leak
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-009
+  ROLE: Safety scope
+- TYPE: Parent
+  VALUE: SYS-SR-LEAK-001
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-LEAK-002
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-LEAK-003
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-LEAK-004
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SWR-LEAK-001
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-LEAK-002
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-LEAK-003
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-LEAK-004
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-LEAK-005
+  ROLE: Software allocation
+
+[SOFTWARE_TRACE]
+UID: SSRD-TRACE-013
+TITLE: SG-015 Door/Gate Open-Duration Contribution
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-015
+  ROLE: Safety scope
+- TYPE: Parent
+  VALUE: SYS-SR-DOOR-001
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-DOOR-002
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-DOOR-003
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-DOOR-004
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-DOOR-005
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-DOOR-006
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-DOOR-007
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-DOOR-008
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-DOOR-009
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-DOOR-010
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-DOOR-011
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SWR-DOOR-001
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-DOOR-002
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-DOOR-003
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-DOOR-004
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-DOOR-005
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-DOOR-006
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-DOOR-007
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-DOOR-008
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-DOOR-009
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-DOOR-010
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-DOOR-011
+  ROLE: Software allocation
+
+[SOFTWARE_TRACE]
+UID: SSRD-TRACE-014
+TITLE: SG-011/017/018 External Weather Exposure
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-011
+  ROLE: Safety scope
+- TYPE: Parent
+  VALUE: SG-017
+  ROLE: Safety scope
+- TYPE: Parent
+  VALUE: SG-018
+  ROLE: Safety scope
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-001
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-002
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-003
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-004
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-005
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-006
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-007
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-008
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-009
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-010
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-011
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-012
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-013
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-014
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-040
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-041
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-042
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-043
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-050
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-051
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-052
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-053
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-054
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-055
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-056
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-001
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-002
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-003
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-004
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-005
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-006
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-009
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-010
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-011
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-012
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-014
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-015
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-016
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-017
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-018
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-019
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-020
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-021
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-022
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-023
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-024
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-025
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-026
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-027
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-028
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-029
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-030
+  ROLE: Software allocation
+
+[SOFTWARE_TRACE]
+UID: SSRD-TRACE-015
+TITLE: SG-019 Outdoor Pollution Exposure
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-019
+  ROLE: Safety scope
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-001
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-002
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-003
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-004
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-005
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-006
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-007
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-008
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-009
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-020
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-021
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-022
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-023
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-040
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-041
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-042
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-043
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-050
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-051
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-052
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-053
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-054
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-055
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SYS-SR-EXT-056
+  ROLE: System allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-001
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-002
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-003
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-004
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-005
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-006
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-009
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-010
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-011
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-012
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-014
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-015
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-016
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-017
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-018
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-019
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-020
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-021
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-022
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-023
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-024
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-025
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-026
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-027
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-028
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-029
+  ROLE: Software allocation
+- TYPE: Parent
+  VALUE: SWR-EXT-030
+  ROLE: Software allocation
+
+[TEXT]
+STATEMENT: >>>
+| Requirement group | Primary tests |
+| --- | --- |
+| SWR-ROUTINE-* | `test_safety_routines.py`, `test_safetyFunctions.py`, `test_localization.py`, frontend `safetyRoutines.test.ts` and `safety-routines.spec.ts` |
+| SWR-CFG-* | `test_app_cfg_validator.py`, `test_component_schema_validation.py` |
+| SWR-SM-* | shared lifecycle and execution contract tests across all six component families: repeated start/stop, explicit input binding, metadata-only changes, disabled/obsolete callback rejection, owned handle cancellation and domain timing preservation |
+| SWR-TEMP-* | `test_temperatureComponent.py`, `test_derivative_monitor.py`, `test_safetyFunctions.py` |
+| SWR-DOOR-* | `test_safety_doors_component.py`, `test_app_cfg_validator.py` |
+| SWR-FLT-* | `test_fault_manager.py`, `test_fault_evidence.py`, `test_degradation.py`, `test_self_diagnostics.py`, `test_system_notification_recovery.py` |
+| SWR-NOT-* | `test_notify_man.py`, `test_notification_history.py`, `test_safetyhome_api_gateway.py`, `test_notification_schema.py`, `test_notification_state_store.py`, `test_system_notification_recovery.py`, frontend notification-history domain and component tests |
+| SWR-REC-* | `test_recovery_man.py`, `test_recovery_manual_contract.py`, `test_recovery_allocations.py`, `test_recovery_state_store.py`, `test_system_notification_recovery.py`; component action-allocation tests, authenticated manual-report contract tests, frontend action/fault/completion tests and localization tests shall cover the shared recovery contract |
+| SWR-LOC-* | `test_localization.py`, `test_mqtt_entity_manager.py`, frontend domain tests |
+| SWR-MQTT-* | `test_mqtt_entity_manager.py`, `test_safetyFunctions.py` |
+| SWR-EXT-* | provider contract tests, external hazard policy tests, EventBus/FaultManager/notification integration tests, full startup/test-dispatch/preview/shutdown with the German dummy, explicit target-model and obsolete-shape rejection tests, synthetic isolation from real H/D/degradation/coverage/actions, metadata-driven frontend provider-or-disabled/parameter/country tests, same-start applied truth and muted disabled presentation, localization parity, negative-actuation tests |
+| SWR-ENT-* | entity health registry/check/state-machine tests, component dependency and common-entity integration tests, FaultManager/MQTT tests, frontend monitored-list/filter and route tests, negative-actuation tests |
+| SWR-FSM-* | source contract and unit/freshness tests, memory/PSI and disk/thermal qualification and recovery tests, WAN/update/battery/backup policy tests, durable operational-test attestation tests, fault-owner deduplication, independent-watchdog evidence, and negative-actuation tests |
+| SWR-HSM-* | normalized telemetry/code-profile tests, independent-need and phase tests, thermal/distribution/counter rules, timing/restart/clock tests, C-ENT/FaultManager integration, SET/HEAL correlation, frontend diagnostics/localization and negative-actuation tests; detailed mapping in the Heating System Monitoring architecture |
+| SWR-IEHM-* | detector/profile fixtures, binary alarm edge/latch tests, PM unit/window/coverage tests, health ownership, timing/restart/corruption tests, hazard-specific output/advice conflicts, incident/journal/UI/localization and negative-actuation tests; detailed mapping in the Internal Environmental Hazard Monitoring architecture |
+| SWR-LEAK-* | water-leak profile/configuration tests, independent latch and positive-clear tests, unavailable-source hold, L2 fault configuration, periodic test inventory, frontend leak-state display and negative-actuation tests |
+| SWR-NFR-005 | pytest-cov application-code report |
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SSRD-SEC-8
+TITLE: Assurance boundary
+
+[TEXT]
+STATEMENT: >>>
+SafetyComponent provides monitoring and response assistance within a Home
+Assistant installation. Home Assistant, AppDaemon, the host, networks, sensors,
+actuators, cloud providers, and notification transports are external or
+non-certified dependencies. This software and its documentation do not claim
+regulatory certification, guaranteed provider availability, or medical guidance.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SSRD-SEC-9
+TITLE: Change control
+
+[TEXT]
+STATEMENT: >>>
+Changes to raw state codes, entity-ID generation, fault severity mapping,
+timing semantics, notification correlation, recovery service allow-lists, or
+configuration validation are safety-contract changes. They require an SSRD
+update, regression tests, review, and controlled deployment verification.
+<<<
+
+[[/SECTION]]

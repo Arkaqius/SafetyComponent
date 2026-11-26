@@ -1,17 +1,48 @@
-# Fault degradation and coverage
+[DOCUMENT]
+TITLE: Fault degradation and coverage
+UID: ARCH-FAULT-DEGRADATION-AND-COVERAGE-DOC
+OPTIONS:
+  MARKUP: Markdown
+  AUTO_LEVELS: Off
 
-## Purpose
+[GRAMMAR]
+ELEMENTS:
+- TAG: TEXT
+  FIELDS:
+  - TITLE: LEVEL
+    TYPE: String
+    REQUIRED: True
+  - TITLE: STATEMENT
+    TYPE: String
+    REQUIRED: True
 
+[[SECTION]]
+UID: ARCH-FAULT-DEGRADATION-AND-COVERAGE-SEC-PURPOSE
+LEVEL: None
+TITLE: Purpose
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Diagnostic (`D`) faults restrict only the installed hazard (`H`) capabilities
 that depend on failed evidence or response paths. A restriction is not a hazard
 fault SET/CLEAR transition. Fault evaluation status, active condition,
 priority, system severity, and coverage are independent axes. This contract
-refines [Fault State Policy](Fault%20State%20Policy%20-%20Architecture.md),
-[Fault Routing and Aggregation](Fault%20Routing%20and%20Aggregation%20-%20Architecture.md),
-and [SWR-FLT-014..019](<../sys/SafetyComponent - SSRD.md#44-fault-aggregation-and-system-state>).
+refines [LINK: ARCH-FAULT-STATE-POLICY-DOC, Fault State Policy],
+[LINK: ARCH-FAULT-ROUTING-AND-AGGREGATION-DOC, Fault Routing and Aggregation],
+and [LINK: SSRD-SEC-4-4, SWR-FLT-014..019].
+<<<
 
-## Installed binding contract
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-FAULT-DEGRADATION-AND-COVERAGE-SEC-INSTALLED-BINDING-CONTRACT
+LEVEL: None
+TITLE: Installed binding contract
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Each diagnostic contributor declares an owner, the capability and subject it
 can impair, its H symptom targets, its effect (`evaluation`, `recovery`,
 `notification`, `publication`, or `durability`), and the positive evidence
@@ -47,9 +78,18 @@ The installation's exact resolved bindings are authoritative over
 catalog-wide shorthand such as `H-TEMP` or `H-EXT`. Shared inputs use one D
 owner and a union of declared consumer targets. The compiler must not fan out
 by entity domain, friendly name, component class, or fault priority.
+<<<
 
-## Cause and recovery ordering
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-FAULT-DEGRADATION-AND-COVERAGE-SEC-CAUSE-AND-RECOVERY-ORDERING
+LEVEL: None
+TITLE: Cause and recovery ordering
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Restrictions are keyed by D symptom, not just by aggregate D fault. Two failed
 checks or providers can restrict the same H target independently. The target
 is restored only after every active cause has qualified clear evidence and
@@ -101,7 +141,7 @@ covering source remains
 unevaluable. Data-based hazard clearing requires fresh sufficient results from
 all selected applicable providers covering that hazard; restoring one provider's
 diagnostic health does not clear a hazard or release another failed contributor.
-See [External Hazard Monitoring](<External Hazard Monitoring - Architecture.md#91-multiple-providers>)
+See [LINK: ARCH-EXTERNAL-HAZARD-MONITORING-SEC-91-MULTIPLE-PROVIDERS, External Hazard Monitoring]
 and [ADR-0001](../adr/0001-external-provider-plugins.md).
 
 Synthetic providers and their preview results shall not be real D contributors,
@@ -111,9 +151,18 @@ and same-start `runtime_id` truth shall distinguish explicit disabled monitoring
 from unavailable or unknown configuration; all-disabled or synthetic-only inputs
 shall not imply full real monitoring coverage. See the
 [synthetic boundary](002-provider-selection-states/contracts/synthetic-provider.md).
+<<<
 
-## Coverage and supervision
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-FAULT-DEGRADATION-AND-COVERAGE-SEC-COVERAGE-AND-SUPERVISION
+LEVEL: None
+TITLE: Coverage and supervision
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Coverage is derived from the declared installed H baseline. Its raw state is
 `FULL`, `PARTIAL`, `DEGRADED`, or `UNKNOWN`, separate from the fault-severity
 summary. `DEGRADED` takes precedence for known technical loss; otherwise
@@ -149,3 +198,6 @@ the process itself is alive after it stops, that initialization completed when
 it never started, that MQTT publication arrived during broker failure, or that
 a handset displayed a notification. Those claims require an independent
 supervisor or observer with its own heartbeat/timeout and authority boundary.
+<<<
+
+[[/SECTION]]

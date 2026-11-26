@@ -1,15 +1,46 @@
-# Configuration Model Architecture
+[DOCUMENT]
+TITLE: Configuration Model Architecture
+UID: ARCH-CONFIGURATION-MODEL-DOC
+OPTIONS:
+  MARKUP: Markdown
+  AUTO_LEVELS: Off
 
-## 1. Purpose
+[GRAMMAR]
+ELEMENTS:
+- TAG: TEXT
+  FIELDS:
+  - TITLE: LEVEL
+    TYPE: String
+    REQUIRED: True
+  - TITLE: STATEMENT
+    TYPE: String
+    REQUIRED: True
 
+[[SECTION]]
+UID: ARCH-CONFIGURATION-MODEL-SEC-1-PURPOSE
+LEVEL: None
+TITLE: 1. Purpose
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 SafetyComponent separates reusable safety policy from the physical Home
 Assistant installation. Configuration model version 2 declares each physical
 asset once and compiles that registry into the existing component bindings.
 The generated runtime contract remains compatible with the SafetyFunctions
 components and is not edited directly.
+<<<
 
-## 2. Sources and precedence
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-CONFIGURATION-MODEL-SEC-2-SOURCES-AND-PRECEDENCE
+LEVEL: None
+TITLE: 2. Sources and precedence
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Configuration is resolved in three ordered layers:
 
 1. `system_config.yml` provides packaged policy, calibration, profiles,
@@ -24,9 +55,16 @@ Later layers replace only values they explicitly define. Omitted values inherit
 the preceding layer. Lists are replaced as complete values; mappings are merged
 recursively. Stable fault keys, Safety Mechanism IDs, MQTT topics, raw states,
 and runtime component identifiers are never derived from display names.
+<<<
 
-### 2.1 System-owned contract
+[[SECTION]]
+UID: ARCH-CONFIGURATION-MODEL-SEC-21-SYSTEM-OWNED-CONTRACT
+LEVEL: None
+TITLE: 2.1 System-owned contract
 
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 `system_config.yml` is immutable inside a released App image. Its sections are:
 
 The complete field-level rationale and override map is maintained in the
@@ -55,14 +93,25 @@ the compiler creates them only from the installation registry.
 
 Installation-specific entity IDs, areas, site applicability, notification
 destinations, and physical assets are prohibited from the system source.
+<<<
 
-## 3. Installation registry
+[[/SECTION]]
 
+[[/SECTION]]
+
+[[SECTION]]
+UID: ARCH-CONFIGURATION-MODEL-SEC-3-INSTALLATION-REGISTRY
+LEVEL: None
+TITLE: 3. Installation registry
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Optional `installation.safety_routines` defines advisory scenario checks and
 triggers. The compiler emits `user_config.safety_routines.routines`; existing
 configurations may omit the registry. The separate service does not change
 component enablement or continuous input dependencies. Limits and the exact
-schema are defined in [Safety Routines](Safety%20Routines%20-%20Architecture.md).
+schema are defined in [LINK: ARCH-SAFETY-ROUTINES-DOC, Safety Routines].
 
 The private `user_config.yml` selects enabled components, notification
 destinations, language, and one normalized `installation` registry:
@@ -131,9 +180,16 @@ and explicit Entity Monitor dependencies are declared under `detectors` and
 Presence of an opening role enables that role for the opening. Absence removes
 the opening from the corresponding generated component collection; deleting an
 installation asset must not cause an example or system-owned asset to appear.
+<<<
 
-### 3.1 Complete editable root contract
+[[SECTION]]
+UID: ARCH-CONFIGURATION-MODEL-SEC-31-COMPLETE-EDITABLE-ROOT-CONTRACT
+LEVEL: None
+TITLE: 3.1 Complete editable root contract
 
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Unknown keys are rejected. The complete editable `user_config` root is:
 
 | Field | Required | Contract |
@@ -167,11 +223,18 @@ The bundled live provider IDs are `OpenMeteoWeatherApiComponent`,
 It is never an implicit default and cannot contribute to real safety decisions. The
 packaged system configuration supplies URLs and transport parameters. Each
 registered plugin supplies its validation schema.
+<<<
 
-#### Provider-owned installation parameters
+[[SECTION]]
+UID: ARCH-CONFIGURATION-MODEL-SEC-PROVIDER-OWNED-INSTALLATION-PARAMETERS
+LEVEL: None
+TITLE: Provider-owned installation parameters
 
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 The [source-selection contract](002-provider-selection-states/contracts/source-selection.md)
-and [external-provider contract](<External Hazard Monitoring - Architecture.md#provider-selection-and-parameters>)
+and [LINK: ARCH-EXTERNAL-HAZARD-MONITORING-SEC-PROVIDER-SELECTION-AND-PARAMETERS, external-provider contract]
 define the single target model. `user_config.provider_parameters.<ProviderId>`
 shall contain only fields declared
 by that plugin's closed editable schema. Each plugin shall supply the same field
@@ -206,9 +269,20 @@ its `runtime_id` joins only same-start diagnostics. See the
 
 MQTT transport and publication policy are entirely system-owned. The user
 configuration has no MQTT section or retired-discovery cleanup list.
+<<<
 
-### 3.2 Installation root
+[[/SECTION]]
 
+[[/SECTION]]
+
+[[SECTION]]
+UID: ARCH-CONFIGURATION-MODEL-SEC-32-INSTALLATION-ROOT
+LEVEL: None
+TITLE: 3.2 Installation root
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 | Field | Required | Contract |
 | --- | --- | --- |
 | `site` | When External Hazard is enabled | Valid IANA `timezone` and two-letter `country_code`. Latitude and longitude come from current Home Assistant Core configuration on every App start. Provider-specific regional fields are prohibited here. |
@@ -288,9 +362,18 @@ source evidence is supplied on demand by the authenticated same-origin
 `GET /api/functional-safety` endpoint from the same monitor evaluation; it is
 not installation configuration and is not stored by Home Assistant Recorder.
 Result submission changes no backup or notification route.
+<<<
 
-### 3.3 Component settings
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-CONFIGURATION-MODEL-SEC-33-COMPONENT-SETTINGS
+LEVEL: None
+TITLE: 3.3 Component settings
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 | Path | Fields and constraints |
 | --- | --- |
 | `component_settings.temperature` | Optional `low_temperature_c` and `high_temperature_c`. Resolved low must remain below resolved high. The forecast horizon is system-owned. |
@@ -313,9 +396,18 @@ attempts to override severity, sampling cadence, freshness limits or persistence
 paths. Saving/importing a candidate validates the merged policy, not only the
 partial user object. Applying changes requires an App restart. New test intervals
 recompute due dates from existing completion times without creating new passes.
+<<<
 
-### 3.4 Rooms and openings
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-CONFIGURATION-MODEL-SEC-34-ROOMS-AND-OPENINGS
+LEVEL: None
+TITLE: 3.4 Rooms and openings
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Each room accepts:
 
 | Field | Required | Contract |
@@ -337,9 +429,18 @@ either or both roles:
 
 An omitted role means that the opening is not generated for that component.
 An opening may still exist only as a room's temperature window.
+<<<
 
-### 3.5 Detectors and explicit monitored entities
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-CONFIGURATION-MODEL-SEC-35-DETECTORS-AND-EXPLICIT-MONITORED-ENTITIES
+LEVEL: None
+TITLE: 3.5 Detectors and explicit monitored entities
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Each detector accepts:
 
 | Field | Required | Contract |
@@ -408,9 +509,20 @@ freshness only when their dependency explicitly selects `last_contact_at`.
 For MQTT entities, unchanged messages may not write the entity unless
 `force_update` is enabled; repeated message reception alone therefore does not
 establish a current `last_reported` timestamp.
+<<<
 
-## 4. Generated component bindings
+[[/SECTION]]
 
+[[/SECTION]]
+
+[[SECTION]]
+UID: ARCH-CONFIGURATION-MODEL-SEC-4-GENERATED-COMPONENT-BINDINGS
+LEVEL: None
+TITLE: 4. Generated component bindings
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 `backend/build_app_config.py` validates the source model and generates the
 existing runtime namespace:
 
@@ -427,9 +539,18 @@ behavior, health calibration, and fault definitions are added during
 compilation. The compiler does not copy `model_version`, `installation`, or
 component settings into the runtime output. SafetyFunctions therefore sees
 the same validated component contract as before configuration model version 2.
+<<<
 
-## 5. Validation boundaries
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-CONFIGURATION-MODEL-SEC-5-VALIDATION-BOUNDARIES
+LEVEL: None
+TITLE: 5. Validation boundaries
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Compilation fails before AppDaemon starts when:
 
 - the source model version is unsupported;
@@ -453,9 +574,18 @@ The generated configuration then passes the existing component schemas and
 Home Assistant startup validation. Those checks continue to validate entity
 syntax and existence, areas, component policy, detection budgets, thresholds,
 and safe actuation constraints.
+<<<
 
-## 6. Schema inspection and version policy
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-CONFIGURATION-MODEL-SEC-6-SCHEMA-INSPECTION-AND-VERSION-POLICY
+LEVEL: None
+TITLE: 6. Schema inspection and version policy
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Configuration model version 2 is the only accepted editable source format.
 Missing versions, model version 1, and unknown future versions fail before
 AppDaemon starts. Generated component keys, entity IDs, MQTT identities,
@@ -480,17 +610,35 @@ reference, compiler tests, and runtime component validators collectively define
 the executable contract. The source model rejects unknown keys; the runtime
 validators additionally verify Home Assistant entity existence and resolved
 component safety constraints.
+<<<
 
-## 7. Ownership and confidentiality
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-CONFIGURATION-MODEL-SEC-7-OWNERSHIP-AND-CONFIDENTIALITY
+LEVEL: None
+TITLE: 7. Ownership and confidentiality
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 The public repository contains `system_config.yml` and
 `user_config.example.yml`. A real `user_config.yml` remains private because it
 contains household topology, entity IDs, notification destinations, and site
 data. Generated `app_cfg.yaml` or `apps.yaml` is ephemeral and shall not become
 an additional editable source of truth.
+<<<
 
-## 8. Operator editing boundary
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-CONFIGURATION-MODEL-SEC-8-OPERATOR-EDITING-BOUNDARY
+LEVEL: None
+TITLE: 8. Operator editing boundary
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Safety Home provides an authenticated Ingress page for editing the private
 `user_config.yml`. The page covers the editable root fields and the complete
 `installation` registry. It never writes `system_config.yml`; the API exposes
@@ -552,3 +700,6 @@ other checks requiring a live Home Assistant connection remain part of
 SafetyFunctions initialization.
 The startup compiler fails closed when Home Assistant does not provide valid
 coordinates for a configured site; it never substitutes example coordinates.
+<<<
+
+[[/SECTION]]

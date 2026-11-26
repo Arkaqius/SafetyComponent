@@ -2,7 +2,6 @@
 
 import argparse
 import json
-import re
 import subprocess
 import sys
 from importlib.metadata import PackageNotFoundError, version
@@ -11,10 +10,9 @@ from tempfile import TemporaryDirectory
 from typing import Any, Iterator
 
 REQUIRED_VERSION = "0.32.1"
-HARA = Path(__file__).resolve().parents[1] / "docs/sys/SafetyConcept - HARA.md"
+HARA = Path(__file__).resolve().parents[1] / "docs/sys/SafetyConcept - HARA.sdoc"
 LAYERS = {"STAKEHOLDER", "SYS", "SW"}
 KINDS = {"FUNCTIONAL", "QUALITY", "CONSTRAINT"}
-SAFETY_GOAL = re.compile(r"\bSG[-\u2011][0-9]{3}\b")
 VERIFICATION_METHODS = {
     "STAKEHOLDER": {"stakeholder"},
     "SYS": {"system"},
@@ -177,9 +175,11 @@ def validate(
         goals = node.get("SAFETY_GOALS")
         if goals:
             if known_goals is None:
+                hara, = export_documents([HARA])
                 known_goals = {
-                    goal.replace("\u2011", "-")
-                    for goal in SAFETY_GOAL.findall(HARA.read_text(encoding="utf-8"))
+                    value(goal, "UID")
+                    for goal in iter_nodes(hara)
+                    if goal["_NODE_TYPE"] == "SAFETY_GOAL"
                 }
             requested_goals = {item.strip() for item in goals.split(",")}
             if layer != "SYS" or not requested_goals <= known_goals:

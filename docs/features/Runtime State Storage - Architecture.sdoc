@@ -1,7 +1,29 @@
-# Runtime State Storage Architecture
+[DOCUMENT]
+TITLE: Runtime State Storage Architecture
+UID: ARCH-RUNTIME-STATE-STORAGE-DOC
+OPTIONS:
+  MARKUP: Markdown
+  AUTO_LEVELS: Off
 
-## 1. Purpose and ownership
+[GRAMMAR]
+ELEMENTS:
+- TAG: TEXT
+  FIELDS:
+  - TITLE: LEVEL
+    TYPE: String
+    REQUIRED: True
+  - TITLE: STATEMENT
+    TYPE: String
+    REQUIRED: True
 
+[[SECTION]]
+UID: ARCH-RUNTIME-STATE-STORAGE-SEC-1-PURPOSE-AND-OWNERSHIP
+LEVEL: None
+TITLE: 1. Purpose and ownership
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 SQLite stores durable application state outside the deployed image. Domain
 managers retain their existing `load`/`save` persistence boundaries, validation,
 retention limits, and independent App Health contributors. Sharing a database
@@ -11,9 +33,18 @@ Configuration remains YAML. Home Assistant/MQTT/API payloads remain JSON, and
 the transient functional-safety diagnostic snapshot remains under `/run`.
 The battery-fault retirement catalogue also uses SQLite; its MQTT identity
 validation and retirement rules remain separate from detector/battery health.
+<<<
 
-## 2. Database location and records
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-RUNTIME-STATE-STORAGE-SEC-2-DATABASE-LOCATION-AND-RECORDS
+LEVEL: None
+TITLE: 2. Database location and records
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 The runtime uses `safety_state.sqlite3` in the parent directory of
 `app_config.fault_evidence.state_file`. Packaged defaults therefore place it at
 `/config/appdaemon/safety_state.sqlite3`, inside the App-specific persistent
@@ -38,9 +69,18 @@ Records are stored separately rather than as one complete JSON snapshot per
 namespace. Flexible nested record values use JSON columns; managers reconstruct
 their existing versioned snapshot shape when loading. Domain format versions
 remain independent of the SQLite schema version.
+<<<
 
-## 3. Transactions and failure handling
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-RUNTIME-STATE-STORAGE-SEC-3-TRANSACTIONS-AND-FAILURE-HANDLING
+LEVEL: None
+TITLE: 3. Transactions and failure handling
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Each store save commits its replacement records in one transaction. A reader
 sees the preceding committed snapshot or the new committed snapshot, never a
 partially replaced namespace. Saves of different namespaces are separate
@@ -70,9 +110,18 @@ The database validates its application identity and schema version. A foreign
 database or a newer unsupported schema is rejected rather than modified.
 Configured disabled persistence still uses the existing explicit in-memory
 store; failure of enabled persistence is not equivalent to disabling it.
+<<<
 
-## 4. One-time legacy import
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-RUNTIME-STATE-STORAGE-SEC-4-ONE-TIME-LEGACY-IMPORT
+LEVEL: None
+TITLE: 4. One-time legacy import
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Existing `state_file`, `periodic_test_state_file`,
 `detector_test_state_file`, and `battery_fault_catalog_file` configuration keys
 remain accepted as legacy import paths. On the first load of a namespace, the
@@ -101,9 +150,18 @@ editing its old JSON source does not overwrite the initialized namespace.
 Battery catalogue identities are validated before importing that namespace.
 Restoration does not replay an actuator command, create a fresh fault activation, or attest
 a successful operator test.
+<<<
 
-## 5. Copy, restore, and rollback boundary
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-RUNTIME-STATE-STORAGE-SEC-5-COPY-RESTORE-AND-ROLLBACK-BOUNDARY
+LEVEL: None
+TITLE: 5. Copy, restore, and rollback boundary
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Stop the App before copying or restoring its state directory. Preserve
 `user_config.yml`, `safety_state.sqlite3`, and any existing SQLite `-wal`/`-shm`
 sidecars together; copying only the live main database can omit committed WAL
@@ -115,14 +173,23 @@ only: an older JSON-only release cannot read changes made after SQLite import.
 Rolling back code alone therefore does not preserve newer acknowledgements,
 history, recovery state, or detector restrictions. Review lifecycle continuity
 before selecting an older release, and never run old and new publishers together.
+<<<
 
-## 6. Related contracts and verification
+[[/SECTION]]
 
-- [Home Assistant App](<Home Assistant App - Architecture.md>): persistent volume and deployment ownership.
-- [Mobile Notification Delivery](<Mobile Notification Delivery - Architecture.md>): acknowledgement, attempts, and conservative restore.
-- [Recommended Actions and Recovery](<Recommended Actions and Recovery - Architecture.md>): proposal restore without actuator replay.
-- [Fault State Policy](<Fault State Policy - Architecture.md>): Freeze frame bounds and activation semantics.
-- [Internal Environmental Hazard Monitoring](<Internal Environmental Hazard Monitoring - Architecture.md>): latches, clear ordering, and gas restrictions.
+[[SECTION]]
+UID: ARCH-RUNTIME-STATE-STORAGE-SEC-6-RELATED-CONTRACTS-AND-VERIFICATION
+LEVEL: None
+TITLE: 6. Related contracts and verification
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
+- [LINK: ARCH-HOME-ASSISTANT-APP-DOC, Home Assistant App]: persistent volume and deployment ownership.
+- [LINK: ARCH-MOBILE-NOTIFICATION-DELIVERY-DOC, Mobile Notification Delivery]: acknowledgement, attempts, and conservative restore.
+- [LINK: ARCH-RECOMMENDED-ACTIONS-AND-RECOVERY-DOC, Recommended Actions and Recovery]: proposal restore without actuator replay.
+- [LINK: ARCH-FAULT-STATE-POLICY-DOC, Fault State Policy]: Freeze frame bounds and activation semantics.
+- [LINK: ARCH-INTERNAL-ENVIRONMENTAL-HAZARD-MONITORING-DOC, Internal Environmental Hazard Monitoring]: latches, clear ordering, and gas restrictions.
 - [System Configuration](<../reference/System Configuration.md>): retained system-owned import paths and limits.
 
 Storage tests shall cover namespace isolation, atomic save/rollback, reopen,
@@ -130,3 +197,6 @@ one-time import, failed-import retry, malformed/corrupt data, bounded writer
 contention, and incompatible database identity/version. Runtime tests shall
 verify persistence failures remain separate App Health contributors and that
 restoration preserves the existing negative-actuation and no-false-clear rules.
+<<<
+
+[[/SECTION]]

@@ -35,7 +35,7 @@ Scenariusze konfiguruje się w **Konfiguracja → Scenariusze bezpieczeństwa**,
 zgodnie z [instrukcją konfiguracji](CONFIGURATION.md). Kontrola nie steruje
 urządzeniami ani nie kasuje istniejących alarmów. Powiadomienia zewnętrzne można
 powiązać z wydarzeniem zakończenia opisanym w
-[architekturze](../docs/features/Safety%20Routines%20-%20Architecture.md).
+[architekturze](../docs/features/Safety%20Routines%20-%20Architecture.sdoc).
 
 ## Uruchomienie lokalne
 

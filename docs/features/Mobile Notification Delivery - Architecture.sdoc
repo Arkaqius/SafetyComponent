@@ -1,7 +1,29 @@
-# Mobile Notification Delivery Architecture
+[DOCUMENT]
+TITLE: Mobile Notification Delivery Architecture
+UID: ARCH-MOBILE-NOTIFICATION-DELIVERY-DOC
+OPTIONS:
+  MARKUP: Markdown
+  AUTO_LEVELS: Off
 
-## 1. Purpose
+[GRAMMAR]
+ELEMENTS:
+- TAG: TEXT
+  FIELDS:
+  - TITLE: LEVEL
+    TYPE: String
+    REQUIRED: True
+  - TITLE: STATEMENT
+    TYPE: String
+    REQUIRED: True
 
+[[SECTION]]
+UID: ARCH-MOBILE-NOTIFICATION-DELIVERY-SEC-1-PURPOSE
+LEVEL: None
+TITLE: 1. Purpose
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Mobile Notification Delivery converts fault lifecycle events into bounded,
 traceable Home Assistant Companion notifications. The feature maintains one
 logical notification per fault, delivers new alarms with a severity-specific
@@ -13,9 +35,18 @@ means **accepted by Home Assistant**. It does not prove that Firebase, Apple
 Push Notification Service, or an individual phone delivered or displayed the
 message. Diagnostics and logs shall not describe service acceptance as device
 delivery.
+<<<
 
-## 2. Responsibilities
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-MOBILE-NOTIFICATION-DELIVERY-SEC-2-RESPONSIBILITIES
+LEVEL: None
+TITLE: 2. Responsibilities
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 ```mermaid
 flowchart LR
     FaultManager -->|fault lifecycle event| NotificationManager
@@ -35,9 +66,16 @@ flowchart LR
     HomeAssistant -->|history response| SafetyHome
     NotificationManager -->|health and counters| MqttEntityManager
 ```
+<<<
 
-### 2.1 `NotificationManager`
+[[SECTION]]
+UID: ARCH-MOBILE-NOTIFICATION-DELIVERY-SEC-21-NOTIFICATIONMANAGER
+LEVEL: None
+TITLE: 2.1 `NotificationManager`
 
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 - owns the active-notification lifecycle and stable fault tag;
 - filters fault details through a configured allowlist before presentation;
 - distinguishes a new alarm, quiet content refresh, controlled L1 repeat,
@@ -71,9 +109,18 @@ not be appended to the mobile message. Allowlisted raw fault details and the
 existing MQTT/diagnostic contracts shall remain unchanged. Resolved messages
 shall use a distinct concise localized title and identify the affected subject
 and available location only after an authoritative clear.
+<<<
 
-### 2.2 `MobilePushProvider`
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-MOBILE-NOTIFICATION-DELIVERY-SEC-22-MOBILEPUSHPROVIDER
+LEVEL: None
+TITLE: 2.2 `MobilePushProvider`
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 - owns Home Assistant notify service names and Companion payload schemas;
 - sends to every explicitly configured service;
 - applies Android and iOS profiles for levels L1 through L3;
@@ -95,9 +142,18 @@ and available location only after an authoritative clear.
 The provider shall never fall back to `notify.notify`. Installation routing
 shall use an explicit group such as `notify/safety_recipients` or an explicit
 list of mobile notify services.
+<<<
 
-### 2.3 `LocalAnnunciator`
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-MOBILE-NOTIFICATION-DELIVERY-SEC-23-LOCALANNUNCIATOR
+LEVEL: None
+TITLE: 2.3 `LocalAnnunciator`
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 - owns optional local alarm-panel and light actions;
 - runs only for a newly active fault, not for quiet mobile refreshes;
 - stores and restores the pre-alert light state where Home Assistant exposes
@@ -105,7 +161,7 @@ list of mobile notify services.
 - does not influence mobile transport success or retry decisions.
 
 For internal environmental alarms, LocalAnnunciator shall apply the
-[hazard-specific output contract](<Internal Environmental Hazard Monitoring - Architecture.md#7-guidance-and-output-safety>)
+[LINK: ARCH-INTERNAL-ENVIRONMENTAL-HAZARD-MONITORING-SEC-7-GUIDANCE-AND-OUTPUT-SAFETY, hazard-specific output contract]
 before activation, level changes and restoration. Severity alone shall not
 authorize ordinary electrical switching during a flammable-gas incident.
 Eligibility shall account for every active or unresolved gas incident, even
@@ -117,9 +173,18 @@ Gas switching inhibition shall be independently persisted and shall survive
 detector HEAL until the reviewed installation clearance policy accepts explicit
 authorized evidence. Notification acknowledgement or a `Cleared` fault event
 shall not release this output restriction.
+<<<
 
-### 2.4 `NotificationStateStore`
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-MOBILE-NOTIFICATION-DELIVERY-SEC-24-NOTIFICATIONSTATESTORE
+LEVEL: None
+TITLE: 2.4 `NotificationStateStore`
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 - commits versioned notification records atomically in the shared SQLite
   database, with one-time import from the configured legacy JSON path;
 - restores active records, acknowledgements, pending deliveries, repeat state,
@@ -130,17 +195,35 @@ shall not release this output restriction.
 - rejects malformed or unsupported snapshots without treating them as a
   positive delivery result;
 - stores only filtered notification content, never the unfiltered fault event.
+<<<
 
-### 2.5 Delivery scheduler
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-MOBILE-NOTIFICATION-DELIVERY-SEC-25-DELIVERY-SCHEDULER
+LEVEL: None
+TITLE: 2.5 Delivery scheduler
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 - retries failed service submissions with bounded exponential backoff;
 - keeps WAN-blocked items queued until the configured WAN entity recovers;
 - performs controlled L1 repeats until acknowledgement or the configured
   repeat bound is reached;
 - records whether Home Assistant accepted an attempt after its level deadline.
+<<<
 
-### 2.6 MQTT diagnostics
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-MOBILE-NOTIFICATION-DELIVERY-SEC-26-MQTT-DIAGNOSTICS
+LEVEL: None
+TITLE: 2.6 MQTT diagnostics
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 `sensor.notification_delivery_health` exposes transport health independently
 from fault state. Its state is one of `healthy`, `degraded`, or `queued` and its
 attributes include active/acknowledged/queued counts, accepted and failed
@@ -148,9 +231,18 @@ attempt counters, deadline misses, last attempt/result/error, per-service
 status/time/error, and the explicit statement that device delivery is not
 confirmed. `acknowledged_tags` lists stable tags for currently active,
 acknowledged notifications so SafetyHome can retain button state after reload.
+<<<
 
-### 2.7 `SafetyHomeApiGateway`
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-MOBILE-NOTIFICATION-DELIVERY-SEC-27-SAFETYHOMEAPIGATEWAY
+LEVEL: None
+TITLE: 2.7 `SafetyHomeApiGateway`
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 `SafetyHomeApiGateway` is a read-only application-data boundary between the
 AppDaemon backend and SafetyHome. It shall expose notification history through
 the authenticated Home Assistant event connection without publishing the
@@ -173,9 +265,18 @@ installation fragment in
 [`home_assistant_recorder_safetyhome_api.yaml`](../examples/home_assistant_recorder_safetyhome_api.yaml).
 The retired `sensor.notification_history` MQTT discovery and retained state
 shall be removed during startup migration.
+<<<
 
-### 2.8 Notification history
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-MOBILE-NOTIFICATION-DELIVERY-SEC-28-NOTIFICATION-HISTORY
+LEVEL: None
+TITLE: 2.8 Notification history
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 The manager shall retain the latest 100 individual target submission attempts,
 including successful Home Assistant acceptance and failed submissions. Each
 retry shall produce a separate entry only for the targets actually attempted.
@@ -183,7 +284,7 @@ Waiting for WAN recovery shall not create a submission-history entry.
 
 The journal shall use the notification store namespace and existing persistence
 configuration. Its logical snapshot shape remains compatible after the
-[SQLite migration](<Runtime State Storage - Architecture.md>). A compatible
+[LINK: ARCH-RUNTIME-STATE-STORAGE-DOC, SQLite migration]. A compatible
 snapshot without history shall restore an empty
 journal without discarding active or pending notification state.
 
@@ -234,9 +335,20 @@ legacy generic titles and message formats. A dash in recorded text shall not
 be treated as proof of a location: it may belong to a friendly name. Missing
 historical identity or location shall remain explicitly unspecified rather
 than being filled from current Home Assistant names or current fault context.
+<<<
 
-## 3. Configuration contract
+[[/SECTION]]
 
+[[/SECTION]]
+
+[[SECTION]]
+UID: ARCH-MOBILE-NOTIFICATION-DELIVERY-SEC-3-CONFIGURATION-CONTRACT
+LEVEL: None
+TITLE: 3. Configuration contract
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 The installation config owns:
 
 - `mobile.services`: explicit AppDaemon service names in `domain/service` form;
@@ -264,11 +376,23 @@ Default new-alert profiles are:
 
 Quiet updates, acknowledgement refreshes, and resolved messages override these alert properties with
 Android `alert_once`/normal priority and iOS `passive` interruption.
+<<<
 
-## 4. Lifecycle
+[[/SECTION]]
 
-### 4.1 New active fault
+[[SECTION]]
+UID: ARCH-MOBILE-NOTIFICATION-DELIVERY-SEC-4-LIFECYCLE
+LEVEL: None
+TITLE: 4. Lifecycle
 
+[[SECTION]]
+UID: ARCH-MOBILE-NOTIFICATION-DELIVERY-SEC-41-NEW-ACTIVE-FAULT
+LEVEL: None
+TITLE: 4.1 New active fault
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 1. Filter additional details.
 2. Build localized content and acknowledgement action.
 3. Admit the active lifecycle record without waiting for external completion.
@@ -280,9 +404,18 @@ Android `alert_once`/normal priority and iOS `passive` interruption.
 7. Apply owner-validated completion and record acceptance/failure and deadline
    telemetry. Scheduling return does not establish HA acceptance or phone receipt.
 8. Schedule bounded L1 repeats when applicable.
+<<<
 
-### 4.2 Active content refresh
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-MOBILE-NOTIFICATION-DELIVERY-SEC-42-ACTIVE-CONTENT-REFRESH
+LEVEL: None
+TITLE: 4.2 Active content refresh
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 A repeated `SET` or newly discovered recovery guidance updates the same tag.
 Removing or replacing guidance shall also refresh that tag, so withdrawn
 instructions do not remain on the phone. Intermediate quiet updates for one
@@ -308,9 +441,18 @@ submission shall retain its retry timing and deadline. Returning to already
 accepted content shall cancel a superseded unsent update. This suppression
 shall apply only to quiet updates, not new alarms, escalation, resolution or
 controlled repeats.
+<<<
 
-### 4.3 Acknowledgement
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-MOBILE-NOTIFICATION-DELIVERY-SEC-43-ACKNOWLEDGEMENT
+LEVEL: None
+TITLE: 4.3 Acknowledgement
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 The Companion action identifier contains the stable fault tag. A matching
 `mobile_app_notification_action` event, or an authenticated SafetyHome
 `safety_notification_acknowledge` event carrying that exact tag, marks the
@@ -320,17 +462,35 @@ without the acknowledgement action. The acknowledgement submission is retained
 in notification history. Acknowledgement shall not clear the fault and shall not
 prevent later quiet content refreshes. SafetyHome reads the tag from the active
 fault entity and the acknowledgement state from notification diagnostics.
+<<<
 
-### 4.4 Fault clear and shadow
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-MOBILE-NOTIFICATION-DELIVERY-SEC-44-FAULT-CLEAR-AND-SHADOW
+LEVEL: None
+TITLE: 4.4 Fault clear and shadow
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 A cleared fault publishes a friendly resolved message with a dedicated
 localized clear title and the same tag, then removes the active record. A
 shadowed fault sends the Companion
 `clear_notification` command with the same tag. Pending attempts and scheduled
 repeats for that tag are removed in both cases.
+<<<
 
-### 4.5 Explicit test and full notification reset
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-MOBILE-NOTIFICATION-DELIVERY-SEC-45-EXPLICIT-TEST-AND-FULL-NOTIFICATION-RESET
+LEVEL: None
+TITLE: 4.5 Explicit test and full notification reset
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Authenticated operator events `safety_notification_test` and
 `safety_notification_reset` shall require the literal payload
 `{"confirmed": true}`. Each action shall have an independent 60-second rate
@@ -353,9 +513,20 @@ populate counters, queue, and history again. Reset shall not heal, acknowledge,
 silence, or suppress a still-active fault, and shall not reset detector or
 periodic-test records. The frontend shall obtain explicit confirmation because
 the old journal is removed and active warnings may be sent again.
+<<<
 
-## 5. Failure behavior
+[[/SECTION]]
 
+[[/SECTION]]
+
+[[SECTION]]
+UID: ARCH-MOBILE-NOTIFICATION-DELIVERY-SEC-5-FAILURE-BEHAVIOR
+LEVEL: None
+TITLE: 5. Failure behavior
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Fault event handling shall admit notification lifecycle work without waiting for
 transport completion, persistence or MQTT. Completion callbacks shall only enqueue
 immutable results for application-owned reconciliation. A stalled target shall
@@ -377,9 +548,18 @@ distinction between scheduling, acceptance and physical effects.
 - A newer lifecycle state or content update for a stable tag shall replace
   superseded queued submissions for that tag. A retry shall never restore older
   notification content or a previous resolved state.
+<<<
 
-## 6. Verification contract
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-MOBILE-NOTIFICATION-DELIVERY-SEC-6-VERIFICATION-CONTRACT
+LEVEL: None
+TITLE: 6. Verification contract
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Automated tests shall cover confirmed-only test/reset events, independent
 rate limits, mobile-only test delivery and `TEST` history, reset persistence,
 preserved active faults and local restrictions, and active-warning reissue.
@@ -415,3 +595,6 @@ substitution.
 Live verification shall not trigger a household fault, siren, warning light,
 or unsolicited phone notification. Production delivery requires a separately
 approved controlled test.
+<<<
+
+[[/SECTION]]

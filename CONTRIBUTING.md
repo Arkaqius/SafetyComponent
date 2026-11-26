@@ -235,6 +235,23 @@ feature brief and requirements together, then review the plan and ADRs together.
 Legacy features may still use their original Markdown artifacts. Reconcile
 their requirement IDs and task evidence during explicit adoption of the new flow.
 
+### Exporting the safety documentation
+
+The StrictDoc sources in `docs/sys/` and the top-level
+`docs/features/* - Architecture.sdoc` files define the system and feature
+architecture baseline. Update those sources when a contract changes. Use the
+HTML export for section links and requirement traces.
+
+From the repository root, install the pinned dependency as above and run:
+
+```powershell
+python tools/export_safety_docs.py
+```
+
+Open `build/strictdoc/html/index.html` to browse the documentation and traces.
+The build also packages linked repository references and writes the
+machine-readable tree to `build/strictdoc/json/index.json`.
+
 ### Planning verification
 
 Write `verification.json` in the feature directory before plan approval.
@@ -277,6 +294,18 @@ python tools/register_speckit_tasks.py docs/features/<feature> --check
 The check confirms that the graph matches the current approved inputs before
 implementation. Treat previously written task lists as migration inputs.
 Consult Beads for work state and handoffs after migration.
+
+Features 003 and 004 were imported from their historical task lists. Their epics
+in Beads are `sc-sk36a813edd5f8d8b9281a` and `sc-skdc6a7c92d6a087f63e92`.
+To load the [migration snapshot](docs/features/beads-003-004.jsonl) into an
+initialized Beads workspace, run this command from the repository root:
+
+```powershell
+bd import docs/features/beads-003-004.jsonl
+```
+
+Use Beads for current status after import. The snapshot records historical
+checkboxes, dependencies and evidence pointers for the two features.
 
 Use `bd ready` to select work, `bd show <id>` to read its contract, and
 `bd update <id> --claim` as the assigned role with its own Beads actor.

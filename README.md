@@ -64,15 +64,15 @@ it does not display the complete Home Assistant entity/device inventory.
 - `docs/features` — feature-level architecture documents.
 
 Feature architecture documents include
-[`Safety Routines`](docs/features/Safety%20Routines%20-%20Architecture.md),
-[`Home Assistant App`](docs/features/Home%20Assistant%20App%20-%20Architecture.md),
-[`Configuration Model`](docs/features/Configuration%20Model%20-%20Architecture.md),
-[`Mobile Notification Delivery`](docs/features/Mobile%20Notification%20Delivery%20-%20Architecture.md),
-[`Recommended Actions and Recovery`](docs/features/Recommended%20Actions%20and%20Recovery%20-%20Architecture.md),
-[`External Hazard Monitoring`](docs/features/External%20Hazard%20Monitoring%20-%20Architecture.md),
-[`Entity Health Monitoring`](docs/features/Entity%20Health%20Monitoring%20-%20Architecture.md),
-[`Heating System Monitoring`](docs/features/Heating%20System%20Monitoring%20-%20Architecture.md),
-and [`Internal Environmental Hazard Monitoring`](docs/features/Internal%20Environmental%20Hazard%20Monitoring%20-%20Architecture.md).
+[`Safety Routines`](docs/features/Safety%20Routines%20-%20Architecture.sdoc),
+[`Home Assistant App`](docs/features/Home%20Assistant%20App%20-%20Architecture.sdoc),
+[`Configuration Model`](docs/features/Configuration%20Model%20-%20Architecture.sdoc),
+[`Mobile Notification Delivery`](docs/features/Mobile%20Notification%20Delivery%20-%20Architecture.sdoc),
+[`Recommended Actions and Recovery`](docs/features/Recommended%20Actions%20and%20Recovery%20-%20Architecture.sdoc),
+[`External Hazard Monitoring`](docs/features/External%20Hazard%20Monitoring%20-%20Architecture.sdoc),
+[`Entity Health Monitoring`](docs/features/Entity%20Health%20Monitoring%20-%20Architecture.sdoc),
+[`Heating System Monitoring`](docs/features/Heating%20System%20Monitoring%20-%20Architecture.sdoc),
+and [`Internal Environmental Hazard Monitoring`](docs/features/Internal%20Environmental%20Hazard%20Monitoring%20-%20Architecture.sdoc).
 
 The [timing and alarm-retention validation guide](docs/features/004-safety-timing-alarm-retention/quickstart.md)
 describes weather timing, reviewed indoor clear evidence, durable retained danger
@@ -81,14 +81,14 @@ without independent launch-continuity evidence retains unverified history and
 gas-related output restrictions; an old clean checkpoint alone cannot prove
 that no later alarm was lost.
 
-The [recovery action contract](<docs/features/Recommended Actions and Recovery - Architecture.md>)
+The [recovery action contract](<docs/features/Recommended Actions and Recovery - Architecture.sdoc>)
 defines manual work, command consent, observed or operator-reported task
 completion, advisory instructions and cause-specific fault allocation. Reports
 use authenticated actor context, server-assigned time and the current incident's
 one-time report token; reporting work does not directly clear a fault. Its
 requirements are in
-[SYS §8.10](<docs/sys/SafetyConcept - SYS.md#810-recommended-actions-and-recovery>)
-and [SSRD §4.5](<docs/sys/SafetyComponent - SSRD.md#45-notifications-and-recovery>).
+[SYS §8.10](<docs/sys/SafetyConcept - SYS.sdoc>)
+and [SSRD §4.5](<docs/sys/SafetyComponent - SSRD.sdoc>).
 The [fault-handling delivery record](docs/FAULT_HANDLING_PLAN.md#recovery-completion-evidence-and-allocation-gaps)
 separately tracks verified recovery deliveries and absent monitoring owners.
 
@@ -154,7 +154,7 @@ The configuration sources separate:
 Configuration model version 2 resolves values in the order **system default →
 installation default → asset override**. The compiler declares each physical
 asset once and generates the existing component bindings from that registry.
-See the [Configuration Model architecture](<docs/features/Configuration Model - Architecture.md>)
+See the [Configuration Model architecture](<docs/features/Configuration Model - Architecture.sdoc>)
 for the complete editable schema, precedence, validation, and schema-inspection
 command. See the [System Configuration reference](<docs/reference/System Configuration.md>)
 for every packaged configuration group, its ownership, override path, and
@@ -199,31 +199,35 @@ the [frontend README](frontend/README.md).
 
 ## Documentation
 
-- [Hazard analysis and risk assessment](<docs/sys/SafetyConcept - HARA.md>)
-- [System safety architecture and requirements](<docs/sys/SafetyConcept - SYS.md>)
-- [Software safety requirements](<docs/sys/SafetyComponent - SSRD.md>)
-- [Home Assistant App architecture](<docs/features/Home Assistant App - Architecture.md>)
-- [Runtime state storage architecture](<docs/features/Runtime State Storage - Architecture.md>)
-- [Configuration Model architecture](<docs/features/Configuration Model - Architecture.md>)
-- [Mobile Notification Delivery architecture](<docs/features/Mobile Notification Delivery - Architecture.md>)
-- [External Hazard Monitoring architecture](<docs/features/External Hazard Monitoring - Architecture.md>)
+The safety baseline is maintained in StrictDoc. See the
+[export instructions](CONTRIBUTING.md#exporting-the-safety-documentation) for
+the browsable documents and cross-document traces.
+
+- [Hazard analysis and risk assessment](<docs/sys/SafetyConcept - HARA.sdoc>)
+- [System safety architecture and requirements](<docs/sys/SafetyConcept - SYS.sdoc>)
+- [Software safety requirements](<docs/sys/SafetyComponent - SSRD.sdoc>)
+- [Home Assistant App architecture](<docs/features/Home Assistant App - Architecture.sdoc>)
+- [Runtime state storage architecture](<docs/features/Runtime State Storage - Architecture.sdoc>)
+- [Configuration Model architecture](<docs/features/Configuration Model - Architecture.sdoc>)
+- [Mobile Notification Delivery architecture](<docs/features/Mobile Notification Delivery - Architecture.sdoc>)
+- [External Hazard Monitoring architecture](<docs/features/External Hazard Monitoring - Architecture.sdoc>)
 - [External provider plugin specification](docs/features/001-external-provider-plugins/spec.md)
 - [Explicit provider selection and monitoring-state design](docs/features/002-provider-selection-states/plan.md)
 - [ADR-0001: External provider plugins](docs/adr/0001-external-provider-plugins.md)
 - [ADR-0002: Explicit provider selection](docs/adr/0002-explicit-provider-selection.md)
-- [Entity Health Monitoring architecture](<docs/features/Entity Health Monitoring - Architecture.md>)
-- [Heating System Monitoring architecture](<docs/features/Heating System Monitoring - Architecture.md>)
+- [Entity Health Monitoring architecture](<docs/features/Entity Health Monitoring - Architecture.sdoc>)
+- [Heating System Monitoring architecture](<docs/features/Heating System Monitoring - Architecture.sdoc>)
 - [Heating monitor delivery and verification](docs/HEATING_MONITOR_DELIVERY.md)
 - [Read-only heating monitoring implementation design](docs/features/003-heating-monitoring/plan.md)
-- [Feature 003 implementation tasks](docs/features/003-heating-monitoring/tasks.md)
-- [Internal Environmental Hazard Monitoring architecture](<docs/features/Internal Environmental Hazard Monitoring - Architecture.md>)
+- Feature 003 implementation tasks in Beads (`sc-sk36a813edd5f8d8b9281a`)
+- [Internal Environmental Hazard Monitoring architecture](<docs/features/Internal Environmental Hazard Monitoring - Architecture.sdoc>)
 - [Weather response timing and indoor alarm retention design](docs/features/004-safety-timing-alarm-retention/plan.md)
-- [Feature 004 implementation tasks](docs/features/004-safety-timing-alarm-retention/tasks.md)
+- Feature 004 implementation tasks in Beads (`sc-skdc6a7c92d6a087f63e92`)
 - [Safety monitoring responsibility boundaries](<docs/features/Safety Monitoring Responsibility Boundaries.md>)
-- [Fault state and priority policy](<docs/features/Fault State Policy - Architecture.md>)
-- [Fault routing and aggregation](<docs/features/Fault Routing and Aggregation - Architecture.md>)
-- [Fault degradation and coverage](<docs/features/Fault Degradation and Coverage - Architecture.md>)
-- [Self-diagnostics and independent supervision](<docs/features/Self Diagnostics - Architecture.md>)
+- [Fault state and priority policy](<docs/features/Fault State Policy - Architecture.sdoc>)
+- [Fault routing and aggregation](<docs/features/Fault Routing and Aggregation - Architecture.sdoc>)
+- [Fault degradation and coverage](<docs/features/Fault Degradation and Coverage - Architecture.sdoc>)
+- [Self-diagnostics and independent supervision](<docs/features/Self Diagnostics - Architecture.sdoc>)
 - [Backend coding standards](backend/README.md)
 - [Contribution workflow](CONTRIBUTING.md)
 - [Agent instructions](AGENTS.md)

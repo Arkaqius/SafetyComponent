@@ -1,7 +1,29 @@
-# Recommended Actions and Recovery - Feature Architecture
+[DOCUMENT]
+TITLE: Recommended Actions and Recovery - Feature Architecture
+UID: ARCH-RECOMMENDED-ACTIONS-AND-RECOVERY-DOC
+OPTIONS:
+  MARKUP: Markdown
+  AUTO_LEVELS: Off
 
-## 1. Purpose and boundary
+[GRAMMAR]
+ELEMENTS:
+- TAG: TEXT
+  FIELDS:
+  - TITLE: LEVEL
+    TYPE: String
+    REQUIRED: True
+  - TITLE: STATEMENT
+    TYPE: String
+    REQUIRED: True
 
+[[SECTION]]
+UID: ARCH-RECOMMENDED-ACTIONS-AND-RECOVERY-SEC-1-PURPOSE-AND-BOUNDARY
+LEVEL: None
+TITLE: 1. Purpose and boundary
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Recovery shall describe a concrete action to mitigate a hazard or restore a
 failed capability. The owning component shall derive the action from the
 current fault, its contributing cause and the affected subject. RecoveryManager
@@ -23,12 +45,21 @@ shall remain the only recovery element that resolves and calls an actuator
 service; reporting manual work shall issue no actuator command.
 Adding a manual action shall not enable automatic actuation or extend an
 existing component's command permissions.
+<<<
 
-## 2. Proposal contract
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-RECOMMENDED-ACTIONS-AND-RECOVERY-SEC-2-PROPOSAL-CONTRACT
+LEVEL: None
+TITLE: 2. Proposal contract
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Internal environmental monitoring shall supply manual hazard-response and
 detector-repair actions without an actuator call. Their instructions shall follow the
-[internal hazard advice boundary](<Internal Environmental Hazard Monitoring - Architecture.md#7-guidance-and-output-safety>).
+[LINK: ARCH-INTERNAL-ENVIRONMENTAL-HAZARD-MONITORING-SEC-7-GUIDANCE-AND-OUTPUT-SAFETY, internal hazard advice boundary].
 Shared policy shall prevent comfort/PM ventilation or purification proposals
 from conflicting with active or unresolved smoke/gas/CO evidence. Clearing a
 detector alarm shall not authorize gas reopening, detector reset or re-entry.
@@ -65,9 +96,16 @@ It shall identify the expected result, evidence source and time, a manual-work
 report when applicable, and the reason for blocked or unavailable execution.
 Private configuration and unfiltered diagnostic snapshots shall not be copied
 into proposals. Missing evidence shall be presented as unknown.
+<<<
 
-### 2.1 Execution and completion are separate decisions
+[[SECTION]]
+UID: ARCH-RECOMMENDED-ACTIONS-AND-RECOVERY-SEC-21-EXECUTION-AND-COMPLETION-ARE-SEPARATE-DECISIONS
+LEVEL: None
+TITLE: 2.1 Execution and completion are separate decisions
 
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 | Policy | Executor | Command authorization | Completion |
 | --- | --- | --- | --- |
 | `manual` | User or service technician | None; actuator changes shall be rejected centrally | Declared observed postcondition, or an explicit operator report for a procedural task |
@@ -110,9 +148,18 @@ can complete a mitigation action while a room remains too cold. Replacing a
 battery can be reported while its device has not yet sent a fresh reading.
 Acknowledging a notification, consenting to a command and reporting manual work
 shall remain distinct operations.
+<<<
 
-### 2.2 Eligibility and withdrawal
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-RECOMMENDED-ACTIONS-AND-RECOVERY-SEC-22-ELIGIBILITY-AND-WITHDRAWAL
+LEVEL: None
+TITLE: 2.2 Eligibility and withdrawal
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 The owner shall re-evaluate proposals on changes to their relevant evidence,
 cause, policy and dependencies. A superseded, expired or no-longer-eligible
 instruction shall be withdrawn with its token, listeners and notification
@@ -127,9 +174,20 @@ failed data path shall not require that same path to be healthy. Hazard-specific
 advice requiring missing evidence shall remain unavailable. Faults with no
 applicable action shall have an explicit rationale; absence of a proposal shall
 not be labeled proof that no action is needed.
+<<<
 
-## 3. Execution flow
+[[/SECTION]]
 
+[[/SECTION]]
+
+[[SECTION]]
+UID: ARCH-RECOMMENDED-ACTIONS-AND-RECOVERY-SEC-3-EXECUTION-FLOW
+LEVEL: None
+TITLE: 3. Execution flow
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 ```text
 active symptom
     |
@@ -174,9 +232,18 @@ renew an expired command authorization; restart shall retain a deadline's meanin
 without replaying a command or counting downtime as fresh physical evidence.
 Their packaged configuration is `runtime_cfg.recovery.timing`, defined in the
 [System Configuration reference](<../reference/System Configuration.md#53-notification-and-recovery>).
+<<<
 
-## 4. External-hazard openings
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-RECOMMENDED-ACTIONS-AND-RECOVERY-SEC-4-EXTERNAL-HAZARD-OPENINGS
+LEVEL: None
+TITLE: 4. External-hazard openings
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Windows and ordinary doors publish a manual close instruction and use their
 contact as the completion postcondition. A confirmation-gated example uses:
 
@@ -186,9 +253,16 @@ contact as the completion postcondition. A confirmation-gated example uses:
 
 RecoveryManager calls `cover.close_cover`; it never calls a raw pulse button.
 No unsupported External Hazard opening kind may define an actuator.
+<<<
 
-### 4.1 Manual recovery allocation
+[[SECTION]]
+UID: ARCH-RECOMMENDED-ACTIONS-AND-RECOVERY-SEC-41-MANUAL-RECOVERY-ALLOCATION
+LEVEL: None
+TITLE: 4.1 Manual recovery allocation
 
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 The following allocation shall apply to installed fault families. Instructions
 shall name the actual affected subject and known cause; diagnostic observations
 shall not be promoted to an inferred physical cause. Several checks sharing one
@@ -220,17 +294,28 @@ owner, with the failed contributor retained.
 | Heating monitoring faults | Inspect the named equipment/telemetry path or contact service using the model-specific interpretation | Rule-specific heating evidence; communication recovery alone cannot prove thermal recovery | No boiler reset, setpoint, pump forcing or interlock bypass |
 
 Urgent hazard instructions shall follow the
-[internal-hazard guidance contract](<Internal Environmental Hazard Monitoring - Architecture.md#7-guidance-and-output-safety>).
+[LINK: ARCH-INTERNAL-ENVIRONMENTAL-HAZARD-MONITORING-SEC-7-GUIDANCE-AND-OUTPUT-SAFETY, internal-hazard guidance contract].
 The catalog shall not authorize re-entry, gas reopening or speculative ventilation.
 High-temperature manual guidance shall not reuse low-temperature window logic.
+<<<
 
-## 5. Persistence and notification ownership
+[[/SECTION]]
 
+[[/SECTION]]
+
+[[SECTION]]
+UID: ARCH-RECOMMENDED-ACTIONS-AND-RECOVERY-SEC-5-PERSISTENCE-AND-NOTIFICATION-OWNERSHIP
+LEVEL: None
+TITLE: 5. Persistence and notification ownership
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Active proposal state is stored atomically in the `recovery_state` namespace of
 the shared `/config/appdaemon/safety_state.sqlite3` database, outside the deployed
 application directory. The existing `/config/appdaemon/recovery_state.json`
 configuration path remains a one-time legacy import source, as defined by
-[Runtime State Storage](<Runtime State Storage - Architecture.md>).
+[LINK: ARCH-RUNTIME-STATE-STORAGE-DOC, Runtime State Storage].
 Restart restores operator-visible state without replaying a command.
 A restored confirmation proposal receives a new token.
 
@@ -283,9 +368,18 @@ Operator-facing recovery summaries shall use Polish labels for component,
 completion-evidence source and known reason codes, with a localized fallback
 for unrecognized codes. Raw values shall remain available in explicit
 diagnostics and shall not be presented as translated operator advice.
+<<<
 
-## 6. Verification
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-RECOMMENDED-ACTIONS-AND-RECOVERY-SEC-6-VERIFICATION
+LEVEL: None
+TITLE: 6. Verification
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Automated tests shall cover exact proposal payloads, manual versus confirmed
 policy, no actuation before confirmation, invalid and replayed tokens, the exact
 allowlisted service, physical postcondition handling, timeout, persistence,
@@ -307,9 +401,12 @@ replayed reports, old incident-instance reports
 and stale report tokens after restart. Tests for observation-only components
 shall assert useful manual proposals alongside zero actuator calls.
 System and software traceability is defined in
-[SYS section 8.10](<../sys/SafetyConcept - SYS.md#810-recommended-actions-and-recovery>)
-and [SSRD section 4.5](<../sys/SafetyComponent - SSRD.md#45-notifications-and-recovery>).
+[LINK: SYS-SEC-8-10, SYS section 8.10]
+and [LINK: SSRD-SEC-4-5, SSRD section 4.5].
 
 Deployment verification shall use configuration readback, hashes, logs, and
 diagnostic entity state. It shall not close a household gate merely to prove the
 deployment.
+<<<
+
+[[/SECTION]]

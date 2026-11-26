@@ -1,5 +1,24 @@
-# External Hazard Monitoring - Feature Architecture
+[DOCUMENT]
+TITLE: External Hazard Monitoring - Feature Architecture
+UID: ARCH-EXTERNAL-HAZARD-MONITORING-DOC
+OPTIONS:
+  MARKUP: Markdown
+  AUTO_LEVELS: Off
 
+[GRAMMAR]
+ELEMENTS:
+- TAG: TEXT
+  FIELDS:
+  - TITLE: LEVEL
+    TYPE: String
+    REQUIRED: True
+  - TITLE: STATEMENT
+    TYPE: String
+    REQUIRED: True
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 **Safety component:** `ExternalHazardComponent`
 
 **System component ID:** `C-EXT`
@@ -10,9 +29,16 @@ the operator outcomes and supersedes the former selection compatibility model.
 The [source-selection contract](002-provider-selection-states/contracts/source-selection.md)
 defines the explicit target configuration. This document defines the
 required integration contract; it is not evidence of deployment.
+<<<
 
-## 1. Decisions already fixed
+[[SECTION]]
+UID: ARCH-EXTERNAL-HAZARD-MONITORING-SEC-1-DECISIONS-ALREADY-FIXED
+LEVEL: None
+TITLE: 1. Decisions already fixed
 
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 The following decisions are requirements, not open design options:
 
 1. The feature monitors, diagnoses, and creates close recommendations. Windows
@@ -28,9 +54,18 @@ The following decisions are requirements, not open design options:
    remain distinct capabilities and provenance categories.
 5. Plugins are reviewed, bundled adapters selected through configuration.
    Runtime installation of arbitrary provider code is outside this contract.
+<<<
 
-## 2. Goals
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-EXTERNAL-HAZARD-MONITORING-SEC-2-GOALS
+LEVEL: None
+TITLE: 2. Goals
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 The system shall:
 
 - monitor frost, wind/gusts, rain/storm, and outdoor air pollution from external
@@ -46,9 +81,18 @@ The system shall:
 - inhibit contradictory manual recommendations to open windows while external
   conditions make that advice unsafe;
 - provide deterministic evidence suitable for unit and integration tests.
+<<<
 
-## 3. Out of scope
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-EXTERNAL-HAZARD-MONITORING-SEC-3-OUT-OF-SCOPE
+LEVEL: None
+TITLE: 3. Out of scope
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 - Automatic closure or locking without a resident confirmation.
 - Window and ordinary-door actuation.
 - Ventilation, HVAC, blind, purifier, siren, lock, or raw relay/pulse control.
@@ -58,9 +102,18 @@ The system shall:
 - Combining all providers into one large client class.
 - Selecting a particular additional live national service, runtime package
   installation, multiple home locations, or multiple instances of one provider ID.
+<<<
 
-## 4. Source strategy
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-EXTERNAL-HAZARD-MONITORING-SEC-4-SOURCE-STRATEGY
+LEVEL: None
+TITLE: 4. Source strategy
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 | API Component | Provider/API | Purpose | Polling interval | Authority |
 | --- | --- | --- | --- | --- |
 | `OpenMeteoWeatherApiComponent` | Open-Meteo `/v1/forecast` | Current/model temperature, frost forecast, precipitation, weather code, wind and gusts | 10 min | Forecast/model input |
@@ -86,9 +139,18 @@ Provider references:
   <https://danepubliczne.imgw.pl/api/data/warningsmeteo>
 - IMGW public-data terms:
   <https://danepubliczne.imgw.pl/pl/datastore?product=Mapa+synoptyczna>
+<<<
 
-## 5. Logical architecture
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-EXTERNAL-HAZARD-MONITORING-SEC-5-LOGICAL-ARCHITECTURE
+LEVEL: None
+TITLE: 5. Logical architecture
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 ```text
                     External API worker boundary
 
@@ -121,9 +183,18 @@ Provider references:
                                                         |
                                              configured closed contact
 ```
+<<<
 
-## 6. Code placement
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-EXTERNAL-HAZARD-MONITORING-SEC-6-CODE-PLACEMENT
+LEVEL: None
+TITLE: 6. Code placement
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Code structure:
 
 ```text
@@ -157,9 +228,16 @@ backend/components/safetycomponents/external_hazard/
 
 Tests mirror this structure under `backend/tests/` and store sanitized provider
 payloads under `backend/tests/fixtures/external_apis/<provider>/`.
+<<<
 
-### 6.1 Integration changes to the current application core
+[[SECTION]]
+UID: ARCH-EXTERNAL-HAZARD-MONITORING-SEC-61-INTEGRATION-CHANGES-TO-THE-CURRENT-APPLICATION-CORE
+LEVEL: None
+TITLE: 6.1 Integration changes to the current application core
 
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 `SafetyFunctions` retains the current Safety Component registry and adds a
 separate API Component registry:
 
@@ -189,11 +267,25 @@ Diagnostic allocation and degradation bindings shall be derived from the resolve
 registry, installed live providers, covered hazards, and consumer dependencies. Adding
 an adapter for an existing capability shall not require adding its provider ID to
 fixed maps in `SelfDiagnosticsComponent`, the degradation registry, or C-EXT.
+<<<
 
-## 7. Component roles
+[[/SECTION]]
 
-### 7.1 `ExternalApiComponent`
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-EXTERNAL-HAZARD-MONITORING-SEC-7-COMPONENT-ROLES
+LEVEL: None
+TITLE: 7. Component roles
+
+[[SECTION]]
+UID: ARCH-EXTERNAL-HAZARD-MONITORING-SEC-71-EXTERNALAPICOMPONENT
+LEVEL: None
+TITLE: 7.1 `ExternalApiComponent`
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 This base class is the internal SafetyComponent API for provider plugins.
 It owns the common polling and cache lifecycle. C-EXT consumes `ApiResult`
 through the EventBus.
@@ -253,9 +345,18 @@ It does not own:
 - notification wording;
 - cross-provider conflict resolution;
 - recovery or actuation.
+<<<
 
-### 7.2 `ExternalApiRuntime`
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-EXTERNAL-HAZARD-MONITORING-SEC-72-EXTERNALAPIRUNTIME
+LEVEL: None
+TITLE: 7.2 `ExternalApiRuntime`
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Direct network calls shall not execute on the Safety System decision callback.
 The runtime provides:
 
@@ -273,9 +374,18 @@ The runtime provides:
 
 The shared runtime and HTTP transport are infrastructure, not a combined API
 component. Provider caches, schedules, schemas, and health remain independent.
+<<<
 
-### 7.3 `OpenMeteoWeatherApiComponent`
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-EXTERNAL-HAZARD-MONITORING-SEC-73-OPENMETEOWEATHERAPICOMPONENT
+LEVEL: None
+TITLE: 7.3 `OpenMeteoWeatherApiComponent`
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Requested fields shall be limited to those used by policy:
 
 - current: `temperature_2m`, `apparent_temperature`, `precipitation`, `rain`,
@@ -286,9 +396,18 @@ Requested fields shall be limited to those used by policy:
 
 It emits model values and validity timestamps. It shall never use words such as
 "local sensor detected" for these values.
+<<<
 
-### 7.4 `ImgwWarningsApiComponent`
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-EXTERNAL-HAZARD-MONITORING-SEC-74-IMGWWARNINGSAPICOMPONENT
+LEVEL: None
+TITLE: 7.4 `ImgwWarningsApiComponent`
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 The IMGW plugin applies in `PL` and requires a non-empty, unique list of
 four-digit TERYT codes when enabled. It maps:
 
@@ -308,9 +427,18 @@ household hazard types are dispatched as safety observations.
 An unrecognized locally applicable warning type shall reject the replacement
 snapshot as `schema_error`; it shall not become a healthy empty result.
 An updated warning with the same ID replaces the previous provider observation.
+<<<
 
-### 7.5 `OpenMeteoAirQualityApiComponent`
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-EXTERNAL-HAZARD-MONITORING-SEC-75-OPENMETEOAIRQUALITYAPICOMPONENT
+LEVEL: None
+TITLE: 7.5 `OpenMeteoAirQualityApiComponent`
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 This bundled outdoor-air-quality plugin returns current
 CAMS model values for the configured home coordinates. Required fields:
 
@@ -323,9 +451,18 @@ The plugin polls every five minutes by default. For an hourly CAMS sample, the
 default 70-minute validity window covers the model hour and allows two poll
 intervals for the next sample to arrive. Validity starts at the source timestamp.
 A response without that timestamp is invalid.
+<<<
 
-### 7.6 `ExternalHazardComponent`
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-EXTERNAL-HAZARD-MONITORING-SEC-76-EXTERNALHAZARDCOMPONENT
+LEVEL: None
+TITLE: 7.6 `ExternalHazardComponent`
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 `ExternalHazardComponent` is registered through the existing Safety Component
 registry and integrates with `EventBus`, `FaultManager`, `NotificationManager`,
 `MqttEntityManager`, and Home Assistant state listeners.
@@ -342,9 +479,20 @@ It owns:
 - an advice-inhibition snapshot used by recovery/advisory presentation.
 
 It does not perform HTTP or parse provider payloads.
+<<<
 
-## 8. Normalized data model
+[[/SECTION]]
 
+[[/SECTION]]
+
+[[SECTION]]
+UID: ARCH-EXTERNAL-HAZARD-MONITORING-SEC-8-NORMALIZED-DATA-MODEL
+LEVEL: None
+TITLE: 8. Normalized data model
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Provider output uses immutable typed objects. The normalized model contains:
 
 ```python
@@ -392,9 +540,18 @@ required source time is invalid; retrieval time shall not be substituted to make
 it appear fresh. A validated empty official feed may use its successful retrieval
 time for snapshot freshness without inventing a measurement or publication time.
 Cached observations retain their original source and validity times.
+<<<
 
-## 9. Decision model
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-EXTERNAL-HAZARD-MONITORING-SEC-9-DECISION-MODEL
+LEVEL: None
+TITLE: 9. Decision model
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 The Safety Component evaluates external hazard state separately from household
 exposure.
 
@@ -461,9 +618,16 @@ an open window shall need no additional opening delay. A valid, locally applicab
 official warning normalized as `immediate` shall need no additional opening delay
 for an open aperture configured for its hazard. Existing
 exposures shall follow the clearing policy.
+<<<
 
-### 9.1 Multiple providers
+[[SECTION]]
+UID: ARCH-EXTERNAL-HAZARD-MONITORING-SEC-91-MULTIPLE-PROVIDERS
+LEVEL: None
+TITLE: 9.1 Multiple providers
 
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 - A registered official warning plugin supplies authoritative validity for its
   warnings. The point weather model supplies independent forecast evidence.
 - The outdoor-air-quality capability supplies European AQI for the home
@@ -478,9 +642,18 @@ exposures shall follow the clearing policy.
   not a healthy empty warning feed and not an installed-adapter failure. Missing
   selection truth remains unknown, and synthetic selection supplies preview only. Any
   required uncovered hazard remains explicitly unevaluable.
+<<<
 
-### 9.2 Clearing
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-EXTERNAL-HAZARD-MONITORING-SEC-92-CLEARING
+LEVEL: None
+TITLE: 9.2 Clearing
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 An active condition clears only when one of these is true:
 
 - the affected opening is positively observed closed and the clear delay passes;
@@ -499,9 +672,20 @@ does not establish that an unavailable feed contains no replacement warning.
 Timeout, HTTP failure, parse failure, stale data, unsupported coverage, and an
 empty set of relevant sources leave that evaluation unevaluable. Positive
 closure of the affected opening remains an independent exposure-clear path.
+<<<
 
-## 10. Fault and notification model
+[[/SECTION]]
 
+[[/SECTION]]
+
+[[SECTION]]
+UID: ARCH-EXTERNAL-HAZARD-MONITORING-SEC-10-FAULT-AND-NOTIFICATION-MODEL
+LEVEL: None
+TITLE: 10. Fault and notification model
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 The fault catalog, Safety Mechanism IDs, and per-condition symptom IDs form one
 stable runtime contract. `FaultManager.related_sms` contains Safety Mechanism
 IDs, not per-condition symptom IDs.
@@ -543,9 +727,18 @@ Required notification context:
 SafetyHome never calls an actuator service directly. Its confirmation button
 publishes only `safety_recovery_confirm`; RecoveryManager owns validation and
 the constrained Home Assistant service call.
+<<<
 
-## 11. Advice conflict handling
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-EXTERNAL-HAZARD-MONITORING-SEC-11-ADVICE-CONFLICT-HANDLING
+LEVEL: None
+TITLE: 11. Advice conflict handling
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Temperature or indoor-AQ logic can recommend opening windows.
 That recommendation is unsafe during outdoor pollution, damaging wind, or
 storm.
@@ -564,9 +757,18 @@ source: OpenMeteoAirQualityApiComponent
 immediately before confirmed execution. C-EXT registers one close proposal per
 exposure symptom. The proposal is manual unless the opening is an explicitly
 configured `garage_door` or `gate` with a directional cover actuator.
+<<<
 
-## 12. Configuration architecture
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-EXTERNAL-HAZARD-MONITORING-SEC-12-CONFIGURATION-ARCHITECTURE
+LEVEL: None
+TITLE: 12. Configuration architecture
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Global policy and per-home binding remain separate.
 
 ```yaml
@@ -684,9 +886,16 @@ policy. Enablement, entity IDs, location, TERYT codes, selected stations, and
 language are installation-specific. The compiler shall generate the complete
 runtime configuration; the validator shall reject an enabled component,
 provider, or opening whose corresponding schema is absent or invalid.
+<<<
 
-### Provider selection and parameters
+[[SECTION]]
+UID: ARCH-EXTERNAL-HAZARD-MONITORING-SEC-PROVIDER-SELECTION-AND-PARAMETERS
+LEVEL: None
+TITLE: Provider selection and parameters
 
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 The required `user_config.external_sources` mapping shall contain exactly
 `WeatherPointModel`, `OfficialWeatherWarnings` and `OutdoorAirQuality`. Each
 value shall be one applicable registered provider ID or explicit `null` for
@@ -724,9 +933,18 @@ The catalogue uses `provider_metadata_version: 2` with trusted `data_kind`,
 `required_when_enabled` aliases or `legacy_parameter_paths`.
 Each category selector offers applicable provider names and "Wyłączone"; there
 is no enabled/default tier. Generic headings, help and counters are provider-neutral.
+<<<
 
-### Applied selection and synthetic presentation
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-EXTERNAL-HAZARD-MONITORING-SEC-APPLIED-SELECTION-AND-SYNTHETIC-PRESENTATION
+LEVEL: None
+TITLE: Applied selection and synthetic presentation
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Active real opening/hazard assertions shall be durably checkpointed in the
 existing SQLite state database, separately from preview state and first-activation
 evidence frames. The checkpoint shall allow at most 4096 assertions and 1 MiB;
@@ -775,9 +993,18 @@ degradation requalification, real coverage, notifications or recovery proposals.
 Normal live handlers shall reject synthetic definitions defensively. Every preview
 and its warnings shall be visibly test-labelled. See the
 [synthetic-provider contract](002-provider-selection-states/contracts/synthetic-provider.md).
+<<<
 
-### 12.1 Provider diagnostics and operator presentation
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-EXTERNAL-HAZARD-MONITORING-SEC-121-PROVIDER-DIAGNOSTICS-AND-OPERATOR-PRESENTATION
+LEVEL: None
+TITLE: 12.1 Provider diagnostics and operator presentation
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Restored real danger is published on the real fault entity through
 `retained_assertions` and `retained_hazard_unknown`, with `active: true` and raw
 evaluation `UNEVALUABLE`. This remains visible independently of disabled/test
@@ -819,9 +1046,20 @@ Technical IDs, hazard codes, country codes, units, and raw states remain stable.
 The [Berlin example](../examples/berlin_user_config.yml) illustrates a site
 using point weather and outdoor-air-quality capabilities without a configured
 official warning feed.
+<<<
 
-## 13. Startup and shutdown sequence
+[[/SECTION]]
 
+[[/SECTION]]
+
+[[SECTION]]
+UID: ARCH-EXTERNAL-HAZARD-MONITORING-SEC-13-STARTUP-AND-SHUTDOWN-SEQUENCE
+LEVEL: None
+TITLE: 13. Startup and shutdown sequence
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 1. Validate global policy, site, every API Component schema, and every opening.
 2. Resolve all `area_id` values and validate Home Assistant entities.
 3. Instantiate API Components without network activity.
@@ -836,9 +1074,18 @@ official warning feed.
     safely, cancel timers/listeners, and publish provider availability offline.
 
 No provider may perform a request during schema validation or construction.
+<<<
 
-## 14. Reliability and security
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-EXTERNAL-HAZARD-MONITORING-SEC-14-RELIABILITY-AND-SECURITY
+LEVEL: None
+TITLE: 14. Reliability and security
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 - TLS verification is mandatory.
 - Base URLs are configuration-validated against approved HTTPS hosts.
 - Redirects to unapproved hosts are rejected.
@@ -852,9 +1099,18 @@ No provider may perform a request during schema validation or construction.
 - A slow provider cannot exhaust all workers.
 - The app publishes provider health even when hazard evaluation is unavailable.
 - Free APIs are treated as best-effort inputs with no assumed uptime SLA.
+<<<
 
-## 15. Test architecture
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-EXTERNAL-HAZARD-MONITORING-SEC-15-TEST-ARCHITECTURE
+LEVEL: None
+TITLE: 15. Test architecture
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 End-to-end extension acceptance shall select the German dummy warning adapter
 with its own parameters and hazard coverage. The test shall exercise compilation,
 complete `SafetyFunctions` startup, test dispatch, preview diagnostics, metadata,
@@ -869,9 +1125,16 @@ retained telemetry. Hazard tests shall cover a wind-only empty feed,
 conflicting sources, failure after active evidence, expiry without a fresh feed,
 and independent provider recovery without automatic hazard clearing. Tests shall
 use sanitized fixtures and the AppDaemon stub; no household actuator is required.
+<<<
 
-### 15.1 API contract tests
+[[SECTION]]
+UID: ARCH-EXTERNAL-HAZARD-MONITORING-SEC-151-API-CONTRACT-TESTS
+LEVEL: None
+TITLE: 15.1 API contract tests
 
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Each API Component requires fixtures for:
 
 - normal data;
@@ -884,9 +1147,18 @@ Each API Component requires fixtures for:
 - malformed JSON and oversized response;
 - provider withdrawal/expiry;
 - HTTP timeout, 429, 4xx, and 5xx.
+<<<
 
-### 15.2 Safety-policy tests
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-EXTERNAL-HAZARD-MONITORING-SEC-152-SAFETY-POLICY-TESTS
+LEVEL: None
+TITLE: 15.2 Safety-policy tests
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 - Applicable hazard active + qualified open aperture -> symptom set.
 - A modeled weather or AQI threshold breach or applicable official warning qualifies after the configured
   persistence interval. An interrupted or expired breach cannot set exposure.
@@ -913,9 +1185,18 @@ Each API Component requires fixtures for:
   clear/shadow, or on replay -> zero actuator service calls.
 - Current valid gate confirmation -> exactly one allowlisted
   `cover.close_cover` call and closed-contact verification.
+<<<
 
-### 15.3 Integration tests
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-EXTERNAL-HAZARD-MONITORING-SEC-153-INTEGRATION-TESTS
+LEVEL: None
+TITLE: 15.3 Integration tests
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 - API Components schedule independently.
 - A stalled provider does not block another provider or HA state listeners.
 - Results are dispatched serially through EventBus.
@@ -924,9 +1205,20 @@ Each API Component requires fixtures for:
 - Provider health and aggregate hazard MQTT entities publish correct freshness.
 - Startup immediate polls occur only after manager/event wiring.
 - Shutdown leaves no active polling timer or worker submission.
+<<<
 
-## 16. Required project configuration
+[[/SECTION]]
 
+[[/SECTION]]
+
+[[SECTION]]
+UID: ARCH-EXTERNAL-HAZARD-MONITORING-SEC-16-REQUIRED-PROJECT-CONFIGURATION
+LEVEL: None
+TITLE: 16. Required project configuration
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 The following values shall be defined for the installation:
 
 1. The windows and external doors belonging to the opening registry.
@@ -936,3 +1228,6 @@ The following values shall be defined for the installation:
 5. Provider station identifiers and regional codes where required.
 6. The manual-versus-confirmed execution policy for every opening.
 7. The exact directional cover and closed contact for each confirmed gate.
+<<<
+
+[[/SECTION]]

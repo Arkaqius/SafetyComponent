@@ -20,7 +20,8 @@ repository.
 
 Treat backend code, validated configuration, and automated tests as evidence of
 implemented behavior. Treat HARA, SYS, SSRD, and feature architecture documents
-as the normative description of required behavior.
+in StrictDoc as the normative description of required behavior. Edit their
+`.sdoc` sources and use the documented export to review trace links.
 
 ## Required documentation workflow
 

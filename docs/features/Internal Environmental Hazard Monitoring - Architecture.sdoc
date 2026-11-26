@@ -1,22 +1,48 @@
-# Internal Environmental Hazard Monitoring — Architecture
+[DOCUMENT]
+TITLE: Internal Environmental Hazard Monitoring — Architecture
+UID: ARCH-INTERNAL-ENVIRONMENTAL-HAZARD-MONITORING-DOC
+OPTIONS:
+  MARKUP: Markdown
+  AUTO_LEVELS: Off
 
+[GRAMMAR]
+ELEMENTS:
+- TAG: TEXT
+  FIELDS:
+  - TITLE: LEVEL
+    TYPE: String
+    REQUIRED: True
+  - TITLE: STATEMENT
+    TYPE: String
+    REQUIRED: True
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 **Component:** `InternalEnvironmentalHazardMonitorComponent`
 
 **Logical allocations:** C-ALARM (smoke, flammable gas, CO); C-LEAK (water leak); C-AQ (indoor PM2.5)
 
 **Document role:** Normative feature architecture, English source language
+<<<
 
-## 1. Purpose and allocation
+[[SECTION]]
+UID: ARCH-INTERNAL-ENVIRONMENTAL-HAZARD-MONITORING-SEC-1-PURPOSE-AND-ALLOCATION
+LEVEL: None
+TITLE: 1. Purpose and allocation
 
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 The component shall report asserted smoke, flammable-gas, carbon-monoxide and
 water-leak alarms and elevated measured indoor PM2.5. It shall preserve separate hazard,
 detector-health and evidence-quality state. It shall not infer that a home is
 safe merely because no detector currently reports an alarm.
 
 The controlling contracts are
-[HARA section 1.3](<../sys/SafetyConcept - HARA.md#13-safety-goals>),
-[SYS section 8.7](<../sys/SafetyConcept - SYS.md#87-internal-environmental-hazard-monitoring-c-alarm-and-c-aq>)
-and [SSRD section 4.11](<../sys/SafetyComponent - SSRD.md#411-internal-environmental-hazard-monitoring>).
+[LINK: HARA-SEC-1-3, HARA section 1.3],
+[LINK: SYS-SEC-8-7, SYS section 8.7]
+and [LINK: SSRD-SEC-4-11, SSRD section 4.11].
 HARA hazards HZ‑FIRE‑01, HZ‑GAS‑01, HZ‑CO‑01, HZ‑WATER‑01, HZ‑AQ‑01 and
 HZ‑SYSTEM‑FAIL‑01 establish SG‑003 and SG‑005..009. One runtime component may
 implement these logical allocations without merging their safety priorities.
@@ -35,9 +61,18 @@ guidance shall follow section 7 and the separately allocated leak contract.
 Any emergency actuator allocation shall be
 separately justified for the hazard and installation. Shared notification
 outputs shall be constrained by section 7, not treated as an exemption.
+<<<
 
-## 2. Architecture and ownership
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-INTERNAL-ENVIRONMENTAL-HAZARD-MONITORING-SEC-2-ARCHITECTURE-AND-OWNERSHIP
+LEVEL: None
+TITLE: 2. Architecture and ownership
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 ```mermaid
 flowchart TD
     HA[HA detector and indoor PM entities] --> AD[Typed provider and device adapters]
@@ -79,9 +114,18 @@ persistence, history rendering or another detector. Adapters shall isolate
 provider I/O with bounded timeouts and expose immutable normalized observations.
 PM and persistence workloads shall be bounded so they cannot starve binary
 callbacks. Storage or transport failure shall not block local symptom state.
+<<<
 
-## 3. Inputs, device profiles and supervision
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-INTERNAL-ENVIRONMENTAL-HAZARD-MONITORING-SEC-3-INPUTS-DEVICE-PROFILES-AND-SUPERVISION
+LEVEL: None
+TITLE: 3. Inputs, device profiles and supervision
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Each configured subject shall have an alphanumeric `DetectorKey`, indoor
 `area_id`, resolved friendly name, equipment/profile identity and one or more
 typed hazard channels. A combined smoke/CO device shall expose separate channels
@@ -115,9 +159,16 @@ purpose, checks and fault ownership. Component-owned input failures shall use
 the individual health records. Shared consumer contracts shall retain their
 compatible ownership. An alarm entity shall not be declared healthy only when
 its value is `off`: detecting a hazard is successful detector operation.
+<<<
 
-### 3.1 Alarm evidence and quality precedence
+[[SECTION]]
+UID: ARCH-INTERNAL-ENVIRONMENTAL-HAZARD-MONITORING-SEC-31-ALARM-EVIDENCE-AND-QUALITY-PRECEDENCE
+LEVEL: None
+TITLE: 3.1 Alarm evidence and quality precedence
 
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 A fresh, correctly mapped assertion shall immediately SET even if a separate
 battery/trouble signal is failing. Quality loss cannot prove an environmental
 alarm, but it also cannot erase a previously observed one. Malformed or
@@ -143,9 +194,18 @@ clear so rapid transitions cannot disappear between polling snapshots. Profile
 evidence must distinguish delivery duplicates from a new detector assertion.
 Out-of-order and future-dated messages shall be diagnosed; they shall not
 overwrite newer authoritative state or advance a clear timer.
+<<<
 
-### 3.2 Availability and temporal coverage
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-INTERNAL-ENVIRONMENTAL-HAZARD-MONITORING-SEC-32-AVAILABILITY-AND-TEMPORAL-COVERAGE
+LEVEL: None
+TITLE: 3.2 Availability and temporal coverage
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 HA `last_changed` is not a heartbeat. `last_updated` shall establish freshness
 only with a verified integration contract for unchanged source reports. A
 detector-specific heartbeat, last-seen sequence or genuinely supervised link
@@ -164,9 +224,20 @@ IR-002..004 require alarm edges within 1 s and supervised confirmation within
 supervision thresholds shall be selected to fit the full SG-003 budget. A
 profile unable to meet those source contracts shall expose excluded/degraded
 coverage rather than silently extend the safety guarantee.
+<<<
 
-## 4. Mechanisms, faults and priorities
+[[/SECTION]]
 
+[[/SECTION]]
+
+[[SECTION]]
+UID: ARCH-INTERNAL-ENVIRONMENTAL-HAZARD-MONITORING-SEC-4-MECHANISMS-FAULTS-AND-PRIORITIES
+LEVEL: None
+TITLE: 4. Mechanisms, faults and priorities
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Each mechanism shall map to one stable fault. Symptom IDs shall be
 `InternalEnv_<RuleKey>_<DetectorKey>`, with `RuleKey` equal to the mechanism
 suffix after `sm_iehm_`; generated identities shall be collision-checked.
@@ -199,9 +270,18 @@ link or one required channel cannot heal other failed causes. Unsupported
 optional diagnostics shall be marked unsupported, not presumed healthy or
 automatically faulty. End-of-life and explicit detector trouble shall remain
 distinct diagnostic reasons; they shall not assert an environmental hazard.
+<<<
 
-## 5. PM2.5 policy and calibration
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-INTERNAL-ENVIRONMENTAL-HAZARD-MONITORING-SEC-5-PM25-POLICY-AND-CALIBRATION
+LEVEL: None
+TITLE: 5. PM2.5 policy and calibration
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Only measured indoor PM2.5 concentration with verified units shall enter R04
 or R05. Equivalent unit conversions shall be explicit in the profile. AQI,
 PM10, CO2, VOC and outdoor modeled PM shall not substitute for indoor PM2.5.
@@ -242,9 +322,18 @@ not claim formal annual guideline compliance. R04 shall use a separately
 reviewed short-window policy. See the
 [WHO guideline explanation](https://www.who.int/news-room/questions-and-answers/item/who-global-air-quality-guidelines)
 and [WHO guideline publication](https://www.who.int/publications/i/item/9789240034228/).
+<<<
 
-## 6. Lifecycle, persistence and timing
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-INTERNAL-ENVIRONMENTAL-HAZARD-MONITORING-SEC-6-LIFECYCLE-PERSISTENCE-AND-TIMING
+LEVEL: None
+TITLE: 6. Lifecycle, persistence and timing
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Evaluation shall separately report `passing`, `pending_failure`, `failed`,
 `pending_recovery`, `unevaluable` or `not_applicable` and retain the active
 symptom latch. Binary R01..R03 shall have no added SET persistence delay; PM
@@ -269,7 +358,7 @@ Each inactive-to-active fault episode shall receive an incident UUID retained
 across all contributors, retries, updates and HEAL. Recurrence after full clear
 shall use a new UUID while the notification tag remains stable per fault.
 Fault MQTT states shall follow the eight evaluation codes in
-[Fault State Policy](Fault%20State%20Policy%20-%20Architecture.md), with activation
+[LINK: ARCH-FAULT-STATE-POLICY-DOC, Fault State Policy], with activation
 and shadowing carried separately. Journal transition codes shall remain `SET`,
 `SHADOWED`, `CLEARED`; `HEAL` is not an evaluation status.
 
@@ -281,7 +370,7 @@ be persisted only within configured bounds; missing history shall rebuild with
 explicit coverage loss. Notification persistence shall not substitute for this
 domain state.
 The runtime uses a separate `internal_environment_state` namespace in the
-[shared SQLite database](<Runtime State Storage - Architecture.md>), retaining
+[LINK: ARCH-RUNTIME-STATE-STORAGE-DOC, shared SQLite database], retaining
 the configured JSON state path for one-time import. Sharing storage does not
 merge detector-state validation with notification persistence.
 The version-2 envelope shall retain records independently of current bindings.
@@ -337,9 +426,18 @@ response to every physical CO/gas exposure. HA/network loss shall be diagnosed,
 and independent autonomous alarms shall not rely on HA. Missing mobile or local
 output confirmation shall be a deadline/coverage failure, not assumed success.
 R05 long-term observation shall not replace R04's SG-005 contribution.
+<<<
 
-## 7. Guidance and output safety
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-INTERNAL-ENVIRONMENTAL-HAZARD-MONITORING-SEC-7-GUIDANCE-AND-OUTPUT-SAFETY
+LEVEL: None
+TITLE: 7. Guidance and output safety
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Guidance shall identify the reported hazard and prioritize leaving the affected
 area and obtaining appropriate help for smoke/gas/CO. It shall not infer the
 source or offer a generic ventilation/purifier action. For gas, it shall avoid
@@ -360,7 +458,7 @@ urgent evacuation guidance. Instruction conflicts shall be resolved through
 the shared policy contract rather than competing component messages.
 
 The component shall supply manual hazard-response and detector-repair proposals
-under the [shared action contract](<Recommended Actions and Recovery - Architecture.md>).
+under the [LINK: ARCH-RECOMMENDED-ACTIONS-AND-RECOVERY-DOC, shared action contract].
 Instructions shall use the same hazard-specific text at the fault, in the actions
 list and in notifications. Urgent response instructions shall require no task
 acknowledgement. A report of manual work shall not clear a detector incident,
@@ -390,9 +488,18 @@ outputs shall be diagnosed without blocking mobile delivery. Gas-valve
 reopening, detector reset, fan operation or building re-entry shall never be
 implied by an alarm's HEAL. Automatic restoration shall await explicit output
 eligibility; it shall not be inferred from a stored pre-alarm light state.
+<<<
 
-## 8. Configuration, evidence and SafetyHome
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-INTERNAL-ENVIRONMENTAL-HAZARD-MONITORING-SEC-8-CONFIGURATION-EVIDENCE-AND-SAFETYHOME
+LEVEL: None
+TITLE: 8. Configuration, evidence and SafetyHome
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 `backend/config/system_config.yml` shall own mechanism/fault definitions,
 severity, profiles, PM thresholds/windows, supervision/clear timers, storage
 limits and hazard-output policy. `backend/config/user_config.yml` shall own
@@ -447,9 +554,18 @@ shall have EN/PL/DE parity. UTC evidence shall render local date/time/timezone.
 Live source assertion and unverified retained assertion shall have visibly
 different wording. A cleared message shall say the detector or PM condition
 cleared, without a safe-re-entry statement. Technical codes shall remain stable.
+<<<
 
-## 9. Verification and traceability
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-INTERNAL-ENVIRONMENTAL-HAZARD-MONITORING-SEC-9-VERIFICATION-AND-TRACEABILITY
+LEVEL: None
+TITLE: 9. Verification and traceability
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 | Test group | Required cases | Software requirements |
 | --- | --- | --- |
 | IEHM-V01 Profiles | Explicit state mapping, CO versus CO2, gas identity, combined detector, area routing, malformed/unknown/test/hush data | SWR-IEHM-001/002/024 |
@@ -464,26 +580,26 @@ cleared, without a safe-re-entry statement. Technical codes shall remain stable.
 
 | SYS requirement | SSRD refinement |
 | --- | --- |
-| SYS-SR-IEHM-001 | SWR-IEHM-001/002 |
-| SYS-SR-IEHM-002 | SWR-IEHM-003/013 |
-| SYS-SR-IEHM-003 | SWR-IEHM-004/007 |
-| SYS-SR-IEHM-004 | SWR-IEHM-005/022 |
-| SYS-SR-IEHM-005 | SWR-IEHM-006 |
-| SYS-SR-IEHM-006 | SWR-IEHM-008/009/011 |
-| SYS-SR-IEHM-007 | SWR-IEHM-010 |
-| SYS-SR-IEHM-008 | SWR-IEHM-007/012 |
-| SYS-SR-IEHM-009 | SWR-IEHM-013 |
-| SYS-SR-IEHM-010 | SWR-IEHM-014/015/018 |
-| SYS-SR-IEHM-011 | SWR-IEHM-016 |
-| SYS-SR-IEHM-012 | SWR-IEHM-016 |
-| SYS-SR-IEHM-013 | SWR-IEHM-017/018 |
-| SYS-SR-IEHM-014 | SWR-IEHM-023 |
-| SYS-SR-IEHM-015 | SWR-IEHM-019/020 |
-| SYS-SR-IEHM-016 | SWR-IEHM-021 |
-| SYS-SR-IEHM-017 | SWR-IEHM-022 |
-| SYS-SR-IEHM-018 | SWR-IEHM-024 |
-| SYS-SR-IEHM-019 | SWR-IEHM-002/023/025 |
-| SYS-SR-IEHM-020 | SWR-IEHM-025 |
+| [LINK: SYS-SR-IEHM-001, SYS-SR-IEHM-001] | [LINK: SWR-IEHM-001, SWR-IEHM-001]/[LINK: SWR-IEHM-002, 002] |
+| [LINK: SYS-SR-IEHM-002, SYS-SR-IEHM-002] | [LINK: SWR-IEHM-003, SWR-IEHM-003]/[LINK: SWR-IEHM-013, 013] |
+| [LINK: SYS-SR-IEHM-003, SYS-SR-IEHM-003] | [LINK: SWR-IEHM-004, SWR-IEHM-004]/[LINK: SWR-IEHM-007, 007] |
+| [LINK: SYS-SR-IEHM-004, SYS-SR-IEHM-004] | [LINK: SWR-IEHM-005, SWR-IEHM-005]/[LINK: SWR-IEHM-022, 022] |
+| [LINK: SYS-SR-IEHM-005, SYS-SR-IEHM-005] | [LINK: SWR-IEHM-006, SWR-IEHM-006] |
+| [LINK: SYS-SR-IEHM-006, SYS-SR-IEHM-006] | [LINK: SWR-IEHM-008, SWR-IEHM-008]/[LINK: SWR-IEHM-009, 009]/[LINK: SWR-IEHM-011, 011] |
+| [LINK: SYS-SR-IEHM-007, SYS-SR-IEHM-007] | [LINK: SWR-IEHM-010, SWR-IEHM-010] |
+| [LINK: SYS-SR-IEHM-008, SYS-SR-IEHM-008] | [LINK: SWR-IEHM-007, SWR-IEHM-007]/[LINK: SWR-IEHM-012, 012] |
+| [LINK: SYS-SR-IEHM-009, SYS-SR-IEHM-009] | [LINK: SWR-IEHM-013, SWR-IEHM-013] |
+| [LINK: SYS-SR-IEHM-010, SYS-SR-IEHM-010] | [LINK: SWR-IEHM-014, SWR-IEHM-014]/[LINK: SWR-IEHM-015, 015]/[LINK: SWR-IEHM-018, 018] |
+| [LINK: SYS-SR-IEHM-011, SYS-SR-IEHM-011] | [LINK: SWR-IEHM-016, SWR-IEHM-016] |
+| [LINK: SYS-SR-IEHM-012, SYS-SR-IEHM-012] | [LINK: SWR-IEHM-016, SWR-IEHM-016] |
+| [LINK: SYS-SR-IEHM-013, SYS-SR-IEHM-013] | [LINK: SWR-IEHM-017, SWR-IEHM-017]/[LINK: SWR-IEHM-018, 018] |
+| [LINK: SYS-SR-IEHM-014, SYS-SR-IEHM-014] | [LINK: SWR-IEHM-023, SWR-IEHM-023] |
+| [LINK: SYS-SR-IEHM-015, SYS-SR-IEHM-015] | [LINK: SWR-IEHM-019, SWR-IEHM-019]/[LINK: SWR-IEHM-020, 020] |
+| [LINK: SYS-SR-IEHM-016, SYS-SR-IEHM-016] | [LINK: SWR-IEHM-021, SWR-IEHM-021] |
+| [LINK: SYS-SR-IEHM-017, SYS-SR-IEHM-017] | [LINK: SWR-IEHM-022, SWR-IEHM-022] |
+| [LINK: SYS-SR-IEHM-018, SYS-SR-IEHM-018] | [LINK: SWR-IEHM-024, SWR-IEHM-024] |
+| [LINK: SYS-SR-IEHM-019, SYS-SR-IEHM-019] | [LINK: SWR-IEHM-002, SWR-IEHM-002]/[LINK: SWR-IEHM-023, 023]/[LINK: SWR-IEHM-025, 025] |
+| [LINK: SYS-SR-IEHM-020, SYS-SR-IEHM-020] | [LINK: SWR-IEHM-025, SWR-IEHM-025] |
 
 Verification shall cover the HARA fire, flammable-gas, carbon-monoxide, indoor
 air-quality and monitoring-loss hazards, including cross-hazard guidance and
@@ -492,17 +608,29 @@ and the bundled AppDaemon stub; no live smoke, gas, CO release or household
 routine shall be triggered for software or documentation validation. Hardware
 capability and passive source timing shall be assessed separately and shall not
 be claimed from unit-test success.
+<<<
 
-## 10. Related contracts and source interpretation
+[[/SECTION]]
 
-- [Entity Health Monitoring](<Entity Health Monitoring - Architecture.md>): Group B quality and ownership.
-- [Mobile Notification Delivery](<Mobile Notification Delivery - Architecture.md>): target attempts, quiet updates, persistence and approved local outputs.
-- [Recommended Actions and Recovery](<Recommended Actions and Recovery - Architecture.md>): conflict policy and negative recovery boundary.
-- [External Hazard Monitoring](<External Hazard Monitoring - Architecture.md>): outdoor context and advice inhibition.
-- [Heating System Monitoring](<Heating System Monitoring - Architecture.md>): independent heating supervision; no replacement of smoke/gas/CO detectors.
+[[SECTION]]
+UID: ARCH-INTERNAL-ENVIRONMENTAL-HAZARD-MONITORING-SEC-10-RELATED-CONTRACTS-AND-SOURCE-INTERPRETATION
+LEVEL: None
+TITLE: 10. Related contracts and source interpretation
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
+- [LINK: ARCH-ENTITY-HEALTH-MONITORING-DOC, Entity Health Monitoring]: Group B quality and ownership.
+- [LINK: ARCH-MOBILE-NOTIFICATION-DELIVERY-DOC, Mobile Notification Delivery]: target attempts, quiet updates, persistence and approved local outputs.
+- [LINK: ARCH-RECOMMENDED-ACTIONS-AND-RECOVERY-DOC, Recommended Actions and Recovery]: conflict policy and negative recovery boundary.
+- [LINK: ARCH-EXTERNAL-HAZARD-MONITORING-DOC, External Hazard Monitoring]: outdoor context and advice inhibition.
+- [LINK: ARCH-HEATING-SYSTEM-MONITORING-DOC, Heating System Monitoring]: independent heating supervision; no replacement of smoke/gas/CO detectors.
 
 The public sources in sections 5 and 7 support exposure-period interpretation
 and hazard-specific guidance only. They do not establish a particular device's
 alarm threshold, certification, timing guarantee or the suitability of a local
 electrical output. Those properties shall be recorded in reviewed equipment
 and installation profiles with provenance.
+<<<
+
+[[/SECTION]]

@@ -97,7 +97,7 @@ allocated supervision budget, including SG-003's 60-second path. Existing
 not the number of queued observations. Supplied startup metadata must be current
 and valid to confirm completion; legacy progress reports without that metadata
 remain compatible. See
-[Fault Routing and Aggregation](<../features/Fault Routing and Aggregation - Architecture.md#startup-qualification>).
+[Fault Routing and Aggregation](<../features/Fault Routing and Aggregation - Architecture.sdoc>).
 
 The shared background reader acquires temperature-owned and shared
 outside-temperature dependency reports on a 120-second baseline, other ordinary
@@ -124,7 +124,7 @@ inputs use live `last_reported` confirmation rather than requiring a value
 change; a declared timestamp contract remains necessary to relate integration
 reports to actual measurements. MQTT integrations may suppress unchanged
 writes unless `force_update` is enabled, so repeated messages do not necessarily
-advance `last_reported`. See the [Entity Monitor architecture](../features/Entity%20Health%20Monitoring%20-%20Architecture.md#82-optional-checks)
+advance `last_reported`. See the [Entity Monitor architecture](../features/Entity%20Health%20Monitoring%20-%20Architecture.sdoc)
 for source semantics and detection-budget allocation.
 
 Room-temperature and shared outside-temperature dependencies use a 3600-second
@@ -222,7 +222,7 @@ Omitted or null values inherit packaged values. The compiler validates the
 complete merged calibration, including all recovery margins, before saving or
 starting the App. Detector-test interval overrides are limited to 1–180 days.
 Sampling cadence, all `*_stale_after_seconds` fields, state-file paths and fault
-levels remain system-only. See the [source contract](../features/Configuration%20Model%20-%20Architecture.md#33-component-settings).
+levels remain system-only. See the [source contract](../features/Configuration%20Model%20-%20Architecture.sdoc).
 The memory thresholds are packaged defaults, not a guarantee that
 256 MiB is a safe reserve for every host; review them against actual host
 capacity and workload before an installation relies on L2 memory detection.
@@ -370,7 +370,7 @@ supports DE wind preview with `region_code` and a deterministic `scenario`, uses
 `transport_kind: none`, and never contributes to real safety coverage or actions.
 
 Detailed selection and parameter rules are defined in
-[Configuration Model](<../features/Configuration Model - Architecture.md#provider-owned-installation-parameters>)
+[Configuration Model](<../features/Configuration Model - Architecture.sdoc>)
 and the [source-selection contract](../features/002-provider-selection-states/contracts/source-selection.md).
 
 ### 5.3 Notification and recovery
@@ -403,7 +403,7 @@ generated runtime configuration and do not change the source-model version
 contract between `system_config.version` and `user_config.model_version`.
 
 Enabled runtime persistence uses the shared SQLite database described in
-[Runtime State Storage](<../features/Runtime State Storage - Architecture.md>).
+[Runtime State Storage](<../features/Runtime State Storage - Architecture.sdoc>).
 The existing state-file fields are retained as one-time JSON import paths;
 notification and recovery saves use their separate store namespaces afterwards.
 The database is `safety_state.sqlite3` beside `runtime_cfg.fault_evidence.state_file`,
@@ -460,7 +460,7 @@ are never localized.
 The optional installation-owned `safety_routines` registry compiles into
 `user_config.safety_routines.routines`. It introduces no packaged calibration
 override or change to existing component bindings. See
-[Safety Routines](../features/Safety%20Routines%20-%20Architecture.md) for the
+[Safety Routines](../features/Safety%20Routines%20-%20Architecture.sdoc) for the
 closed schema, service limits, source-time qualification and event API.
 
 `backend/build_app_config.py` validates both closed source models, checks their

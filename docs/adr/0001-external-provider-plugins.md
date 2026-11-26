@@ -73,7 +73,7 @@ national service. Saving configuration remains separate from authorized restart.
 ## References
 
 - [Feature specification](../features/001-external-provider-plugins/spec.md)
-- [SYS external-hazard requirements, section 8.3.6](<../sys/SafetyConcept - SYS.md>)
-- [SSRD external-hazard requirements](<../sys/SafetyComponent - SSRD.md#48-external-hazard-monitoring>)
-- [External Hazard Monitoring architecture](<../features/External Hazard Monitoring - Architecture.md>)
-- [Configuration Model architecture](<../features/Configuration Model - Architecture.md>)
+- [SYS external-hazard requirements, section 8.3.6](<../sys/SafetyConcept - SYS.sdoc>)
+- [SSRD external-hazard requirements](<../sys/SafetyComponent - SSRD.sdoc>)
+- [External Hazard Monitoring architecture](<../features/External Hazard Monitoring - Architecture.sdoc>)
+- [Configuration Model architecture](<../features/Configuration Model - Architecture.sdoc>)

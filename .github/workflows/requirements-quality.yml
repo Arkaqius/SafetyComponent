@@ -31,6 +31,9 @@ jobs:
           python -c 'import strictdoc'
           python -m pytest -q tools/test_strictdoc_workflow.py tools/test_speckit_guard.py
 
+      - name: Validate the safety documentation and cross-document traces
+        run: python tools/export_safety_docs.py
+
       - name: Validate feature requirements, architecture and verification plans
         shell: bash
         run: |

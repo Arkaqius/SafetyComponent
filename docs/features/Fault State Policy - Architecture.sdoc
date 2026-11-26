@@ -1,14 +1,40 @@
-# Fault state and priority policy
+[DOCUMENT]
+TITLE: Fault state and priority policy
+UID: ARCH-FAULT-STATE-POLICY-DOC
+OPTIONS:
+  MARKUP: Markdown
+  AUTO_LEVELS: Off
 
+[GRAMMAR]
+ELEMENTS:
+- TAG: TEXT
+  FIELDS:
+  - TITLE: LEVEL
+    TYPE: String
+    REQUIRED: True
+  - TITLE: STATEMENT
+    TYPE: String
+    REQUIRED: True
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 This contract separates a Boolean Safety Mechanism (SM) predicate from the
 fault that interprets its evidence and owns handling policy. It is derived from
-[SYS section 8.1](<../sys/SafetyConcept - SYS.md#81-component-model--aggregation-rules>)
-and [SWR-FLT-008..012 and 024..025](<../sys/SafetyComponent - SSRD.md#44-fault-aggregation-and-system-state>).
+[LINK: SYS-SEC-8-1, SYS section 8.1]
+and [LINK: SSRD-SEC-4-4, SWR-FLT-008..012 and 024..025].
 The [fault-handling plan](../FAULT_HANDLING_PLAN.md) records allocations and
 separate delivery tasks.
+<<<
 
-## Boundaries and identity
+[[SECTION]]
+UID: ARCH-FAULT-STATE-POLICY-SEC-BOUNDARIES-AND-IDENTITY
+LEVEL: None
+TITLE: Boundaries and identity
 
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 An SM answers one Boolean question: `true` means the named violation is present
 for eligible inputs; `false` means it is absent. The fault owns input bindings,
 qualification, aggregation, priority, category and response policy. A missing or
@@ -20,10 +46,19 @@ Each fault has category `H` (hazard/equipment condition) or `D` (diagnostic
 capability failure), and exactly one priority `level` from 1 through 4. Category
 does not imply urgency. Fault IDs, `related_sms` and MQTT entity IDs are
 technical contracts, except for the explicit per-door fault identity change in
-[Fault Routing and Aggregation](Fault%20Routing%20and%20Aggregation%20-%20Architecture.md).
+[LINK: ARCH-FAULT-ROUTING-AND-AGGREGATION-DOC, Fault Routing and Aggregation].
+<<<
 
-## Evaluation and activation
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-FAULT-STATE-POLICY-SEC-EVALUATION-AND-ACTIVATION
+LEVEL: None
+TITLE: Evaluation and activation
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 The evaluation status is one of `NOT_EVALUATED`, `PASS`, `PENDING_FAILURE`,
 `FAIL`, `PENDING_RECOVERY`, `UNEVALUABLE`, `INHIBITED` or `DISABLED`. The active
 condition, active contributors, `shadowed_by` owners and latch are separate
@@ -54,7 +89,7 @@ it is re-presented only after the final owner clears. A SHADOWED response event
 must refer to the shadowed fault's contributor, not the shadowing fault's
 contributor.
 
-The shared [startup qualification](<Fault Routing and Aggregation - Architecture.md#startup-qualification>)
+The shared [LINK: ARCH-FAULT-ROUTING-AND-AGGREGATION-SEC-STARTUP-QUALIFICATION, startup qualification]
 shall keep deferred D contributions unevaluable during the configured startup
 interval. `SafetyAppHealth` and contributors with allocated
 `detection_budget_seconds` shall bypass it. A cached passing diagnostic shall not
@@ -63,9 +98,18 @@ eligible evidence. Category H evidence and application-health failures shall byp
 gate. Independent eligible contributors shall retain the fault's normal
 aggregation and may assert it during startup. Missing evidence at expiry shall
 remain unknown, not silently healthy.
+<<<
 
-## Priority and responses
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-FAULT-STATE-POLICY-SEC-PRIORITY-AND-RESPONSES
+LEVEL: None
+TITLE: Priority and responses
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 The existing fault `level` is also its notification level; there is no second
 severity scale. These defaults do not authorize actuation or select a
 degradation target.
@@ -92,14 +136,23 @@ Startup, unknown fault priority, unlinked task uncertainty and independent
 coverage/channel failures shall remain visible and shall not be masked by an
 informational condition.
 
-The [mobile delivery contract](<Mobile Notification Delivery - Architecture.md>)
+The [LINK: ARCH-MOBILE-NOTIFICATION-DELIVERY-DOC, mobile delivery contract]
 owns transport retries, ACK and platform-specific profiles. Explicit fault
 configuration owns recovery prerequisites, degradation targets, shadowing and
 any permitted operator controls. Failure of notification or persistence never
 blocks detection or technical restrictions.
+<<<
 
-## Published contract
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-FAULT-STATE-POLICY-SEC-PUBLISHED-CONTRACT
+LEVEL: None
+TITLE: Published contract
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Each fault MQTT state is exactly one of the eight evaluation status codes above.
 The attributes `active` (Boolean), `shadowed_by` (list of fault IDs), and
 `latched` (Boolean) expose independent axes. `FAIL` and `active` can coexist
@@ -127,9 +180,18 @@ pages without discarding Recorder data. Changing the page, category or time
 range shall release superseded history subscriptions. A new category or time
 range shall reset pagination; unloaded pages shall not imply missing or healthy
 evidence.
+<<<
 
-## Diagnostic evidence
+[[/SECTION]]
 
+[[SECTION]]
+UID: ARCH-FAULT-STATE-POLICY-SEC-DIAGNOSTIC-EVIDENCE
+LEVEL: None
+TITLE: Diagnostic evidence
+
+[TEXT]
+LEVEL: None
+STATEMENT: >>>
 Each fault retains one versioned `freeze_frame` object combining first-activation
 evidence with bounded lifecycle metadata. The captured evidence contains only
 selected contributor context, subject, fault priority
@@ -181,9 +243,12 @@ activation. Detection, notification, recovery and degradation continue. A cleare
 record may be evicted when the total bound is otherwise exceeded. The store is
 separate from notification delivery history. No periodic, recovery, or
 significant-change snapshots and no episode objects are created.
-The [SQLite store](<Runtime State Storage - Architecture.md>) retains evidence
+The [LINK: ARCH-RUNTIME-STATE-STORAGE-DOC, SQLite store] retains evidence
 separately from notification history and imports the configured legacy JSON
 only once. The in-memory frame is available to fault publication immediately;
 the atomic store transaction is scheduled after the current response dispatch.
 Failed writes assert the independent App Health persistence contributor and retry no more
 often than every 60 seconds, with one final attempt on orderly shutdown.
+<<<
+
+[[/SECTION]]
