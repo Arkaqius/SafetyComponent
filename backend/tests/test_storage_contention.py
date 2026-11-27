@@ -125,7 +125,7 @@ def test_synchronous_contention_keeps_existing_callback_wait_budget(tmp_path: Pa
         writing.result(timeout=1)
 
 
-def test_permanent_external_contention_is_bounded_and_preserves_commit(tmp_path: Path) -> None:
+def test_permanent_external_contention_is_bounded_and_preserves_commit(tmp_path: Path, monkeypatch) -> None:
     """SC88U-004: exhausted worker retries retain data and an exact failure receipt.
 
     @relation(SWR-FLT-021, scope=function, role=Test)
@@ -136,12 +136,27 @@ def test_permanent_external_contention_is_bounded_and_preserves_commit(tmp_path:
     store.save({"generation": 0})
     with closing(sqlite3.connect(db.path)) as locked, locked, ThreadPoolExecutor(max_workers=1) as worker:
         locked.execute("BEGIN IMMEDIATE")
+        timeouts: list[int] = []
+        connect = sqlite3.connect
+
+        class ObservedConnection(sqlite3.Connection):
+            def execute(self, sql: str, parameters: tuple = ()) -> sqlite3.Cursor:
+                if sql == "BEGIN IMMEDIATE":
+                    timeouts.append(super().execute("PRAGMA busy_timeout").fetchone()[0])
+                return super().execute(sql, parameters)
+
+        def observe_connect(*args, **kwargs):
+            return connect(*args, **kwargs, factory=ObservedConnection)
+
+        monkeypatch.setattr(sqlite3, "connect", observe_connect)
         writer = SnapshotWriter(worker)
         writer.claim("current")
-        started = monotonic()
         assert writer.enqueue("current", 9, {"generation": 1}, store.save)
-        assert writer.wait_for_progress(1)
-        assert monotonic() - started < 0.8
+        # This is a test watchdog, not a filesystem or scheduler deadline.
+        # SC88U-006 separately proves the remaining contention-wait allocation.
+        assert writer.wait_for_progress(5)
+        assert len(timeouts) == 4
+        assert all(0 < timeout <= 50 for timeout in timeouts)
         result = writer.drain("current")
         assert (result.owner, result.revision, result.error) == ("current", 9, "SQLITE_BUSY")
         assert store.load() == {"generation": 0}
