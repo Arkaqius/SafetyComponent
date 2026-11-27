@@ -382,5 +382,7 @@ def test_retained_writer_classifies_errors_after_storage_module_reload() -> None
             assert len(attempts) == 2, attempts
         """)
     env = dict(os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[1]))
-    result = subprocess.run([sys.executable, "-B", "-c", script], env=env, capture_output=True, text=True, timeout=5)
+    # Bound a deadlocked child without treating loaded-host interpreter startup
+    # as a product deadline; the child's write/receipt assertions stay unchanged.
+    result = subprocess.run([sys.executable, "-B", "-c", script], env=env, capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stdout + result.stderr
