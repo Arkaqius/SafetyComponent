@@ -1,7 +1,9 @@
 """Exact durable authorization and current policy at queued command handoff."""
 
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
+from threading import Event
 from unittest.mock import Mock
 
 import pytest
@@ -89,6 +91,53 @@ def test_command_waits_for_exact_consumed_permission_snapshot_and_owner_drain() 
     transport.complete(0, {"success": True})
     broker.tick()
     assert manager._proposals[symptom.name]["status"] == RecoveryActionState.EXECUTING.name
+
+
+@pytest.mark.parametrize("expire", [False, True])
+def test_contention_cannot_handoff_before_exact_authorization_or_after_expiry(tmp_path, expire) -> None:
+    """SC88U-013: real BUSY retries never renew consent or dispatch an old receipt.
+
+    @relation(SWR-REC-004, scope=function, role=Test)
+    @relation(SWR-REC-005, scope=function, role=Test)
+    @relation(SWR-REC-006, scope=function, role=Test)
+    """
+    database = SqliteStateDatabase(tmp_path / "state.sqlite3")
+    store = database.record_store("recovery_state", max_bytes=1024 * 1024)
+    manager, broker, _, transport, executor, _, symptom, _ = build_recovery(store=store)
+    executor.finish(0)
+    manager._drain_writes()
+    original = store.save
+    busy = Event()
+
+    def observe_busy(snapshot):
+        try:
+            original(snapshot)
+        except OSError:
+            busy.set()
+            raise
+
+    # Replace the captured adapter only for the consumed-permission revision.
+    future, function, args = executor.jobs[1]
+    request, _ = args
+    executor.jobs[1] = (future, function, (request, observe_busy))
+    with closing(sqlite3.connect(database.path)) as lock, ThreadPoolExecutor(max_workers=1) as worker:
+        lock.execute("BEGIN IMMEDIATE")
+        running = worker.submit(executor.finish, 1)
+        try:
+            assert busy.wait(1)
+            manager._drain_writes()
+            broker.tick()
+            assert not transport.calls
+            assert store.load()["proposals"][0]["status"] == "AWAITING_CONFIRMATION"
+            if expire:
+                manager._pending_async_commands[symptom.name]["authorization_expires"] = 0
+        finally:
+            lock.rollback()
+        running.result(timeout=1)
+    assert not transport.calls
+    manager._drain_writes()
+    broker.tick()
+    assert len(transport.calls) == (0 if expire else 1)
 
 
 @pytest.mark.parametrize("change", ["restriction", "clear", "expired", "resource", "postcondition", "stop"])
