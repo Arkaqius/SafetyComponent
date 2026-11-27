@@ -220,11 +220,11 @@ automatic-recovery authority are rejected.
 
 ## Evidence Map
 
-- [HARA](<../../sys/SafetyConcept - HARA.md>),
-  [SYS](<../../sys/SafetyConcept - SYS.md>) and
-  [SSRD](<../../sys/SafetyComponent - SSRD.md>).
-- [Indoor architecture](<../Internal Environmental Hazard Monitoring - Architecture.md>)
-  and [external architecture](<../External Hazard Monitoring - Architecture.md>).
+- [HARA](<../../sys/SafetyConcept - HARA.sdoc>),
+  [SYS](<../../sys/SafetyConcept - SYS.sdoc>) and
+  [SSRD](<../../sys/SafetyComponent - SSRD.sdoc>).
+- [Indoor architecture](<../Internal Environmental Hazard Monitoring - Architecture.sdoc>)
+  and [external architecture](<../External Hazard Monitoring - Architecture.sdoc>).
 - [Indoor monitor](../../../backend/components/safetycomponents/internal_environmental_hazard/internal_environmental_hazard_monitor_component.py),
   [schema](../../../backend/components/safetycomponents/internal_environmental_hazard/schema.py),
   [state store](../../../backend/components/safetycomponents/internal_environmental_hazard/state_store.py),

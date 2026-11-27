@@ -2,16 +2,170 @@
 
 from __future__ import annotations
 
+import builtins
 import hashlib
 import json
+import os
 import sqlite3
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
+from threading import Condition, RLock, get_ident, local
+from time import monotonic
 from typing import Any, Callable, Iterable, Iterator, Mapping
+from weakref import WeakValueDictionary
 
 _SCHEMA_VERSION = 1
 _APPLICATION_ID = 0x53414645
 _BUSY_TIMEOUT_SECONDS = 0.05
+BACKGROUND_WRITE_SECONDS = 0.5
+# Primary SQLite result codes are stable, including on Python 3.10, which
+# does not expose the sqlite3 result-code constants or exception attributes.
+_SQLITE_STORAGE_CODES = {
+    5: "SQLITE_BUSY",
+    6: "SQLITE_LOCKED",
+    8: "SQLITE_READONLY",
+    10: "SQLITE_IOERR",
+    11: "SQLITE_CORRUPT",
+    13: "SQLITE_FULL",
+    14: "SQLITE_CANTOPEN",
+    26: "SQLITE_NOTADB",
+}
+_SQLITE_LEGACY_MESSAGES = {
+    "database is locked": "SQLITE_BUSY",
+    "database table is locked": "SQLITE_LOCKED",
+    "attempt to write a readonly database": "SQLITE_READONLY",
+    "disk I/O error": "SQLITE_IOERR",
+    "database disk image is malformed": "SQLITE_CORRUPT",
+    "database or disk is full": "SQLITE_FULL",
+    "unable to open database file": "SQLITE_CANTOPEN",
+    "file is not a database": "SQLITE_NOTADB",
+}
+
+
+class SqliteStateError(OSError):
+    """Expose a SQLite result family while retaining the storage error contract."""
+
+    def __init__(self, operation: str, error: sqlite3.Error) -> None:
+        code = getattr(error, "sqlite_errorcode", None)
+        if code is not None:
+            self.sqlite_errorname: str = _SQLITE_STORAGE_CODES.get(
+                code & 0xFF, getattr(error, "sqlite_errorname", "SQLITE_ERROR")
+            )
+        elif type(error) in (sqlite3.OperationalError, sqlite3.DatabaseError):
+            self.sqlite_errorname = _SQLITE_LEGACY_MESSAGES.get(str(error), "SQLITE_ERROR")
+        else:
+            self.sqlite_errorname = "SQLITE_ERROR"
+        super().__init__(f"SQLite state storage {operation} failed ({self.sqlite_errorname}): {error}")
+
+
+class SupersededStorageWrite(Exception):
+    """An unsent worker attempt lost its infrastructure owner or revision."""
+
+
+@dataclass
+class _WriteBudget:
+    seconds: float
+    background: bool = False
+    current: Callable[[], bool] | None = None
+
+    def remaining(self) -> float:
+        if self.current is not None and not self.current():
+            raise SupersededStorageWrite()
+        if self.seconds <= 0:
+            raise SqliteStateError("admission", sqlite3.OperationalError("database is locked"))
+        return self.seconds
+
+    def consume(self, seconds: float) -> None:
+        self.seconds -= max(0, seconds)
+
+
+def _budget_local() -> Any:
+    return builtins.__dict__.setdefault("_safety_sqlite_budget_v1", local())
+
+
+@contextmanager
+def storage_write_budget(
+    current: Callable[[], bool] | None = None,
+) -> Iterator[_WriteBudget]:
+    """Share one contention budget across coordination and SQLite lock waits.
+
+    Only the existing background worker supplies a current-generation check.
+    Foreground callers retain their original 50 ms contention budget.
+    """
+    state = _budget_local()
+    previous = getattr(state, "budget", None)
+    budget = previous or _WriteBudget(
+        BACKGROUND_WRITE_SECONDS if current is not None else _BUSY_TIMEOUT_SECONDS,
+        background=current is not None, current=current,
+    )
+    state.budget = budget
+    try:
+        yield budget
+    finally:
+        state.budget = previous
+
+
+class _WriteCoordinator:
+    """Serialize mutations with foreground priority and finite admission waits."""
+
+    def __init__(self) -> None:
+        self.condition = Condition(RLock())
+        self.owner: int | None = None
+        self.depth = 0
+        self.foreground_waiters = 0
+
+    @contextmanager
+    def mutation(self, budget: _WriteBudget) -> Iterator[None]:
+        identity = get_ident()
+        with self.condition:
+            foreground = not budget.background
+            if foreground:
+                self.foreground_waiters += 1
+                self.condition.notify_all()
+            try:
+                while self.owner not in (None, identity) or (
+                    self.owner is None and budget.background and self.foreground_waiters
+                ):
+                    started = monotonic()
+                    self.condition.wait(timeout=min(0.01, budget.remaining()))
+                    budget.consume(monotonic() - started)
+                budget.remaining()
+                self.owner = identity
+                self.depth += 1
+            finally:
+                if foreground:
+                    self.foreground_waiters -= 1
+                self.condition.notify_all()
+        try:
+            yield
+        finally:
+            with self.condition:
+                self.depth -= 1
+                if not self.depth:
+                    self.owner = None
+                self.condition.notify_all()
+
+
+def _database_coordinator(path: Path) -> _WriteCoordinator:
+    lock = builtins.__dict__.setdefault("_safety_sqlite_registry_lock_v1", RLock())
+    with lock:
+        coordinators = builtins.__dict__.setdefault(
+            "_safety_sqlite_coordinators_v1", WeakValueDictionary()
+        )
+        key = os.path.normcase(str(path.resolve()))
+        coordinator = coordinators.get(key)
+        if coordinator is None:
+            coordinator = _WriteCoordinator()
+            coordinators[key] = coordinator
+        return coordinator
+
+
+@dataclass(frozen=True)
+class _EncodedSection:
+    kind: str
+    scalar: str | None
+    records: dict[str, tuple[int, str]]
 
 
 def state_database_path(legacy_path: str | Path) -> Path:
@@ -24,19 +178,45 @@ class SqliteStateDatabase:
 
     def __init__(self, path: str | Path) -> None:
         self.path: Path = Path(path)
+        self._coordinator = _database_coordinator(self.path)
+
+    @contextmanager
+    def _mutation_access(self, connection: sqlite3.Connection) -> Iterator[None]:
+        """Coordinate both ordinary transactions and initial WAL conversion."""
+        with storage_write_budget() as budget, self._coordinator.mutation(budget):
+            timeout_ms = max(0, int(min(_BUSY_TIMEOUT_SECONDS, budget.remaining()) * 1000))
+            connection.execute(f"PRAGMA busy_timeout = {timeout_ms}")
+            yield
+
+    @contextmanager
+    def write_transaction(self, connection: sqlite3.Connection) -> Iterator[None]:
+        """Keep all namespace mutations in one bounded process admission policy.
+
+        @relation(SWR-NOT-017, scope=function, role=Implementation)
+        """
+        with self._mutation_access(connection):
+            with connection:
+                connection.execute("BEGIN IMMEDIATE")
+                yield
 
     @contextmanager
     def connect(self) -> Iterator[sqlite3.Connection]:
         """Open a callback-local connection with bounded lock contention."""
         self.path.parent.mkdir(parents=True, exist_ok=True)
         try:
-            connection = sqlite3.connect(self.path, timeout=_BUSY_TIMEOUT_SECONDS)
+            budget = getattr(_budget_local(), "budget", None)
+            timeout = min(_BUSY_TIMEOUT_SECONDS, budget.remaining()) if budget else _BUSY_TIMEOUT_SECONDS
+            connection = sqlite3.connect(self.path, timeout=timeout)
         except sqlite3.Error as exc:
-            raise OSError(f"Unable to open SQLite state storage: {exc}") from exc
+            raise SqliteStateError("open", exc) from exc
         try:
             connection.execute("PRAGMA foreign_keys = ON")
-            application_id = connection.execute("PRAGMA application_id").fetchone()[0]
-            version = connection.execute("PRAGMA user_version").fetchone()[0]
+            # Read both header values from the same committed snapshot. Release
+            # the reader before a possible schema initialization.
+            with connection:
+                connection.execute("BEGIN")
+                application_id = connection.execute("PRAGMA application_id").fetchone()[0]
+                version = connection.execute("PRAGMA user_version").fetchone()[0]
             if application_id not in (0, _APPLICATION_ID) or version not in (
                 0,
                 _SCHEMA_VERSION,
@@ -46,21 +226,22 @@ class SqliteStateDatabase:
                 self._initialize(connection)
             elif application_id != _APPLICATION_ID:
                 raise ValueError("Missing SafetyComponent database identity")
-            mode = connection.execute("PRAGMA journal_mode = WAL").fetchone()[0]
+            mode = connection.execute("PRAGMA journal_mode").fetchone()[0]
+            if mode != "wal":
+                with self._mutation_access(connection):
+                    mode = connection.execute("PRAGMA journal_mode = WAL").fetchone()[0]
             if mode != "wal":
                 raise ValueError("SafetyComponent state requires WAL journaling")
             connection.execute("PRAGMA synchronous = FULL")
             yield connection
         except sqlite3.Error as exc:
-            raise OSError(f"SQLite state storage failed: {exc}") from exc
+            raise SqliteStateError("transaction", exc) from exc
         finally:
             connection.close()
 
-    @staticmethod
-    def _initialize(connection: sqlite3.Connection) -> None:
+    def _initialize(self, connection: sqlite3.Connection) -> None:
         """Create the schema atomically; reject an unrelated existing database."""
-        with connection:
-            connection.execute("BEGIN IMMEDIATE")
+        with self.write_transaction(connection):
             # Another callback may have initialized it while this one waited.
             if (
                 connection.execute("PRAGMA user_version").fetchone()[0]
@@ -143,16 +324,22 @@ class SqliteStateStore:
                 return self._read(connection)
 
     def save(self, snapshot: Mapping[str, Any]) -> None:
-        """Commit changed records together; never acknowledge an uncommitted write."""
+        """Commit changed records together; never acknowledge an uncommitted write.
+
+        @relation(SWR-REC-006, scope=function, role=Implementation)
+        """
         payload = json.loads(
             json.dumps(dict(snapshot), ensure_ascii=False, default=str)
         )
         self._check_size(payload)
+        sections = self._encode_sections(payload)
         with self.database.connect() as connection:
             self._ensure_imported(connection)
-            with connection:
-                connection.execute("BEGIN IMMEDIATE")
-                self._write(connection, payload)
+            with self.database.write_transaction(connection):
+                # Compare only at the serialized SQLite write turn: another
+                # instance or an in-flight B may have replaced previously saved A.
+                if self._stored_sections(connection) != sections:
+                    self._write(connection, sections)
 
     def _check_size(self, payload: Mapping[str, Any]) -> None:
         if (
@@ -187,8 +374,8 @@ class SqliteStateStore:
             if self.legacy_validator is not None:
                 self.legacy_validator(payload)
             digest = hashlib.sha256(raw).hexdigest()
-        with connection:
-            connection.execute("BEGIN IMMEDIATE")
+        sections = self._encode_sections(payload)
+        with self.database.write_transaction(connection):
             if connection.execute(
                 "SELECT 1 FROM stores WHERE name=?", (self.name,)
             ).fetchone():
@@ -197,7 +384,21 @@ class SqliteStateStore:
                 "INSERT INTO stores VALUES (?,?,?)",
                 (self.name, str(self.legacy_path) if self.legacy_path is not None else None, digest),
             )
-            self._write(connection, payload)
+            self._write(connection, sections)
+
+    def _stored_sections(self, connection: sqlite3.Connection) -> dict[str, _EncodedSection]:
+        """Read exact encoded content while the caller owns the write transaction."""
+        records: dict[str, dict[str, tuple[int, str]]] = {}
+        for section, key, position, value in connection.execute(
+            "SELECT section,record_key,position,value FROM records WHERE store=?", (self.name,)
+        ):
+            records.setdefault(section, {})[key] = (position, value)
+        return {
+            section: _EncodedSection(kind, value, records.get(section, {}))
+            for section, kind, value in connection.execute(
+                "SELECT name,kind,value FROM sections WHERE store=?", (self.name,)
+            )
+        }
 
     def _read(self, connection: sqlite3.Connection) -> dict[str, Any]:
         if self.max_bytes is not None:
@@ -238,15 +439,10 @@ class SqliteStateStore:
         self._check_size(snapshot)
         return snapshot
 
-    def _write(
-        self, connection: sqlite3.Connection, snapshot: Mapping[str, Any]
-    ) -> None:
-        existing = {
-            row[0]
-            for row in connection.execute(
-                "SELECT name FROM sections WHERE store=?", (self.name,)
-            )
-        }
+    @staticmethod
+    def _encode_sections(snapshot: Mapping[str, Any]) -> dict[str, _EncodedSection]:
+        """Encode the detached snapshot before taking SQLite's shared writer lock."""
+        sections = {}
         for section, value in snapshot.items():
             items: Iterable[tuple[Any, Any]]
             scalar = None
@@ -260,29 +456,39 @@ class SqliteStateStore:
                 kind = "scalar"
                 items = []
                 scalar = json.dumps(value, ensure_ascii=False, sort_keys=True)
+            records = {
+                str(key): (position, json.dumps(item, ensure_ascii=False, sort_keys=True))
+                for position, (key, item) in enumerate(items)
+            }
+            sections[section] = _EncodedSection(kind, scalar, records)
+        return sections
+
+    def _write(
+        self, connection: sqlite3.Connection, sections: dict[str, _EncodedSection]
+    ) -> None:
+        existing = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sections WHERE store=?", (self.name,)
+            )
+        }
+        for section, encoded in sections.items():
             connection.execute(
                 "INSERT INTO sections VALUES (?,?,?,?) ON CONFLICT(store,name) DO UPDATE "
                 "SET kind=excluded.kind,value=excluded.value "
                 "WHERE kind!=excluded.kind OR value IS NOT excluded.value",
-                (self.name, section, kind, scalar),
+                (self.name, section, encoded.kind, encoded.scalar),
             )
-            keys: set[str] = set()
-            for position, (key, item) in enumerate(items):
-                record_key = str(key)
-                keys.add(record_key)
-                connection.execute(
-                    "INSERT INTO records VALUES (?,?,?,?,?) "
-                    "ON CONFLICT(store,section,record_key) DO UPDATE "
-                    "SET position=excluded.position,value=excluded.value "
-                    "WHERE position!=excluded.position OR value!=excluded.value",
-                    (
-                        self.name,
-                        section,
-                        record_key,
-                        position,
-                        json.dumps(item, ensure_ascii=False, sort_keys=True),
-                    ),
-                )
+            connection.executemany(
+                "INSERT INTO records VALUES (?,?,?,?,?) "
+                "ON CONFLICT(store,section,record_key) DO UPDATE "
+                "SET position=excluded.position,value=excluded.value "
+                "WHERE position!=excluded.position OR value!=excluded.value",
+                (
+                    (self.name, section, key, position, value)
+                    for key, (position, value) in encoded.records.items()
+                ),
+            )
             old_keys = {
                 row[0]
                 for row in connection.execute(
@@ -292,9 +498,9 @@ class SqliteStateStore:
             }
             connection.executemany(
                 "DELETE FROM records WHERE store=? AND section=? AND record_key=?",
-                [(self.name, section, key) for key in old_keys - keys],
+                [(self.name, section, key) for key in old_keys - encoded.records.keys()],
             )
         connection.executemany(
             "DELETE FROM sections WHERE store=? AND name=?",
-            [(self.name, section) for section in existing - snapshot.keys()],
+            [(self.name, section) for section in existing - sections.keys()],
         )

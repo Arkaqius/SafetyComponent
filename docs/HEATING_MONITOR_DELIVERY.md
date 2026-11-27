@@ -1,9 +1,9 @@
 # Heating monitor delivery and verification
 
 This delivery record separates implementation and installation evidence from
-the normative [heating architecture](<features/Heating System Monitoring - Architecture.md>),
-[SYS C-HVAC requirements](<sys/SafetyConcept - SYS.md#86-heating-system-monitoring-component-c-hvac>)
-and [software requirements](<sys/SafetyComponent - SSRD.md#410-heating-system-monitoring>).
+the normative [heating architecture](<features/Heating System Monitoring - Architecture.sdoc>),
+[SYS C-HVAC requirements](<sys/SafetyConcept - SYS.sdoc>)
+and [software requirements](<sys/SafetyComponent - SSRD.sdoc>).
 Requirement IDs and all R01..R13 mechanism/fault identities remain unchanged.
 
 ## Delivery scope

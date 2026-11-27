@@ -1,7 +1,7 @@
 # Heating distribution, temperature and cycling policies
 
 This reference defines the generic R07..R12 admission contract under the
-[heating architecture](<Heating System Monitoring - Architecture.md>).
+[heating architecture](<Heating System Monitoring - Architecture.sdoc>).
 System-owned policies require reviewed source and installation evidence;
 selecting a policy does not prove that the installation has been commissioned.
 There are no universal operating thresholds. Inputs remain literal entity or

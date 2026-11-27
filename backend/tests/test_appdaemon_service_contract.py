@@ -70,7 +70,8 @@ async def probe_scenario(mode: str, *, use_broker: bool = False) -> dict[str, An
     )
     plugin = object.__new__(HassPlugin)
     plugin.AD, plugin.logger, plugin.error = ad, logger, logger
-    plugin.config = SimpleNamespace(namespace="default", namespaces=[], ws_timeout=0.01)
+    # Keep the fictional deadline above Windows' 15.625 ms monotonic clock quantum.
+    plugin.config = SimpleNamespace(namespace="default", namespaces=[], ws_timeout=0.1)
     plugin.connect_event = asyncio.Event()
     if mode != "disconnected":
         plugin.connect_event.set()

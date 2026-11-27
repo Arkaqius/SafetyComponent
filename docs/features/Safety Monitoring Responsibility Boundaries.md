@@ -325,7 +325,7 @@ actual receipt before recording the result. A confirmed
 acknowledgements, then reissues currently active warnings without changing
 fault state or local-annunciator restrictions. Both actions are individually
 rate-limited to once per 60 seconds. Their detailed contract belongs to the
-[notification architecture](<Mobile Notification Delivery - Architecture.md#45-explicit-test-and-full-notification-reset>).
+[notification architecture](<Mobile Notification Delivery - Architecture.sdoc>).
 
 A backup restore test must use a separate test installation. Its pass means the
 operator actually verified that restore; it is not inferred from backup creation
@@ -467,14 +467,14 @@ is displayed separately and is not assumed to be the latest stable release.
 - Do not rely on an application to report its own total failure through the same
   MQTT or Home Assistant path that has failed.
 - Monitors shall supply cause-specific manual inspection/repair tasks through
-  the [shared recovery contract](<Recommended Actions and Recovery - Architecture.md>).
+  the [shared recovery contract](<Recommended Actions and Recovery - Architecture.sdoc>).
   Their completion evidence shall retain the difference between operator reports
   and observed restoration. Restart, failover and other automatic corrective
   commands shall belong to an explicitly approved Supervisor or installation
   policy.
 
 The adopted safety contract is in
-[SYS §8.8](<../sys/SafetyConcept - SYS.md#88-functional-safety-and-platform-health-monitoring-c-fsm>)
-and [SSRD §4.12](<../sys/SafetyComponent - SSRD.md#412-functional-safety-and-platform-health-monitoring>).
+[SYS §8.8](<../sys/SafetyConcept - SYS.sdoc>)
+and [SSRD §4.12](<../sys/SafetyComponent - SSRD.sdoc>).
 Configuration, code, tests, and independent-watchdog evidence remain necessary
 to establish which parts operate in an installation.

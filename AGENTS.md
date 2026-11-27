@@ -20,7 +20,8 @@ repository.
 
 Treat backend code, validated configuration, and automated tests as evidence of
 implemented behavior. Treat HARA, SYS, SSRD, and feature architecture documents
-as the normative description of required behavior.
+in StrictDoc as the normative description of required behavior. Edit their
+`.sdoc` sources and use the documented export to review trace links.
 
 ## Required documentation workflow
 
@@ -58,6 +59,54 @@ descriptions.
 BMAD is not part of this repository. Do not recreate BMAD directories, packages,
 generated documents, workflows, or agent definitions unless the user explicitly
 requests a new BMAD installation.
+
+## Codex subagents
+
+When the session supports subagents, the primary agent delegates independent
+subtasks to relevant roles from [.codex/agents](.codex/agents) and coordinates
+scope, integration, and delivery. Use the role IDs from the
+[team roster](CONTRIBUTING.md#working-with-codex-subagents) when delegating
+and use the names in handoffs and reports. Involve Irena (`project_leader`)
+when coordination spans several roles or dependent workstreams.
+
+When asked to review current changes, use the relevant project subagents in
+read-only mode. Relay findings and dependencies between roles and present one
+consolidated report. Include `safety_reviewer` for changes affecting a safety
+contract.
+
+Use these tools for project work:
+
+- **Beads** tracks work items, owners, blockers, and status. Use `bd ready` to
+  find available work or `bd show <issue-id>` to open the assigned item. On
+  Windows, use `bd.cmd` if needed. Reference the Beads ID in handoffs. The
+  assigned owner updates status, and read-only reviewers send their findings to
+  that owner or the primary agent.
+- **MCP Agent Mail** carries local handoffs, findings, and acknowledgements
+  between roles. Use the existing role mailbox in the local project and include
+  the Beads ID in the subject. Report unavailable access to the primary agent
+  so they can relay the handoff.
+- **Spec Kit** guides work on a feature through its approved stages. Read the
+  active artifacts before acting and record decisions or evidence in the
+  applicable artifact. Preserve the workflow's approval gates.
+
+For Spec Kit work, delegate within the active stage and preserve the workflow's
+approval gates and task dependencies. Record durable handoffs in the
+[artifacts and Agent Mail threads](CONTRIBUTING.md#sharing-decisions-and-evidence).
+For independent verification, start a fresh role context with the requirement,
+approved interfaces, acceptance question and permitted evidence. Have the role
+record its expected result before showing it the implementation or peer findings.
+Use the [Beads task procedure](CONTRIBUTING.md#executing-spec-kit-tasks-with-beads)
+after the Spec Kit tasks stage registers its generated graph directly in
+Beads. Keep all task state there. Author new requirements and architectural
+decisions in StrictDoc and reference their UIDs from the feature brief and plan.
+Follow the
+[target verification and acceptance rules](CONTRIBUTING.md#target-verification-and-acceptance)
+for work involving a deployed system or operator validation.
+
+For release and deployment work, use the
+[release skill](.agents/skills/safetycomponent-release/SKILL.md) and the
+[release workflow](docs/RELEASE_WORKFLOW.md). Advance only when the required
+check results and applicable human authorization cover the candidate and target.
 
 ## Always
 

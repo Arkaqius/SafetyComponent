@@ -1,0 +1,56 @@
+name: Requirements quality
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  strictdoc:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+
+      - name: Install StrictDoc and test runner
+        run: python -m pip install -r tools/requirements-strictdoc.txt pytest==8.4.2
+
+      - name: Run StrictDoc fixture tests
+        run: |
+          python -c 'import strictdoc'
+          python -m pytest -q tools/test_strictdoc_workflow.py tools/test_speckit_guard.py
+
+      - name: Validate the safety documentation and cross-document traces
+        run: python tools/export_safety_docs.py
+
+      - name: Validate feature requirements, architecture and verification plans
+        shell: bash
+        run: |
+          shopt -s nullglob
+          found=0
+          failed=0
+          for feature in docs/features/*/; do
+            requirements="${feature}requirements.sdoc"
+            architecture="${feature}architecture.sdoc"
+            if [[ -e "$requirements" || -L "$requirements" || -e "$architecture" || -L "$architecture" ]]; then
+              found=1
+              if ! python tools/strictdoc_workflow.py architecture "$feature" --verification-plan; then
+                failed=1
+              fi
+            fi
+          done
+          if [[ "$found" == 0 ]]; then
+            echo 'No feature directories contain StrictDoc artifacts. Fixture validation still ran.'
+          fi
+          exit "$failed"

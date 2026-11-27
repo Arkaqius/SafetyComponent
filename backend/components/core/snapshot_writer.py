@@ -5,13 +5,17 @@ from __future__ import annotations
 import builtins
 from collections.abc import Callable, Mapping
 from concurrent.futures import Future, ThreadPoolExecutor, TimeoutError
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import json
-from threading import RLock
+from threading import Condition, RLock
+from time import monotonic
 from typing import Any
+
+from . import sqlite_state_store
 
 MAX_SNAPSHOT_BYTES = 1024 * 1024
 _NAMESPACES = frozenset({"notification_state", "recovery_state", "internal_environment_state"})
+_BUSY_RETRY_DELAYS = (0.01, 0.02, 0.04)
 
 
 @dataclass(frozen=True)
@@ -30,6 +34,7 @@ class WriteResult:
     owner: str
     revision: int
     error: str | None = None
+    superseded_error: str | None = None
 
 
 class SnapshotWriter:
@@ -43,7 +48,8 @@ class SnapshotWriter:
     def __init__(self, executor: Any | None = None) -> None:
         self._executor = executor or ThreadPoolExecutor(max_workers=1, thread_name_prefix="safety-state")
         self._lock = RLock()
-        self._future: Future[WriteResult] | None = None
+        self._changed = Condition(self._lock)
+        self._future: Future[WriteResult | None] | None = None
         self._pending: tuple[WriteRequest, Callable[[Mapping[str, Any]], None]] | None = None
         self._result: WriteResult | None = None
         self._owner: str | None = None
@@ -55,6 +61,7 @@ class SnapshotWriter:
                 self._pending = None
                 self._result = None
                 self._owner = owner
+                self._changed.notify_all()
 
     @property
     def busy(self) -> bool:
@@ -77,6 +84,7 @@ class SnapshotWriter:
             if self._owner != owner:
                 return False
             self._pending = (WriteRequest(owner, revision, payload), save)
+            self._changed.notify_all()
             self._pump()
             return True
 
@@ -84,8 +92,11 @@ class SnapshotWriter:
         """Advance one completion and apply no domain state on the worker."""
         with self._lock:
             self._pump()
-            result, self._result = self._result, None
-            return result if result is not None and result.owner == owner else None
+            result = self._result
+            if result is None or result.owner != owner:
+                return None
+            self._result = None
+            return result
 
     def wait_for_progress(self, timeout: float) -> bool:
         """Wait only at startup/shutdown barriers; never on alarm ingress."""
@@ -101,7 +112,9 @@ class SnapshotWriter:
 
     def _pump(self) -> None:
         if self._future is not None and self._future.done():
-            self._result = self._future.result()
+            result = self._future.result()
+            if result is not None:
+                self._record_completion(result)
             self._future = None
         if self._future is None and self._pending is not None:
             request, save = self._pending
@@ -109,23 +122,74 @@ class SnapshotWriter:
             try:
                 self._future = self._executor.submit(self._write, request, save)
             except Exception as exc:
-                self._result = WriteResult(request.owner, request.revision, type(exc).__name__[:128])
+                self._record_completion(
+                    WriteResult(request.owner, request.revision, type(exc).__name__[:128])
+                )
                 return
             self._future.add_done_callback(self._completed)
 
-    def _completed(self, _: Future[WriteResult]) -> None:
+    def _record_completion(self, result: WriteResult) -> None:
+        if result.owner != self._owner:
+            return
+        previous = self._result
+        if previous is not None:
+            result = replace(
+                result, superseded_error=previous.error or previous.superseded_error
+            )
+        self._result = result
+
+    def _completed(self, _: Future[WriteResult | None]) -> None:
         # This callback advances infrastructure only. Domain acknowledgements
         # remain immutable mailbox evidence, polled on the current owner.
         with self._lock:
             self._pump()
 
-    @staticmethod
-    def _write(request: WriteRequest, save: Callable[[Mapping[str, Any]], None]) -> WriteResult:
-        try:
-            save(json.loads(request.payload))
-        except Exception as exc:
-            return WriteResult(request.owner, request.revision, type(exc).__name__[:128])
-        return WriteResult(request.owner, request.revision)
+    def _current(self, request: WriteRequest) -> bool:
+        with self._lock:
+            return self._owner == request.owner and (
+                self._pending is None or self._pending[0].revision <= request.revision
+            )
+
+    def _write(
+        self, request: WriteRequest, save: Callable[[Mapping[str, Any]], None],
+    ) -> WriteResult | None:
+        """Retry storage contention on this worker, never physical/domain work.
+
+        @relation(SWR-NOT-017, scope=function, role=Implementation)
+        @relation(SWR-REC-006, scope=function, role=Implementation)
+        """
+        failure = None
+        with sqlite_state_store.storage_write_budget(
+            lambda: True if attempt == 0 else self._current(request)
+        ) as budget:
+            for attempt in range(len(_BUSY_RETRY_DELAYS) + 1):
+                if attempt and not self._current(request):
+                    return failure
+                try:
+                    save(json.loads(request.payload))
+                except sqlite_state_store.SupersededStorageWrite:
+                    return failure
+                except sqlite_state_store.SqliteStateError as exc:
+                    failure = WriteResult(request.owner, request.revision, exc.sqlite_errorname)
+                    if exc.sqlite_errorname != "SQLITE_BUSY" or attempt == len(_BUSY_RETRY_DELAYS):
+                        return failure
+                    # Charge the maximum native SQLite wait, not healthy
+                    # initialization/encoding/FULL-commit time in this attempt.
+                    budget.consume(0.05)
+                    try:
+                        remaining = budget.remaining()
+                    except (sqlite_state_store.SqliteStateError, sqlite_state_store.SupersededStorageWrite):
+                        return failure
+                    with self._changed:
+                        if self._current(request):
+                            started = monotonic()
+                            self._changed.wait(timeout=min(_BUSY_RETRY_DELAYS[attempt], remaining))
+                            budget.consume(monotonic() - started)
+                except Exception as exc:
+                    return WriteResult(request.owner, request.revision, type(exc).__name__[:128])
+                else:
+                    return WriteResult(request.owner, request.revision)
+        return failure
 
 
 def process_snapshot_writer(namespace: str) -> SnapshotWriter:

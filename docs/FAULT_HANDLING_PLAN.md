@@ -26,9 +26,9 @@ runtime contracts or resolve the open policy choices listed at the glossary's en
 
 The recovery requirements now cover manual work as well as supported automatic
 or user-confirmed commands. The normative contract is
-[SYS §8.10](<sys/SafetyConcept - SYS.md#810-recommended-actions-and-recovery>),
-[SSRD §4.5](<sys/SafetyComponent - SSRD.md#45-notifications-and-recovery>) and
-[Recommended Actions and Recovery](<features/Recommended Actions and Recovery - Architecture.md>).
+[SYS §8.10](<sys/SafetyConcept - SYS.sdoc>),
+[SSRD §4.5](<sys/SafetyComponent - SSRD.sdoc>) and
+[Recommended Actions and Recovery](<features/Recommended Actions and Recovery - Architecture.sdoc>).
 The recovery allocation there supersedes older no-action defaults in this plan.
 HARA hazards, classifications and safety goals are unchanged: manual response is
 not credited as a guaranteed response within an FTTI. Runtime identifiers,
@@ -462,8 +462,8 @@ removes the same-tag notification with `clear_notification`, drops pending deliv
 and repeats, and distinguishes this from a resolved message. RecoveryManager's
 SHADOWED handler withdraws recovery guidance. The current relation is fault-wide,
 not a room-specific rule. See the [fault implementation](../backend/components/faults_manager/fault_manager.py),
-[notification lifecycle](<features/Mobile Notification Delivery - Architecture.md#44-fault-clear-and-shadow>),
-and [recovery contract](<features/Recommended Actions and Recovery - Architecture.md>).
+[notification lifecycle](<features/Mobile Notification Delivery - Architecture.sdoc>),
+and [recovery contract](<features/Recommended Actions and Recovery - Architecture.sdoc>).
 
 Publish shadowing as `shadowed_by` (a set of fault identities), orthogonal
 to the eight evaluation statuses and `active`/`latched`. A forecast may therefore
@@ -533,8 +533,8 @@ severity. `H`/`D` classification describes meaning, not urgency. Existing levels
 are retained; newly allocated levels in section 3 are explicit design proposals,
 not a completed risk reassessment.
 
-The notification baseline is [SYS section 4](<sys/SafetyConcept - SYS.md#4-notifications>),
-the [mobile profiles](<features/Mobile Notification Delivery - Architecture.md>),
+The notification baseline is [SYS section 4](<sys/SafetyConcept - SYS.sdoc>),
+the [mobile profiles](<features/Mobile Notification Delivery - Architecture.sdoc>),
 and `runtime_defaults.notification` in [system configuration](../backend/config/system_config.yml).
 
 | Priority = level | Notification / UI profile | Submission target / repeat | Proposed latch / user-control default |
@@ -848,7 +848,7 @@ preparing/publishing these branches.
 ### FH-01: Fault state and priority policy
 
 The implementation contract for this branch is
-[Fault State Policy](<features/Fault State Policy - Architecture.md>). This
+[Fault State Policy](<features/Fault State Policy - Architecture.sdoc>). This
 branch introduces the fault-owned evaluation object, priority/category metadata,
 shadow-owner tracking and the eight-status MQTT contract. Full migration of
 every existing SM's debounce and eligibility,
@@ -1002,15 +1002,15 @@ Current behavior is grounded in these sources, not inferred from requirements:
 
 Normative allocation and future reconciliation surfaces:
 
-- [HARA](<sys/SafetyConcept - HARA.md>),
-  [SYS](<sys/SafetyConcept - SYS.md>), and
-  [SSRD](<sys/SafetyComponent - SSRD.md>).
-- [Entity Health](<features/Entity Health Monitoring - Architecture.md>),
-  [External Hazard](<features/External Hazard Monitoring - Architecture.md>),
-  [Internal Environmental Hazard](<features/Internal Environmental Hazard Monitoring - Architecture.md>),
-  [Heating System](<features/Heating System Monitoring - Architecture.md>),
-  [Recovery](<features/Recommended Actions and Recovery - Architecture.md>), and
-  [Notifications](<features/Mobile Notification Delivery - Architecture.md>).
+- [HARA](<sys/SafetyConcept - HARA.sdoc>),
+  [SYS](<sys/SafetyConcept - SYS.sdoc>), and
+  [SSRD](<sys/SafetyComponent - SSRD.sdoc>).
+- [Entity Health](<features/Entity Health Monitoring - Architecture.sdoc>),
+  [External Hazard](<features/External Hazard Monitoring - Architecture.sdoc>),
+  [Internal Environmental Hazard](<features/Internal Environmental Hazard Monitoring - Architecture.sdoc>),
+  [Heating System](<features/Heating System Monitoring - Architecture.sdoc>),
+  [Recovery](<features/Recommended Actions and Recovery - Architecture.sdoc>), and
+  [Notifications](<features/Mobile Notification Delivery - Architecture.sdoc>).
 
 Before each implementation PR, synchronize its affected normative documents,
 configuration/compiler/schema, tests and public contract consumers. Keep HARA at

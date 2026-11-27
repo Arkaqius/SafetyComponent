@@ -1,18 +1,26 @@
 """Exact durable authorization and current policy at queued command handoff."""
 
+import sqlite3
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
+from threading import Event
 from unittest.mock import Mock
 
 import pytest
 
+from components.core.event_bus import EventBus
+from components.core.self_diagnostics import SelfDiagnosticsComponent
 from components.core.service_dispatcher import Lane, ProcessLeaseRegistry, ResourceSpec, ServiceDispatcher
 from components.core.snapshot_writer import SnapshotWriter
+from components.core.sqlite_state_store import SqliteStateDatabase
 from components.core.types_common import FaultState, RecoveryAction, RecoveryActionState, RecoveryResult
 from components.recovery_manager.recovery_manager import RecoveryManager
 from components.recovery_manager.state_store import InMemoryRecoveryStateStore
+from components.safety_routines.runtime import SafetyRoutineRuntime
 from safety_lifecycle_support import CallbackServiceAdapter, ControlledExecutor, LifecycleHass
 
 
-def build_recovery(result=None):
+def build_recovery(result=None, *, store=None, diagnostics_observer=None):
     app, transport, executor = LifecycleHass(), CallbackServiceAdapter(), ControlledExecutor()
     app.call_service = transport.call_service
     app.get_state = Mock(return_value="on")
@@ -36,10 +44,12 @@ def build_recovery(result=None):
     fault.evaluation.shadowed_by = ()
     faults.found_mapped_fault.return_value = fault
     faults.response_identity.return_value = ("fixture-runtime", "fixture-incident", 1)
-    store = InMemoryRecoveryStateStore()
+    if store is None:
+        store = InMemoryRecoveryStateStore()
     manager = RecoveryManager(
         app, faults, {symptom.name: action}, Mock(), Mock(), Mock(), state_store=store,
         dispatcher=broker, snapshot_writer=SnapshotWriter(executor),
+        diagnostics_observer=diagnostics_observer,
     )
     manager._is_dry_test_failed = Mock(return_value=False)
     manager._isRecoveryConflict = Mock(return_value=False)
@@ -83,6 +93,53 @@ def test_command_waits_for_exact_consumed_permission_snapshot_and_owner_drain() 
     assert manager._proposals[symptom.name]["status"] == RecoveryActionState.EXECUTING.name
 
 
+@pytest.mark.parametrize("expire", [False, True])
+def test_contention_cannot_handoff_before_exact_authorization_or_after_expiry(tmp_path, expire) -> None:
+    """SC88U-013: real BUSY retries never renew consent or dispatch an old receipt.
+
+    @relation(SWR-REC-004, scope=function, role=Test)
+    @relation(SWR-REC-005, scope=function, role=Test)
+    @relation(SWR-REC-006, scope=function, role=Test)
+    """
+    database = SqliteStateDatabase(tmp_path / "state.sqlite3")
+    store = database.record_store("recovery_state", max_bytes=1024 * 1024)
+    manager, broker, _, transport, executor, _, symptom, _ = build_recovery(store=store)
+    executor.finish(0)
+    manager._drain_writes()
+    original = store.save
+    busy = Event()
+
+    def observe_busy(snapshot):
+        try:
+            original(snapshot)
+        except OSError:
+            busy.set()
+            raise
+
+    # Replace the captured adapter only for the consumed-permission revision.
+    future, function, args = executor.jobs[1]
+    request, _ = args
+    executor.jobs[1] = (future, function, (request, observe_busy))
+    with closing(sqlite3.connect(database.path)) as lock, ThreadPoolExecutor(max_workers=1) as worker:
+        lock.execute("BEGIN IMMEDIATE")
+        running = worker.submit(executor.finish, 1)
+        try:
+            assert busy.wait(1)
+            manager._drain_writes()
+            broker.tick()
+            assert not transport.calls
+            assert store.load()["proposals"][0]["status"] == "AWAITING_CONFIRMATION"
+            if expire:
+                manager._pending_async_commands[symptom.name]["authorization_expires"] = 0
+        finally:
+            lock.rollback()
+        running.result(timeout=1)
+    assert not transport.calls
+    manager._drain_writes()
+    broker.tick()
+    assert len(transport.calls) == (0 if expire else 1)
+
+
 @pytest.mark.parametrize("change", ["restriction", "clear", "expired", "resource", "postcondition", "stop"])
 def test_queued_command_rechecks_current_policy_before_handoff(change) -> None:
     manager, broker, app, transport, executor, _, symptom, action = build_recovery()
@@ -116,6 +173,172 @@ def test_failed_authorization_write_denies_command_without_consuming_new_permiss
     assert not transport.calls and not manager._storage_available
     assert manager._proposals[symptom.name]["status"] == RecoveryActionState.FAILED.name
     assert not manager._proposals[symptom.name]["confirmation_token"]
+
+
+def test_superseded_write_failure_is_logged_without_overriding_durable_authorization() -> None:
+    store = InMemoryRecoveryStateStore()
+    save = store.save
+    attempts = 0
+
+    def fail_initial_save(snapshot):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise OSError("fixture write failure")
+        save(snapshot)
+
+    store.save = fail_initial_save
+    observer = Mock()
+    manager, broker, app, transport, executor, _, _, _ = build_recovery(
+        store=store, diagnostics_observer=observer,
+    )
+    executor.finish(0)
+    executor.finish(1)
+    assert not transport.calls
+
+    manager._drain_writes()
+    assert manager._storage_available
+    assert store.load()["proposals"][0]["status"] == "EXECUTING"
+    observer.assert_called_with("persistence", False, detail="recovery_state", operation="save")
+    assert not any(call.args[1] for call in observer.call_args_list)
+    assert any(
+        "superseded snapshot write failed (OSError)" in message
+        for level, message in app.logs if level == "ERROR"
+    )
+    broker.tick()
+    assert len(transport.calls) == 1 and transport.calls[0][0] == "cover/close_cover"
+
+
+def test_shared_sqlite_lock_preserves_history_and_denies_unpersisted_recovery(tmp_path) -> None:
+    database = SqliteStateDatabase(tmp_path / "safety_state.sqlite3")
+    recovery_store = database.record_store("recovery_state", max_bytes=1024 * 1024)
+    routine_store = database.record_store("safety_routines", max_bytes=1024 * 1024)
+    diagnostics = SelfDiagnosticsComponent(
+        Mock(), Mock(), EventBus(), Mock(), {},
+        persistence_stores=frozenset({"recovery_state", "safety_routines"}),
+    )
+    observe = diagnostics.record_app_cause
+    manager, broker, app, transport, executor, _, symptom, _ = build_recovery(
+        store=recovery_store, diagnostics_observer=observe,
+    )
+    routines = SafetyRoutineRuntime(app, {}, routine_store, diagnostics_observer=observe)
+    routines.start()
+    previous_history = routine_store.load()
+    executor.finish(0)
+    manager._drain_writes()
+    previous_recovery = recovery_store.load()
+    assert previous_recovery["proposals"][0]["status"] == "AWAITING_CONFIRMATION"
+    routines.history.append({"state": "interrupted"})
+
+    with closing(sqlite3.connect(database.path)) as lock, lock:
+        lock.execute("BEGIN IMMEDIATE")
+        routines._persist()
+        executor.finish(1)
+        manager._drain_writes()
+        broker.tick()
+        assert routine_store.load() == previous_history
+        assert recovery_store.load() == previous_recovery
+        assert not transport.calls and not manager._storage_available
+        assert manager._proposals[symptom.name]["status"] == "FAILED"
+        errors = [message for level, message in app.logs if level == "ERROR"]
+        assert any("routine history" in message and "SQLITE_BUSY" in message for message in errors)
+        assert any("recovery state" in message and "SQLITE_BUSY" in message for message in errors)
+
+    operations = diagnostics._persistence_operations
+    assert operations["safety_routines"]["write"] is True
+    assert operations["recovery_state"]["save"] is True
+    observe("persistence", True, detail="recovery_state", operation="load")
+    # The failure outcome can now be written, but cannot replay the command.
+    executor.finish(2)
+    manager._drain_writes()
+    broker.tick()
+    assert not transport.calls
+    assert recovery_store.load()["proposals"][0]["status"] == "FAILED"
+    assert operations["recovery_state"] == {"load": True, "save": False}
+    assert operations["safety_routines"]["write"] is True
+
+
+def test_rejected_snapshot_keeps_save_fault_despite_older_success(monkeypatch) -> None:
+    manager, broker, app, transport, executor, _, _, _ = build_recovery()
+    manager.diagnostics_observer = Mock()
+    monkeypatch.setattr(manager._writer, "enqueue", Mock(return_value=False))
+    assert not manager._persist_state()
+    executor.finish(0)
+    manager._drain_writes()
+    broker.tick()
+    assert not transport.calls and not manager._storage_available
+    manager.diagnostics_observer.assert_called_with(
+        "persistence", True, detail="recovery_state", operation="save",
+    )
+    errors = [message for level, message in app.logs if level == "ERROR"]
+    assert any("recovery state" in message and "snapshot admission rejected" in message for message in errors)
+
+
+@pytest.mark.parametrize(
+    "restore", ["locked", "invalid_snapshot", "proposals_mapping", "proposal_value", "not_started"]
+)
+def test_missing_recovery_restore_preserves_existing_sqlite_state_on_stop(tmp_path, restore) -> None:
+    database = SqliteStateDatabase(tmp_path / "safety_state.sqlite3")
+    store = database.record_store("recovery_state", max_bytes=4096)
+    snapshot = {
+        "version": 1,
+        "recent_outcomes": [{
+            "proposal_id": "fixture", "action_name": "Inspect", "outcome": "completed",
+            "recorded_at": "2026-01-01T00:00:00Z",
+        }],
+        "command_failures": [],
+        "proposals": [],
+    }
+    if restore == "invalid_snapshot":
+        snapshot["command_failures"] = [{"symptom_id": "fixture"}]
+    elif restore == "proposals_mapping":
+        snapshot["proposals"] = {"fixture": {"status": "FAILED"}}
+    elif restore == "proposal_value":
+        snapshot["proposals"] = ["fixture"]
+    store.save(snapshot)
+    app, executor = LifecycleHass(), ControlledExecutor()
+    observer = Mock()
+    manager = RecoveryManager(
+        app, Mock(), {}, Mock(), Mock(), Mock(), state_store=store,
+        diagnostics_observer=observer, snapshot_writer=SnapshotWriter(executor),
+    )
+    assert not manager._persist_state()
+    if restore != "not_started":
+        with closing(sqlite3.connect(database.path)) as lock, lock:
+            if restore == "locked":
+                lock.execute("PRAGMA locking_mode = EXCLUSIVE")
+                lock.execute("BEGIN EXCLUSIVE")
+            manager.start()
+
+        assert manager.failed_recovery_commands() is None
+        assert not manager._storage_available
+        observer.assert_called_once_with("persistence", True, detail="recovery_state", operation="load")
+        assert not manager._persist_state()
+    manager.stop()
+
+    assert not executor.jobs
+    assert store.load() == snapshot
+
+
+def test_new_recovery_owner_cannot_overwrite_a_retired_owners_inflight_write(tmp_path) -> None:
+    database = SqliteStateDatabase(tmp_path / "safety_state.sqlite3")
+    store = database.record_store("recovery_state", max_bytes=4096)
+    store.save({"version": 1, "proposals": []})
+    executor = ControlledExecutor()
+    writer = SnapshotWriter(executor)
+    writer.claim("retired")
+    final_state = {"version": 1, "proposals": [{"proposal_id": "retained"}]}
+    assert writer.enqueue("retired", 1, final_state, store.save)
+    manager = RecoveryManager(
+        LifecycleHass(), Mock(), {}, Mock(), Mock(), Mock(),
+        state_store=store, snapshot_writer=writer,
+    )
+    manager.start()
+    executor.finish(0)
+    assert not manager._persist_state()
+    manager.stop()
+    assert len(executor.jobs) == 1
+    assert store.load() == final_state
 
 
 def test_unknown_command_is_never_retried_and_old_completion_cannot_replay_it() -> None:

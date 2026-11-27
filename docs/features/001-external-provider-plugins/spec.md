@@ -266,8 +266,8 @@ recovery, and shutdown without contacting a live household.
 - Product requirements remain under `docs/`; this feature directory is the Spec
   Kit entry point and the existing architecture documents remain authoritative
   for detailed contracts.
-- Controlling documents: [SYS](<../../sys/SafetyConcept - SYS.md>),
-  [SSRD](<../../sys/SafetyComponent - SSRD.md>),
-  [External Hazard Monitoring](<../External Hazard Monitoring - Architecture.md>),
-  [Configuration Model](<../Configuration Model - Architecture.md>), and
+- Controlling documents: [SYS](<../../sys/SafetyConcept - SYS.sdoc>),
+  [SSRD](<../../sys/SafetyComponent - SSRD.sdoc>),
+  [External Hazard Monitoring](<../External Hazard Monitoring - Architecture.sdoc>),
+  [Configuration Model](<../Configuration Model - Architecture.sdoc>), and
   [ADR-0001](../../adr/0001-external-provider-plugins.md).

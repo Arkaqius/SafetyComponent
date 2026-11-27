@@ -78,16 +78,16 @@ Given that feature description, do this:
 
 3. **Create the spec feature directory**:
 
-   Specs live under the default `specs/` directory unless the user explicitly provides `SPECIFY_FEATURE_DIRECTORY`.
+   Parse `SPECIFY_FEATURE_DIRECTORY=<path>` in the calling workflow input as an explicit feature directory. Keep the rest of the input as the feature description. Specs live under `docs/features/` by default.
 
    **Resolution order for `SPECIFY_FEATURE_DIRECTORY`**:
    1. If the user explicitly provided `SPECIFY_FEATURE_DIRECTORY` (e.g., via environment variable, argument, or configuration), use it as-is
-   2. Otherwise, auto-generate it under `specs/`:
+   2. Otherwise, auto-generate it under `docs/features/`:
       - Check `.specify/init-options.json` for `feature_numbering` (preferred) or `branch_numbering` (deprecated, migration only — will be removed in a future release)
       - If `"timestamp"`: prefix is `YYYYMMDD-HHMMSS` (current timestamp)
-      - If `"sequential"` or absent: prefix is `NNN` (next available 3-digit number after scanning existing directories in `specs/`)
+      - If `"sequential"` or absent: prefix is `NNN` (next available 3-digit number after scanning existing directories in `docs/features/`)
       - Construct the directory name: `<prefix>-<short-name>` (e.g., `003-user-auth` or `20260319-143022-user-auth`)
-      - Set `SPECIFY_FEATURE_DIRECTORY` to `specs/<directory-name>`
+      - Set `SPECIFY_FEATURE_DIRECTORY` to `docs/features/<directory-name>`
       - If `branch_numbering` was used (and `feature_numbering` was absent), emit a one-line warning: "⚠️ `branch_numbering` in init-options.json is deprecated. Rename to `feature_numbering`."
 
    **Create the directory and spec file**:
@@ -128,8 +128,8 @@ Given that feature description, do this:
        - Prioritize clarifications by impact: scope > security/privacy > user experience > technical details
     4. Fill User Scenarios & Testing section
        If no clear user flow: ERROR "Cannot determine user scenarios"
-    5. Generate Functional Requirements
-       Each requirement must be testable
+    5. Generate normative requirements in `requirements.sdoc` using `.specify/templates/overrides/strictdoc-requirements.sdoc`.
+       Trace stakeholder needs to SYS and SW as applicable, distinguish function, quality and constraint, and define a verification method and observable result. Keep existing published requirement IDs and link to existing sources when a feature only consumes them.
        Use reasonable defaults for unspecified details (document assumptions in Assumptions section)
     6. Define Success Criteria
        Create measurable, technology-agnostic outcomes
@@ -138,7 +138,7 @@ Given that feature description, do this:
     7. Identify Key Entities (if data involved)
     8. Return: SUCCESS (spec ready for planning)
 
-7. Write the specification to SPEC_FILE using the template structure, replacing placeholders with concrete details derived from the feature description (arguments) while preserving section order and headings.
+7. Write the feature brief to SPEC_FILE using the template structure. Keep the scope, assumptions, user scenarios and a relative link to `requirements.sdoc`. Reference the StrictDoc UIDs in scenarios and success criteria. Write normative statements and acceptance thresholds in StrictDoc. For an existing feature, reconcile the affected requirement IDs before converting its Markdown requirement sections into references.
 
 8. **Specification Quality Validation**: After writing the initial spec, validate it against quality criteria:
 
@@ -182,7 +182,7 @@ Given that feature description, do this:
       ```
 
    b. **Run Validation Check**: Review the spec against each checklist item:
-      - For each item, determine if it passes or fails
+      - Inspect the feature brief and `requirements.sdoc` together. For each item, determine if it passes or fails.
       - Document specific issues found (quote relevant spec sections)
 
    c. **Handle Validation Results**:
@@ -227,10 +227,10 @@ Given that feature description, do this:
         5. Number questions sequentially (Q1, Q2, Q3 - max 3 total)
         6. Present all questions together before waiting for responses
         7. Wait for user to respond with their choices for all questions (e.g., "Q1: A, Q2: Custom - [details], Q3: B")
-        8. Update the spec by replacing each [NEEDS CLARIFICATION] marker with the user's selected or provided answer
+        8. Resolve each marker and apply normative answers to `requirements.sdoc`. Update the brief's scenario references when needed.
         9. Re-run validation after all clarifications are resolved
 
-   d. **Update Checklist**: After each validation iteration, update the checklist file with current pass/fail status
+   d. **Update Checklist**: After each validation iteration, update the checklist file with current pass/fail status. Before completing the stage run `python tools/strictdoc_workflow.py requirements "<absolute feature directory>"`. Stop on failure and report the validator output.
 
 ## Mandatory Post-Execution Hooks
 

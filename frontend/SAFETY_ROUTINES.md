@@ -100,4 +100,4 @@ Przy utracie połączenia lub braku odpowiedzi odśwież historię przed ponowie
 Raporty są dostępne w panelu. Osobna automatyzacja może reagować na zdarzenie
 `safety_routine_completed`, np. wysłać powiadomienie. Dodanie scenariusza samo
 nie tworzy tej automatyzacji. Kontrakt zdarzeń i ograniczenia opisuje
-[architektura](../docs/features/Safety%20Routines%20-%20Architecture.md).
+[architektura](../docs/features/Safety%20Routines%20-%20Architecture.sdoc).

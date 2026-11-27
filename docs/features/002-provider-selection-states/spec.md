@@ -297,8 +297,8 @@ and from real monitoring evidence.
 - This specification defines intended behavior only. It changes no runtime,
   installation file or deployed instance and authorizes no live action.
 - Controlling context: [provider foundation](../001-external-provider-plugins/spec.md),
-  [Configuration Model](<../Configuration Model - Architecture.md>),
-  [External Hazard Monitoring](<../External Hazard Monitoring - Architecture.md>),
-  [SYS](<../../sys/SafetyConcept - SYS.md>),
-  [SSRD](<../../sys/SafetyComponent - SSRD.md>), and
+  [Configuration Model](<../Configuration Model - Architecture.sdoc>),
+  [External Hazard Monitoring](<../External Hazard Monitoring - Architecture.sdoc>),
+  [SYS](<../../sys/SafetyConcept - SYS.sdoc>),
+  [SSRD](<../../sys/SafetyComponent - SSRD.sdoc>), and
   [constitution](../../../.specify/memory/constitution.md).

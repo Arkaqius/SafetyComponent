@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from time import monotonic
 from typing import Any, Callable, Mapping
 
+from components.core.sqlite_state_store import SqliteStateError
 from components.core.types_common import Fault, Symptom
 from components.faults_manager.evidence_store import FaultEvidenceStore
 
@@ -621,8 +622,9 @@ class FaultEvidenceJournal:
             self.store.save({"version": FORMAT_VERSION, "records": self.records})
         except (OSError, ValueError, TypeError) as exc:
             if self.log is not None:
+                error = exc.sqlite_errorname if isinstance(exc, SqliteStateError) else type(exc).__name__
                 self.log(
-                    f"Unable to save fault evidence: {type(exc).__name__}",
+                    f"Unable to save fault evidence: {error}",
                     level="ERROR",
                 )
             self._report(True, "save")

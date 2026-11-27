@@ -12,7 +12,11 @@ from unittest.mock import Mock
 import pytest
 
 from components.core.battery_fault_catalog import BatteryFaultCatalog
-from components.core.sqlite_state_store import SqliteStateDatabase, state_database_path
+from components.core.sqlite_state_store import (
+    SqliteStateDatabase,
+    SqliteStateError,
+    state_database_path,
+)
 from components.core.types_common import FaultState, RecoveryAction, RecoveryActionState
 from components.notification_manager.notification_manager import NotificationManager
 from components.notification_manager.state_store import JsonNotificationStateStore
@@ -125,24 +129,85 @@ def test_failed_save_preserves_prior_transaction_and_other_store(
     assert other.load() == {"proposal": "pending"}
 
 
-def test_writer_lock_wait_is_short_and_failure_does_not_clear_alarm(
-    database, tmp_path
-) -> None:
-    store = database.store("alarm", tmp_path / "alarm.json")
-    store.save({"active": True})
+def test_shared_writer_lock_is_bounded_and_preserves_independent_state(database) -> None:
+    alarm = database.record_store("fault_evidence_state", max_bytes=4096)
+    routine = database.record_store("safety_routines", max_bytes=4096)
+    recovery = database.record_store("recovery_state", max_bytes=4096)
+    alarm.save({"active": True})
+    routine.save({"runs": ["retained"]})
+    recovery.save({"proposals": ["retained"]})
     lock = sqlite3.connect(database.path)
     try:
         lock.execute("BEGIN IMMEDIATE")
-        started = monotonic()
-        with pytest.raises(OSError, match="locked"):
-            store.save({"active": False})
-        assert monotonic() - started < 0.5
-        # WAL readers retain the previous committed state while the writer holds a lock.
-        assert store.load() == {"active": True}
+        for store, key in ((routine, "runs"), (recovery, "proposals")):
+            started = monotonic()
+            with pytest.raises(SqliteStateError, match="SQLITE_BUSY") as failed:
+                store.save({key: []})
+            assert failed.value.sqlite_errorname == "SQLITE_BUSY"
+            assert monotonic() - started < 0.5
+            assert store.load() == {key: ["retained"]}
+        assert alarm.load() == {"active": True}
     finally:
         lock.rollback()
         lock.close()
-    assert store.load() == {"active": True}
+    routine.save({"runs": ["retained", "new"]})
+    assert routine.load() == {"runs": ["retained", "new"]}
+    assert recovery.load() == {"proposals": ["retained"]}
+    assert alarm.load() == {"active": True}
+
+
+def test_sqlite_open_failure_is_distinct_from_contention(tmp_path) -> None:
+    database = SqliteStateDatabase(tmp_path)
+    store = database.record_store("state", max_bytes=4096)
+    with pytest.raises(SqliteStateError, match="SQLITE_CANTOPEN") as failed:
+        store.save({"active": True})
+    assert failed.value.sqlite_errorname == "SQLITE_CANTOPEN"
+
+
+def test_identity_read_is_coherent_during_concurrent_initialization(database, monkeypatch) -> None:
+    open_connection = sqlite3.connect
+    alternate = open_connection(database.path)
+    try:
+        alternate.execute("PRAGMA journal_mode = WAL").fetchone()
+
+        class InterleavedRead(sqlite3.Connection):
+            interleaved = False
+
+            def execute(self, sql, parameters=()):
+                if sql == "PRAGMA user_version" and not self.interleaved:
+                    self.interleaved = True
+                    database._initialize(alternate)
+                return super().execute(sql, parameters)
+
+        def connect(*args, **kwargs):
+            return open_connection(*args, factory=InterleavedRead, **kwargs)
+
+        monkeypatch.setattr(sqlite3, "connect", connect)
+        with database.connect() as connection:
+            assert connection.execute("PRAGMA user_version").fetchone() == (1,)
+    finally:
+        alternate.close()
+
+
+def test_sqlite_extended_busy_classification_prefers_result_code() -> None:
+    error = sqlite3.OperationalError("disk I/O error")
+    error.sqlite_errorcode = 517  # SQLITE_BUSY_SNAPSHOT
+    assert SqliteStateError("transaction", error).sqlite_errorname == "SQLITE_BUSY"
+
+
+def test_sqlite_constraint_message_does_not_look_like_writer_contention(database) -> None:
+    store = database.record_store("state", max_bytes=4096)
+    original = {"records": [{"active": True}]}
+    store.save(original)
+    with sqlite3.connect(database.path) as connection:
+        connection.execute(
+            "CREATE TRIGGER reject_write BEFORE INSERT ON records "
+            "BEGIN SELECT RAISE(ABORT,'database is locked'); END"
+        )
+    with pytest.raises(SqliteStateError) as failed:
+        store.save({"records": [{"active": False}]})
+    assert failed.value.sqlite_errorname != "SQLITE_BUSY"
+    assert store.load() == original
 
 
 def test_callback_threads_use_independent_connections_and_namespaces(

@@ -1,0 +1,4132 @@
+[DOCUMENT]
+TITLE: Lean SYS + TSC — Safety Architecture & Requirements (v1.4.0)
+UID: SYS-DOC
+OPTIONS:
+  MARKUP: Markdown
+  NODE_IN_TOC: False
+
+[GRAMMAR]
+ELEMENTS:
+- TAG: TEXT
+  FIELDS:
+  - TITLE: STATEMENT
+    TYPE: String
+    REQUIRED: True
+- TAG: SYSTEM_REQUIREMENT
+  FIELDS:
+  - TITLE: UID
+    TYPE: String
+    REQUIRED: True
+  - TITLE: STATEMENT
+    TYPE: String
+    REQUIRED: True
+  RELATIONS:
+  - TYPE: Parent
+    ROLE: Refines
+- TAG: INTERFACE_REQUIREMENT
+  FIELDS:
+  - TITLE: UID
+    TYPE: String
+    REQUIRED: True
+  - TITLE: TITLE
+    TYPE: String
+    REQUIRED: True
+  - TITLE: STATEMENT
+    TYPE: String
+    REQUIRED: True
+- TAG: NON_FUNCTIONAL_REQUIREMENT
+  FIELDS:
+  - TITLE: UID
+    TYPE: String
+    REQUIRED: True
+  - TITLE: TITLE
+    TYPE: String
+    REQUIRED: True
+  - TITLE: STATEMENT
+    TYPE: String
+    REQUIRED: True
+- TAG: SYSTEM_TRACE
+  FIELDS:
+  - TITLE: STATEMENT
+    TYPE: String
+    REQUIRED: True
+  RELATIONS:
+  - TYPE: Parent
+    ROLE: TracesGoal
+  - TYPE: Parent
+    ROLE: TracesRequirement
+
+[TEXT]
+STATEMENT: >>>
+**Item:** Home Automation Safety Monitoring & Recovery (multi-hazard)
+
+**Date:** 2026-11-14
+**Owner:** System/Safety (SYS)
+**Scope:** Blend **ASPICE SYS.x** with **ISO 26262-3/4/6** work products; align with provided **HARA** and **SYS v0.2** inputs.
+
+---
+<<<
+
+[[SECTION]]
+UID: SYS-SEC-1
+TITLE: Purpose and Audience
+
+[TEXT]
+STATEMENT: >>>
+**Why this document exists (HARA-linked):**
+
+- Provide a **single, lean specification** that turns the existing **HARA** (hazards, S/E/C, initial risk levels) into actionable **Safety Goals, System Requirements, Technical Safety Requirements, Safe States, and FTTI budgets**.
+- Maintain **end‑to‑end traceability** from _hazard → safety goal → requirement → verification_, while minimizing work products for a **hobby/semiprofessional, open‑source** effort (no formal certification claim).
+- Serve as the **source of truth** for the concept phase and subsequent implementation/validation; any YAML/CSV/config artifacts are generated from this document.
+
+**Intended readers:**
+
+- **Developers** — implement safety logic and interfaces across supported runtimes.
+- **Testers** — design and execute unit, integration, HIL, and household drills per the V\&V guidance.
+- **Contributors** — propose changes to thresholds/FTTI, add sensors/actuators, improve documentation.
+- **Maintainers** — govern releases, parameter changes, evidence retention, and issue triage.
+- **Safety reviewer (you)** — resolve open points (ASIL/FTTI confirmation, safe‑state policies, decomposition choices).
+
+**Scope of this document:**
+
+- Covers the **safety‑critical logic** of the _Home Automation Safety App_ (currently running atop **Home Assistant + AppDaemon**), specifically: detection, decision, notification, and where explicitly permitted **actuation** for hazards identified in HARA (Fire/Smoke, Gas, CO, Water Leak, **Undercooling/Overheating**, Air Quality, System/Comms failure, HVAC degradation, Unauthorized Access/Privacy, weather ingress, frost, wind, and outdoor pollution).
+- Defines **safety goals, SYS‑level requirements (blended with FSR), TSRs, safe states, timing (FTTI), parameters, and V\&V** at the **system level**. Software requirements and component designs refine this contract in the SSRD and feature architecture documents.
+
+**Out of scope (for clarity):**
+
+- General home‑automation conveniences (scenes, presence lighting, media, non‑safety automations).
+- A general Home Assistant entity/device inventory. Only explicitly selected
+  or component-declared dependencies shall enter C-ENT monitoring.
+- Brand‑specific hardware design/certification and regulatory approvals (this is a best‑effort, non‑certified project).
+- Provider payload schemas and class-level software design, which are specified in the SSRD and feature architecture documents.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-2
+TITLE: System Boundaries
+
+[TEXT]
+STATEMENT: >>>
+This section defines the **fence** of the Safety System: what is _inside_ (owned/controlled and specified here) and what is _outside_ (relied upon, with contracts/assumptions).
+
+```
+[External Env & Services]
+   ↑ inputs / ↓ outputs via defined interfaces
+[  Safety System (this doc)  ]  ← internal logic, configs, evidence, timing
+```
+<<<
+
+[[SECTION]]
+UID: SYS-SEC-2-1
+TITLE: Internal Elements
+
+[TEXT]
+STATEMENT: >>>
+The following **interfaces and processing** are **inside** the system boundary and are specified, tested, and maintained here.
+
+**A) Input Interfaces — Hardware Sensors**
+
+- Window contact sensors
+- Door contact sensors
+- Smoke detectors
+- Gas detectors
+- Carbon monoxide (CO) detectors
+- Room climate sensors (temperature, humidity) — per room
+- Indoor air quality sensors (e.g., CO₂/PM/VOC)
+- Boiler signals and measurements
+
+**B) Input Interfaces — Cloud/Data Feeds (logical interfaces inside the boundary)**
+_Note: the data **providers** are external; the **interfaces** and how we use them are internal._
+
+- Weather data: current (temperature, pressure, wind speed, clouds) and forecast (same set)
+- Weather hazard alerts: storm, blizzard, wind, rain, heatwave, tornado
+- Occupancy status (cloud or presence service)
+- Outdoor air pollution
+- System health & update info (platform feeds)
+- Ethernet port status; link status (router, WAN)
+- Network performance: system latency, packet loss
+
+**C) Output Interfaces — Hardware Actuators**
+
+- Smart locks
+- Siren
+- Information light
+- Alert/emergency light
+
+**D) Output Interfaces — Cloud/UI Actuators (logical interfaces inside the boundary)**
+
+- Phone application pop‑ups / push notifications
+- Main safety card in UI (status/acknowledge)
+- User action scheduler / prompts
+
+**E) Processing**
+
+- Home automation instance running the Safety App (decision logic, thresholds/FTTI, evidence logging, notifications).
+- Entity-health registry and evaluation for explicit safety dependencies and
+  component-declared dependencies, presented within System Health.
+- Heating-system supervision by C-HVAC across room heat need, controller
+  request, boiler response, and heat delivery, independent of normal heating
+  control and of C-TEMP room-temperature hazard decisions.
+- Internal environmental monitoring through one component implementing the
+  smoke/gas/CO C-ALARM allocation and indoor PM2.5 C-AQ allocation, with separate
+  environmental alarm and detector-health state.
+
+**Responsibilities (internal):**
+
+- Validate freshness/plausibility of all inputs; meet FTTI on life‑safety paths; issue idempotent actuation with read‑back verification; log evidence; degrade safely on external failures (e.g., network loss).
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-2-2
+TITLE: External Elements
+
+[TEXT]
+STATEMENT: >>>
+Elements **outside** the boundary that we rely on and for which we define assumptions/contracts:
+
+- **Physical environment** of the home (weather, building layout, utilities) being sensed/acted upon.
+- **Users** interacting physically (e.g., evacuation, manual overrides) or via app/UI.
+- **Internet and third‑party services** supplying data (e.g., weather forecasts/alerts, presence/occupancy, outdoor AQ, update feeds) and delivering notifications (push/SMS).
+- **Home Assistant core, AppDaemon runtime, OS/host hardware**, device firmware, and vendor integrations (Zigbee/Z‑Wave/etc.).
+
+**Assumptions (external):**
+
+- Sensors/actuators meet their vendor specs and expose timely state to the system.
+- Network connectivity is _usually_ available; loss triggers local‑only fallbacks.
+- Weather/air‑quality feeds and alerting services are reasonably accurate within their stated contracts; free feeds may provide no availability SLA and shall be diagnosed accordingly.
+- Users maintain devices (battery/power) and respond to L1/L2 notifications per household policy.
+<<<
+
+[[/SECTION]]
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-3
+TITLE: System Modes
+
+[TEXT]
+STATEMENT: >>>
+> **Principle:** Modes describe how the **whole system operates**, not whether a fault/alert is active. Life‑safety events (fire/gas/CO) **override** mode policies where noted.
+<<<
+
+[[SECTION]]
+UID: SYS-SEC-3-1
+TITLE: Mode Set (finalized)
+
+[TEXT]
+STATEMENT: >>>
+- **M1: Startup** — Boot, load config, run self‑checks. No proactive control until ready.
+- **M2: Normal** — Default operating mode.
+- **M3: Sleep (Quiet Hours)** — Occupied/quiet context. Reduced non‑critical noise/notifications; stricter privacy. _Life‑safety siren still allowed._
+- **M4: Local‑Only (WAN Lost)** — Internet/WAN unavailable; keep local sensing/actuation and queue outbound notifications.
+- **M5: Maintenance/Debug** — Human‑initiated. Suppress non‑life‑safety actuations; allow sensor tests/calibration; enable extra logging/diagnostics.
+- **M6: Shutdown** — Controlled stop; persist evidence; leave actuators in safe posture.
+
+> _Not a mode:_ “Alarm latched” is an overlay state that can exist in any mode for life‑safety hazards.
+
+During bounded diagnostic startup qualification, ordinary missing first reports,
+pending evaluations and transient diagnostic failures shall remain silent to the
+operator: no diagnostic incident list, recommendation or notification shall be
+created solely from initial data collection. Show one neutral startup indication.
+This applies to diagnostic faults, including application-health diagnostics;
+internal evidence, output restrictions and recovery eligibility shall still react
+immediately to current component-qualified input. Current positive hazards and
+retained unresolved hazard alarms shall remain immediately visible and reportable.
+At startup completion release only each diagnostic's latest result; a resolved
+startup failure shall not be replayed. Missing data after qualification shall be
+reported as unavailable evaluation, never converted into a healthy result.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-3-2
+TITLE: Mode Policies (what each mode controls)
+
+[TEXT]
+STATEMENT: >>>
+| Mode                     | Actuation Policy                                                                                      | Notifications                                  | Privacy                                   | Config Changes                        | Notes                                                           |
+| ------------------------ | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------- | ----------------------------------------- | ------------------------------------- | --------------------------------------------------------------- |
+| **M1 Startup**           | No proactive control until self‑checks pass; read‑only verification                                   | L3 only if self‑check fails                    | Default                                   | Block safety‑critical threshold edits | Transitions to M2 when ready                                    |
+| **M2 Normal**            | All safe actions allowed within FTTI                                                                  | L1/L2/L3 as configured                         | Standard                                  | Allowed with review                   | Default runtime                                                 |
+| **M3 Sleep**             | Suppress **non‑life‑safety** noisy actions (e.g., non‑critical sirens); **life‑safety siren allowed** | L1 immediate; batch/quiet L2/L3 where possible | Auto‑mask cameras/mics unless life‑safety | Allowed (with prompt/warning)         | Enter by schedule/manual only (occupancy does not define modes) |
+| **M4 Local‑Only**        | Keep **local** actuations (relays/locks/sirens/valves); disable cloud‑dependent actions               | Queue outbound; retry on recovery              | Standard                                  | Frozen (except emergency toggles)     | Enters when **WAN link lost**; exit on recovery                 |
+| **M5 Maintenance/Debug** | Permit test commands but **suppress non‑life‑safety** automations; life‑safety still armed            | L3/L2 informational; L1 only for true hazards  | Standard                                  | Allowed; log every change             | Human‑entered; manual exit                                      |
+| **M6 Shutdown**          | Place system in declared safe posture, then stop                                                      | Final status only                              | Standard                                  | Blocked                               | Manual action                                                   |
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-3-3
+TITLE: Transitions (high‑level)
+
+[TEXT]
+STATEMENT: >>>
+- **M1 → M2** once self‑checks pass and config loads successfully.
+- **M2 ↔ M3** by schedule or manual toggle. _(Occupancy does not control modes.)_
+- **Any → M4** when WAN link is reported **down**; **M4 → previous mode** on WAN recovery.
+- **Any ↔ M5** by explicit user action. Non‑life‑safety actuations remain suppressed while in M5.
+- **Any → M6** by explicit user action (graceful shutdown).
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-3-4
+TITLE: Invariants (apply in all modes)
+
+[TEXT]
+STATEMENT: >>>
+- Life‑safety hazards (Fire/Gas/CO) may **actuate siren and emergency lights** regardless of mode.
+- Such outputs shall be explicitly approved for the hazard and installation;
+  flammable-gas incidents shall not cause unapproved electrical switching,
+  including shared-light activation or restoration. Generic severity-based
+  output selection shall not bypass this eligibility rule.
+- Once required detector bindings are validated, a valid asserted smoke/gas/CO
+  alarm shall bypass M1 observation grace and M3/M5 quiet policies. Invalid
+  configuration shall still follow the application initialization contract;
+  autonomous detector protection remains independent of application readiness.
+- Evidence logging remains active; failures to log **must not** block safety decisions.
+- Read‑back verification follows each actuation; on mismatch → retry → escalate per requirement.
+<<<
+
+[[/SECTION]]
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-4
+TITLE: Notifications
+
+[TEXT]
+STATEMENT: >>>
+This chapter defines **notification levels and vectors** used by the Safety System. Levels carry increasing urgency and determine the **channels**, **deadlines**, and **UI behavior**. Delivery adheres to system modes (see [LINK: SYS-SEC-3, §3]): L1 always overrides; L2/L3 may be quieted in _Sleep_; cloud paths are queued in _Local‑Only_.
+<<<
+
+[[SECTION]]
+UID: SYS-SEC-4-1
+TITLE: Levels & Vectors
+
+[TEXT]
+STATEMENT: >>>
+| Level       | Description                                     | Notification Vectors                                                                                                                                          |
+| ----------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Level 1** | Highest urgency (life‑safety, immediate action) | **Home Assistant phone notification** with high priority, **sound alarm**, **information/alert light set to yellow**, and **dashboard card marked as HAZARD** |
+| **Level 2** | High urgency (prompt action)                    | **Home Assistant phone notification** with high priority, **light notification as yellow**, and **dashboard card marked as HAZARD**                           |
+| **Level 3** | Medium urgency (attention)                      | **Home Assistant phone notification** and **dashboard card marked as WARNING**                                                                                |
+| **Level 4** | Low urgency (informational)                     | **Dashboard card** update only                                                                                                                                |
+
+Active L4 conditions shall retain informational cards, evidence, history and
+applicable manual tasks without degrading the aggregate system state or using
+alarm, warning, red or unhealthy presentation solely because they exist.
+The aggregate severity shall include only active L1–L3 faults; with none active,
+it shall remain `no_faults` / level `0`, while raw active-condition counts may
+include L4. Legacy aggregate `information` / level `4` shall also be interpreted
+as non-degrading. Uncertainty confined to a known L4 condition or its explicitly
+linked task shall remain visible locally. This policy shall not mask startup,
+unknown fault priority, unlinked task uncertainty or independent coverage and
+channel failures, and `no_faults` shall not assert complete safety coverage.
+
+Operator presentation shall name L1/L2 conditions hazards and L3/L4 conditions
+faults, preserving L4's informational, non-degrading behavior. An active hazard
+headline shall preserve the known highest urgency when diagnostic data are
+incomplete, without replacing it with a diagnostic-fault count. Event lists and
+current recommendations shall order hazard entries by L1 then L2 and place
+diagnostics after them. Recommendation ownership shall use stable fault identity;
+catalogue availability alone shall not imply a current action. Explicit executing,
+failed or actionable proposals with a missing owner shall remain visible without
+being attributed to an unrelated incident.
+
+> _Vectors are logical; specific entities/services are bound in configuration. “Sound alarm” may be a phone alert tone and/or local siren if configured for the event._
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-4-2
+TITLE: Deadlines & Retries
+
+[TEXT]
+STATEMENT: >>>
+- **Delivery deadlines:** Level 1 ≤ **10 s**; Level 2/3 ≤ **30 s** from fault confirmation; Level 4 best‑effort.
+- **Retries:** If submission to Home Assistant fails, attempt **N_retry** with
+  **T_cooldown** between attempts (configurable). Absence of individual-phone
+  delivery confirmation is reported diagnostically and does not by itself
+  trigger duplicate pushes. In _Local‑Only_, queue cloud/mobile and prefer
+  local lights/siren.
+- **Repeat policy (optional):** For persistent L1 events (e.g., CO at night), repeat phone alerts every **T_repeat ≤ 60 s** until acknowledged.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-4-3
+TITLE: Mode‑Aware Behavior
+
+[TEXT]
+STATEMENT: >>>
+- **Sleep:** L1 plays sound alarm + lights; L2/L3 use quiet profiles where possible (noisy actions suppressed).
+- **Local‑Only:** WAN lost → deliver local lights/siren immediately; queue phone/UI pushes and flush on recovery.
+- **Maintenance/Debug:** L1 still delivered; L2/L3 may be tagged as test if event is user‑initiated.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-4-4
+TITLE: UI/UX Rules
+
+[TEXT]
+STATEMENT: >>>
+- Dashboard shows the **current level badge** (HAZARD/WARNING/INFO), and each
+  active L1–L3 fault card supports **acknowledge** through the authenticated
+  Home Assistant connection. Acknowledgement does **not** clear hazards; it
+  silences repeats.
+- Lights used for signaling should restore to previous state when the event clears.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-4-5
+TITLE: Configuration sources and generated contract
+
+[TEXT]
+STATEMENT: >>>
+`backend/config/system_config.yml` owns software policy, calibration, stable
+fault-to-Safety-Mechanism mappings, provider lifecycle, MQTT behavior, and
+system health checks. The ignored `backend/config/user_config.yml` owns only
+the normalized installation registry, component-specific overrides, and
+operator choices; the repository contains `user_config.example.yml` as its
+public template. `backend/build_app_config.py` resolves system defaults,
+component settings, and per-asset overrides into the ignored deployable
+`backend/app_cfg.yaml` contract:
+
+```yaml
+app_config:
+  faults:
+    ExampleFault:
+      name: "Human-readable fault name"
+      level: 3
+      related_sms:
+        - "sm_example"
+
+user_config:
+  notification:
+    mobile:
+      services:
+        - "notify/mobile_app_example_phone"
+      default_url: "/"
+    local:
+      light_entity: "light.info"
+  localization:
+    language: "pl"
+```
+
+The generated file shall not be edited directly. API credentials or other
+secrets shall remain in the deployment platform's secret store and shall not be
+committed to either source file.
+
+Every component section in [LINK: SYS-SEC-8, §8] defines its exact `app_config` and `user_config`
+bindings. Configuration fields that are not represented by a validated schema
+shall not influence a safety decision.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-4-6
+TITLE: WAN‑Loss Delivery Options (recommendations)
+
+[TEXT]
+STATEMENT: >>>
+When **WAN is down** (see [LINK: SYS-SEC-3, §3], M4 Local‑Only), prefer delivery vectors that do **not** require the internet:
+
+**A) Local vectors (no WAN):**
+
+- **Siren / alert light / info light** — immediate, in‑home signaling.
+- **On‑prem displays** (tablets, panels) — offline dashboards if available.
+
+**B) Cellular/SMS fallback (optional):**
+
+- Attach a **USB LTE modem** or gateway and expose an **HA `notify.sms_gateway`** service for L1 messages.
+- Use **SMS only for L1** and limit repeats to avoid cost/abuse.
+
+**C) Cellular router failover (optional):**
+
+- If using a **4G/LTE router with failover**, WAN loss may be brief; keep queue + fast retry.
+
+**Policy:**
+
+- On entering **M4 Local‑Only**, immediately execute local vectors; attempt **cellular/SMS** if configured. Queue regular mobile pushes and flush on WAN recovery.
+- Never block safety decisions on notification success.
+
+**WAN-loss notification requirements:**
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-NOT-001
+STATEMENT: >>>
+On WAN loss, the system **shall** deliver L1 locally
+(siren/light) and, if configured, via **cellular/SMS** within
+**T_notify ≤ 10 s**; queued IP notifications **shall** be sent on recovery.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-NOT-002
+STATEMENT: >>>
+Cellular/SMS fallback **shall** be rate-limited and logged
+with correlation IDs; failures **shall** trigger local repeats only.
+<<<
+
+[[/SECTION]]
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-5
+TITLE: Item Definition (lean)
+
+[TEXT]
+STATEMENT: >>>
+**Item:** Safety Monitoring, Notification & Recovery for the home (multi‑hazard).
+
+**Primary Purpose:** Detect, forecast, and mitigate environmental hazards (undercooling/overheating, indoor and outdoor air quality, fire/gas/CO, water leaks, severe weather, frost, and wind) and system/comms failures to maintain safe operation and inform occupants.
+
+**Operating Modes:** per [LINK: SYS-SEC-3, §3] — Startup (M1), Normal (M2), Sleep/Quiet (M3), Local‑Only/WAN‑Lost (M4), Maintenance/Debug (M5), Shutdown (M6).
+
+**Environmental Conditions:** Ambient **−20…+50 °C**; supply voltage per platform; timebase accuracy per host.
+
+**System Boundaries:** as defined in [LINK: SYS-SEC-2, §2] — Inputs (sensors & cloud feeds) → Safety logic → Actuation/Notifications → Evidence/UI. Fault manager behavior is part of the internal processing.
+
+**Assumptions of Use (AoU):**
+
+- **A1.** Sensors are calibrated and provide updates ≥ **f_sensor_min** Hz; communication error rate ≤ **p_comm_max**.
+- **A2.** System timebase accuracy ≤ **Δt_max** ms; persistent storage is available for evidence.
+- **A3.** Operator response to **L2/L3** notifications within **T_op_resp** minutes (household policy).
+- **A4.** Actuation available within **T_act** seconds to effect temperature/AQ changes or shutoff valves.
+- **A5.** Occupancy is **an input to some safety goals** but **does not control system modes** (see [LINK: SYS-SEC-3, §3]).
+- **A6.** External cloud data is advisory and non-certified. External Hazard
+  Monitoring shall never actuate from provider data alone; only an authenticated
+  resident confirmation of a current allowlisted gate-close proposal may
+  authorize a command.
+
+---
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-6
+TITLE: Safety Goals and FTTI
+
+[TEXT]
+STATEMENT: >>>
+> Classifications are derived from HARA for engineering prioritization; this
+> project makes no certification claim. Safe states use shorthand
+> (SS‑1…SS‑5, SS‑Alarm). Occupancy is an **input** to some goals but **does not
+> drive modes** (see [LINK: SYS-SEC-3, §3]).
+
+| ID         | Safety Goal                                                                                                              | Hazard(s) Ref                          | **ASIL**                    | **FTTI**          | Safe State                                             |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------ | -------------------------------------- | --------------------------- | ----------------- | ------------------------------------------------------ |
+| **[LINK: SG-001, SG‑001]** | Prevent sustained **undercooling** (< **T_min**) for longer than **T_crit** in occupied rooms.                           | [LINK: HZ-UNDERTEMP-01, HZ‑UNDERTEMP‑01]                        | **ASIL B**                  | **10 min**        | **SS‑1:** Fallback heating + L3                        |
+| **[LINK: SG-002, SG‑002]** | Provide timely **prediction** of approaching undercooling to enable preventive action.                                   | [LINK: HZ-UNDERTEMP-02, HZ‑UNDERTEMP‑02]                        | **QM/ASIL A**               | **10 min**        | **SS‑1**                                               |
+| **[LINK: SG-003, SG‑003]** | Detect **sensor/communication faults** that could mask hazards; transition to safe state.                                | [LINK: HZ-SYSTEM-FAIL-01, HZ‑SYSTEM‑FAIL‑01]                      | **ASIL B**                  | **60 s**          | **SS‑2:** Isolate faulty channel + L3                  |
+| **[LINK: SG-004, SG‑004]** | Prevent sustained **overheating** (> **T_max**) for longer than **T_crit_hot** in occupied rooms.                        | [LINK: HZ-OVERTEMP-01, HZ‑OVERTEMP‑01]                         | **ASIL B**                  | **5 min**         | **SS‑1:** Emergency cooling/ventilation + L2/L3        |
+| **[LINK: SG-005, SG‑005]** | Maintain acceptable **indoor air quality**; detect/forecast breach and mitigate.                                         | [LINK: HZ-AQ-01, HZ‑AQ‑01]                               | **ASIL A**                  | **10 min**        | **SS‑1:** Ventilate/purify + L2                        |
+| **[LINK: SG-006, SG‑006]** | Detect **smoke/fire** promptly; alert occupants; enter alarm safe state.                                                 | [LINK: HZ-FIRE-01, HZ‑FIRE‑01]                             | **ASIL C**                  | **10 s**          | **SS‑Alarm:** Siren/lighting + L1                      |
+| **[LINK: SG-007, SG‑007]** | Detect **flammable gas** accumulation; alert and apply separately validated hazard-specific emergency response. | [LINK: HZ-GAS-01, HZ‑GAS‑01] | **ASIL C** | **10 s** | **SS‑Alarm:** L1 + approved emergency response |
+| **[LINK: SG-008, SG‑008]** | Detect **CO** accumulation; alert and provide hazard-specific emergency guidance. | [LINK: HZ-CO-01, HZ‑CO‑01] | **ASIL C** | **10 s** | **SS‑Alarm:** L1 + approved emergency response |
+| **[LINK: SG-009, SG‑009]** | Detect **water leak/flood**; alert and shut off supply if available.                                                     | [LINK: HZ-WATER-01, HZ‑WATER‑01]                            | **QM/ASIL A**               | **60 s**          | **SS‑3:** Close valve + L2                             |
+| **[LINK: SG-010, SG‑010]** | Detect **HVAC failures** affecting temperature control; prompt maintenance before exposure.                              | [LINK: HZ-HVAC-01, HZ‑HVAC‑01]                             | **QM/ASIL A**               | **30 min**        | **SS‑4:** Degraded mode + L3                           |
+| **[LINK: SG-011, SG‑011]** | Warn about **weather ingress** via open windows/doors during rain/storm.                                                | [LINK: HZ-WEATHER-01, HZ‑WEATHER‑01]                          | **QM**                      | **120 s after usable input** | **SS‑5:** Prompt manual secure closure + L2      |
+| **[LINK: SG-012, SG‑012]** | Mitigate **loss of heating/cooling** to maintain safe temperatures; alert and apply failover/backup strategies.          | [LINK: HZ-HVAC-LOSS-01, HZ‑HVAC‑LOSS‑01]                        | **QM/ASIL A**               | **30 min**        | **SS‑4:** Degraded mode + L3                           |
+| **[LINK: SG-013, SG‑013]** | Reduce **electrical shock** risk via RCD self‑test/reminders and wet‑zone interlocks.                                    | [LINK: HZ-ELECT-01, HZ‑ELECT‑01]                            | **ASIL A**                  | **24 h**          | **SS‑4:** Degraded mode + L2/L3                        |
+| **[LINK: SG-014, SG‑014]** | Prevent **privacy invasion** by enforcing AV device quiet hours/masking and alerting on unexpected access.               | [LINK: HZ-PRIV-01, HZ‑PRIV‑01]                             | **QM**                      | **60 s**          | **SS‑5:** Mask/disable AV + L2                         |
+| **[LINK: SG-015, SG‑015]** | Deter and respond to **unauthorized access** (unexpected movement/entry) when home declared unoccupied or during Sleep.  | [LINK: HZ-UNAUTH-01, HZ‑UNAUTH‑01]                           | **QM/ASIL A**               | **30 s**          | **SS‑5:** Secure posture (lock/close) + L1/L2          |
+| **[LINK: SG-016, SG‑016]** | Maintain **cybersecurity posture** sufficient to protect safety functions (auth, RBAC, signed config, audit, integrity). | [LINK: HZ-CYBER-SPOOF-01, HZ‑CYBER‑SPOOF‑01] / [LINK: HZ-CYBER-DENIAL-01, HZ‑CYBER‑DENIAL‑01] | **ASIL‑influencing (QM/A)** | **Policy‑driven** | **SS‑2/SS‑5:** Isolate channel / restrict control + L3 |
+| **[LINK: SG-017, SG‑017]** | Warn when an open window or external door exposes the home to **frost**.                                                | [LINK: HZ-EXT-FROST-01, HZ‑EXT‑FROST‑01]                        | **QM**                      | **10 min after usable input** | **SS‑5:** Prompt manual closure + L3          |
+| **[LINK: SG-018, SG‑018]** | Warn when an open window or external door is exposed to damaging **wind/gusts**.                                       | [LINK: HZ-EXT-WIND-01, HZ‑EXT‑WIND‑01]                         | **QM**                      | **120 s after usable input** | **SS‑5:** Prompt manual closure + L2/L3        |
+| **[LINK: SG-019, SG‑019]** | Warn when open external apertures may admit hazardous **outdoor air pollution** and inhibit conflicting advice.        | [LINK: HZ-EXT-AQ-01, HZ‑EXT‑AQ‑01]                           | **QM/ASIL A**               | **10 min after usable input** | **SS‑5:** Prompt manual closure + L3           |
+
+> Life‑threatening hazards (Fire, Gas, CO, Electrical Shock) must not be reduced below **Level 2** post‑mitigation even if formulas suggest lower risk.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-7
+TITLE: Interface Requirements (contracts)
+
+[TEXT]
+STATEMENT: >>>
+_Interfaces turn [LINK: SYS-SEC-2, §2] elements into **testable contracts**: freshness, latency, accuracy, semantics, retries, and read‑back. IDs use `IR-xxx`. All timestamps must be monotonic and include a source identifier._
+<<<
+
+[[SECTION]]
+UID: SYS-SEC-7-1
+TITLE: Input — Hardware Sensors
+
+[INTERFACE_REQUIREMENT]
+UID: IR-001
+TITLE: Window/Door Contact
+STATEMENT: >>>
+- Shall publish `state ∈ {open, closed}` with update on each transition; **freshness**: heartbeat every **≥ 10 min**.
+- **Latency:** state change reflected in the system **≤ 500 ms**.
+- **Quality:** battery level exposed; low‑battery warning when **< 15%**.
+- **Verification:** simulated open/close yields two evidence records with correct order.
+<<<
+
+[INTERFACE_REQUIREMENT]
+UID: IR-002
+TITLE: Smoke Detector
+STATEMENT: >>>
+- Shall publish `alarm ∈ {on, off}` and `fault ∈ {ok, fault}`.
+- **Latency:** alarm edge visible **≤ 1 s**; **freshness:** heartbeat or supervised link **≤ 60 s**.
+- **Self‑test:** capability or maintenance reminder interval **≤ 6 months**.
+- **Verification:** inject alarm → L1 notify path triggered; evidence contains `rule_id=SYS‑SR‑120`.
+- Alarm and detector-health channels shall have separate typed mappings. A
+  valid alarm assertion shall not wait for a second detector, a numeric reading
+  or healthy ancillary diagnostics. Startup retained state shall be identified
+  as historical/unverified until authoritative source confirmation.
+- `SYS-SR-IEHM-003` shall provide the smoke-alarm requirement; the existing
+  `SYS‑SR‑120` evidence identifier shall remain a compatibility alias.
+<<<
+
+[INTERFACE_REQUIREMENT]
+UID: IR-003
+TITLE: Gas Detector
+STATEMENT: >>>
+- Same structure as [LINK: IR-002, IR‑002]; the equipment profile shall identify the detected
+  flammable gas and current alarm semantics. Any [LINK: OR-003, OR-003] emergency response shall
+  require a separate hazard-specific installation approval; detection shall
+  not depend on actuator availability.
+- **Latency:** alarm edge **≤ 1 s**.
+<<<
+
+[INTERFACE_REQUIREMENT]
+UID: IR-004
+TITLE: CO Detector
+STATEMENT: >>>
+- Same structure as [LINK: IR-002, IR‑002]; **Latency:** alarm edge **≤ 1 s**; bedroom entities flagged for repeat policy.
+- CO shall remain distinct from CO2 and combustible-gas channels. Numeric ppm
+  telemetry shall supplement, not replace or gate, the detector's alarm output.
+<<<
+
+[INTERFACE_REQUIREMENT]
+UID: IR-005
+TITLE: Leak Sensor
+STATEMENT: >>>
+- Shall publish `state ∈ {dry, wet}` with debounce supported in SW; **Latency:** wet edge **≤ 1 s**.
+<<<
+
+[INTERFACE_REQUIREMENT]
+UID: IR-006
+TITLE: Room Climate (Temp/Humidity)
+STATEMENT: >>>
+- **Accuracy:** temp ±0.5 °C; humidity ±3 %RH.
+- **Rate:** updates **≥ 0.5 Hz**; **freshness:** drop sample if `age > 90 s`.
+- **Semantics:** payload `{ts, value, unit, src}`; reject if unit mismatch.
+<<<
+
+[INTERFACE_REQUIREMENT]
+UID: IR-007
+TITLE: Indoor Air Quality (CO₂/PM/VOC)
+STATEMENT: >>>
+- **Accuracy:** CO₂ ±(50 ppm + 3%); PM2.5 per sensor spec; VOC relative index.
+- **Rate:** **≥ 0.2 Hz**; **freshness:** drop if `age > 120 s`.
+- Indoor PM2.5 shall use µg/m³ with identified indoor location, observation and
+  receipt times, quality and sensor/profile identity. AQI, PM10, CO2, VOC and
+  outdoor model values shall not be accepted as equivalent PM2.5 inputs.
+- Concentration averages shall declare their period, actual covered duration,
+  maximum gaps and sample provenance; absent data shall not contribute zeros.
+  Source-health timeouts shall be tighter where required by [LINK: SG-003, SG-003].
+<<<
+
+[INTERFACE_REQUIREMENT]
+UID: IR-008
+TITLE: Boiler Signals/Measurements
+STATEMENT: >>>
+- Expose flow temperature, burner state, error codes.
+- **Rate:** flow temp **≥ 0.2 Hz**; **freshness:** drop if `age > 120 s`.
+- **Semantics:** discrete errors as enumerations with code table.
+- Every enabled C-HVAC rule shall identify its required signals: flow/return
+  temperatures, requested flow temperature, burner/pump state, central heating
+  (CH)/domestic hot water (DHW) mode,
+  permitted inhibition, and active device codes as applicable. Optional
+  maintenance and cycle counters shall declare their own quality contracts.
+- Boiler communication shall be evidenced by a trustworthy device-observation
+  timestamp or sequence/heartbeat and transport state. HA entity availability,
+  unchanged `last_updated`, and a retained `connected` value alone shall not
+  establish recent receipt of boiler measurements.
+- The adapter shall normalize units, quality, observation time, receipt time,
+  source identity, and model-specific codes. Last-error history shall remain
+  separate from active error state. Unmapped codes shall be explicitly unknown.
+- Room heating permission/need and controller demand shall use independently
+  identified inputs, including effective room targets and declared schedule or
+  inhibition state; they shall not be inferred solely from burner activity.
+- Freshness and total fault-detection budgets shall be distinct. C-HVAC
+  calibration shall allocate sampling, timeout, evaluation and debounce so
+  detection meets the applicable SG budget; [LINK: IR-008, IR-008] does not relax [LINK: SG-003, SG-003].
+<<<
+
+[INTERFACE_REQUIREMENT]
+UID: IR-009
+TITLE: Home Assistant Entity Health
+STATEMENT: >>>
+- Every monitored record shall identify the Home Assistant entity, its source
+  group, current state, availability, last-change time, last-update time, and
+  associated device and area when available.
+- Explicit safety entities shall use installation-configured freshness and
+  validation policies. Component dependencies shall use contracts owned by the
+  consuming Safety Component or application core.
+- Safety-relevant entity health shall distinguish `healthy`, `degraded`,
+  `stale`, and `unavailable`; a failed or unevaluable check shall never be
+  treated as positive healthy evidence.
+- System Health shall list all monitored Group A/B records, including healthy
+  and unavailable records, separately from battery maintenance. Other Home
+  Assistant entities shall not be enrolled or listed merely because they exist
+  or are unavailable.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-7-2
+TITLE: Input — Cloud/Data Feeds
+
+[INTERFACE_REQUIREMENT]
+UID: IR-020
+TITLE: Weather (Current & Forecast)
+STATEMENT: >>>
+- Provide temperature, apparent temperature, pressure, wind speed, wind gust,
+  precipitation/rain, weather code, and clouds; **forecast horizon ≥ 12 h**.
+- Include provider name, requested and resolved coordinates, source timestamp,
+  retrieval timestamp, units, and forecast validity timestamps.
+- **Freshness:** retrieval `age ≤ 10 min`; forecast source update interval and
+  model age shall be exposed separately and shall not be represented as a local
+  real-time observation.
+<<<
+
+[INTERFACE_REQUIREMENT]
+UID: IR-021
+TITLE: Occupancy Status
+STATEMENT: >>>
+- Publish household states (Sleep, Leave <1 day, Vacation >1 day, Home Alone, Guests, Kids, Occupied) as inputs **only**; must include source and confidence if applicable.
+- **Freshness:** `age ≤ 5 min`. _(Does not control modes; see §3.)_
+<<<
+
+[INTERFACE_REQUIREMENT]
+UID: IR-022
+TITLE: Outdoor Air Quality
+STATEMENT: >>>
+- Provide at least PM2.5, PM10, NO₂, O₃, SO₂, and a named AQI standard when
+  available. CO₂ shall not be used as the primary outdoor-pollution indicator.
+- Each sample shall identify whether it is a station measurement or model
+  forecast and shall include station/grid identity, units, source timestamp,
+  retrieval timestamp, and validity time.
+- **Freshness:** measured/retrieved data `age ≤ 30 min`; forecast horizon
+  **≥ 12 h** and model update age exposed separately.
+<<<
+
+[INTERFACE_REQUIREMENT]
+UID: IR-023
+TITLE: System Health & Updates
+STATEMENT: >>>
+- Provide platform update availability and advisories; **Freshness:** `age ≤ 24 h`.
+<<<
+
+[INTERFACE_REQUIREMENT]
+UID: IR-024
+TITLE: Network Telemetry
+STATEMENT: >>>
+- Ethernet port status, router link, WAN link, latency ms, packet loss %.
+- **Freshness:** metrics every **≥ 60 s**; **Thresholds:** configurable alert limits.
+<<<
+
+[INTERFACE_REQUIREMENT]
+UID: IR-025
+TITLE: Official Weather Warnings
+STATEMENT: >>>
+- Provide stable warning ID, event name, authority severity/degree,
+  probability, publication time, valid-from, valid-to, authoritative text,
+  source, and affected administrative region codes.
+- Official warning plugins shall filter warnings for the installation before
+  entering the hazard-decision path. IMGW uses the configured TERYT codes.
+- A warning update with the same stable ID shall patch the existing condition;
+  expiry or explicit withdrawal shall remove that source assertion. Hazard-level
+  clearing shall additionally meet [LINK: SYS-SR-EXT-055, SYS-SR-EXT-055]; an unavailable refresh shall
+  not prove absence of a replacement warning.
+- **Freshness:** poll interval `≤ 5 min`; late retrieval shall preserve the
+  authority validity interval and expose provider degradation.
+<<<
+
+[INTERFACE_REQUIREMENT]
+UID: IR-027
+TITLE: External API Provider Health
+STATEMENT: >>>
+- Every external API component shall publish `ok`, `stale`, `unavailable`, or
+  `schema_error` together with last attempt, last success, HTTP/status summary,
+  schema version/fingerprint, and consecutive failure count.
+- Provider health shall be independent: failure of one API shall not stop or
+  overwrite the state of another API.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-7-3
+TITLE: Output — Hardware Actuators
+
+[INTERFACE_REQUIREMENT]
+UID: OR-001
+TITLE: Smart Locks
+STATEMENT: >>>
+- Command set: `lock`, `unlock`.
+- **Latency:** command executed **≤ 2 s**; **verification:** read‑back state within **≤ 2 s**; retry **N_retry** with **T_cooldown**.
+- **Fail‑safe:** if verification fails → escalate L2.
+<<<
+
+[INTERFACE_REQUIREMENT]
+UID: OR-002
+TITLE: Siren
+STATEMENT: >>>
+- Commands: `on`, `off`, optional patterns; **Latency:** **≤ 1.5 s** to sound on L1.
+<<<
+
+[INTERFACE_REQUIREMENT]
+UID: OR-003
+TITLE: Ventilation / Gas Valve
+STATEMENT: >>>
+- Commands: `vent_on/off`; `gas_valve_open/close`; **Latency:** **≤ 5 s** close valve; verify end‑state.
+- These are separately allocated emergency-response capabilities, not outputs
+  of internal environmental monitoring. Eligibility shall be assessed for the
+  specific hazard and equipment; a gas alarm shall not automatically energize
+  an ordinary fan, light or relay. A source clear shall not automatically reopen
+  a gas valve or approve re-entry.
+<<<
+
+[INTERFACE_REQUIREMENT]
+UID: OR-004
+TITLE: Water Shutoff Valve
+STATEMENT: >>>
+- Command: `close`; **Latency:** **≤ 5 s**; **verification** required; failures → L2.
+<<<
+
+[INTERFACE_REQUIREMENT]
+UID: OR-005
+TITLE: Information / Alert Lights
+STATEMENT: >>>
+- Commands: set color (info/alert yellow), brightness, on/off; **Latency:** **≤ 1 s**; restoration to previous state on clear.
+<<<
+
+[INTERFACE_REQUIREMENT]
+UID: OR-006
+TITLE: HVAC Mode/Setpoint
+STATEMENT: >>>
+- Commands: `heat`, `cool`, `auto`, setpoint; **Latency:** **≤ 2 s** to accept command; read‑back mandatory.
+<<<
+
+[INTERFACE_REQUIREMENT]
+UID: OR-007
+TITLE: Window Actuators
+STATEMENT: >>>
+- Commands: `close`; **Latency:** **≤ 2 s** to start motion; verify closed or report fault.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-7-4
+TITLE: Output — Cloud/UI Actuators
+
+[INTERFACE_REQUIREMENT]
+UID: OR-020
+TITLE: Phone Application Notification
+STATEMENT: >>>
+- Profiles per [LINK: SYS-SEC-4, §4] (L1–L4); **Deadline:** L1 **≤ 10 s**, L2/L3 **≤ 30 s**; repeat policy for L1 (configurable).
+- **Queueing:** in Local‑Only, queue and flush on WAN recovery.
+- **Routing:** use an explicit configured mobile group or device-service list;
+  `notify.notify` shall not be used as a safety-delivery target.
+- **Result semantics:** distinguish acceptance by Home Assistant from confirmed
+  display or delivery by an individual phone.
+- **Submission confirmation:** wait for a bounded Home Assistant service result;
+  missing, failed, or timed-out results enter the retry policy.
+- **Lifecycle:** a new alarm may alert; same-fault context changes shall refresh
+  quietly; shadowing shall use the Companion `clear_notification` command.
+- **Persistence:** active, acknowledged, repeated, and queued delivery state
+  shall survive AppDaemon reload and restart.
+<<<
+
+[INTERFACE_REQUIREMENT]
+UID: OR-021
+TITLE: Dashboard Safety Status and Fault Cards
+STATEMENT: >>>
+- Must support **HAZARD/WARNING/INFO** badges and a per-fault **acknowledge**
+  action that silences repeats but does not clear the fault.
+<<<
+
+[INTERFACE_REQUIREMENT]
+UID: OR-022
+TITLE: User Action Scheduler/Prompts
+STATEMENT: >>>
+- Provide actionable reminders (e.g., maintenance tests); must log acknowledgements.
+<<<
+
+[INTERFACE_REQUIREMENT]
+UID: OR-023
+TITLE: Cellular/SMS Gateway (optional)
+STATEMENT: >>>
+- When configured, shall dispatch L1 as SMS; **deadline ≤ 10 s**; **rate‑limit** to avoid spam; log correlation IDs.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-7-5
+TITLE: Data Semantics & Quality
+
+[INTERFACE_REQUIREMENT]
+UID: IR-040
+TITLE: Timestamps & Freshness
+STATEMENT: >>>
+- Each input includes `ts` (UTC), `src`, optional `seq`. Drop samples with `now − ts > T_stale` or `seq` gaps > **Δseq_max**.
+<<<
+
+[INTERFACE_REQUIREMENT]
+UID: IR-041
+TITLE: Units & Ranges
+STATEMENT: >>>
+- Temp °C; humidity %RH; CO₂ ppm; PM2.5 µg/m³; wind m/s; pressure hPa. Reject invalid units/ranges.
+<<<
+
+[INTERFACE_REQUIREMENT]
+UID: IR-042
+TITLE: Plausibility
+STATEMENT: >>>
+- Apply per‑sensor checks (range, rate‑of‑change, stuck‑at, timeout). On failure, mark channel **Degraded** and prefer conservative actions.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-7-6
+TITLE: Timing Contracts (derived from SG FTTI)
+
+[TEXT]
+STATEMENT: >>>
+- **Actuation verification** must complete within **2 s** of command where specified.
+- **Decision loop** must ensure `T_detection + T_decision + T_recovery + T_effect ≤ FTTI` per SG (see [LINK: SYS-SEC-6, §6]).
+- **Notification deadlines** per §4.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-7-7
+TITLE: Interface Evidence & Logging
+
+[TEXT]
+STATEMENT: >>>
+- For each command or hazard transition, emit an **evidence record** including `{ts, entity/service, inputs summary, thresholds, decision, action list, result, latency_ms}`.
+- Evidence write failures must not block safety decisions; retry asynchronously.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-7-8
+TITLE: Verification Methods (per interface)
+
+[TEXT]
+STATEMENT: >>>
+- **State transition tests** for contacts/sensors with clock skew injection.
+- **HIL (hardware‑in‑loop)** for valves, siren, locks, window actuators.
+- **Network emulation** for WAN loss and latency/packet‑loss thresholds.
+- **Load tests** to validate decision latency and notification deadlines.
+<<<
+
+[[/SECTION]]
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-8
+TITLE: System Requirements (component‑based)
+
+[TEXT]
+STATEMENT: >>>
+_We model the system as **decoupled Safety Components**, each implementing one or more **Safety Mechanisms (SMx)**. Components raise **Prefaults** (granular, per‑room/per‑sensor) that are **aggregated** into higher‑level **Faults** (user‑visible with attributes). All requirements are **parameterized** (no hard numbers), referencing [LINK: SYS-SEC-7, §7] interfaces and [LINK: SYS-SEC-6, §6] safety goals._
+<<<
+
+[[SECTION]]
+UID: SYS-SEC-8-1
+TITLE: Component Model & Aggregation Rules
+
+[TEXT]
+STATEMENT: >>>
+- **Safety Mechanism (`sm_name`):** Stable logic-family identifier used by
+  `FaultManager.related_sms`. Each mechanism ID shall map to exactly one fault.
+- **Symptom (`Symptom.name`):** Stable per-subject runtime condition, such as a
+  room or door. Multiple symptoms may be active simultaneously.
+- **Fault:** Stable configured catalog key that aggregates all active symptoms
+  whose Safety Mechanism IDs occur in its `related_sms` list. The UX shows
+  faults; individual symptoms remain diagnostic context.
+- **Aggregation policy:**
+
+  - When at least one related symptom is active, set one fault and aggregate the
+    active subjects into its attributes.
+  - A fault clears only after every related symptom has cleared.
+  - Updates to the symptom set patch fault attributes and refresh the existing
+    notification tag without discarding still-active subjects.
+  - Fault catalog keys, Safety Mechanism IDs, symptom ID patterns, raw states,
+    and entity IDs are stable machine contracts.
+
+- **Fault-owned evaluation policy:** An SM shall answer a Boolean violation
+  predicate for valid inputs. Invalid or missing evidence and invocation failure
+  shall be reported as ineligibility, never converted into a negative predicate
+  result. The fault shall own aggregation, failure/recovery qualification,
+  priority, category and response policy. A known violation shall remain
+  actionable when another contribution is unevaluable; clearing an active fault
+  requires valid recovery evidence from every required contribution.
+- **Independent diagnostic axes:** The fault shall retain evaluation status,
+  active condition and shadow owners separately. Shadowing shall withdraw
+  redundant responses without clearing evidence. The existing external raw
+  states and notification-history codes shall remain stable during migration.
+- **Diagnostic startup qualification:** Every SafetyFunctions initialization
+  shall start a shared operator-reporting interval for all D contributions, with a
+  600-second system default and the existing `startup_grace_seconds` override
+  (`0` disables it). Acquisition and check evaluation shall start immediately.
+  Diagnostic acquisition, component qualification and internal degradation/output
+  restrictions shall start immediately, including `SafetyAppHealth` and sources
+  with allocated `detection_budget_seconds`. Entity Monitor dependencies and
+  indoor detector-health supervision shall retain their internal detection/FTTI
+  allocations. Operator D activation, recommendations and notification shall wait
+  for the startup reporting interval; initial waiting shall not be published as
+  `UNEVALUABLE` or a technical failure. Keep only the latest diagnostic result,
+  pending qualification or unavailability per symptom. At expiry release that
+  current state, with unseen sources unavailable rather than fabricated healthy.
+  H detection, gas/CO/water-leak event paths, five-second reconciliation and
+  notification shall remain immediate. Reporting grace shall not clear retained
+  activation, authorize recovery or imply full coverage.
+- **Fault diagnostic evidence:** On the first active transition, C-FLT shall
+  retain one bounded, allowlisted freeze frame per fault independently of
+  notification delivery. A later source update or quiet response refresh shall
+  not replace its captured evidence or count another activation. The same
+  `freeze_frame` object shall preserve bounded lifecycle times and counters
+  alongside the capture and shall use one Freeze frame name in operator views
+  and one object in API/MQTT contracts, without creating episode identities
+  or archiving continuous Home Assistant payloads. Evidence-storage failure
+  shall be visible as an App Health durability cause without blocking the
+  safety decision or its response.
+- **Priority:** Existing fault level L1..L4 shall select the notification level
+  of the same number. H/D category describes a hazard/equipment condition or a
+  diagnostic capability failure, not urgency. A level alone shall not authorize
+  recovery actuation or define a degradation target.
+- **Scoped degradation and coverage:** Each diagnostic dependency shall name
+  its affected H capability and subject. Technical loss shall restrict only
+  dependent evaluation or recovery, retain independent valid channels and
+  prior active hazard evidence, and expose causes and affected scope. Coverage
+  of the installed baseline shall be reported separately as `FULL`, `PARTIAL`,
+  `DEGRADED`, or `UNKNOWN`. Loss of the process itself requires observation
+  independent of that process.
+- **Fault-owned self-diagnostics:** Each installed remote adapter shall have
+  one independent D fault for its current technical health; consumer capability
+  loss shall remain distinct after provider redundancy is evaluated. One App
+  Health D fault shall aggregate independently clearing execution, delivery,
+  local-output, persistence, publication, and startup causes. A local failure
+  shall restrict only its declared H capability or response vector. Historical
+  counters and deliberate operator inhibitions shall not assert technical loss.
+  An observer outside AppDaemon shall report missing/unhealthy process or
+  publication heartbeat through an independent response path, with its HA/host
+  blind spots explicitly stated.
+
+---
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-8-2
+TITLE: Temperature Safety Component (C‑TEMP)
+
+[TEXT]
+STATEMENT: >>>
+**Scope:** [LINK: SG-001, SG‑001] (Undercooling), [LINK: SG-002, SG‑002] (Prediction), and [LINK: SG-004, SG‑004]
+(Overheating).
+
+**Safety Mechanisms:** `sm_tc_1` direct low temperature, `sm_tc_2` forecast
+low temperature, `sm_tc_3` direct high temperature, and `sm_tc_4` forecast high
+temperature.
+<<<
+
+[[SECTION]]
+UID: SYS-SEC-8-2-1
+TITLE: Inputs (from §7)
+
+[TEXT]
+STATEMENT: >>>
+- **[LINK: IR-006, IR‑006] Room Climate** numeric temperature per configured room.
+- `DerivativeMonitor` first derivative `<temperature_sensor>_rate` for forecast
+  mechanisms.
+- **[LINK: IR-001, IR‑001] Window Contacts** and a supported cover actuator for an optional
+  low-temperature recovery proposal.
+- A configured common outside-temperature entity for deciding whether the
+  recovery proposal is to open or close the window.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-8-2-2
+TITLE: Outputs (to §7)
+
+[TEXT]
+STATEMENT: >>>
+- Symptom events for FaultManager aggregation.
+- **OR‑020/021** fault notifications and dashboard state.
+- Optional `ManipulateWindow<Room>` recovery proposals routed through
+  RecoveryManager, plus cause-specific manual room-inspection guidance.
+  C‑TEMP does not command HVAC or climate services.
+- Diagnostic MQTT sensors for each room's low/high thresholds and derivative
+  measurements.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-8-2-3
+TITLE: Parameters (from `backend/app_cfg.yaml`)
+
+[TEXT]
+STATEMENT: >>>
+- Per-room bindings: `area_id`, `temperature_sensor`, optional `window_sensor`,
+  and optional cover `actuator`.
+- Thresholds: `default_low_temperature_c` and
+  `default_high_temperature_c`, inherited by the installation and exposed as
+  `low_temperature_c` and `high_temperature_c` overrides. The
+  `forecast_horizon_hours` parameter is fixed in system configuration.
+- Direct-mechanism debounce:
+  `sm_tc_1_debounce_limit` and `sm_tc_1_reeval_delay_seconds`.
+- Forecast-mechanism debounce and derivative sampling:
+  `sm_tc_2_debounce_limit`, `sm_tc_2_reeval_delay_seconds`, and
+  `sm_tc_2_derivative_sample_minutes`.
+- Plausibility bounds: `sm_tc_min_valid_temperature_c`,
+  `sm_tc_max_valid_temperature_c`, `sm_tc_max_abs_rate_c_per_min`, and
+  `sm_tc_max_forecast_delta_c`.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-8-2-4
+TITLE: Runtime identifier contract
+
+[TEXT]
+STATEMENT: >>>
+| System mechanism | Runtime ID | Positive condition | Symptom ID | Fault ID |
+| --- | --- | --- | --- | --- |
+| Direct low temperature | `sm_tc_1` | current temperature `< low_temperature_c` | `RiskyTemperature{Room}` | `RiskyTemperature` |
+| Forecast low temperature | `sm_tc_2` | projected temperature `< low_temperature_c` | `RiskyTemperature{Room}ForeCast` | `RiskyTemperatureForecast` |
+| Direct high temperature | `sm_tc_3` | current temperature `> high_temperature_c` | `RiskyTemperatureHigh{Room}` | `RiskyTemperature` |
+| Forecast high temperature | `sm_tc_4` | projected temperature `> high_temperature_c` | `RiskyTemperatureHigh{Room}ForeCast` | `RiskyTemperatureForecast` |
+
+`ForeCast` capitalization is retained as part of the existing runtime contract.
+
+| Fault ID | Level | `related_sms` | Shadowing |
+| --- | ---: | --- | --- |
+| `RiskyTemperature` | 2 | `sm_tc_1`, `sm_tc_3` | Shadows `RiskyTemperatureForecast` while active |
+| `RiskyTemperatureForecast` | 3 | `sm_tc_2`, `sm_tc_4` | None |
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-8-2-5
+TITLE: Requirements (C-TEMP → SYS-SR-TEMP-xxx)
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-TEMP-001
+STATEMENT: >>>
+For every configured room, C‑TEMP shall instantiate
+`sm_tc_1`, `sm_tc_2`, `sm_tc_3`, and `sm_tc_4` using the stable symptom ID
+patterns in §8.2.4.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-001
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-002
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-004
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-TEMP-002
+STATEMENT: >>>
+Direct mechanisms shall compare the current numeric room
+temperature with the configured low or high threshold using strict `<` and
+`>` comparisons.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-001
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-004
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-TEMP-003
+STATEMENT: >>>
+Forecast mechanisms shall calculate a linear projection
+from current temperature, the first derivative expressed in degrees Celsius
+per minute, and the configured forecast timespan. The projection shall be
+rejected when its rate, delta, or resulting temperature exceeds calibrated
+plausibility bounds. A state change of either the room temperature or its
+first derivative shall trigger forecast reevaluation, including input loss
+and recovery.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-002
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-004
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-TEMP-004
+STATEMENT: >>>
+Missing, non-numeric, non-finite, `unknown`,
+`unavailable`, or otherwise invalid temperature or derivative input shall not
+constitute positive evidence to set or clear an active temperature symptom.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-001
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-002
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-004
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-TEMP-005
+STATEMENT: >>>
+Each mechanism shall apply its configured debounce limit
+before changing symptom state and shall schedule reevaluation using its
+configured delay while debouncing remains incomplete.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-001
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-002
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-004
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-TEMP-006
+STATEMENT: >>>
+`DerivativeMonitor` shall publish first- and second-order
+diagnostic derivatives. C‑TEMP shall consume only the first derivative for
+forecast decisions and shall retain ownership of all temperature thresholds.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-002
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-004
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-TEMP-007
+STATEMENT: >>>
+C‑TEMP shall expose separate diagnostic MQTT sensors for
+each room's low and high thresholds as `<source>_low_threshold` and
+`<source>_high_threshold`.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-001
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-004
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-TEMP-008
+STATEMENT: >>>
+Threshold diagnostics shall expose source entity,
+threshold type, `area_id`, and the resolved Home Assistant area name. Each
+threshold sensor shall also expose the last forecast predicate observation
+for that room and threshold: status, exact symptom identity, input temperature,
+first derivative, modeled temperature, configured limit, forecast horizon,
+and UTC evaluation time. Diagnostics shall distinguish an unevaluable or
+not-yet-evaluated forecast from a valid result within limits. The last
+observation shall remain separate from the fault's qualified alarm state;
+healthy input diagnostics or application-health repair results shall not
+imply a safe forecast or clear an active temperature fault.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-001
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-004
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-TEMP-009
+STATEMENT: >>>
+Low-temperature mechanisms may create a
+`ManipulateWindow{Room}` recovery proposal using the configured window sensor
+or cover actuator and the indoor/outdoor temperature relation. High-temperature
+mechanisms shall provide manual room-inspection/service guidance without
+window actuation. Both paths shall follow the shared recovery contract in
+§8.10. C‑TEMP shall not issue HVAC or climate commands.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-001
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-002
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-TEMP-010
+STATEMENT: >>>
+Direct low/high symptoms shall aggregate into
+`RiskyTemperature`; forecast low/high symptoms shall aggregate into
+`RiskyTemperatureForecast`; the direct fault shall shadow the forecast fault
+while active. A fault shall remain active until every related symptom clears.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-001
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-002
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-004
+  ROLE: Refines
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-8-2-6
+TITLE: Mapping
+
+[TEXT]
+STATEMENT: >>>
+- **[LINK: SG-001, SG‑001]:** SYS-SR-TEMP-001/002/004/005/007/008/009/010
+- **[LINK: SG-002, SG‑002]:** SYS-SR-TEMP-001/003/004/005/006/009/010
+- **[LINK: SG-004, SG‑004]:** SYS-SR-TEMP-001/002/003/004/005/006/007/008/010
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-8-2-7
+TITLE: Verification
+
+[TEXT]
+STATEMENT: >>>
+- **Unit tests:** strict low/high comparisons, low/high forecasting, invalid and
+  non-finite inputs, debounce set/clear behavior, and stable symptom IDs.
+- **Integration:** per-room state playback, derivative publication, threshold
+  MQTT diagnostics, fault aggregation/shadowing, and low-temperature recovery
+  proposals.
+- **Negative control tests:** high-temperature paths provide manual guidance only
+  and C‑TEMP makes no HVAC or climate service call.
+
+---
+<<<
+
+[[/SECTION]]
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-8-3
+TITLE: External Hazard Monitoring Component (C-EXT)
+
+[TEXT]
+STATEMENT: >>>
+**Scope:** [LINK: SG-011, SG-011] (Rain/Storm Ingress), [LINK: SG-017, SG-017] (Frost), [LINK: SG-018, SG-018]
+(Wind), [LINK: SG-019, SG-019] (Outdoor Pollution), and [LINK: SG-003, SG-003] (Diagnostics linkage).
+
+**Safety Mechanisms:** **SM-EXT-1 WeatherExposureMonitoring**,
+**SM-EXT-2 OutdoorPollutionExposureMonitoring**, and
+**SM-EXT-4 ExternalProviderDiagnostics**.
+<<<
+
+[[SECTION]]
+UID: SYS-SEC-8-3-1
+TITLE: Component boundaries
+
+[TEXT]
+STATEMENT: >>>
+- `ExternalHazardComponent` is the only Safety Component in this feature. It
+  owns household policy, contact correlation, symptom lifecycle, aggregation,
+  notification context, and advice-inhibition state.
+- Each remote API has a separate API Component. API Components perform
+  transport, provider-schema validation, provider-specific unit mapping, and
+  publication of normalized observations. They do not create symptoms, faults,
+  notifications, or recovery actions.
+- The bundled provider plugins implementing the internal observation and health API are:
+  `OpenMeteoWeatherApiComponent`, `ImgwWarningsApiComponent`, and
+  `OpenMeteoAirQualityApiComponent`.
+- API Components may share an injected HTTP transport and common immutable data
+  types, but shall not share polling schedules, failure counters, cached
+  payloads, or provider health.
+- Open-Meteo shall remain the default point-weather and outdoor-air-quality
+  source behind the same internal provider contract. Official weather warnings
+  shall remain a separately selectable capability; model output shall not
+  constitute an official warning.
+- Provider plugins shall be bundled with the application. The installation
+  shall select registered plugins rather than install executable packages at
+  runtime. Provider selection shall not change household policy or actuator
+  authority.
+
+The provider contract and configuration decisions are detailed in the
+[LINK: ARCH-EXTERNAL-HAZARD-MONITORING-DOC, External Hazard Monitoring architecture]
+and [ADR-0001](../adr/0001-external-provider-plugins.md).
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-8-3-2
+TITLE: Inputs (from §7)
+
+[TEXT]
+STATEMENT: >>>
+- **[LINK: IR-001, IR-001] Window/Door Contacts** for configured external apertures.
+- **[LINK: IR-020, IR-020] Weather (Current & Forecast)** from a plugin with point weather model capability.
+- **[LINK: IR-022, IR-022] Outdoor Air Quality** from a plugin with outdoor air quality capability for the configured home coordinates.
+- **[LINK: IR-025, IR-025] Official Weather Warnings** from a registered official warning plugin applicable to the installation country. IMGW supplies this capability in Poland.
+- **[LINK: IR-027, IR-027] External API Provider Health** from every API component.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-8-3-3
+TITLE: Outputs (to §7)
+
+[TEXT]
+STATEMENT: >>>
+- **OR-020/021** notification and dashboard outputs for every exposure.
+- **OR-006/007** only for closing the explicitly configured garage and external
+  gate covers after authenticated SafetyHome confirmation.
+- Diagnostic MQTT entities for normalized hazard state and per-provider health.
+- An advice policy that can inhibit contradictory recommendations
+  such as opening windows during external pollution, damaging wind, or storm.
+- C-EXT shall not use locks, HVAC, ventilation, raw relay/pulse buttons, or any
+  actuator other than the two configured directional gate covers.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-8-3-4
+TITLE: Parameters
+
+[TEXT]
+STATEMENT: >>>
+- Site identity: latitude and longitude from Home Assistant Core at each App
+  start, plus configured timezone and country. Enabled IMGW in Poland requires
+  TERYT codes.
+- Opening registry: stable opening name, `entity_id`, `area_id`, opening kind,
+  applicable hazard types, execution policy, and optional allowlisted
+  `cover.*` actuator.
+- Weather policy: frost watch/warning temperature, wind/gust thresholds,
+  rain/precipitation policy, forecast horizon, hysteresis, persistence, and
+  clear delay.
+- Outdoor AQ policy: European AQI standard, warning threshold and independent
+  persistence interval (default 300 seconds). Weather confirmation has its own
+  default of 75 seconds within the total 120-second response allocation.
+- Per-provider base URL where applicable, poll interval, request timeout, retry
+  count and stale timeout belong to application policy. Explicit provider-or-null
+  selection, location and station selection belong to installation configuration. Each
+  plugin shall own the schema of its installation-specific parameters; shared
+  site identity shall not acquire fields for every regional provider.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-8-3-5
+TITLE: Normalized events and states
+
+[TEXT]
+STATEMENT: >>>
+- Live API Components publish `external_api_result` with one complete provider
+  snapshot containing typed observations and independent provider health. Each
+  observation contains:
+  `{provider, observation_id, hazard_type, provider_level, values,
+  observed_at, valid_from, valid_to, retrieved_at, region_codes, confidence,
+  authority_confirmed, source_reference, warning_urgency}`. The provider's
+  supported capability and hazard set shall determine which observations and
+  empty results can contribute to a decision. Trusted synthetic declarations
+  route only to `external_api_test_result` and isolated test preview; their
+  observations shall not claim real official authority or enter real decisions.
+- `ExternalHazardComponent` maintains a latest-valid observation set keyed by
+  provider and observation ID. Repeated retrieval of unchanged input is
+  idempotent.
+- Normalized hazard state is `clear`, `watch`, `warning`, `severe`, or
+  `unavailable`. Provider levels are inputs to policy and are not automatically
+  equal to Safety System notification levels.
+- Opening state is `open`, `closed`, or `unavailable`. An unavailable contact
+  shall not be treated as closed.
+
+**Runtime identifier contract:**
+
+| Fault ID | Safety Mechanism ID | Symptom ID contract | Level |
+| --- | --- | --- | ---: |
+| `ExternalWeatherExposure` | `sm_ext_weather_exposure` | `ExternalWeatherExposure{HazardId}{OpeningId}` | 2 |
+| `OutdoorAirQualityExposure` | `sm_ext_outdoor_air_quality_exposure` | `OutdoorAirQualityExposure{OpeningId}` | 3 |
+| `ExternalDataUnavailable` | `sm_ext_provider_unavailable`, `sm_provider_adapter_health` | `ExternalHazardDataUnavailable{CapabilityId}`, `ProviderHealth{ProviderId}` | 3 |
+
+Each Safety Mechanism ID occurs in exactly one fault's `related_sms` list.
+`ExternalWeatherExposure` aggregates affected hazards and openings;
+`OutdoorAirQualityExposure` aggregates affected openings and pollutant/AQI
+context; and `ExternalDataUnavailable` aggregates independent provider failures
+and capabilities for which required provider evidence is unusable beyond its
+stale timeout. Provider identity and consumer redundancy policy shall remain
+distinct; one failed adapter shall not disable independently supplied evidence.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-8-3-6
+TITLE: Requirements (C-EXT → SYS-SR-EXT-xxx)
+
+[TEXT]
+STATEMENT: >>>
+**API isolation and normalization**
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-EXT-001
+STATEMENT: >>>
+Each external API shall be implemented by a separate API
+Component with an independent configuration schema, polling lifecycle,
+cache, diagnostics, and contract tests.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-011
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-EXT-002
+STATEMENT: >>>
+API Components shall not inherit from `SafetyComponent`
+and shall not publish `symptom` or `fault` events. They shall publish only
+normalized observations and provider-health events.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-EXT-003
+STATEMENT: >>>
+Remote polling shall not start in constructors. It shall
+start only after configuration validation, EventBus subscriptions, FaultManager,
+NotificationManager, and MQTT diagnostics are ready.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-EXT-004
+STATEMENT: >>>
+Provider payload validation shall be fail-closed for the
+affected capability: unknown enum values, missing timestamps/units, or schema
+changes produce `schema_error` and shall not be interpreted as `clear`.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-003
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-EXT-005
+STATEMENT: >>>
+One provider failure shall not delay another provider's
+schedule or replace another provider's last valid observation.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-003
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-EXT-006
+STATEMENT: >>>
+Each registered provider shall declare a stable identity,
+supported capability, covered hazard types, applicable countries, and
+provider-owned configuration and location-parameter schemas. Adding a
+conforming provider shall not require provider-name conditions in C-EXT,
+shared diagnostics, coverage allocation, or the configuration interface.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-011
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-017
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-018
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-019
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-003
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-EXT-007
+STATEMENT: >>>
+The installation shall allow selection of applicable
+bundled providers and entry of their required location parameters. Geographic
+coordinates shall come from Home Assistant Core; country and timezone shall
+remain shared installation data. TERYT codes shall be IMGW parameters and
+shall not be required by an unrelated provider.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-011
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-017
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-018
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-019
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-EXT-008
+STATEMENT: >>>
+Provider configuration shall be validated before polling
+or mechanism activation. An unknown plugin, missing required parameter,
+unsupported parameter, or explicitly selected provider incompatible with the
+installation country shall be rejected with an identified configuration path.
+There shall be no inherited provider selection; an unselected adapter shall
+create no provider-failure diagnostic.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-011
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-017
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-018
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-019
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-003
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-EXT-009
+STATEMENT: >>>
+Source model version 2 shall use one explicit provider or
+disabled choice per external-data category, with provider-owned installation
+parameters in one canonical location. Superseded enablement maps, selection
+provenance and site TERYT aliases shall be rejected without migration or
+reconciliation. Technical IDs and raw states not changed by this contract
+shall remain stable; safety consent and positive-clear rules remain controlling.
+Active real external-hazard assertions shall remain unresolved across a restart
+that disables or replaces their source or component. Startup shall restore
+them conservatively before publishing fault status rather than treat missing
+mechanisms or retained presentation as evidence of recovery.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-011
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-017
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-018
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-019
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-003
+  ROLE: Refines
+
+[TEXT]
+STATEMENT: >>>
+**Weather and opening correlation**
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-EXT-010
+STATEMENT: >>>
+When a configured frost, wind, rain, or storm policy is
+active and a relevant opening is qualified, C-EXT shall raise or update
+`ExternalWeatherExposure{HazardId}{OpeningId}` through
+`sm_ext_weather_exposure` within `T_ext_decision`. A new exposure at an
+external door, garage door, or gate shall require a known-open state for
+`T_ext_door_open`, timed independently for each opening. A closed or unknown
+contact shall reset this interval. An open window shall qualify immediately.
+A valid, locally applicable official warning normalized as `immediate`
+shall also qualify an open aperture configured for its hazard after the
+shared hazard persistence interval.
+C-EXT shall re-evaluate the contact and applicable evidence when the
+interval elapses. An existing exposure shall follow the clear policy in
+[LINK: SYS-SR-EXT-013, SYS-SR-EXT-013] and [LINK: SYS-SR-EXT-043, SYS-SR-EXT-043].
+C-EXT shall qualify modeled hazards and applicable official warnings independently per provider and hazard
+after continuous fresh threshold evidence for the configured persistence
+interval (75 seconds for weather, independently 300 seconds for outdoor AQ by
+default). Weather response shall complete within 120 seconds total from usable
+input and a relevant known-open aperture: 5 s dispatch, concurrent weather and
+opening qualification (75 s and 60 s), 9 s scheduling/reconciliation, 1 s decision
+and 30 s notification allocation. Configured overrides shall fit this total;
+provider polling and physical onset remain explicit boundaries.
+An interruption shall reset pending
+qualification. Official warnings, including `immediate` warnings, shall remain
+authoritatively valid and fresh throughout that interval.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-011
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-017
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-018
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-EXT-011
+STATEMENT: >>>
+Official IMGW warnings shall be applicable only when at
+least one configured TERYT code is present in the warning region set and the
+current time is within its validity interval.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-011
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-018
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-EXT-012
+STATEMENT: >>>
+Forecast-only weather evidence shall be labeled as a
+forecast. It shall not be represented as a local real-time measurement.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-011
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-017
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-018
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-EXT-013
+STATEMENT: >>>
+Closing an opening shall clear only that opening's
+prefault after `T_ext_clear`; other affected openings and the underlying
+external hazard state shall remain visible.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-011
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-017
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-018
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-EXT-014
+STATEMENT: >>>
+The IMGW provider diagnostic output shall expose every
+current warning returned by the provider with sanitized authority context,
+validity, region codes, and a local-applicability flag. Household safety
+policy shall continue to consume only warnings satisfying [LINK: SYS-SR-EXT-011, SYS-SR-EXT-011].
+<<<
+
+[TEXT]
+STATEMENT: >>>
+**Outdoor air quality**
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-EXT-020
+STATEMENT: >>>
+The Open-Meteo AQ component shall retain the current
+European AQI value, model timestamp, grid coordinates, units, validity, and
+retrieval time for the configured home coordinates.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-019
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-EXT-021
+STATEMENT: >>>
+Household exposure policy shall use the European AQI
+supplied by enabled outdoor-air-quality plugins. Unavailable, malformed, or
+stale provider data shall not be interpreted as positive clear evidence.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-019
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-EXT-022
+STATEMENT: >>>
+When outdoor AQ policy is active and a relevant opening
+is qualified under [LINK: SYS-SR-EXT-010, SYS-SR-EXT-010], C-EXT shall raise or update
+`OutdoorAirQualityExposure{OpeningId}` through
+`sm_ext_outdoor_air_quality_exposure` and identify the controlling
+AQI/pollutant input.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-019
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-EXT-023
+STATEMENT: >>>
+While outdoor AQ, damaging wind, storm, or a confirmed
+sheltering policy is active, C-EXT shall expose an advice inhibition for
+`open_external_opening`. C-EXT may filter manual advice. A close command is
+permitted only through [LINK: SYS-SR-EXT-040, SYS-SR-EXT-040] through [LINK: SYS-SR-EXT-044, SYS-SR-EXT-044].
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-019
+  ROLE: Refines
+
+[TEXT]
+STATEMENT: >>>
+**Recommended-action and confirmed-actuation boundary**
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-EXT-040
+STATEMENT: >>>
+C-EXT shall register close recommendations for exposure
+symptoms. Windows and ordinary doors shall remain manual actions.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-011
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-017
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-018
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-019
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-EXT-041
+STATEMENT: >>>
+Every warning shall include hazard type, human-readable
+opening/area names when applicable, observed or forecast value, threshold or
+authority level, validity, source, freshness, and recommended manual action.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-011
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-017
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-018
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-019
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-EXT-042
+STATEMENT: >>>
+Repeated observations for the same active fault shall
+refresh the existing notification and aggregate newly affected hazards or
+openings without creating duplicate notification tags.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-011
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-017
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-018
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-019
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-EXT-043
+STATEMENT: >>>
+Clearing shall require positive valid evidence or expiry
+according to provider semantics and [LINK: SYS-SR-EXT-055, SYS-SR-EXT-055]. Network failure, stale
+data, or parse error shall not clear an active condition. The configured frost
+and gust hysteresis shall apply to the clear thresholds for modeled weather.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-011
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-017
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-018
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-019
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-003
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-EXT-044
+STATEMENT: >>>
+Only explicitly configured `cover` entities, when bound
+to their configured closed contacts, may be commanded, and only with
+`cover.close_cover` after an authenticated SafetyHome user confirms a current
+one-time proposal. Raw pulse buttons shall not be used.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-EXT-045
+STATEMENT: >>>
+Before command execution RecoveryManager shall reject an
+expired, replayed, shadowed, cleared, policy-inhibited, or actuator-mismatched
+proposal. It shall publish executing, confirmed, failed, or timed-out state
+and verify closure from the configured contact.
+<<<
+
+[TEXT]
+STATEMENT: >>>
+**Diagnostics and evidence**
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-EXT-050
+STATEMENT: >>>
+Each selected live API Component shall expose provider health per
+[LINK: IR-027, IR-027] through MQTT diagnostics. When every provider required for an enabled
+capability remains unusable beyond its stale timeout, C-EXT shall set
+`ExternalHazardDataUnavailable{CapabilityId}` through
+`sm_ext_provider_unavailable`.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-003
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-EXT-051
+STATEMENT: >>>
+C-EXT shall emit evidence for each decision containing
+`{rule_id, provider, source_ts, retrieved_at, freshness, values, thresholds,
+opening_states, decision, authority_confirmed, latency_ms}`.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-011
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-017
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-018
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-019
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-EXT-052
+STATEMENT: >>>
+C-EXT shall publish one normalized external-hazard entity
+containing active hazards, affected openings, provider health summary, and
+the most recent successful evaluation time.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-003
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-EXT-053
+STATEMENT: >>>
+Every selected live provider's health shall contribute to
+`ExternalDataUnavailable` and the applicable coverage bindings through its
+registered capability and covered hazards, without a fixed provider-name
+allocation. An independent healthy source shall remain usable; recovery of
+one contributor shall not remove another contributor's failure. Synthetic
+provider health shall be excluded from real diagnostic and degradation bindings.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-003
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-EXT-054
+STATEMENT: >>>
+Coverage shall distinguish an unconfigured capability, an
+unsupported hazard, a configured source awaiting evidence, an unhealthy
+source, and a healthy source reporting no applicable warnings. An explicitly
+disabled category shall remain visible with muted styling and disabled text,
+without a green healthy indication or evaluated zero. Unconfigured coverage
+shall remain distinguishable from disabled monitoring, and neither shall
+disable independently configured model-based monitoring. Synthetic-only and
+all-disabled monitoring shall not imply healthy real coverage.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-011
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-017
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-018
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-019
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-003
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-EXT-055
+STATEMENT: >>>
+Hazard-level clear evidence shall require fresh, healthy
+results from every selected, country-applicable live provider declaring coverage
+of that hazard, with no applicable active warning or threshold assertion.
+A validated complete empty warning result shall count only for that
+provider's declared coverage. Unsupported or unconfigured coverage and failed
+retrieval shall not supply positive clear evidence. Official-warning expiry
+shall follow authoritative validity without turning failed refresh into
+evidence of absence. Clearing an exposure because its opening is confirmed
+closed shall retain the separate contract in [LINK: SYS-SR-EXT-013, SYS-SR-EXT-013].
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-011
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-017
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-018
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-019
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-003
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-EXT-056
+STATEMENT: >>>
+Provider selection, required parameters, field errors,
+capability coverage, and diagnostic labels shall be exposed using registered
+provider metadata and friendly localized names. English, Polish, and German
+runtime labels shall retain parity while technical identifiers remain
+language-independent. Changing country or provider selection shall require
+revalidation and shall not silently replace a selected warning provider.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-011
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-017
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-018
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-019
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-003
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-EXT-057
+STATEMENT: >>>
+Each external-data category shall present one named
+applicable source or an explicit disabled choice, revealing only that source's
+installation fields. Generic category wording shall be provider-neutral;
+provider names shall identify actual selection or provenance. There shall be
+no enabled/default/disabled selection tier or compatibility reconciliation flow.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-011
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-017
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-018
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-019
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-003
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-EXT-058
+STATEMENT: >>>
+A deliberately selected German test-warning source shall
+provide repeatable synthetic empty, active-warning, unavailable and stale
+scenarios without an external service. Test data shall remain visibly marked
+and isolated from real hazard state, real diagnostic contributions and coverage,
+real alarm notifications, recovery proposals and actuator execution.
+Active real external assertions shall be checkpointed separately in existing
+durable state and restored before initial fault publication. The store shall
+admit at most 4096 assertions and 1 MiB; overflow or failed persistence shall
+report explicit state failure/unknown coverage, without silent loss of an
+unresolved assertion. A missing/corrupt checkpoint with an active journal
+record shall remain unknown; an ordinary cold start awaits fresh evidence.
+Removed-opening assertions remain unresolved until valid positive evidence;
+physical closure requires the matching live contact. Startup shall not replay
+qualification timers, notifications, proposals or consent.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-011
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-017
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-018
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-019
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-003
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-EXT-059
+STATEMENT: >>>
+Applied external-source selection and component enablement
+shall be published independently of C-EXT evaluation and editor drafts. All
+source, aggregate and test-preview presentations shall identify the same
+application start. Retained records from another start or missing selection
+truth shall not authorize a healthy or disabled inference; explicit applied
+disabling shall override retained healthy source diagnostics and counts.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-011
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-017
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-018
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-019
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-003
+  ROLE: Refines
+
+[TEXT]
+STATEMENT: >>>
+Retained real external danger shall remain active with `UNEVALUABLE` evaluation
+and shall be explicitly identified in fault and global coverage presentation.
+Unresolved retained state shall prevent `FULL`/`PARTIAL` coverage claims without
+hiding known technical degradation. Restoring persisted external recovery
+recommendations or consent shall not be a response to retained assertions;
+fresh qualified real evidence is required to enter normal recovery again.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-8-3-7
+TITLE: Mapping
+
+[TEXT]
+STATEMENT: >>>
+- **[LINK: SG-011, SG-011]:** SYS-SR-EXT-001/006/007/008/009/010/011/012/013/040/041/042/043/051/054/055/056/057/058/059
+- **[LINK: SG-017, SG-017]:** SYS-SR-EXT-006/007/008/009/010/012/013/040/041/042/043/051/054/055/056/057/058/059
+- **[LINK: SG-018, SG-018]:** SYS-SR-EXT-006/007/008/009/010/011/012/013/040/041/042/043/051/054/055/056/057/058/059
+- **[LINK: SG-019, SG-019]:** SYS-SR-EXT-006/007/008/009/020/021/022/023/040/041/042/043/051/054/055/056/057/058/059
+- **[LINK: SG-003, SG-003]:** SYS-SR-EXT-004/005/006/008/009/043/050/052/053/054/055/056/057/058/059
+
+These requirements refine existing safety-goal allocations; they shall not
+introduce a new hazard or change a HARA risk classification.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-8-3-8
+TITLE: Verification
+
+[TEXT]
+STATEMENT: >>>
+- **Contract tests:** stored sanitized payload fixtures for every API, including
+  valid, empty, changed-schema, missing-unit, stale, withdrawn, and malformed
+  responses.
+- **Unit tests:** threshold/hysteresis/expiry, TERYT filtering, contact
+  correlation, multi-opening aggregation, and advice inhibition.
+- **Integration tests:** independent polling schedules, timeout/retry isolation,
+  EventBus ordering, FaultManager aggregation, same-tag notification refresh,
+  MQTT provider diagnostics, and restart followed by immediate provider refresh
+  without an intermediate false-clear transition.
+- **Negative-actuation tests:** assert no actuator call occurs before valid
+  confirmation and no lock, switch, raw pulse button, fan, climate, or
+  non-allowlisted cover service is called by C-EXT paths.
+- **Failure injection:** WAN loss, HTTP timeout, partial provider outage,
+  rate-limit response, clock skew, duplicate warning ID, provider withdrawal,
+  and stale data that must not clear an active fault.
+- **Plugin extension acceptance:** a synthetic non-Polish warning provider shall
+  traverse configuration compilation, application startup, independent polling,
+  normalized test dispatch, preview diagnostics and shutdown without provider-name
+  branches in consumers. Acceptance shall prove its exclusion from real H/D
+  evaluation, degradation, coverage, notifications and recovery. Tests shall cover
+  unsupported hazards, complete empty feeds, unavailable/stale feeds, rejected
+  obsolete configuration shapes, incompatible selections and disabled categories.
+  A synthetic fixture shall not constitute evidence of a real regional service.
+- **Configuration presentation:** metadata-driven parameter editing, identified
+  validation errors, country changes, persistence of selections, and EN/PL/DE
+  runtime-label parity shall be verified without live household actions.
+
+---
+<<<
+
+[[/SECTION]]
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-8-4
+TITLE: Safety Doors Component (C-DOOR)
+
+[TEXT]
+STATEMENT: >>>
+**Scope:** C-DOOR contributes door/gate open-duration detection and warning to
+[LINK: SG-015, SG-015]. It does not determine intrusion, unexpected entry, armed state, lock
+integrity, or security-company response; those responsibilities belong to
+C-SEC. Diagnostic handling of unavailable inputs supports [LINK: SG-003, SG-003].
+
+**Safety Mechanism:** `sm_safety_door_open_timeout`.
+<<<
+
+[[SECTION]]
+UID: SYS-SEC-8-4-1
+TITLE: Inputs and outputs
+
+[TEXT]
+STATEMENT: >>>
+- **[LINK: IR-001, IR-001] Window/Door Contact** for every configured door or gate.
+- An optional Home Assistant condition entity whose configured pass and blocked
+  states gate monitoring independently for one door.
+- Symptom events for FaultManager aggregation and **OR-020/021** notification
+  and dashboard output.
+- One diagnostic MQTT sensor per door. C-DOOR supplies manual closure recovery and
+  uses no lock, cover, gate, or other actuator output.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-8-4-2
+TITLE: Parameters
+
+[TEXT]
+STATEMENT: >>>
+- Component default `timeout_seconds` and an optional positive per-door
+  override.
+- Per door: stable door key, `area_id`, contact `entity_id`, and optional
+  condition with `entity_id`, non-empty `pass_states`, and non-empty
+  `blocked_states`.
+- Pass and blocked states are normalized to lowercase and shall be disjoint.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-8-4-3
+TITLE: Runtime identifier contract
+
+[TEXT]
+STATEMENT: >>>
+| Element | Stable ID |
+| --- | --- |
+| Component | `SafetyDoorsComponent` |
+| Safety Mechanism | `sm_safety_door_open_timeout` |
+| Per-door symptom | `SafetyDoorOpenTimeout{DoorName}` |
+| Per-door fault | `SafetyDoorOpenTimeout{DoorKey}` |
+| Fault level | 2 |
+| Diagnostic entity | `sensor.safety_door_<door_name>` |
+| Recovery actions | Manual close action; no actuator command |
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-8-4-4
+TITLE: Requirements (C-DOOR → SYS-SR-DOOR-xxx)
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-DOOR-001
+STATEMENT: >>>
+Every configured door or gate shall define `area_id`,
+contact `entity_id`, and a positive `timeout_seconds`; the component default
+shall apply only when the door has no override.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-015
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-DOOR-002
+STATEMENT: >>>
+C-DOOR shall monitor each configured door independently
+and shall start or resume timing only while the contact is open and the
+optional condition is passing.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-015
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-DOOR-003
+STATEMENT: >>>
+When a door remains continuously open for at least its
+applicable timeout, C-DOOR shall set
+`SafetyDoorOpenTimeout{DoorName}`.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-015
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-DOOR-004
+STATEMENT: >>>
+Closing the door shall cancel its pending timer, reset
+elapsed time, and clear its per-door symptom.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-015
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-DOOR-005
+STATEMENT: >>>
+An optional condition shall contain one monitored entity
+plus non-empty, normalized, disjoint `pass_states` and `blocked_states`. Pass
+states enable monitoring; blocked states cancel timing, reset elapsed time,
+and clear the symptom.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-015
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-DOOR-006
+STATEMENT: >>>
+An unavailable or unsupported contact or condition state
+shall publish diagnostic state `unavailable`, cancel pending timing, and
+shall neither create a new fault nor clear an already active symptom.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-003
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-DOOR-007
+STATEMENT: >>>
+When an already-open door becomes eligible for
+monitoring, elapsed time shall start from the later of the door's open
+transition and the condition's pass transition.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-015
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-DOOR-008
+STATEMENT: >>>
+Each diagnostic entity shall publish `active`,
+`inactive`, `blocked`, or `unavailable` plus door state, source entity,
+timeout, elapsed/remaining time, opening timestamp, condition details,
+`area_id`, and resolved area name.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-003
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-DOOR-009
+STATEMENT: >>>
+Each configured door or gate shall have an independent
+level-2 `SafetyDoorOpenTimeout{DoorKey}` fault. Its active contributors shall
+aggregate only for that door, and another door's recovery shall not clear it.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-015
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-DOOR-010
+STATEMENT: >>>
+C-DOOR shall supply a manual action to close the named
+door or gate for its active open-timeout cause, using a current valid closed
+contact as completion evidence under §8.10. It shall not close, lock, unlock,
+or otherwise actuate a door or gate.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-015
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-DOOR-011
+STATEMENT: >>>
+C-DOOR shall not infer unauthorized entry, lock
+integrity, or intrusion state; those responsibilities belong to C-SEC.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-015
+  ROLE: Refines
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-8-4-5
+TITLE: Installation calibration
+
+[TEXT]
+STATEMENT: >>>
+Every installation shall define its opening keys, Home Assistant areas, entity
+bindings, and safety-door roles in the private `user_config.yml` installation
+registry. A safety-door role may inherit the public system timeout, an
+installation-wide timeout, or define its own positive timeout. Optional
+condition bindings shall define explicit, disjoint pass and blocked states; the
+public repository shall not contain bindings or calibration copied from a real
+installation.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-8-4-6
+TITLE: Mapping and verification
+
+[TEXT]
+STATEMENT: >>>
+- **[LINK: SG-015, SG-015]:** SYS-SR-DOOR-001/002/003/004/005/007/009/010/011.
+- **[LINK: SG-003, SG-003]:** SYS-SR-DOOR-006/008.
+- **Unit tests:** independent timeouts, restart/reload timing, transition-based
+  elapsed time, pass/blocked conditions, unavailable inputs, timer cancellation,
+  and stable runtime IDs.
+- **Integration tests:** FaultManager aggregation, same-tag notification
+  refresh, resolved Home Assistant area names, MQTT diagnostic attributes, and
+  manual closure proposals with contact-based completion, and zero actuator calls.
+
+---
+<<<
+
+[[/SECTION]]
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-8-5
+TITLE: Entity Health Monitoring Component (C-ENT)
+
+[TEXT]
+STATEMENT: >>>
+**Scope:** C-ENT supports [LINK: SG-003, SG-003] by detecting failures of Home Assistant
+entities whose loss could mask or prevent a safety function. System Health
+shall list those monitored records alongside separate battery maintenance,
+without a general Home Assistant inventory. C-ENT observes health and shall
+not command an entity or actuator.
+Fault ownership and subject routing follow
+[LINK: ARCH-FAULT-ROUTING-AND-AGGREGATION-DOC, Fault Routing and Aggregation].
+<<<
+
+[[SECTION]]
+UID: SYS-SEC-8-5-1
+TITLE: Monitoring groups
+
+[TEXT]
+STATEMENT: >>>
+| Group | Stable source code | Membership | Policy owner | Safety effect |
+| --- | --- | --- | --- | --- |
+| A — Explicit safety entities | `explicit` | Entity IDs selected by the installation because they participate in important external automations or safety dependencies | `user_config` | Failed checks may create symptoms and one C-ENT fault for that entity |
+| B — Component dependencies | `component` | Inputs, common entities, and required diagnostic outputs declared by Safety Components or the application core | Owning component or core | Failed checks use the declared fault owner and shall not create duplicate faults |
+
+An entity may belong to more than one group. Its runtime record shall preserve
+all source memberships. Group B policy shall not be weakened by Group A
+configuration. Entities outside these groups shall not enter C-ENT monitoring
+or its monitored list implicitly.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-8-5-2
+TITLE: Inputs and outputs
+
+[TEXT]
+STATEMENT: >>>
+- **[LINK: IR-009, IR-009] Home Assistant Entity Health** state and registry metadata.
+- Group A configuration supplied by system calibration for explicitly selected
+  installation dependencies, including health outputs from other applications.
+- Group B dependency contracts registered by Safety Components and the
+  application core, including every configured `common_entities` binding.
+- Per-entity diagnostic MQTT sensors and an aggregate C-ENT summary for Groups
+  A and B.
+- Symptom events for FaultManager aggregation when C-ENT owns the failure.
+- A monitored-record list in System Health obtained from the Group A/B
+  diagnostics through the authenticated Home Assistant connection.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-8-5-3
+TITLE: Checks and calibration
+
+[TEXT]
+STATEMENT: >>>
+- Availability is mandatory for every Group A and Group B record.
+- Freshness is enabled only when the entity contract identifies a trustworthy
+  heartbeat or source timestamp and defines `report_timeout_seconds`. The check
+  evaluates the age of the latest valid confirmation from that source.
+- Optional checks are allowed for required state/attribute values, allowed
+  values, finite numeric values, numeric range, and rate of change.
+- Numeric-range checks shall define at least one inclusive bound.
+  Rate-of-change checks shall define a sample window, minimum sample count, and
+  at least one permitted rise or fall bound.
+- Failure and recovery debounce govern state transitions independently for each
+  check result. C-ENT shall evaluate availability, values and freshness from
+  initial acquisition; eligible D contributions shall use the shared startup
+  routing policy in [LINK: SYS-SEC-8-1, §8.1] rather than delaying freshness evaluation. Contributions
+  with allocated detection budgets shall bypass that gate from initialization.
+- For a safety-relevant dependency, availability failure debounce shall not
+  exceed the detection budget allocated from its applicable FTTI. The applicable
+  acquisition delay, bounded read timeout and evaluation scheduling shall also
+  be allocated; freshness paths shall additionally include the freshness
+  timeout. Event reception and periodic reconciliation shall retain separate
+  timing bounds without enlarging a life-safety FTTI.
+- Calibration is per entity for Group A and per stable dependency key for Group
+  B. A Group B override may replace debounce, detection budget, and optional
+  check thresholds without changing the component-owned entity binding.
+- Ordinary monitor timing shall expose maximum trusted source-report age
+  (`report_timeout_seconds`) and failure confirmation
+  (`failure_debounce_seconds`). Acquisition/evaluation cadence shall be derived
+  within allocated detection budgets. Network request deadlines, startup and
+  recovery policy shall remain distinct internal timing mechanisms. Legacy
+  calibration aliases shall retain their meaning and shall not weaken an
+  applicable FTTI allocation.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-8-5-4
+TITLE: Runtime identifier contract
+
+[TEXT]
+STATEMENT: >>>
+| Element | Stable ID |
+| --- | --- |
+| Component | `EntityMonitorComponent` |
+| Per-entity Safety Mechanism | `sm_entity_health_<entity_key>` |
+| Per-check symptom | `EntityHealthFailure{EntityKey}{CheckKey}` |
+| Group A-owned fault | `EntityHealth{EntityKey}` |
+| Shared component-input fault | `InputMonitoringUnavailable` |
+| Fault level | 3 |
+| Per-entity diagnostic | `sensor.entity_health_<entity_key>` |
+| Aggregate diagnostic | `sensor.entity_monitor_summary` |
+| Recovery actions | Cause-specific manual Group A/B repair; none for unmonitored entities |
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-8-5-5
+TITLE: Requirements (C-ENT → SYS-SR-ENT-xxx)
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-ENT-001
+STATEMENT: >>>
+The feature shall distinguish the two monitored groups
+defined in §8.5.1. The backend registry shall maintain Groups A/B, and System
+Health shall present those records while preserving every applicable source
+membership and logical fault-family identity.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-003
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-ENT-002
+STATEMENT: >>>
+Group A shall contain only explicitly configured entity
+IDs and shall validate every configured check and calibration before safety
+monitoring is enabled.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-003
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-ENT-003
+STATEMENT: >>>
+Group B shall be derived from validated component and core
+dependency declarations, including all configured common entities, without
+duplicating those entity IDs in installation configuration.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-003
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-ENT-003A
+STATEMENT: >>>
+System calibration shall support a validated override by
+stable Group B dependency key for failure debounce, recovery debounce,
+detection budget, and optional check thresholds; unknown keys shall invalidate
+startup configuration.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-ENT-004
+STATEMENT: >>>
+Availability shall be evaluated for every Group A and
+Group B entity. Freshness shall be evaluated only when the applicable
+calibration declares a trustworthy heartbeat or timestamp source and
+`report_timeout_seconds` (legacy `max_silence_seconds` alias). Live Home
+Assistant `last_reported` may confirm an
+unchanged report only under the integration's declared input contract;
+successful polling and unrelated device traffic shall not invent a fresh
+measurement. Room-temperature inputs shall default to trusting the last valid
+temperature while the unique same-device `last_seen`, normalized as
+`last_contact_at`, remains within 3600 seconds. A temperature change or new
+temperature report shall not be required. Availability and numeric validity
+shall remain independent requirements. Missing or invalid contact shall not
+establish freshness; explicitly configured integration-specific sources may
+override this default. Other channels shall use device-contact freshness only
+under their declared dependency contract. For a safety-relevant dependency,
+acquisition, bounded read
+timeout, evaluation scheduling, failure debounce and any freshness timeout
+shall fit its allocated detection path and applicable FTTI. Immediate alarm
+paths shall remain independent of periodic diagnostic reconciliation.
+Short-budget diagnostic acquisition and evaluation shall remain independent
+of ordinary read timeouts and slower ordinary evaluation schedules.
+Acquisition shall use a dedicated monotonic scheduler independently of pinned
+application callbacks and MQTT publication. Short-budget acquisition shall
+have a four-second response deadline and a ten-second evidence-validity bound
+from acquisition start, including its five-second cadence and one-second
+scheduling allowance. Failed attempts and expired evidence shall not qualify
+recovery. With five-second evaluation and fifteen-second failure debounce,
+the default thirty-second detection allocation shall be retained.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-003
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-ENT-005
+STATEMENT: >>>
+Optional required-value, allowed-values, finite-number,
+numeric-range, and rate-of-change checks shall run only when their complete
+calibration is present and the current input is valid for that check.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-003
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-ENT-006
+STATEMENT: >>>
+A failed, stale, unavailable, malformed, or unevaluable
+observation shall not provide positive evidence to clear a C-ENT symptom.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-003
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-ENT-007
+STATEMENT: >>>
+When C-ENT owns a Group A failure, it shall set
+`EntityHealthFailure{EntityKey}{CheckKey}` after failure debounce and clear it
+only after fresh valid observations pass recovery debounce.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-003
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-ENT-008
+STATEMENT: >>>
+Components shall declare their Group B dependencies and
+explicit consumer bindings. Temperature, safety-door, external-opening and
+shared-input health checks shall contribute to one level-3
+`InputMonitoringUnavailable` fault with independent entity/check evidence.
+Recovery and indoor-detector diagnostic faults shall remain separate. C-ENT
+shall expose dependency health without creating a duplicate Group A fault
+for the same failure. Shared inputs shall retain one declared owner and all
+explicit consumer bindings.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-003
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-ENT-009
+STATEMENT: >>>
+All C-ENT-owned Group A check symptoms for one entity shall
+aggregate into that entity's level-3 `EntityHealth{EntityKey}` fault. A
+different unhealthy entity shall have a different fault. The fault shall
+retain every failed check in diagnostic context.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-003
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-ENT-010
+STATEMENT: >>>
+System Health shall list all installed Group A/B diagnostic
+records, including healthy and unavailable records, with search, health/source
+filters and expandable identity, ownership, check and timestamp details.
+Counts shall reflect the installation, not a fixed number. Battery maintenance
+shall remain a separate section on the same page. The navigation shall not
+offer a general Home Assistant entity/device inventory.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-ENT-011
+STATEMENT: >>>
+Entities outside Groups A/B shall not enter C-ENT
+monitoring implicitly or create C-ENT symptoms, faults, notifications,
+recovery actions, or application-health degradation.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-ENT-012
+STATEMENT: >>>
+C-ENT shall publish bounded Group A/B diagnostics and
+shall not copy the complete Home Assistant inventory into MQTT attributes.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-003
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-ENT-013
+STATEMENT: >>>
+C-ENT shall use Home Assistant friendly names, device
+names, and area names for operator presentation while retaining entity IDs and
+raw state codes as diagnostic data.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-ENT-014
+STATEMENT: >>>
+C-ENT shall supply cause-specific manual repair actions
+for owned Group A/B faults under [LINK: SYS-SEC-8-10, §8.10], retaining the affected entity and
+failed-path identity. Completion shall require that cause's valid recovery
+evidence. It shall not call a Home Assistant actuator service.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-003
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-ENT-015
+STATEMENT: >>>
+Each installed Boolean mechanism result shall have one
+validated fault binding by mechanism, subject, and contributor, or an
+explicit diagnostic-only exemption. Missing or ambiguous ownership, unknown
+mechanism IDs, and invalid shadow references shall prevent monitoring startup.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-003
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-ENT-016
+STATEMENT: >>>
+A Group A/B entity shall retain both memberships and the
+stricter applicable check policy within its logical fault-family record.
+Each check contribution shall have one diagnostic fault owner. Input,
+recovery, detector and application-health roles may share a physical entity
+but shall retain separate logical records and their designated fault families.
+Acquisition shall use the shortest derived interval for that physical entity.
+Group A membership shall attach once, preferring the input record when present.
+A Group B failure shall restrict only explicitly dependent
+evaluation or recovery capabilities and subjects. Aggregating multiple input
+failures into one D fault shall not broaden an individual contributor's
+restriction or let recovery of one source clear another failed contributor.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-003
+  ROLE: Refines
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-8-5-6
+TITLE: Mapping and verification
+
+[TEXT]
+STATEMENT: >>>
+- **[LINK: SG-003, SG-003]:** SYS-SR-ENT-001..009/012/014..016.
+- **Unit tests:** group membership and deduplication, configuration validation,
+  startup grace, availability, freshness, optional check validation, failure
+  and recovery debounce, fault ownership, stable IDs, and no false clear.
+- **Integration tests:** component dependency registration, common-entity
+  inclusion, FaultManager aggregation, bounded MQTT diagnostics, frontend
+  monitored-record filtering, cause-specific manual repair actions, and zero actuator calls.
+
+---
+<<<
+
+[[/SECTION]]
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-8-6
+TITLE: Heating System Monitoring Component (C-HVAC)
+
+[TEXT]
+STATEMENT: >>>
+**Allocation:** `HeatingSystemMonitorComponent` shall own heating-system
+supervision under [LINK: SG-010, SG-010] and [LINK: SG-012, SG-012], contribute to [LINK: SG-003, SG-003] input supervision,
+and supply evidence to room cold/heat exposure diagnosis without replacing
+C-TEMP. HARA section 1.3.12 defines the stakeholder-level
+loss-of-heating/cooling safety goal.
+The detailed contract is defined in the
+[LINK: ARCH-HEATING-SYSTEM-MONITORING-DOC, Heating System Monitoring architecture].
+<<<
+
+[[SECTION]]
+UID: SYS-SEC-8-6-1
+TITLE: Boundaries and interfaces
+
+[TEXT]
+STATEMENT: >>>
+C-HVAC shall consume normalized [LINK: IR-008, IR-008] measurements, room need/controller
+demand evidence, and C-ENT quality for its declared Group B dependencies.
+Installation mappings shall normalize configured entity/attribute values,
+units, source availability and observation freshness. C-HVAC shall own
+product-neutral household policy and incidents without selecting device
+integrations. The
+heating controller shall retain normal control. C-TEMP shall retain existing
+room-temperature mechanisms and faults.
+
+Controller telemetry shall use configurable read-only entity/attribute, value,
+unit and freshness mappings into a normalized model. No controller product,
+release or entity prefix shall be required by the safety engine. Controller
+intent, command confirmation and publication contact shall remain
+separate from independently evidenced room need and physical boiler response.
+The controller's reported no-demand state shall not suppress the independent
+need check. Controller-only schedule/permission or unverified measurement
+freshness shall expose limited coverage rather than establish a complete
+need-to-delivery safety path.
+
+C-HVAC shall publish per-installation phase, supervision coverage, rule
+results, heating faults and bounded diagnostic evidence through the existing
+fault/MQTT/notification interfaces. It shall not perform boiler, pump, climate,
+gas-valve or other heating actuator calls. It shall supply manual inspection
+and service actions under [LINK: SYS-SEC-8-10, §8.10] using the reported equipment-specific evidence.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-8-6-2
+TITLE: Functional requirements
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-HSM-001
+STATEMENT: >>>
+C-HVAC shall distinguish independent room heat need, controller request, boiler response, and room heat delivery; a failed controller request shall not gate off need-to-request monitoring.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-HSM-002
+STATEMENT: >>>
+C-HVAC shall register all enabled-rule inputs as component dependencies with entity identity, owner, purpose, units, quality, freshness source where trustworthy, and failure ownership. Shared inputs shall retain every consumer and its applicable contract.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-003
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-HSM-003
+STATEMENT: >>>
+Configured input normalization shall keep telemetry and model-specific current codes separate from historical errors; unknown code meanings and inconsistent signals shall produce explicit interpretation/coverage diagnostics rather than a fabricated healthy or faulty boiler state.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-003
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-HSM-004
+STATEMENT: >>>
+Operating phase shall be one of `idle`, `starting`, `heating`, `dhw`, `pump_overrun`, `inhibited`, or `unknown`, separate from supervision health and fault lifecycle; phase transitions shall use fresh coherent evidence and bounded mode-specific delays.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-HSM-005
+STATEMENT: >>>
+Communication loss, invalid required measurements, or unavailable phase interpretation shall diagnose loss of supervision. C-HVAC-owned failures shall not create duplicate C-ENT faults; only dependent performance checks shall become unevaluable.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-003
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-HSM-006
+STATEMENT: >>>
+C-HVAC shall detect permitted room heating need without controller demand, and controller demand without boiler response, accounting for effective targets, explicit schedule/inhibition and bounded DHW priority and anti-cycle delays.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-HSM-007
+STATEMENT: >>>
+With valid heating demand and suitable operating conditions, C-HVAC shall detect insufficient flow-temperature rise and sustained failure to track the requested flow temperature using calibrated sample coverage, startup allowance, tolerances and durations.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-HSM-008
+STATEMENT: >>>
+C-HVAC shall detect configured pump-state and flow/return inconsistencies and sustained room cooling despite requested heat delivery; it shall describe evidence as a suspected distribution problem rather than prove a particular failed mechanical part.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-HSM-009
+STATEMENT: >>>
+C-HVAC shall detect excess temperature against validated mode-specific limits and manufacturer absolute limits independently of heating-demand gating for the absolute-limit rule. Normal hysteresis, DHW and overrun shall not be treated as excess CH temperature. Enablement shall require the reviewed `HSM-H05/<EquipmentProfileKey>` thermal response allocation; plausibility checks shall not mask valid dangerous temperatures.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-HSM-010
+STATEMENT: >>>
+Active blocking/device faults shall be classified using a versioned manufacturer/model code table; maintenance and short-cycling diagnostics shall remain distinct from current device faults and heating-loss incidents.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-HSM-011
+STATEMENT: >>>
+Each rule shall expose applicability, input quality, pending/active/recovering state and reasons. Missing evidence, removed demand, mode changes, acknowledgement and restart shall not positively clear active faults; HEAL shall require fresh rule-specific evidence.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-003
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-HSM-012
+STATEMENT: >>>
+Detection, decision and notification budgets shall meet [LINK: SG-003, SG-003] (60 s for allocated sensor/communication failures) and SG-010/012 (30 min for heating loss). Startup, freshness, evaluation cadence, observation, debounce, allowed inhibition and notification allowance shall be budgeted without double counting parallel intervals; repeated inhibition or restart shall not indefinitely postpone detection. Notification acceptance shall not establish thermal recovery.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-003
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-010
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-012
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-HSM-013
+STATEMENT: >>>
+C-HVAC shall preserve active incident IDs, qualifying onset/deadlines and evidence across restart using bounded versioned atomic storage. Untrusted persistence or a clock discontinuity shall expose degraded supervision and shall not reset an active incident into healthy state.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-003
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-HSM-014
+STATEMENT: >>>
+Each incident shall use stable fault/mechanism identities, retain all contributing symptoms and distinguish observations from inferred causes. Communication recovery shall not clear performance faults; independent room-temperature alarms shall remain eligible.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-HSM-015
+STATEMENT: >>>
+SET and HEAL shall include dated evidence, installation/room identity, phase, demand, relevant measurements, thresholds, elapsed duration, code interpretation and recovery evidence. Notification attempts shall preserve configured target/result semantics, quiet updates and bounded history; acceptance by HA shall not be represented as confirmed phone delivery.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-HSM-016
+STATEMENT: >>>
+SafetyHome shall display phase, coverage, active faults, failed and unevaluable checks, evidence ages and reason-specific inhibition. History shall correlate SET/HEAL evidence with actual notification attempts. EN/PL/DE presentation shall preserve language-independent raw codes and IDs.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-HSM-017
+STATEMENT: >>>
+Software calibration shall own thresholds, timings, code profiles, severities and rule enablement; installation configuration shall own entity/attribute/area bindings, value/state mappings, units, freshness provenance and equipment identity. Validation shall reject incomplete enabled rules, ambiguous signal semantics or hydraulics/code profiles, unproven required independence/freshness, invalid recovery bands and timing combinations outside allocated budgets. Explicitly excluded or shadow rules shall remain visible and shall not count as active safety coverage.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-HSM-018
+STATEMENT: >>>
+C-HVAC shall provide deterministic bounded observation and manual inspection/service recovery under [LINK: SYS-SEC-8-10, §8.10], with no boiler reset, heating setpoint writes, pump forcing or safety interlock bypass. Any backup/failover function shall require its own allocation and authorization.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-8-6-3
+TITLE: Severity, timing and safe-state contribution
+
+[TEXT]
+STATEMENT: >>>
+Heating-loss, device-fault and supervision-loss incidents shall contribute L3
+warnings. Excess temperature shall contribute L2. Maintenance and cycling shall
+contribute L4 information. Native boiler protection and independent C-TEMP,
+C-ALARM and C-LEAK decisions shall retain their own authority and severity.
+
+C-HVAC's contribution to SS-4 is explicit degraded supervision/operation and
+timely notification with manual guidance. Its timing evidence shall establish
+this contribution; it shall not assert that manual intervention or restored
+room temperature occurred within the notification deadline. The broader
+[LINK: SG-012, SG-012] backup/failover objective shall remain separately allocated.
+
+[LINK: SG-003, SG-003] supervision paths shall use a tighter timeout than the [LINK: IR-008, IR-008] maximum
+sample age where required to meet the 60 s total budget. Slow-provider paths
+shall expose unmet coverage rather than silently enlarge that budget. The
+architecture defines allocation examples and timing tests.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-8-6-4
+TITLE: Traceability and verification
+
+[SYSTEM_TRACE]
+STATEMENT: >>>
+- [LINK: HZ-HVAC-01, HZ‑HVAC‑01] and [LINK: HZ-HVAC-LOSS-01, HZ‑HVAC‑LOSS‑01] / [LINK: SG-010, SG‑010] and [LINK: SG-012, SG‑012]:
+  SYS-SR-HSM-001..018.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-010
+  ROLE: TracesGoal
+- TYPE: Parent
+  VALUE: SG-012
+  ROLE: TracesGoal
+- TYPE: Parent
+  VALUE: SYS-SR-HSM-001
+  ROLE: TracesRequirement
+- TYPE: Parent
+  VALUE: SYS-SR-HSM-002
+  ROLE: TracesRequirement
+- TYPE: Parent
+  VALUE: SYS-SR-HSM-003
+  ROLE: TracesRequirement
+- TYPE: Parent
+  VALUE: SYS-SR-HSM-004
+  ROLE: TracesRequirement
+- TYPE: Parent
+  VALUE: SYS-SR-HSM-005
+  ROLE: TracesRequirement
+- TYPE: Parent
+  VALUE: SYS-SR-HSM-006
+  ROLE: TracesRequirement
+- TYPE: Parent
+  VALUE: SYS-SR-HSM-007
+  ROLE: TracesRequirement
+- TYPE: Parent
+  VALUE: SYS-SR-HSM-008
+  ROLE: TracesRequirement
+- TYPE: Parent
+  VALUE: SYS-SR-HSM-009
+  ROLE: TracesRequirement
+- TYPE: Parent
+  VALUE: SYS-SR-HSM-010
+  ROLE: TracesRequirement
+- TYPE: Parent
+  VALUE: SYS-SR-HSM-011
+  ROLE: TracesRequirement
+- TYPE: Parent
+  VALUE: SYS-SR-HSM-012
+  ROLE: TracesRequirement
+- TYPE: Parent
+  VALUE: SYS-SR-HSM-013
+  ROLE: TracesRequirement
+- TYPE: Parent
+  VALUE: SYS-SR-HSM-014
+  ROLE: TracesRequirement
+- TYPE: Parent
+  VALUE: SYS-SR-HSM-015
+  ROLE: TracesRequirement
+- TYPE: Parent
+  VALUE: SYS-SR-HSM-016
+  ROLE: TracesRequirement
+- TYPE: Parent
+  VALUE: SYS-SR-HSM-017
+  ROLE: TracesRequirement
+- TYPE: Parent
+  VALUE: SYS-SR-HSM-018
+  ROLE: TracesRequirement
+
+[TEXT]
+STATEMENT: >>>
+- [LINK: HZ-SYSTEM-FAIL-01, HZ‑SYSTEM‑FAIL‑01] / [LINK: SG-003, SG‑003] supervision contribution:
+  SYS-SR-HSM-002/003/005/011/012/013.
+- Cross-cutting delivery, presentation and boundary: SYS-SR-HSM-015..018.
+- Verification shall cover signal/counter normalization, independent need,
+  normal phases, prolonged inhibition, false-clear prevention, code profiles,
+  transient and sustained failures, timing boundaries, restart/clock faults,
+  C-ENT fault ownership, notification correlation and zero heating actuation.
+
+---
+<<<
+
+[[/SECTION]]
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-8-7
+TITLE: Internal Environmental Hazard Monitoring (C-ALARM and C-AQ)
+
+[TEXT]
+STATEMENT: >>>
+`InternalEnvironmentalHazardMonitorComponent` shall implement smoke,
+flammable-gas and CO alarm supervision under C-ALARM and measured indoor PM2.5
+supervision under C-AQ. Logical allocations and SG identifiers shall remain
+distinct even though they share one component. Other C-AQ pollutants and
+outdoor exposure policy shall retain separate scope.
+
+The component shall consume IR-002/003/004/007 and C-ENT dependency quality,
+emit symptoms to FaultManager, and supply notification/diagnostic evidence.
+It shall observe, notify and supply hazard-specific manual recovery under [LINK: SYS-SEC-8-10, §8.10]
+without controlling detectors, fans, purifiers, valves, openings, locks or HVAC.
+Shared notification outputs shall obey the same hazard-specific eligibility boundary.
+See the [LINK: ARCH-INTERNAL-ENVIRONMENTAL-HAZARD-MONITORING-DOC, Internal Environmental Hazard Monitoring architecture].
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-IEHM-001
+STATEMENT: >>>
+The component shall keep smoke, flammable gas, CO, indoor PM2.5 and detector health as separate semantic channels, each bound to an identified detector and indoor area.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-IEHM-002
+STATEMENT: >>>
+All enabled inputs shall be Group B dependencies with explicit state/unit/quality contracts and compatible fault ownership. An asserted alarm shall not be modeled as a generic required-value failure or suppressed by another sensor's clear state.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-IEHM-003
+STATEMENT: >>>
+A fresh valid smoke alarm shall immediately assert its detector symptom and the L1 smoke fault without averaging, multi-detector voting or general availability debounce.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-IEHM-004
+STATEMENT: >>>
+A fresh valid flammable-gas alarm shall immediately assert a distinct L1 fault, retain gas identity and use hazard-specific emergency guidance and output eligibility.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-IEHM-005
+STATEMENT: >>>
+A fresh valid CO alarm shall immediately assert a distinct L1 fault without substituting generic software ppm thresholds for manufacturer alarm logic.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-IEHM-006
+STATEMENT: >>>
+PM2.5 checks shall validate concentration units and input quality, apply declared short-window concentration policy and recovery hysteresis, and optionally report separately defined long-term exposure. Neither PM2.5 nor an AQI shall be interpreted as smoke, CO or flammable gas.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-IEHM-007
+STATEMENT: >>>
+Averaging shall be time-aware, bounded and explicit about sample coverage, skew, gaps and source age. Long-term reference values shall retain their averaging periods and shall not become instantaneous emergency thresholds.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-IEHM-008
+STATEMENT: >>>
+Detector trouble, expired required heartbeat, missing channels and invalid/saturated measurements shall expose lost or degraded coverage separately from environmental alarms. Valid alarm assertions shall remain actionable despite ancillary battery/trouble faults.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-IEHM-009
+STATEMENT: >>>
+A single detector shall suffice to activate its hazard fault; all contributing detector symptoms shall be retained. One detector clearing or going offline shall not clear another detector's active symptom or the aggregate hazard.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-IEHM-010
+STATEMENT: >>>
+SET shall persist until fresh authoritative clear evidence satisfies the rule-specific recovery duration. Acknowledgement, unknown/unavailable inputs, removal of a configured detector, restart, hush/test state or receipt of old data shall not constitute HEAL.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-IEHM-011
+STATEMENT: >>>
+Binary alarm interface response shall fit the 10 s SG-006/007/008 budget, including reception, component processing and notification allocation; default 10 s transport allowance shall not be added after another 10 s of detection. Intrinsic detector response to physical exposure and absent transport shall remain explicit assurance limits.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-006
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-007
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-008
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-IEHM-012
+STATEMENT: >>>
+Required supervision paths shall fit [LINK: SG-003, SG-003]'s 60 s budget and short-window PM response shall fit [LINK: SG-005, SG-005]'s 10 min budget. Sampling, averaging, qualification, scheduler latency, decision and notification shall be included; long-term exposure diagnostics shall not substitute for the short-window path.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-003
+  ROLE: Refines
+- TYPE: Parent
+  VALUE: SG-005
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-IEHM-013
+STATEMENT: >>>
+Active incident identity, contributing symptoms, qualifying evidence, authoritative clear ordering and consumed deadlines shall survive reload/restart in bounded atomic storage. Retained assertions shall be reconciled on startup, reconnect and coverage recovery. Corruption, clock uncertainty or missing state shall produce explicit unknown/degraded supervision rather than an authoritative clear.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-IEHM-014
+STATEMENT: >>>
+Alarm, PM exposure, detector health and per-rule evaluability shall be separately visible in SafetyHome. Missing coverage shall not be labeled safe air or no hazard; cleared alarm presentation shall not imply permission to re-enter.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-IEHM-015
+STATEMENT: >>>
+SET/HEAL notifications shall carry localizable hazard/detector/area names, timestamps, evidence, thresholds where applicable and incident correlation. Fault evaluation, activation and shadowing shall remain distinct from notification-journal transition codes; bounded per-target attempts and HA-acceptance semantics shall apply.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-IEHM-016
+STATEMENT: >>>
+Hazard-specific advice shall prioritize life safety and avoid generic ventilation/purifier/open-window instructions during smoke/gas/CO incidents or unresolved life-safety evidence. Optional PM ventilation advice shall require compatible current outdoor-hazard policy.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-IEHM-017
+STATEMENT: >>>
+Neither the component nor shared notification adapters shall switch unapproved electrical outputs during a flammable-gas incident, including light restoration after another fault clears. A separately persisted switching-inhibition latch shall survive detector HEAL and require explicit authorized clearance under a reviewed installation policy. Native alarms shall remain independent; approved local annunciation shall remain independent of mobile delivery.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-IEHM-018
+STATEMENT: >>>
+System policy shall own alarm profiles, calibration, severity, timers, evidence limits and output eligibility; installation configuration shall own detector/entity/area bindings and equipment profile selection. Incomplete or timing-incompatible enabled contracts shall be rejected.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-IEHM-019
+STATEMENT: >>>
+User-facing text shall have EN/PL/DE parity, preserving machine IDs and raw states. Simulated fixtures and explicit test reports shall remain distinguishable from live alarms; maintenance mode shall not suppress an unambiguously live alarm.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-IEHM-020
+STATEMENT: >>>
+Provider I/O, averaging, storage and delivery shall be isolated from the immediate alarm path, bounded and deterministic. Manual hazard-response and detector-repair recovery shall follow [LINK: SYS-SEC-8-10, §8.10] and the hazard-specific guidance boundary; the component shall issue no actuator/reset calls.
+<<<
+
+[TEXT]
+STATEMENT: >>>
+The component shall map smoke/gas/CO to L1, short-window PM2.5 hazard to L2,
+optional long-term PM exposure to L3 and detector supervision loss to L3.
+Fault severity shall not be inferred from a health state or silently reduced
+by an unrelated active fault. C-ALARM and C-AQ contributions do not establish
+completion of separately allocated ventilation, evacuation or gas cutoff.
+<<<
+
+[SYSTEM_TRACE]
+STATEMENT: >>>
+HARA [LINK: HZ-FIRE-01, HZ‑FIRE‑01] / [LINK: SG-006, SG‑006], [LINK: HZ-GAS-01, HZ‑GAS‑01] / [LINK: SG-007, SG‑007], [LINK: HZ-CO-01, HZ‑CO‑01] / [LINK: SG-008, SG‑008],
+[LINK: HZ-AQ-01, HZ‑AQ‑01] / [LINK: SG-005, SG‑005] and [LINK: HZ-SYSTEM-FAIL-01, HZ‑SYSTEM‑FAIL‑01] / [LINK: SG-003, SG‑003] shall trace to
+SYS-SR-IEHM-001..020 and SWR-IEHM-001..025.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-006
+  ROLE: TracesGoal
+- TYPE: Parent
+  VALUE: SG-007
+  ROLE: TracesGoal
+- TYPE: Parent
+  VALUE: SG-008
+  ROLE: TracesGoal
+- TYPE: Parent
+  VALUE: SG-005
+  ROLE: TracesGoal
+- TYPE: Parent
+  VALUE: SG-003
+  ROLE: TracesGoal
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-001
+  ROLE: TracesRequirement
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-002
+  ROLE: TracesRequirement
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-003
+  ROLE: TracesRequirement
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-004
+  ROLE: TracesRequirement
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-005
+  ROLE: TracesRequirement
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-006
+  ROLE: TracesRequirement
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-007
+  ROLE: TracesRequirement
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-008
+  ROLE: TracesRequirement
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-009
+  ROLE: TracesRequirement
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-010
+  ROLE: TracesRequirement
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-011
+  ROLE: TracesRequirement
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-012
+  ROLE: TracesRequirement
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-013
+  ROLE: TracesRequirement
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-014
+  ROLE: TracesRequirement
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-015
+  ROLE: TracesRequirement
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-016
+  ROLE: TracesRequirement
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-017
+  ROLE: TracesRequirement
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-018
+  ROLE: TracesRequirement
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-019
+  ROLE: TracesRequirement
+- TYPE: Parent
+  VALUE: SYS-SR-IEHM-020
+  ROLE: TracesRequirement
+
+[TEXT]
+STATEMENT: >>>
+Verification shall cover immediate independent alarms, source quality,
+PM units/windows, multi-detector latches, positive HEAL, restart/time faults,
+bounded deadlines, guidance/output conflicts, persistence and notification/UI
+contracts as detailed in the feature architecture.
+
+---
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-8-8
+TITLE: Functional Safety and Platform Health Monitoring (C-FSM)
+
+[TEXT]
+STATEMENT: >>>
+**Scope:** C-FSM supports HARA `HZ‑SYSTEM‑FAIL‑01` / `SG‑003` by supervising
+whether the SafetyFunctions application, Home Assistant, and their host can
+continue to observe, evaluate, and report safety conditions. It is distinct
+from the household hazard state and from C-ENT's per-entity quality checks.
+The [Safety Monitoring Responsibility Boundaries architecture](<../features/Safety Monitoring Responsibility Boundaries.md>)
+defines monitor ownership and observer placement.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-FSM-001
+STATEMENT: >>>
+The system shall present hazard/fault state, safety-function coverage, and reporting-channel health separately. `no_faults` shall not assert that all functions were evaluated or that all reporting paths work.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-FSM-002
+STATEMENT: >>>
+SafetyFunctions shall expose startup and configuration validity, and the last completed evaluation and result for each enabled Safety Component. Periodic components shall additionally expose their deadline and missed-deadline count; event-driven components shall identify their trigger mode and rely on declared input-health supervision during idle periods. A component with no completed evaluation or an overdue periodic evaluation shall not be presented as healthy. Application and MQTT heartbeats alone shall not establish component coverage. For startup-capable progress reports, the frontend shall display the shared diagnostic startup phase and countdown globally in both operator modes until current valid backend evidence confirms completion; malformed, stale or unavailable supplied startup metadata shall be distinguished from completion. Legacy progress reports without startup metadata shall remain compatible without asserting a startup phase.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-FSM-003
+STATEMENT: >>>
+In-process checks shall not claim to detect complete loss of SafetyFunctions, Home Assistant, or the host. Such failures require an independent observer and reporting path; when neither is installed, the system shall identify this boundary as uncovered rather than claim continued monitoring.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-FSM-004
+STATEMENT: >>>
+The platform monitor shall use validated Home Assistant or Supervisor telemetry for available memory, memory pressure, CPU, disk, swap, host temperature, restart history, and connectivity. The observation shall identify whether it measures the HA host or only an App container; container-only memory shall not be accepted as host-memory evidence. A missing, stale, malformed, or wrong-unit metric shall produce unknown coverage, not positive host-health evidence.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-FSM-005
+STATEMENT: >>>
+Sustained insufficient memory available to Home Assistant, confirmed by memory pressure/PSI, shall produce a level-2 platform-health fault after calibrated qualification. Both measurements are required; if either is unsupported or unavailable the rule shall be reported as uncovered, not silently reduced to one signal. Clearing shall require fresh valid recovery evidence beyond a separate hysteresis margin; an isolated high-use sample shall not assert or clear the fault.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-FSM-006
+STATEMENT: >>>
+Sustained CPU, storage, swap, and thermal pressure shall be diagnosed separately and correlated with missed safety-evaluation deadlines. Qualified CPU pressure shall produce a level-3 warning. Resource pressure alone shall not be presented as proof that a safety decision was missed.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-FSM-007
+STATEMENT: >>>
+Confirmed Internet/WAN loss shall create a level-3 network fault, separately from local Home Assistant or MQTT loss and from failure of one cloud provider. Local safety evaluation shall remain available when only the WAN is lost, and outbound delivery shall follow the Local-Only policy in [LINK: SYS-SEC-3, §3] and §4.6. WAN monitoring shall establish reachability, not infer latency or packet-loss quality.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-FSM-008
+STATEMENT: >>>
+The system shall monitor update information separately for Home Assistant Core, Operating System, Supervisor, and the SafetyComponent App when their update sources are available, retaining installed/offered versions, observation time, and source freshness. A confirmed available update shall be a level-3 warning and shall not by itself mean that the running safety function has failed; monitoring shall not install an update or restart a service.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-FSM-009
+STATEMENT: >>>
+A low battery in a still-functioning remote device shall be a level-4 informational maintenance condition, associated with one device identity even when several battery entities represent it. The system shall discover eligible device-associated battery entities from Home Assistant and allow the operator to exclude devices by stable device identity without manually enumerating all battery entities. When a device is excluded or removed, its obsolete maintenance-fault entity shall be retired without emitting a false clear; retirement shall persist across restarts. Failed discovery shall remain unknown coverage, not positive battery-health evidence or proof that devices were removed. An unavailable safety input shall retain the severity and owner of its separate coverage fault; battery status shall neither suppress nor clear that fault.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-FSM-010
+STATEMENT: >>>
+Each underlying failure shall have one fault owner. C-ENT shall retain entity-quality diagnostics and its existing per-entity faults; C-FSM shall own qualified platform and maintenance policy without duplicating a component-owned symptom.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-FSM-011
+STATEMENT: >>>
+System configuration shall provide threshold and qualification/recovery defaults; installation configuration may refine an explicit validated whitelist through component settings. The complete effective policy shall preserve recovery margins. Severity, freshness, technical scheduling and persistence shall remain system-owned. Installation configuration shall own source bindings and exclusions. Invalid configuration shall be rejected before enabling the affected contract. Missing or incompatible runtime sources shall be marked as uncovered, never silently reported healthy or used to disable unrelated safety mechanisms.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-FSM-012
+STATEMENT: >>>
+Platform and maintenance monitors shall provide observation and cause-specific manual inspection, repair or test-report tasks under §8.10. They shall issue no restart, update-installation or device-control commands without a separately assessed policy. Diagnostics and user-facing text shall preserve stable machine codes and equivalent EN/PL/DE meaning.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-FSM-013
+STATEMENT: >>>
+The system shall present notification-route health and recovery-effect evidence separately from safety decisions. Home Assistant service acceptance shall not be described as delivery to a physical recipient, and an issued actuator command shall not be described as an achieved effect without the owning component's postcondition evidence. C-FSM shall aggregate these results without duplicating the notification or recovery owner's fault.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-FSM-014
+STATEMENT: >>>
+The system shall track due dates and recorded outcomes of periodic tests for smoke, flammable-gas, and carbon-monoxide detectors. A test shall count as completed only after a device-reported result or an explicit operator attestation; absence of an alarm is not test evidence. A due, overdue or failed detector test shall produce a level-3 maintenance warning without suppressing a live detector alarm. Test intervals shall have system defaults and validated installation overrides of at most 180 days. Maintenance severity shall remain system-owned; detector binding and operator attestation are installation data.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-FSM-015
+STATEMENT: >>>
+Sustained low host free-disk-space and high host temperature shall create separate level-3 maintenance warnings after calibrated qualification. Each rule shall validate scope, units, plausibility, and freshness and require fresh recovery evidence beyond a distinct margin. Missing or invalid evidence shall not positively clear an active condition, and resource pressure alone shall not prove that a safety evaluation was missed.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-FSM-016
+STATEMENT: >>>
+The system shall monitor the age of the last successful backup and an optional current backup-failure source. A valid success timestamp older than the calibrated maximum age or a valid asserted failure shall create a level-3 maintenance warning. Invalid, future, unavailable, or failed-transport evidence shall remain unknown rather than establish backup health. Backup creation evidence shall not establish restore capability, and monitoring shall neither create nor restore a backup.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-FSM-017
+STATEMENT: >>>
+The system shall retain due dates and explicit operator-attested outcomes for notification-receipt tests and optional backup-restore tests. Home Assistant acceptance shall not complete a notification-receipt test; a backup-restore pass shall attest an actual restore on a separate installation. Due, overdue, and failed tests shall be level-4 maintenance conditions; unreadable history shall remain unknown. Recording results shall execute no notification, restore, actuator, or household routine. A separately confirmed operator action may send an identifiable mobile-only test without recording receipt; a separately confirmed full notification reset shall preserve active faults and local restrictions and reissue currently active warnings rather than suppress them. Installation configuration shall select tests and may refine interval defaults. Persistence and severity shall remain system-owned; interval changes shall not create completed tests.
+<<<
+
+[TEXT]
+STATEMENT: >>>
+For **[LINK: SYS-SR-FSM-009, SYS-SR-FSM-009]**, battery freshness shall use the unique same-device
+`sensor.*_last_seen`, normalized as `last_contact_at`, when that capability is
+present. Recent device contact shall allow the last valid battery value without
+a new battery report. Availability, units, device class, value plausibility and
+reader transport validity shall remain required. Missing, invalid, future,
+expired or ambiguous selected contact shall remain unknown without fallback
+to native report times. Devices without contact capability shall retain native
+report freshness. Both paths shall use the system-owned battery freshness bound;
+polling shall not renew source age. System Health shall retain separate battery
+maintenance and monitored-entity sections, with dynamic monitored counts.
+
+C-NET remains the network/connectivity subdomain of C-FSM. C-ENT remains the
+quality owner for declared Home Assistant input entities, including C-FSM's
+telemetry dependencies where applicable. An unavailable safety input can coexist
+with a host-resource or battery condition; neither state implies that a
+household hazard has cleared.
+
+---
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-8-9
+TITLE: Water-Leak Monitoring (C-LEAK)
+
+[TEXT]
+STATEMENT: >>>
+Water-leak detection remains a distinct C-LEAK safety decision under
+[LINK: HZ-WATER-01, HZ‑WATER‑01] / [LINK: SG-009, SG‑009] even when it shares the binary-detector runtime and
+operator screen with C-ALARM. The input is an explicitly bound water-leak
+sensor with a validated wet/dry state profile. It is not a smoke, gas or CO
+signal. See the [LINK: ARCH-INTERNAL-ENVIRONMENTAL-HAZARD-MONITORING-DOC, Internal Environmental Hazard Monitoring architecture].
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-LEAK-001
+STATEMENT: >>>
+Each configured leak sensor shall retain its own detector identity, indoor area, source health and immediate wet-state symptom. One valid assertion shall create an independent L2 `WaterLeakDetected` fault and notify occupants within the [LINK: SG-009, SG‑009] response budget.
+<<<
+RELATIONS:
+- TYPE: Parent
+  VALUE: SG-009
+  ROLE: Refines
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-LEAK-002
+STATEMENT: >>>
+An unavailable, malformed or ambiguous source shall not prove dry state or clear an active leak. Recovery shall require fresh authoritative dry evidence for the configured clear duration; another dry sensor shall not negate a wet sensor.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-LEAK-003
+STATEMENT: >>>
+The interface shall show leak alarm and source health separately and provide localized manual shutoff guidance. A leak binding alone shall not authorize valve operation; any automatic supply shutoff shall require an independently validated valve, installation binding and actuation policy.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-LEAK-004
+STATEMENT: >>>
+Leak-sensor functional tests shall require an explicit device result or operator attestation after an actual test, with system-owned intervals and maintenance severity. A test result shall not suppress a live leak alarm.
+<<<
+
+[TEXT]
+STATEMENT: >>>
+**Other component allocations:** C-AQ retains
+indoor-air-quality responsibilities beyond the PM2.5 allocation above;
+intrusion/lock security by C-SEC, and Privacy by C-PRIV.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-8-10
+TITLE: Recommended Actions and Recovery
+
+[TEXT]
+STATEMENT: >>>
+Recovery shall cover both hazard mitigation and restoration of failed monitoring
+or supporting capabilities. The owning component shall specify the action and
+its evidence; RecoveryManager shall own proposal lifecycle and command dispatch.
+SafetyHome shall present the same action at its fault and in the shared list.
+See [LINK: ARCH-RECOMMENDED-ACTIONS-AND-RECOVERY-DOC, Recommended Actions and Recovery architecture].
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-REC-001
+STATEMENT: >>>
+Each installed fault family shall have a cause-specific recovery allocation or an explicit rationale for no applicable action. Actions shall identify the fault/incident, cause, affected subject, purpose, instruction, executor, eligibility and completion method. Multiple causes shall retain independent actions without duplicate advice for the same failed path.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-REC-002
+STATEMENT: >>>
+Recovery shall support manual work, explicitly supported automatic commands and commands after user consent. Absence of an actuator or postcondition entity shall not prevent a manual action. A manual action shall issue no actuator command; fault urgency shall not authorize a command.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-REC-003
+STATEMENT: >>>
+Action completion shall be separate from fault healing, notification acknowledgement and command consent. Only the owning fault's qualified evidence and reset policy shall release its activation or restriction. Repairing one cause shall not clear another cause.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-REC-004
+STATEMENT: >>>
+Each completable task shall declare observed completion or an operator report for a procedural task; advisory instructions shall have no task-completion control. Reports shall retain identity derived from authenticated server context and server-assigned time, be bound to the current proposal/incident instance with a separate one-time report token, issue no actuator command and not substitute for required device evidence. Unknown actor context, replayed tokens and expired, cleared, shadowed or superseded instances shall be rejected; restart shall invalidate old report tokens. Approved maintenance-test reports may supply evidence only under the owning test's attestation policy. Reports of battery replacement shall await fresh recovered battery evidence; contacting service may complete the contact task while its fault remains active.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-REC-005
+STATEMENT: >>>
+Observed completion shall require all declared postconditions on current valid evidence. Missing, stale, unavailable or failed evidence shall remain unknown. Home Assistant command acceptance shall not establish physical effect, recipient receipt or thermal recovery.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-REC-006
+STATEMENT: >>>
+Proposals shall be reevaluated when relevant evidence, causes, policy or dependencies change. Superseded, expired, cleared, shadowed or ineligible executable proposals shall lose their authorization and stale guidance. Empty or rejected replacements shall not leave an old executable proposal active. Valid repair instructions shall remain available with visible reasons for blocked execution or unknown effect.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-REC-007
+STATEMENT: >>>
+Command authorization shall be revalidated immediately before execution using current evidence, dependencies, conflicts, configured actuator, expiry and replay protection. Unsupported commands and any actuator changes under manual policy shall be rejected centrally. Restart shall not replay a command.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-REC-008
+STATEMENT: >>>
+Distinct system-owned policies shall govern command-consent expiry, executed-command effect observation and optional action-specific manual-task deadlines. Installation bindings shall not set these deadlines, and manual service/battery work shall not inherit a short command-consent deadline. Active work, operator reports and bounded action outcomes shall survive restart, retaining their evidence source without treating saved reports or downtime as fresh physical evidence.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-REC-009
+STATEMENT: >>>
+The fault card, shared action list and notifications shall use consistent localized instructions and subject names. They shall distinguish user-reported work, observed completion, blocked execution, unknown effect, failure, withdrawal and no applicable action. EN/PL/DE text shall preserve equivalent meaning; stable identifiers and existing raw lifecycle codes shall remain unchanged.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-REC-010
+STATEMENT: >>>
+Manual hazard-response and equipment-repair actions shall obey the owning hazard/equipment guidance. Observation-only components shall offer useful manual actions without extending actuator permissions. Emergency guidance shall not require task acknowledgement, and detector clear or operator reports shall not authorize re-entry, gas reopening or safety-interlock bypass.
+<<<
+
+[TEXT]
+STATEMENT: >>>
+Verification shall cover manual closure, battery replacement with delayed
+telemetry, unavailable-input repair, independent fault contributors, procedural
+reports without sensors, command-policy enforcement, proposal withdrawal,
+blocked-result presentation and restart without replay. HARA hazards and safety
+goals shall retain their component allocation; offering manual actions shall not
+claim that user response is guaranteed within a fault-tolerant time interval.
+
+---
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-8-11
+TITLE: Safety Routines (C-ROUTINE)
+
+[TEXT]
+STATEMENT: >>>
+Safety Routines shall support contextual user checks independently of continuous
+hazard detection. The [LINK: ARCH-SAFETY-ROUTINES-DOC, feature architecture]
+defines configuration, evidence, execution and report contracts.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-ROUTINE-001
+STATEMENT: >>>
+The system shall execute a configured set of advisory checks on an explicit request or configured HA event/state transition.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-ROUTINE-002
+STATEMENT: >>>
+Checks shall qualify original observation times and expected states or numeric units and bounds. An explicitly configured single-sample check may compare the last known entity value against those expectations without qualifying its age. Its report shall identify that basis. Unavailable or malformed values and observations that fail a required freshness check shall remain unevaluable.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-ROUTINE-003
+STATEMENT: >>>
+Known exclusion conditions shall be distinguished from unknown applicability; an entirely skipped run shall not count as a pass.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-ROUTINE-004
+STATEMENT: >>>
+Each run shall produce an independently identifiable timestamped report preserving both detected problems and missing evidence. Later runs shall not rewrite completed reports.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-ROUTINE-005
+STATEMENT: >>>
+Execution, history and publication shall be bounded. Restart and cancellation shall preserve incomplete execution as uncertainty without replay.
+<<<
+
+[SYSTEM_REQUIREMENT]
+UID: SYS-SR-ROUTINE-006
+STATEMENT: >>>
+Routine results shall not set or clear household faults, dispatch actuators, substitute for continuous coverage or claim current safety from a historical result. Application storage failures shall remain visible separately.
+<<<
+
+[[/SECTION]]
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-9
+TITLE: Non‑Functional Requirements (NFR)
+
+[TEXT]
+STATEMENT: >>>
+_Non‑functional constraints that apply across all components. IDs use `NFR‑xxx`._
+<<<
+
+[[SECTION]]
+UID: SYS-SEC-9-1
+TITLE: Performance & Timing
+
+[NON_FUNCTIONAL_REQUIREMENT]
+UID: NFR-001
+TITLE: Decision latency
+STATEMENT: >>>
+Safety decision path **p95 ≤ T_decision_max** and **p99 ≤ T_decision_max_p99** under peak input rate.
+<<<
+
+[NON_FUNCTIONAL_REQUIREMENT]
+UID: NFR-002
+TITLE: FTTI compliance
+STATEMENT: >>>
+For each SG, `T_detection + T_decision + T_recovery + T_effect ≤ FTTI` (see [LINK: SYS-SEC-6, §6]). Budget tracked per component.
+<<<
+
+[NON_FUNCTIONAL_REQUIREMENT]
+UID: NFR-003
+TITLE: Notification deadlines
+STATEMENT: >>>
+Deliver **L1 ≤ T_notify_L1**, **L2/L3 ≤ T_notify_L23**; **L4** best‑effort ([LINK: SYS-SEC-4, §4]).
+<<<
+
+[NON_FUNCTIONAL_REQUIREMENT]
+UID: NFR-004
+TITLE: Actuation verification
+STATEMENT: >>>
+Read‑back state within **T_verify_actuation**; on mismatch → retry **N_retry** with cooldown **T_cooldown**.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-9-2
+TITLE: Reliability & Availability
+
+[NON_FUNCTIONAL_REQUIREMENT]
+UID: NFR-010
+TITLE: Watchdog
+STATEMENT: >>>
+A software watchdog **shall** detect loop stalls ≥ **T_watchdog** and log **EVT_WATCHDOG**; optional auto‑recover per policy.
+<<<
+
+[NON_FUNCTIONAL_REQUIREMENT]
+UID: NFR-011
+TITLE: Data integrity
+STATEMENT: >>>
+Inputs lacking `ts/src` or failing CRC/format checks **shall** be rejected and logged as **Degraded**.
+<<<
+
+[NON_FUNCTIONAL_REQUIREMENT]
+UID: NFR-012
+TITLE: Persistence
+STATEMENT: >>>
+Evidence and config **shall** survive process restarts and power cycles (durable writes or journal).
+<<<
+
+[NON_FUNCTIONAL_REQUIREMENT]
+UID: NFR-013
+TITLE: UPS posture
+STATEMENT: >>>
+On power failure detection, prefer local safe states (e.g., close valve, unlock door for fire) when feasible.
+<<<
+
+[NON_FUNCTIONAL_REQUIREMENT]
+UID: NFR-014
+TITLE: External isolation
+STATEMENT: >>>
+External API calls shall use bounded timeouts and independent schedules; no external call may block the AppDaemon decision path or another provider beyond `T_api_block_max`.
+<<<
+
+[NON_FUNCTIONAL_REQUIREMENT]
+UID: NFR-015
+TITLE: Last-known semantics
+STATEMENT: >>>
+Provider loss shall preserve the last observation with explicit age until its policy expiry; it shall never convert stale data into a false `clear` state.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-9-3
+TITLE: Security (safety‑relevant)
+
+[NON_FUNCTIONAL_REQUIREMENT]
+UID: NFR-020
+TITLE: AuthN/AuthZ
+STATEMENT: >>>
+Administrative actions require **strong auth**; runtime actuation restricted by **RBAC**; audit all privileged operations.
+<<<
+
+[NON_FUNCTIONAL_REQUIREMENT]
+UID: NFR-021
+TITLE: Config integrity
+STATEMENT: >>>
+`backend/app_cfg.yaml` shall pass complete schema,
+component, entity, and area validation before safety mechanisms are enabled.
+A deployment shall hash-verify transferred application and configuration files;
+validation failure shall publish `invalid_cfg` and leave safety mechanisms
+disabled while diagnostics remain available.
+<<<
+
+[NON_FUNCTIONAL_REQUIREMENT]
+UID: NFR-022
+TITLE: Secrets handling
+STATEMENT: >>>
+Credentials stored via platform secrets; never in evidence logs.
+<<<
+
+[NON_FUNCTIONAL_REQUIREMENT]
+UID: NFR-023
+TITLE: Network posture
+STATEMENT: >>>
+Prefer **local control paths** for life‑safety; cloud paths treated as best‑effort.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-9-4
+TITLE: Maintainability & Modularity
+
+[NON_FUNCTIONAL_REQUIREMENT]
+UID: NFR-030
+TITLE: Component isolation
+STATEMENT: >>>
+Safety components (C‑TEMP, C‑ALARM, …) **shall** expose clear inputs/outputs and not share mutable state (except via evidence/metrics).
+<<<
+
+[NON_FUNCTIONAL_REQUIREMENT]
+UID: NFR-031
+TITLE: Freedom from interference
+STATEMENT: >>>
+Non‑safety automations **shall not** preempt or delay safety decisions/actuations beyond **T_fi_max**.
+<<<
+
+[NON_FUNCTIONAL_REQUIREMENT]
+UID: NFR-032
+TITLE: Feature flags
+STATEMENT: >>>
+New mechanisms (e.g., forecasting) start in **shadow mode** and only activate when **C_target** is met.
+<<<
+
+[NON_FUNCTIONAL_REQUIREMENT]
+UID: NFR-033
+TITLE: Provider isolation
+STATEMENT: >>>
+Each external API Component shall be replaceable and testable without importing provider-specific schemas into C-EXT or other API Components.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-9-5
+TITLE: Observability & Evidence
+
+[NON_FUNCTIONAL_REQUIREMENT]
+UID: NFR-040
+TITLE: Evidence schema
+STATEMENT: >>>
+Each decision/command emits evidence `{ts, rule_id, inputs(min/max/avg), thresholds, debounce/suppression, action, result, latency_ms}` ([LINK: SYS-SEC-7-7, §7.7]).
+<<<
+
+[NON_FUNCTIONAL_REQUIREMENT]
+UID: NFR-041
+TITLE: Metrics
+STATEMENT: >>>
+Export counters/gauges for `decisions_total{rule,decision}`, `suppression_active`, `decision_latency_ms` (p50/p95/p99), and per‑interface freshness.
+<<<
+
+[NON_FUNCTIONAL_REQUIREMENT]
+UID: NFR-042
+TITLE: Retention
+STATEMENT: >>>
+Keep evidence for **T_evidence_retention** (rolling); rotate files daily; protect against unbounded growth.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-9-6
+TITLE: Usability & UX
+
+[NON_FUNCTIONAL_REQUIREMENT]
+UID: NFR-050
+TITLE: Acknowledgement
+STATEMENT: >>>
+L1–L3 notifications **shall** be acknowledgeable from UI; ack silences repeats but does not clear faults.
+<<<
+
+[NON_FUNCTIONAL_REQUIREMENT]
+UID: NFR-051
+TITLE: Accessibility
+STATEMENT: >>>
+Visual alerts (lights/UI) must be paired with audible alerts for L1 to support different user needs.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-9-7
+TITLE: Portability & Configurability
+
+[NON_FUNCTIONAL_REQUIREMENT]
+UID: NFR-060
+TITLE: Config‑only tuning
+STATEMENT: >>>
+All thresholds/timers are parameters (no hard‑coding). Per‑room/zone overrides supported.
+<<<
+
+[NON_FUNCTIONAL_REQUIREMENT]
+UID: NFR-061
+TITLE: Hardware‑agnostic
+STATEMENT: >>>
+Interfaces adhere to [LINK: SYS-SEC-7, §7] contracts so any compliant sensor/actuator can be used.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-9-8
+TITLE: Compliance & Testing
+
+[NON_FUNCTIONAL_REQUIREMENT]
+UID: NFR-070
+TITLE: Testability
+STATEMENT: >>>
+Each requirement maps to unit/integration/HIL tests; fault injection covers timeout, stuck‑at, stale, comms loss.
+<<<
+
+[NON_FUNCTIONAL_REQUIREMENT]
+UID: NFR-071
+TITLE: Drills
+STATEMENT: >>>
+Periodic household drills for L1 scenarios (fire/CO/gas) logged as **TEST** with opt‑out window.
+<<<
+
+[TEXT]
+STATEMENT: >>>
+---
+<<<
+
+[[/SECTION]]
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-10
+TITLE: Glossary
+
+[TEXT]
+STATEMENT: >>>
+- **HARA:** Hazard Analysis and Risk Assessment used to derive SGs and FTTIs.
+- **Safety Goal (SG):** Top‑level safety objective linked to a hazard with a required **FTTI** and **Safe State**.
+- **FTTI:** Fault Tolerant Time Interval — max allowed time from fault occurrence to reaching the safe state.
+- **Safe State (SS‑x):** Predefined state that reduces risk to an acceptable level (e.g., SS‑Alarm, SS‑1…SS‑5).
+- **Prefault (PR‑xxx):** Early warning for a specific subject (room/sensor) prior to raising a consolidated Fault.
+- **Fault (F‑xxx):** Aggregated, user‑visible condition comprising one or more prefaults with attributes.
+- **Suppression window (S):** Minimum time between repeated alerts to avoid storming.
+- **Hysteresis (H):** Band around a threshold preventing chatter.
+- **Shadow mode:** Mechanism runs without actuation to measure precision before activation.
+- **Read‑back verification:** Check that an actuator achieved the commanded state within **T_verify_actuation**.
+- **Freedom from interference:** Assurance that non‑safety code cannot degrade safety behavior beyond **T_fi_max**.
+- **Local‑Only mode:** Operation when WAN is down; use local actuations and queue cloud notifications.
+- **Evidence:** Immutable log of decisions/commands enabling traceability and audits.
+- **ROC:** Rate of Change check used in plausibility diagnostics.
+
+---
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+UID: SYS-SEC-11
+TITLE: System Parameter Reference
+
+[TEXT]
+STATEMENT: >>>
+> Reference values are non-binding system policy inputs. Exact validated keys
+> for C-TEMP, C-EXT, and C-DOOR are defined in [LINK: SYS-SEC-8-2-3, §8.2.3], the C-EXT architecture,
+> and [LINK: SYS-SEC-8-4-2, §8.4.2] respectively.
+
+| Name                     | Description                                  | Reference Value |
+| ------------------------ | -------------------------------------------- | ---------------- |
+| **T_min**                | Minimum safe room temperature                | 17 °C (per room) |
+| **T_max**                | Maximum safe room temperature                | 29 °C (per room) |
+| **T_crit**               | Max duration below **T_min** ([LINK: SG-001, SG‑001])        | 10 min           |
+| **T_crit_hot**           | Max duration above **T_max** ([LINK: SG-004, SG‑004])        | 5 min            |
+| **T_det**                | Cold‑side detection window                   | 120–360 s        |
+| **H**                    | Cold hysteresis band                         | 0.5–1.5 °C       |
+| **S**                    | Cold suppression window                      | 60–180 s         |
+| **T_det_hot**            | Hot‑side detection window                    | 60–180 s         |
+| **H_hot**                | Hot hysteresis band                          | 0.5–1.5 °C       |
+| **S_hot**                | Hot suppression window                       | 60–180 s         |
+| **H_pred**               | Temperature forecast horizon                 | 5–15 min         |
+| **C_min**                | Min forecast confidence (temp)               | 0.7–0.8          |
+| **ΔT_min**               | Min forecast delta                           | 0.5–1.0 °C       |
+| **T_timeout**            | Sensor/comm timeout (general)                | 30–60 s          |
+| **dT/dt_max**            | Max allowed temp ROC                         | 2–5 °C/min       |
+| **Δt_max**               | Max timebase error                           | 20–100 ms        |
+| **f_sensor_min**         | Min sensor frequency (general)               | 0.2–1 Hz         |
+| **T_stable**             | Stable time before clearing prefault/fault   | 5–15 min         |
+| **T_notify_L1**          | L1 delivery deadline                         | ≤ 10 s           |
+| **T_notify_L23**         | L2/L3 delivery deadline                      | ≤ 30 s           |
+| **T_decision_max**       | Max decision compute time (p95)              | ≤ 100 ms         |
+| **T_decision_max_p99**   | Max decision compute time (p99)              | ≤ 250 ms         |
+| **C_target**             | Shadow precision KPI to activate forecasting | ≥ 70 %           |
+| **T_timeout_aq**         | AQ stale timeout                             | 60–120 s         |
+| **T_act_aq**             | AQ actuation deadline                        | ≤ 30 s           |
+| **Leak_debounce**        | Debounce for leak sensors                    | 0.2–1.0 s        |
+| **Valve_close_s**        | Water/gas valve close verification time      | ≤ 5 s            |
+| **Window_close_start_s** | Start motion after close command             | ≤ 2 s            |
+| **N_retry**              | Retries for actuation/notify                 | 1–3              |
+| **T_cooldown**           | Cooldown between retries                     | 30–120 s         |
+| **T_watchdog**           | Loop stall detection interval                | 2–5 s            |
+| **T_evidence_retention** | Evidence retention period                    | 30–90 days       |
+| **WAN_loss_threshold**   | Condition to enter Local‑Only (M4)           | WAN link = down  |
+| **SMS_enabled**          | Enable SMS/cellular fallback                 | false            |
+| **SMS_max_retries**      | Max SMS send retries                         | 3                |
+| **SMS_cooldown_s**       | Cooldown between SMS retries                 | 60 s             |
+| **T_ext_door_open**      | Continuous known-open duration before a new exposure through an external door, garage door, or gate | 60 s |
+| **T_ext_decision**       | Decision budget after the applicable evidence and opening qualification are available | ≤ 1 s |
+| **T_ext_clear**          | Stable positive evidence before exposure clear | 2–10 min       |
+| **T_api_block_max**      | Maximum blocking time of one provider call   | ≤ 10 s           |
+| **T_poll_weather**       | Open-Meteo weather poll interval             | 10 min           |
+| **T_poll_imgw**          | IMGW warnings poll interval                  | 5 min            |
+| **T_poll_aq_model**      | Open-Meteo current AQ model poll interval    | 30 min           |
+| **T_stale_weather**      | Weather capability stale timeout             | 20 min           |
+| **T_stale_warning**      | Official weather warning provider stale timeout | 15 min        |
+| **T_stale_aq**           | Outdoor AQ capability stale timeout          | 45 min           |
+| **T_frost_watch**        | Configurable external frost watch threshold  | 2 °C             |
+| **T_frost_warning**      | Configurable external frost warning threshold | 0 °C            |
+| **V_gust_watch**         | Configurable wind-gust watch threshold       | 15 m/s           |
+| **V_gust_warning**       | Configurable wind-gust warning threshold     | 20 m/s           |
+
+_All deployable parameter bindings live under `SafetyFunctions.app_config` or
+`SafetyFunctions.user_config` in `backend/app_cfg.yaml` (see [LINK: SYS-SEC-4-5, §4.5]). A parameter
+shall not affect runtime behavior until its owning component defines and
+validates the corresponding configuration key._
+<<<
+
+[[/SECTION]]

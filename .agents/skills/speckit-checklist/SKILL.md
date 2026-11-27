@@ -129,9 +129,10 @@ You **MUST** consider the user input before proceeding (if not empty).
    - Infer any missing context from spec/plan/tasks (do NOT hallucinate)
 
 5. **Load feature context**: Read from FEATURE_DIR:
-   - spec.md: Feature requirements and scope
+   - spec.md: Feature scope and scenario references
+   - requirements.sdoc and architecture.sdoc (if present): Canonical requirements and ADRs
    - plan.md (if exists): Technical details, dependencies
-   - tasks.md (if exists): Implementation tasks
+   - Beads graph if implementation traceability is relevant. Use `python tools/register_speckit_tasks.py "<FEATURE_DIR>" --check` if tasks have been registered.
 
    **Context Loading Strategy**:
    - Load only necessary portions relevant to active focus areas (avoid full-file dumping)

@@ -1,0 +1,41 @@
+[DOCUMENT]
+TITLE: Example feature architecture decisions
+
+[GRAMMAR]
+ELEMENTS:
+- TAG: ADR
+  FIELDS:
+  - TITLE: UID
+    TYPE: String
+    REQUIRED: True
+  - TITLE: TITLE
+    TYPE: String
+    REQUIRED: True
+  - TITLE: CONTEXT
+    TYPE: String
+    REQUIRED: True
+  - TITLE: DECISION
+    TYPE: String
+    REQUIRED: True
+  - TITLE: CONSEQUENCES
+    TYPE: String
+    REQUIRED: True
+  RELATIONS:
+  - TYPE: Parent
+    ROLE: Addresses
+- TAG: NO_ADR
+  FIELDS:
+  - TITLE: RATIONALE
+    TYPE: String
+    REQUIRED: True
+
+[ADR]
+UID: EXAMPLE-ADR-001
+TITLE: Choose the clock used for sample aging
+CONTEXT: The sample analyzer must evaluate the age boundary while the wall clock can move backwards.
+DECISION: Use an injected monotonic clock for elapsed-time calculation.
+CONSEQUENCES: Each process must initialize elapsed-time tracking from fresh sample metadata after restart.
+RELATIONS:
+- TYPE: Parent
+  VALUE: EXAMPLE-SW-001
+  ROLE: Addresses

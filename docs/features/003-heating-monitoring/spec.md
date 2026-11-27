@@ -232,6 +232,6 @@ retained, failed-storage, stale and disconnected evidence.
   per-value observation times. Their availability shall not be assumed.
 - Planning and local implementation do not authorize private configuration changes,
   household drills, deployment or actuator testing.
-- Requirements derive from [heating architecture](<../Heating System Monitoring - Architecture.md>),
-  [SYS](<../../sys/SafetyConcept - SYS.md#86-heating-system-monitoring-component-c-hvac>)
-  and [SSRD](<../../sys/SafetyComponent - SSRD.md#410-heating-system-monitoring>).
+- Requirements derive from [heating architecture](<../Heating System Monitoring - Architecture.sdoc>),
+  [SYS](<../../sys/SafetyConcept - SYS.sdoc>)
+  and [SSRD](<../../sys/SafetyComponent - SSRD.sdoc>).

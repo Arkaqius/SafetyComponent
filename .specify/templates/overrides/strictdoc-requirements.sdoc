@@ -1,0 +1,63 @@
+[DOCUMENT]
+TITLE: Example feature requirements
+
+[GRAMMAR]
+ELEMENTS:
+- TAG: REQUIREMENT
+  FIELDS:
+  - TITLE: UID
+    TYPE: String
+    REQUIRED: True
+  - TITLE: LAYER
+    TYPE: SingleChoice(STAKEHOLDER, SYS, SW)
+    REQUIRED: True
+  - TITLE: KIND
+    TYPE: SingleChoice(FUNCTIONAL, QUALITY, CONSTRAINT)
+    REQUIRED: True
+  - TITLE: SAFETY_GOALS
+    TYPE: String
+    REQUIRED: False
+  - TITLE: TITLE
+    TYPE: String
+    REQUIRED: True
+  - TITLE: STATEMENT
+    TYPE: String
+    REQUIRED: True
+  - TITLE: VERIFICATION
+    TYPE: String
+    REQUIRED: True
+  RELATIONS:
+  - TYPE: Parent
+    ROLE: Refines
+
+[REQUIREMENT]
+UID: EXAMPLE-STK-001
+LAYER: STAKEHOLDER
+KIND: FUNCTIONAL
+TITLE: Recognize stale sample data
+STATEMENT: An operator shall be able to identify when a sample is too old to use.
+VERIFICATION: Ask an operator to identify the stale sample in the review scenario.
+
+[REQUIREMENT]
+UID: EXAMPLE-SYS-001
+LAYER: SYS
+KIND: QUALITY
+TITLE: Indicate stale sample data
+STATEMENT: The system shall display a stale indicator within one second of the configured sample-age limit.
+VERIFICATION: Measure elapsed time from the limit to the stale indication in the configured fixture.
+RELATIONS:
+- TYPE: Parent
+  VALUE: EXAMPLE-STK-001
+  ROLE: Refines
+
+[REQUIREMENT]
+UID: EXAMPLE-SW-001
+LAYER: SW
+KIND: FUNCTIONAL
+TITLE: Publish sample validity
+STATEMENT: The sample analyzer shall publish the stale state when elapsed sample age reaches the configured limit.
+VERIFICATION: Inject a clock and assert the validity state on each side of the age boundary.
+RELATIONS:
+- TYPE: Parent
+  VALUE: EXAMPLE-SYS-001
+  ROLE: Refines

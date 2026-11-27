@@ -1,6 +1,8 @@
 """Advisory routine safety contracts, replay handling and runtime integration."""
 
 import copy
+import sqlite3
+from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock
 
@@ -386,9 +388,95 @@ def test_read_schedule_and_storage_failures_are_explicit(tmp_path):
     store.save = Mock(side_effect=OSError("disk full"))
     assert runtime.run("Bedtime")["run"]["status"] == "unknown"
     assert runtime.storage_available is False
+    app.run_in.assert_not_called()
     runtime.config.routines["Bedtime"].delay_seconds = 30
     app.run_in.side_effect = RuntimeError("scheduler failed")
     assert runtime.run("Bedtime")["run"]["state"] == "interrupted"
+
+
+def test_sqlite_busy_retries_latest_routine_history_after_lock_release(tmp_path):
+    runtime, app, store, _ = build(tmp_path)
+    diagnostics = Mock()
+    runtime.diagnostics_observer = diagnostics
+    previous = runtime.run("Bedtime", "previous")["run"]
+    with closing(sqlite3.connect(store.database.path)) as writer:
+        writer.execute("BEGIN IMMEDIATE")
+        first = runtime.run("Bedtime", "first")["run"]
+        latest = runtime.run("Bedtime", "latest")["run"]
+        assert not runtime.storage_available
+        assert [report["run_id"] for report in store.load()["runs"]] == [
+            previous["run_id"]
+        ]
+        diagnostics.assert_called_with(
+            "persistence", True, detail="safety_routines", operation="write"
+        )
+        app.run_in.assert_called_once()
+        retry = app.run_in.call_args
+        assert retry.args[1] == 1
+        writer.rollback()
+    retry.args[0](retry.kwargs)
+    assert runtime.storage_available
+    diagnostics.assert_called_with(
+        "persistence", False, detail="safety_routines", operation="write"
+    )
+    assert [(report["run_id"], report["state"]) for report in store.load()["runs"]] == [
+        (previous["run_id"], "completed"),
+        (first["run_id"], "completed"),
+        (latest["run_id"], "completed"),
+    ]
+    assert app.fire_event.call_count == 3
+
+
+def test_sqlite_busy_retry_budget_and_stale_callbacks_are_bounded(tmp_path):
+    runtime, app, store, _ = build(tmp_path)
+    with closing(sqlite3.connect(store.database.path)) as writer:
+        writer.execute("BEGIN IMMEDIATE")
+        runtime.run("Bedtime")
+        first = app.run_in.call_args
+        for delay in (1, 2, 4):
+            retry = app.run_in.call_args
+            assert retry.args[1] == delay
+            retry.args[0](retry.kwargs)
+        assert app.run_in.call_count == 3
+        assert not runtime.storage_available
+        writer.rollback()
+    first.args[0](first.kwargs)
+    assert store.load()["runs"] == []
+    assert not runtime.storage_available
+
+
+def test_stop_fences_pending_sqlite_retry_even_after_restart(tmp_path):
+    runtime, app, store, _ = build(tmp_path)
+    app.run_in.side_effect = [1, 2]
+    with closing(sqlite3.connect(store.database.path)) as writer:
+        writer.execute("BEGIN IMMEDIATE")
+        runtime.run("Bedtime")
+        old_retry = app.run_in.call_args
+        runtime.stop()
+        app.cancel_timer.assert_called_once_with(1)
+        writer.rollback()
+    runtime.start()
+    with closing(sqlite3.connect(store.database.path)) as writer:
+        writer.execute("BEGIN IMMEDIATE")
+        runtime.run("Bedtime")
+        new_retry = app.run_in.call_args
+        writer.rollback()
+    old_retry.args[0](old_retry.kwargs)
+    assert store.load()["runs"] == []
+    new_retry.args[0](new_retry.kwargs)
+    assert len(store.load()["runs"]) == 1
+
+
+def test_failed_reload_cannot_overwrite_history_after_earlier_success(tmp_path):
+    runtime, app, store, _ = build(tmp_path)
+    runtime.stop()
+    unsupported = {"version": 999, "runs": []}
+    store.save(unsupported)
+    runtime.start()
+    runtime.run("Bedtime")
+    assert not runtime.storage_available
+    assert store.load() == unsupported
+    app.run_in.assert_not_called()
 
 
 def test_event_api_is_correlated_bounded_and_localized(tmp_path):
